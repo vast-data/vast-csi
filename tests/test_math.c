@@ -5,15 +5,22 @@
 
 #include "math.h"
 
-static void test_add(void **state) {
+static void test_positive(void **state) {
     (void) state;
 
     assert_int_equal(add(2, 1), 3);
 }
 
+static void test_negative(void **state) {
+    (void) state;
+
+    assert_int_equal(add(2, -5), -3);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
-        cmocka_unit_test(test_add),
+        cmocka_unit_test(test_positive),
+        cmocka_unit_test(test_negative),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
