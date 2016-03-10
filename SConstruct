@@ -17,3 +17,6 @@ AddTest(target='dist/test_math',
         source=['build/tests/test_math.c',
                 'build/src/math.o'])
 env.AlwaysBuild('test')
+
+env.Alias('docs', orion, 'doxygen')
+env.AlwaysBuild('docs')
