@@ -2,3 +2,5 @@
 dist/*
 build/*
 docs/*
+nbproject/private/
+.vagrant/

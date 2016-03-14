@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configurationDescriptor version="97">
+  <logicalFolder name="root" displayName="root" projectFiles="true" kind="ROOT">
+    <df root="." name="0">
+      <df name="src">
+        <in>main.c</in>
+        <in>math.c</in>
+      </df>
+      <df name="tests">
+        <in>test_math.c</in>
+      </df>
+    </df>
+    <logicalFolder name="ExternalFiles"
+                   displayName="Important Files"
+                   projectFiles="false"
+                   kind="IMPORTANT_FILES_FOLDER">
+      <itemPath>SConstruct</itemPath>
+      <itemPath>nbproject/private/launcher.properties</itemPath>
+    </logicalFolder>
+  </logicalFolder>
+  <sourceFolderFilter>^(nbproject)$</sourceFolderFilter>
+  <sourceRootList>
+    <Elem>.</Elem>
+  </sourceRootList>
+  <projectmakefile>SConstruct</projectmakefile>
+  <confs>
+    <conf name="Default" type="0">
+      <toolsSet>
+        <compilerSet>CLang|CLang</compilerSet>
+        <dependencyChecking>false</dependencyChecking>
+        <rebuildPropChanged>false</rebuildPropChanged>
+      </toolsSet>
+      <codeAssistance>
+      </codeAssistance>
+      <makefileType>
+        <makeTool>
+          <buildCommandWorkingDir>.</buildCommandWorkingDir>
+          <buildCommand>scons</buildCommand>
+          <cleanCommand>scons -c</cleanCommand>
+          <executablePath></executablePath>
+          <cTool>
+            <incDir>
+              <pElem>src</pElem>
+            </incDir>
+          </cTool>
+        </makeTool>
+        <preBuild>
+          <preBuildCommandWorkingDir>.</preBuildCommandWorkingDir>
+          <preBuildCommand></preBuildCommand>
+        </preBuild>
+      </makefileType>
+      <item path="src/main.c" ex="false" tool="0" flavor2="0">
+      </item>
+      <item path="src/math.c" ex="false" tool="0" flavor2="0">
+      </item>
+      <item path="tests/test_math.c" ex="false" tool="0" flavor2="0">
+      </item>
+    </conf>
+  </confs>
+</configurationDescriptor>

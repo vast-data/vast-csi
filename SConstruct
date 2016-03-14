@@ -7,7 +7,7 @@ env.Append(CCFLAGS='-Weverything')
 env.Append(CPPPATH=['src'])
 
 orion = env.Program(target='dist/orion',
-                    source=['build/src/main.c'])
+                    source=['build/src/main.c', 'build/src/math.c'])
 
 def AddTest(target, source):
     test = env.Program(target=target, source=source, LIBS=['cmocka'])
