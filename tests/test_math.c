@@ -11,9 +11,10 @@ static void test_positive(void **state) {
     assert_int_equal(add(2, 1), 3);
 }
 
+//adding comment to test process (RH)
 static void test_negative(void **state) {
     (void) state;
-
+    
     assert_int_equal(add(2, -5), -3);
 }
 
