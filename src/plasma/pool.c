@@ -4,8 +4,10 @@
  */
 #include <stdlib.h>
 #include <stdint.h>
-#include <assert.h>
 #include "pool.h"
+#include "defs.h"
+#include "alloc.h"
+#include "assert.h"
 
 #define INDEX_TO_ADDRESS(pool, index) ((void*) (((uint8_t*) pool->mem) + index * pool->block_size))
 #define INDEX_TO_VALUE(pool, index) (*((uint32_t*) INDEX_TO_ADDRESS(pool, index)))
@@ -20,10 +22,11 @@ struct p_pool {
 p_pool *p_pool__init(uint32_t blocks, size_t block_size)
 {
     // Validate each block is larger than the index it will contain.
-    assert(block_size >= sizeof(uint32_t));
+    P_ASSERT(block_size >= sizeof(uint32_t));
 
-    p_pool *pool = malloc(sizeof(p_pool));
-    pool->mem = malloc(blocks * block_size);
+    p_pool *pool = p_safe_malloc(sizeof(p_pool));
+    // Allocate a cache aligned buffer and expand it to the nearest cache line (required by aligned_alloc)
+    pool->mem = p_safe_cache_aligned_alloc(blocks * block_size + (blocks * block_size % P_CACHE_LINE_BYTES));
     pool->free_head = 0;
     pool->blocks = blocks;
     pool->block_size = block_size;

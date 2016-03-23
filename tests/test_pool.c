@@ -2,9 +2,8 @@
  * Unauthorized copying of this file, via any medium is strictly
  * prohibited proprietary and confidential.
  */
-#include <stdio.h>
-#include <stdarg.h>
 #include <stddef.h>
+#include <stdarg.h>
 #include <setjmp.h>
 #include <cmocka.h>
 

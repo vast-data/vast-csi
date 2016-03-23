@@ -37,7 +37,7 @@
           <buildCommandWorkingDir>.</buildCommandWorkingDir>
           <buildCommand>scons</buildCommand>
           <cleanCommand>scons -c</cleanCommand>
-          <executablePath></executablePath>
+          <executablePath>dist/test_pool</executablePath>
           <cTool>
             <incDir>
               <pElem>src</pElem>
