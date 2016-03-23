@@ -31,3 +31,8 @@ void *p_safe_cache_aligned_alloc(size_t size)
     P_ASSERT(buffer != NULL);
     return buffer;
 }
+
+void p_free(void *buffer)
+{
+    free(buffer);
+}

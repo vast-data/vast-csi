@@ -10,3 +10,5 @@
 #pragma once
 
 #define P_CACHE_LINE_BYTES 64
+#define P_STRUCT_CACHE_ALIGNED __attribute__ ((aligned(P_CACHE_LINE_BYTES)))
+#define P_STRUCT_PACKED __attribute__ ((packed)))

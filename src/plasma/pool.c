@@ -2,6 +2,7 @@
  * Unauthorized copying of this file, via any medium is strictly
  * prohibited proprietary and confidential.
  */
+#include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include "pool.h"
@@ -9,7 +10,7 @@
 #include "alloc.h"
 #include "assert.h"
 
-#define INDEX_TO_ADDRESS(pool, index) ((void*) (((uint8_t*) pool->mem) + index * pool->block_size))
+#define INDEX_TO_ADDRESS(pool, index) ((void*) (((uintptr_t) pool->mem) + (index) * pool->block_size))
 #define INDEX_TO_VALUE(pool, index) (*((uint32_t*) INDEX_TO_ADDRESS(pool, index)))
 
 struct p_pool {

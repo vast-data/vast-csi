@@ -2,12 +2,17 @@ VariantDir('build/src', 'src', duplicate=0)
 VariantDir('build/tests', 'tests', duplicate=0)
 env = Environment()
 env.Replace(CC='clang')
-env.Append(CFLAGS='-g')
-env.Append(CFLAGS='-O2')
 env.Append(CFLAGS='-std=c11')
 env.Append(CFLAGS='-Weverything')
+env.Append(CFLAGS='-Werror')
 env.Append(CFLAGS='-Wno-padded')
 env.Append(CPPPATH=['src'])
+
+debug = ARGUMENTS.get('debug', 0)
+if int(debug):
+   env.Append(CFLAGS='-g')
+else:
+   env.Append(CFLAGS='-O2')
 
 orion = env.Program(target='dist/orion',
                     source=['build/src/main.c', 'build/src/math.c', 'build/src/plasma/pool.c', 'build/src/plasma/alloc.c'])
