@@ -15,7 +15,10 @@ else:
    env.Append(CFLAGS='-O2')
 
 orion = env.Program(target='dist/orion',
-                    source=['build/src/main.c', 'build/src/math.c', 'build/src/plasma/pool.c', 'build/src/plasma/alloc.c'])
+                    source=['build/src/main.c',
+                            'build/src/math.c',
+                            'build/src/plasma/alloc.c',
+                            'build/src/plasma/pool.c'])
 
 def AddTest(target, source):
     test = env.Program(target=target, source=source, LIBS=['cmocka'])

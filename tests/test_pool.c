@@ -14,14 +14,14 @@ static void test_out_of_memory(void **state)
     (void) state;
 
     p_pool *pool = p_pool__init(2, sizeof(int));
-    int *a = p_pool__alloc(pool);
-    int *b = p_pool__alloc(pool);
-    int *c = p_pool__alloc(pool);
+    int *a = p_pool__alloc_address(pool);
+    int *b = p_pool__alloc_address(pool);
+    p_index index = p_pool__alloc(pool);
     *a = 1;
     *b = 2;
     assert_int_equal(*a, 1);
     assert_int_equal(*b, 2);
-    assert_null(c);
+    assert_int_equal(index, -1);
     p_pool__destroy(pool);
 }
 
@@ -31,17 +31,20 @@ static void test_alloc_free(void **state)
 
     p_pool *pool = p_pool__init(2, sizeof(int));
 
-    int *a = p_pool__alloc(pool);
-    assert_non_null(a);
-    p_pool__free(pool, a);
+    p_index index = p_pool__alloc(pool);
+    int *a = p_pool__index_to_address(pool, index);
+    assert_int_not_equal(index, -1);
+    p_pool__free(pool, index);
 
-    a = p_pool__alloc(pool);
-    assert_non_null(a);
-    p_pool__free(pool, a);
+    index = p_pool__alloc(pool);
+    a = p_pool__index_to_address(pool, index);
+    assert_int_not_equal(index, -1);
+    p_pool__free(pool, index);
 
-    a = p_pool__alloc(pool);
-    assert_non_null(a);
-    p_pool__free(pool, a);
+    index = p_pool__alloc(pool);
+    a = p_pool__index_to_address(pool, index);
+    assert_int_not_equal(index, -1);
+    p_pool__free(pool, index);
 
     p_pool__destroy(pool);
 }

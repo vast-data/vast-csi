@@ -27,4 +27,6 @@ void *p_cache_aligned_alloc(size_t size);
  */
 void *p_safe_cache_aligned_alloc(size_t size);
 
+void p_fill_zeroes(void *buffer, size_t size);
+
 void p_free(void *buffer);
