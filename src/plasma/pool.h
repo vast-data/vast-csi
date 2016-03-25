@@ -14,7 +14,7 @@
  * Future considerations:
  * 1. The pool currently doesn't support multiple threads.
  * 2. Consider adding a magic to each block for identifying overflows.
- * 3. Consider supporting multiple allocations at once.
+ * 3. Consider supporting multiple allocations at once (to prevent deadlocks).
  */
 #pragma once
 
@@ -24,7 +24,7 @@
 typedef struct p_pool p_pool;
 
 /*!
- * p_pool__init initializes a pool.
+ * Initialize a pool.
  * In order to destroy the pool and release resources call p_pool__destroy().
  *
  * \param blocks the number of blocks the pool is expected to hold.
@@ -34,7 +34,7 @@ typedef struct p_pool p_pool;
 p_pool *p_pool__init(p_index blocks, size_t block_size);
 
 /*!
- * p_pool__alloc allocates a block from the pool and returns its index.
+ * Allocate a block from the pool and returns its index.
  * Note that the memory is not cleared (zeroed).
  *
  * \return the index of the free block or -1 if no free blocks exist.
@@ -42,7 +42,7 @@ p_pool *p_pool__init(p_index blocks, size_t block_size);
 p_index p_pool__alloc(p_pool *pool);
 
 /*!
- * p_pool__alloc_address allocates a block from the pool and returns its address.
+ * Allocate a block from the pool and returns its address.
  * Note that the memory is not cleared (zeroed).
  *
  * \return the address of the free block or -1 if no free blocks exist.
@@ -50,27 +50,27 @@ p_index p_pool__alloc(p_pool *pool);
 void *p_pool__alloc_address(p_pool *pool);
 
 /*!
- * p_pool__free returns a block to the pool using its index.
+ * Return a block to the pool using its index.
  */
 void p_pool__free(p_pool *pool, p_index index);
 
 /*!
- * p_pool__free_address returns a block to the pool using its address.
+ * Return a block to the pool using its address.
  */
 void p_pool__free_address(p_pool *pool, void *address);
 
 /*!
- * p_pool__index_to_address translates a relative index to an absolute memory address.
+ * Translate a relative index to an absolute memory address.
  */
 void *p_pool__index_to_address(p_pool *pool, p_index index);
 
 /*!
- * p_pool__address_to_index translates an absolute address to a relative index.
+ * Translates an absolute address to a relative index.
  */
 p_index p_pool__address_to_index(p_pool *pool, void *block);
 
 /*!
- * p_pool__destroy should be called when work with the pool is finished.
+ * Destroy a pool in order to free its resources.
  * The p_pool object will be released along with the underlying memory region.
  */
 void p_pool__destroy(p_pool *pool);

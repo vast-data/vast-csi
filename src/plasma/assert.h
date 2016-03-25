@@ -5,7 +5,7 @@
 
 /*!
  * \file assert.h
- * \brief General definitions
+ * \brief Assert and abort functions
  */
 #pragma once
 

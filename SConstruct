@@ -18,7 +18,8 @@ orion = env.Program(target='dist/orion',
                     source=['build/src/main.c',
                             'build/src/math.c',
                             'build/src/plasma/alloc.c',
-                            'build/src/plasma/pool.c'])
+                            'build/src/plasma/pool.c',
+                            'build/src/plasma/dlist.c'])
 
 def AddTest(target, source):
     test = env.Program(target=target, source=source, LIBS=['cmocka'])
@@ -31,6 +32,10 @@ AddTest(target='dist/test_pool',
         source=['build/tests/test_pool.c',
                 'build/src/plasma/alloc.o',
                 'build/src/plasma/pool.o'])
+AddTest(target='dist/test_dlist',
+        source=['build/tests/test_dlist.c',
+                'build/src/plasma/dlist.o',
+                'build/src/plasma/alloc.o'])
 env.AlwaysBuild('test')
 
 env.Alias('docs', orion, 'doxygen')

@@ -9,6 +9,8 @@
  */
 #pragma once
 
+#include <stdlib.h>
+
 void *p_malloc(size_t size);
 
 /*!
