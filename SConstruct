@@ -1,6 +1,9 @@
+import os
+
 VariantDir('build/src', 'src', duplicate=0)
 VariantDir('build/tests', 'tests', duplicate=0)
 env = Environment()
+env['ENV']['TERM'] = os.environ['TERM'] # enable terminal colors in clang
 env.Replace(CC='clang')
 env.Append(CFLAGS='-std=c11')
 env.Append(CFLAGS='-Weverything')
