@@ -33,15 +33,16 @@ p_pool *p_pool__init(p_index blocks, size_t block_size)
 
     // Every free node contains the index of the next free node.
     // The end of the list is marked with index == blocks.
-    for (p_index i = 0; i < blocks; i++)
+    for (p_index i = 0; i < blocks - 1; i++)
         INDEX_TO_VALUE(pool, i) = i + 1;
+    INDEX_TO_VALUE(pool, blocks - 1) = P_INVALID_INDEX;
     return pool;
 }
 
 p_index p_pool__alloc(p_pool *pool)
 {
     p_index free = pool->free_head;
-    if (free == pool->blocks)
+    if (free == P_INVALID_INDEX)
         return P_INVALID_INDEX;
     pool->free_head = INDEX_TO_VALUE(pool, free);
     return free;
