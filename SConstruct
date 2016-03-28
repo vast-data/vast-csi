@@ -16,6 +16,7 @@ if int(debug):
    env.Append(CFLAGS='-g')
 else:
    env.Append(CFLAGS='-O2')
+   env.Append(CFLAGS='-fno-omit-frame-pointer') # otherwise we won't have backtraces
 
 orion = env.Program(target='dist/orion',
                     source=['build/src/main.c',

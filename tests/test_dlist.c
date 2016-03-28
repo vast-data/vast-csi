@@ -79,7 +79,6 @@ static void test_remove(void **state)
 {
     (void) state;
 
-
     p_dlist *list = p_dlist__init(3);
     p_dlist_anchor anchor = P_DLIST_ANCHOR_INIT;
 
@@ -118,7 +117,6 @@ static void test_each(void **state)
         assert_int_equal(i, j++);
     }
     assert_int_equal(j, 3);
-
 }
 
 int main(void)

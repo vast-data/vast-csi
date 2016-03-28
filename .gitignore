@@ -4,3 +4,4 @@ build/*
 docs/*
 nbproject/private/
 .vagrant/
+ignore
