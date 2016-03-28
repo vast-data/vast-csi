@@ -1,20 +1,16 @@
 /* Copyright (C) Vast Data Ltd. */
 
 /*!
- * \file dlist.h
+ * \file p_dlist.h
  * \brief A circular doubly-linked list.
  *
  * Future considerations:
  *
  * 1. Make the dlist crash safe?
- * 2. Consider adding debug checks in case a user mixes anchors.
- * 3. Should the anchor have its own type?
- * 4. Compare with Intrinsic list:
- *     1. Simpler API.
- *     2. Less indirections.
- *     3. Multiple nodes of different lists on same cache line.
- *     4. Limit on number of elements.
+ * 2. Make the dlist thread safe?
+ * 3. Consider adding debug checks in case a user mixes anchors.
  */
+
 #pragma once
 
 #include <p.h>

@@ -1,3 +1,10 @@
+/* Copyright (C) Vast Data Ltd. */
+
+/*!
+ * \file p.h
+ * \brief Plasma's API
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>

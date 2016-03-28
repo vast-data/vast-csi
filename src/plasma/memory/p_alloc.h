@@ -1,9 +1,10 @@
 /* Copyright (C) Vast Data Ltd. */
 
 /*!
- * \file alloc.h
+ * \file p_alloc.h
  * \brief A collection of memory allocation functions
  */
+
 #pragma once
 
 #include <p.h>

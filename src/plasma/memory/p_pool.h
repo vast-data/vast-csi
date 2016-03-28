@@ -1,7 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 
 /*!
- * \file pool.h
+ * \file p_pool.h
  * \brief A fixed-block pool for efficient memory management.
  *
  * Constraints:
@@ -13,6 +13,7 @@
  * 2. Consider adding a magic to each block for identifying overflows.
  * 3. Consider supporting multiple allocations at once (to prevent deadlocks).
  */
+
 #pragma once
 
 #include <p.h>
