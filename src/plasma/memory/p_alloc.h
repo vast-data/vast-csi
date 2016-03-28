@@ -6,7 +6,7 @@
  */
 #pragma once
 
-#include <stdlib.h>
+#include <p.h>
 
 void *p_malloc(size_t size);
 

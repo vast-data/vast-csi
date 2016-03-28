@@ -1,9 +1,5 @@
 /* Copyright (C) Vast Data Ltd. */
-#include <stdlib.h>
-#include <string.h>
-#include "defs.h"
-#include "assert.h"
-#include "alloc.h"
+#include <p.h>
 
 void *p_malloc(size_t size)
 {

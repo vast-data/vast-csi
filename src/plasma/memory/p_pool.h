@@ -15,20 +15,19 @@
  */
 #pragma once
 
-#include <stdint.h>
-#include "defs.h"
+#include <p.h>
 
 typedef struct p_pool p_pool;
 
 /*!
  * Initialize a pool.
- * In order to destroy the pool and release resources call p_pool__destroy().
+ * In order to destroy the pool and release resources call p_pool_destroy().
  *
  * \param blocks the number of blocks the pool is expected to hold.
  * \param block_size the size of each block in bytes (minimum of 4 bytes).
  * \return a pointer to a pool.
  */
-p_pool *p_pool__init(p_index blocks, size_t block_size);
+p_pool *p_pool_init(p_index blocks, size_t block_size);
 
 /*!
  * Allocate a block from the pool and returns its index.
@@ -36,7 +35,7 @@ p_pool *p_pool__init(p_index blocks, size_t block_size);
  *
  * \return the index of the free block or -1 if no free blocks exist.
  */
-p_index p_pool__alloc(p_pool *pool);
+p_index p_pool_alloc(p_pool *pool);
 
 /*!
  * Allocate a block from the pool and returns its address.
@@ -44,30 +43,30 @@ p_index p_pool__alloc(p_pool *pool);
  *
  * \return the address of the free block or -1 if no free blocks exist.
  */
-void *p_pool__alloc_address(p_pool *pool);
+void *p_pool_alloc_address(p_pool *pool);
 
 /*!
  * Return a block to the pool using its index.
  */
-void p_pool__free(p_pool *pool, p_index index);
+void p_pool_free(p_pool *pool, p_index index);
 
 /*!
  * Return a block to the pool using its address.
  */
-void p_pool__free_address(p_pool *pool, void *address);
+void p_pool_free_address(p_pool *pool, void *address);
 
 /*!
  * Translate a relative index to an absolute memory address.
  */
-void *p_pool__index_to_address(p_pool *pool, p_index index);
+void *p_pool_index_to_address(p_pool *pool, p_index index);
 
 /*!
  * Translates an absolute address to a relative index.
  */
-p_index p_pool__address_to_index(p_pool *pool, void *block);
+p_index p_pool_address_to_index(p_pool *pool, void *block);
 
 /*!
  * Destroy a pool in order to free its resources.
  * The p_pool object will be released along with the underlying memory region.
  */
-void p_pool__destroy(p_pool *pool);
+void p_pool_destroy(p_pool *pool);

@@ -1,13 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include "pool.h"
-#include "defs.h"
-#include "alloc.h"
-#include "assert.h"
+#include <p.h>
 
-#define INDEX_TO_VALUE(pool, index) (*((p_index*) p_pool__index_to_address(pool, index)))
+#define INDEX_TO_VALUE(pool, index) (*((p_index*) p_pool_index_to_address(pool, index)))
 
 struct p_pool {
     void *mem;
@@ -16,7 +10,7 @@ struct p_pool {
     p_index free_head;
 };
 
-p_pool *p_pool__init(p_index blocks, size_t block_size)
+p_pool *p_pool_init(p_index blocks, size_t block_size)
 {
     // Validate each block is larger than the index it will contain.
     P_ASSERT(block_size >= sizeof(p_index));
@@ -36,7 +30,7 @@ p_pool *p_pool__init(p_index blocks, size_t block_size)
     return pool;
 }
 
-p_index p_pool__alloc(p_pool *pool)
+p_index p_pool_alloc(p_pool *pool)
 {
     p_index free = pool->free_head;
     if (free == P_INVALID_INDEX)
@@ -45,34 +39,34 @@ p_index p_pool__alloc(p_pool *pool)
     return free;
 }
 
-void *p_pool__alloc_address(p_pool *pool)
+void *p_pool_alloc_address(p_pool *pool)
 {
-    return p_pool__index_to_address(pool, p_pool__alloc(pool));
+    return p_pool_index_to_address(pool, p_pool_alloc(pool));
 }
 
-void p_pool__free(p_pool *pool, p_index index)
+void p_pool_free(p_pool *pool, p_index index)
 {
     INDEX_TO_VALUE(pool, index) = pool->free_head;
     pool->free_head = index;
 }
 
-void p_pool__free_address(p_pool *pool, void *address)
+void p_pool_free_address(p_pool *pool, void *address)
 {
-    p_pool__free(pool, p_pool__address_to_index(pool, address));
+    p_pool_free(pool, p_pool_address_to_index(pool, address));
 }
 
-p_index p_pool__address_to_index(p_pool *pool, void *block)
+p_index p_pool_address_to_index(p_pool *pool, void *block)
 {
     return (p_index) (((uintptr_t) block - (uintptr_t) pool->mem) / pool->block_size);
 }
 
-void *p_pool__index_to_address(p_pool *pool, p_index index)
+void *p_pool_index_to_address(p_pool *pool, p_index index)
 {
     P_ASSERT(index != P_INVALID_INDEX);
     return (void*) (((uintptr_t) pool->mem) + (size_t) index * pool->block_size);
 }
 
-void p_pool__destroy(p_pool *pool) {
+void p_pool_destroy(p_pool *pool) {
     free(pool->mem);
     free(pool);
 }

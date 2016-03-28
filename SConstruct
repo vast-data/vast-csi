@@ -10,6 +10,7 @@ env.Append(CFLAGS='-Weverything')
 env.Append(CFLAGS='-Werror')
 env.Append(CFLAGS='-Wno-padded')
 env.Append(CPPPATH=['src'])
+env.Append(CPPPATH=['src/include'])
 
 debug = ARGUMENTS.get('debug', 0)
 if int(debug):
@@ -20,26 +21,22 @@ else:
 
 orion = env.Program(target='dist/orion',
                     source=['build/src/main.c',
-                            'build/src/math.c',
-                            'build/src/plasma/alloc.c',
-                            'build/src/plasma/pool.c',
-                            'build/src/plasma/dlist.c'])
+                            'build/src/plasma/memory/p_alloc.c',
+                            'build/src/plasma/memory/p_pool.c',
+                            'build/src/plasma/data/p_dlist.c'])
 
 def AddTest(target, source):
     test = env.Program(target=target, source=source, LIBS=['cmocka'])
     env.Alias('test', test, test[0].abspath)
 
-AddTest(target='dist/test_math',
-        source=['build/tests/test_math.c',
-                'build/src/math.o'])
-AddTest(target='dist/test_pool',
-        source=['build/tests/test_pool.c',
-                'build/src/plasma/alloc.o',
-                'build/src/plasma/pool.o'])
-AddTest(target='dist/test_dlist',
-        source=['build/tests/test_dlist.c',
-                'build/src/plasma/dlist.o',
-                'build/src/plasma/alloc.o'])
+AddTest(target='dist/test_p_pool',
+        source=['build/tests/test_p_pool.c',
+                'build/src/plasma/memory/p_alloc.o',
+                'build/src/plasma/memory/p_pool.o'])
+AddTest(target='dist/test_p_dlist',
+        source=['build/tests/test_p_dlist.c',
+                'build/src/plasma/data/p_dlist.o',
+                'build/src/plasma/memory/p_alloc.o'])
 env.AlwaysBuild('test')
 
 env.Alias('docs', orion, 'doxygen')
