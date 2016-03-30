@@ -4,11 +4,12 @@
  * \file p_dlist.h
  * \brief A circular doubly-linked list.
  *
- * Future considerations:
+ * This doubly-linked list is used to store indices. Usually indices of objects allocated by a memory pool.
+ * Therefore, the linked should be initialized with the size of the memory pool.
  *
- * 1. Make the dlist crash safe?
- * 2. Make the dlist thread safe?
- * 3. Consider adding debug checks in case a user mixes anchors.
+ * Future considerations:
+ * 1. Add thread safety.
+ * 2. Consider adding debug checks to protect a user mixing anchors.
  */
 
 #pragma once

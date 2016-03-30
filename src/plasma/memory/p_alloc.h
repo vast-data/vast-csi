@@ -12,7 +12,7 @@
 void *p_malloc(size_t size);
 
 /*!
- * p_cache_malloc calls p_malloc and aborts if the result is NULL.
+ * p_cache_malloc calls p_malloc and panics if the result is NULL.
  */
 void *p_safe_malloc(size_t size);
 
@@ -23,7 +23,7 @@ void *p_safe_malloc(size_t size);
 void *p_cache_aligned_alloc(size_t size);
 
 /*!
- * p_safe_cache_aligned_alloc calls p_cache_aligned_alloc() and aborts if the result is NULL
+ * p_safe_cache_aligned_alloc calls p_cache_aligned_alloc() and panics if the result is NULL
  */
 void *p_safe_cache_aligned_alloc(size_t size);
 

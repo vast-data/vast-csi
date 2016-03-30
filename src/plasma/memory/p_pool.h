@@ -9,8 +9,8 @@
  * 2. The maximum number of blocks in the pool is 2**32.
  *
  * Future considerations:
- * 1. The pool currently doesn't support multiple threads.
- * 2. Consider adding a magic to each block for identifying overflows.
+ * 1. Add thread safety.
+ * 2. Consider adding a magic chunk to each block for identifying overflows.
  * 3. Consider supporting multiple allocations at once (to prevent deadlocks).
  */
 

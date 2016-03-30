@@ -19,11 +19,21 @@ else:
    env.Append(CFLAGS='-O2')
    env.Append(CFLAGS='-fno-omit-frame-pointer') # don't hurt backtraces
 
-lib = env.Library(target='dist/orion', source=['build/src/plasma/memory/p_alloc.c',
-                                               'build/src/plasma/memory/p_pool.c',
-                                               'build/src/plasma/data/p_dlist.c'])
+murmur_env = env.Clone()
+murmur_env.Append(CFLAGS=['-Wno-cast-align',
+                          '-Wno-sign-conversion',
+                          '-Wno-shorten-64-to-32',
+                          '-Wno-incompatible-pointer-types-discards-qualifiers'])
+murmur = murmur_env.Object('build/src/plasma/third_party/murmur3/murmur3.c')
 
-def AddTest(target, source):
+lib = env.Library(target='dist/orion',
+                  source=['build/src/plasma/memory/p_alloc.c',
+                          'build/src/plasma/memory/p_pool.c',
+                          'build/src/plasma/data/p_dlist.c',
+                          'build/src/plasma/data/p_hash.c',
+                          murmur])
+
+def AddTest(target, source, env=env):
     test = env.Program(target=target, source=source, LIBS=['cmocka', lib])
     env.Alias('test', test, test[0].abspath)
 
@@ -31,6 +41,10 @@ AddTest(target='dist/test_p_pool',
         source=[lib, 'build/tests/test_p_pool.c'])
 AddTest(target='dist/test_p_dlist',
         source=[lib, 'build/tests/test_p_dlist.c'])
+AddTest(target='dist/test_p_hash',
+        source=[lib, 'build/tests/test_p_hash.c',
+                'build/src/plasma/third_party/murmur3/test.c'],
+        env=murmur_env)
 env.AlwaysBuild('test')
 
 env.Alias('docs', lib, 'doxygen')

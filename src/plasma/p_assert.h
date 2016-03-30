@@ -2,10 +2,11 @@
 
 /*!
  * \file assert.h
- * \brief Assert and abort functions
+ * \brief Assert and panic functions
  */
 #pragma once
 
 #include <assert.h>
 
 #define P_ASSERT(expression) assert(expression)
+#define P_PANIC() P_ASSERT(false)
