@@ -88,3 +88,20 @@ p_index p_dlist_prev(p_dlist *list, p_dlist_anchor *anchor, p_index index)
 
     return list->nodes[index].prev;
 }
+
+p_index p_dlist_pop(p_dlist *list, p_dlist_anchor *anchor)
+{
+    if (*anchor == P_DLIST_ANCHOR_INIT)
+        return P_INVALID_INDEX;
+    p_index head = *anchor;
+    p_dlist_remove(list, anchor, *anchor);
+    return head;
+}
+
+void p_dlist_append(p_dlist *list, p_dlist_anchor *anchor, p_index index)
+{
+    if (*anchor == P_DLIST_ANCHOR_INIT)
+        p_dlist_insert(list, anchor, index);
+    else
+        p_dlist_add_before(list, anchor, *anchor, index);
+}

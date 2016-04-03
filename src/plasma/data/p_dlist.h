@@ -55,8 +55,12 @@ void p_dlist_remove(p_dlist *list, p_dlist_anchor *anchor, p_index index);
 p_index p_dlist_next(p_dlist *list, p_dlist_anchor *anchor, p_index index);
 p_index p_dlist_prev(p_dlist *list, p_dlist_anchor *anchor, p_index index);
 
+p_index p_dlist_pop(p_dlist *list, p_dlist_anchor *anchor);
+void p_dlist_append(p_dlist *list, p_dlist_anchor *anchor, p_index index);
+
 /*!
- * Iterate over list elements. Example usage:
+ * Iterate over list elements. Don't remove elements during iteration.
+ * Example usage:
  *
 \code{.c}
 p_dlist_anchor i;

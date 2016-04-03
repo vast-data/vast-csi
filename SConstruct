@@ -31,6 +31,7 @@ lib = env.Library(target='dist/orion',
                           'build/src/plasma/memory/p_pool.c',
                           'build/src/plasma/data/p_dlist.c',
                           'build/src/plasma/data/p_hash.c',
+                          'build/src/plasma/fiber/p_fiber.c',
                           murmur])
 
 def AddTest(target, source, env=env):
@@ -45,6 +46,8 @@ AddTest(target='dist/test_p_hash',
         source=[lib, 'build/tests/test_p_hash.c',
                 'build/src/plasma/third_party/murmur3/test.c'],
         env=murmur_env)
+AddTest(target='dist/test_p_fiber',
+        source=[lib, 'build/tests/test_p_fiber.c'])
 env.AlwaysBuild('test')
 
 env.Alias('docs', lib, 'doxygen')
