@@ -4,20 +4,21 @@ VariantDir('build/src', 'src', duplicate=0)
 VariantDir('build/tests', 'tests', duplicate=0)
 env = Environment()
 env['ENV']['TERM'] = os.environ['TERM'] # enable terminal colors in clang
-env.Replace(CC='clang')
-env.Append(CFLAGS='-std=c11')
-env.Append(CFLAGS='-Weverything')
-env.Append(CFLAGS='-Werror')
-env.Append(CFLAGS='-Wno-padded')
-env.Append(CPPPATH=['src'])
-env.Append(CPPPATH=['src/include'])
+
+env.Replace(CC=ARGUMENTS.get('cc', 'clang'))
+env.Append(CFLAGS=['-std=c11',
+                   '-Weverything' if env['CC'] == 'clang' else '-Wall',
+                   '-Werror',
+                   '-Wno-padded'])
+env.Append(CPPPATH=['src',
+                    'src/include'])
 
 debug = ARGUMENTS.get('debug', 0)
 if int(debug):
    env.Append(CFLAGS='-g')
 else:
    env.Append(CFLAGS='-O2')
-   env.Append(CFLAGS='-fno-omit-frame-pointer') # don't hurt backtraces
+   env.Append(CFLAGS='-fno-omit-frame-pointer') # required for debugging and generating backtraces
 
 murmur_env = env.Clone()
 murmur_env.Append(CFLAGS=['-Wno-cast-align',

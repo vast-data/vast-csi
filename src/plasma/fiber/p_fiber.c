@@ -143,9 +143,9 @@ static p_fiber_state get_next_state(p_fiber_state state)
     case STATE_DONE:
     case STATE_COUNT:
     case STATE_RUNNING:
-    default:
         P_PANIC();
     }
+    P_PANIC();
 }
 
 static void free_done_fibers()

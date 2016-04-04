@@ -28,17 +28,14 @@ static void test_alloc_free(void **state)
     p_pool *pool = p_pool_init(2, sizeof(int));
 
     p_index index = p_pool_alloc(pool);
-    int *a = p_pool_index_to_address(pool, index);
     assert_int_not_equal(index, -1);
     p_pool_free(pool, index);
 
     index = p_pool_alloc(pool);
-    a = p_pool_index_to_address(pool, index);
     assert_int_not_equal(index, -1);
     p_pool_free(pool, index);
 
     index = p_pool_alloc(pool);
-    a = p_pool_index_to_address(pool, index);
     assert_int_not_equal(index, -1);
     p_pool_free(pool, index);
 
