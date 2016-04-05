@@ -6,6 +6,7 @@
 #define NUM_ELEMENTS(array) (sizeof(array) / sizeof(array[0]))
 
 #define LOOP(until, i) for (size_t i = 0; i < (until); i++)
+#define LOOP_FROM(start, until, i) for (size_t i = start; i < (until); i++)
 
 #define P_CACHE_LINE_BYTES 64
 #define P_CACHE_ALIGNED __attribute__ ((aligned(P_CACHE_LINE_BYTES)))

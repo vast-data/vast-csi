@@ -21,9 +21,9 @@ static void test(void **state)
     int value = 0;
 
     p_fiber_group_config fiber_groups[] = {
-        {.fiber_count = 30, .stack_size = 8092},
-        {.fiber_count = 20, .stack_size = 4096},
-        {.fiber_count = 10, .stack_size = 2048}
+        {.fiber_count = 40, .stack_size = 8092},
+        {.fiber_count = 30, .stack_size = 4096},
+        {.fiber_count = 20, .stack_size = 4096}
     };
     p_scheduler_config config = {.fiber_groups = fiber_groups, .group_count = NUM_ELEMENTS(fiber_groups)};
     p_scheduler_init(&config);
