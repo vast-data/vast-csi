@@ -46,6 +46,7 @@ void *p_pool_alloc_address(p_pool *pool)
 
 void p_pool_free(p_pool *pool, p_index index)
 {
+    P_ASSERT(index < pool->blocks);
     INDEX_TO_VALUE(pool, index) = pool->free_head;
     pool->free_head = index;
 }

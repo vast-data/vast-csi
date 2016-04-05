@@ -69,7 +69,7 @@ P_DLIST_EACH(list, anchor, i) {
 }
 \endcode
  */
-#define P_DLIST_EACH(list, anchor, element) for (element = anchor; \
+#define P_DLIST_EACH(list, anchor, element) for (p_dlist_anchor element = anchor; \
                                                  element != P_INVALID_INDEX; \
                                                  element = p_dlist_next(list, &anchor, element), \
                                                      element = element != anchor ? element : P_INVALID_INDEX)

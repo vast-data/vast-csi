@@ -90,7 +90,6 @@ static void test_each(void **state)
     p_dlist *list = p_dlist_init(3);
     p_dlist_anchor anchor = P_DLIST_ANCHOR_INIT;
 
-    p_index i;
     P_DLIST_EACH(list, anchor, i) {}
 
     p_dlist_insert(list, &anchor, 0);

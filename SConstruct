@@ -28,7 +28,8 @@ murmur_env.Append(CFLAGS=['-Wno-cast-align',
 murmur = murmur_env.Object('build/src/plasma/third_party/murmur3/murmur3.c')
 
 lib = env.Library(target='dist/orion',
-                  source=['build/src/plasma/memory/p_alloc.c',
+                  source=['build/src/plasma/utils.c',
+                          'build/src/plasma/memory/p_alloc.c',
                           'build/src/plasma/memory/p_pool.c',
                           'build/src/plasma/data/p_dlist.c',
                           'build/src/plasma/data/p_hash.c',

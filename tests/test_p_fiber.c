@@ -8,11 +8,10 @@
 static void increment(void *value)
 {
     int *num_ptr = value;
-    (*num_ptr)++;
-    p_fiber_yield();
-    (*num_ptr)++;
-    p_fiber_yield();
-    (*num_ptr)++;
+    LOOP(3, i) {
+        (*num_ptr)++;
+        p_fiber_yield();
+    }
 }
 
 static void test(void **state)
@@ -21,12 +20,18 @@ static void test(void **state)
 
     int value = 0;
 
-    p_scheduler_init();
-    p_fiber_init(increment, &value);
-    p_fiber_init(increment, &value);
-    p_fiber_init(increment, &value);
-    p_fiber_init(increment, &value);
-    p_fiber_init(increment, &value);
+    p_fiber_group_config fiber_groups[] = {
+        {.fiber_count = 30, .stack_size = 8092},
+        {.fiber_count = 20, .stack_size = 4096},
+        {.fiber_count = 10, .stack_size = 2048}
+    };
+    p_scheduler_config config = {.fiber_groups = fiber_groups, .group_count = NUM_ELEMENTS(fiber_groups)};
+    p_scheduler_init(&config);
+    p_fiber_init(0, increment, &value);
+    p_fiber_init(1, increment, &value);
+    p_fiber_init(1, increment, &value);
+    p_fiber_init(2, increment, &value);
+    p_fiber_init(2, increment, &value);
     p_scheduler_run();
 
     assert_int_equal(value, 15);

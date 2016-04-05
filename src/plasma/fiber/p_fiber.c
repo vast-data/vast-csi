@@ -5,8 +5,8 @@
  * http://rethinkdb.com/blog/making-coroutines-fast/
  *
  * 1. Out of fibers.
- * 2. Removing while iterating gets stuck
- * 3. Iterating on -1 anchor
+ * 2. Share stacks.
+ * 3.
  */
 #include <p.h>
 
@@ -19,19 +19,26 @@ typedef enum {
     STATE_COUNT
 } p_fiber_state;
 
-typedef struct p_scheduler p_scheduler;
-struct p_scheduler {
-    jmp_buf caller;
+typedef struct p_fiber_group p_fiber_group;
+struct p_fiber_group {
     p_pool *stacks;
     p_pool *fibers;
     p_dlist *queue;
     p_dlist_anchor states[STATE_COUNT];
     p_fiber_state last_state;
+    size_t stack_size;
+};
+
+typedef struct p_scheduler p_scheduler;
+struct p_scheduler {
+    jmp_buf caller;
+    size_t group_count;
+    size_t last_group;
+    p_fiber_group *groups;
 };
 
 struct p_fiber {
     jmp_buf jmp_buf;
-    //p_fiber_state state;
     void (*func)(void *arg);
     void *arg;
     void *stack;
@@ -60,47 +67,46 @@ static intptr_t ptr_mangle(intptr_t addr)
     return ret;
 }
 
-#define STACK_SIZE 4096
-
 static __thread p_fiber *current_fiber;
 static __thread p_scheduler sched;
 
 static __attribute__((noreturn)) void p_scheduler_continue();
 
-static void fiber_destroy(p_fiber *fiber)
+static void fiber_destroy(p_fiber_group *group, p_fiber *fiber)
 {
-    p_pool_free(sched.stacks, p_pool_address_to_index(sched.stacks, fiber->stack));
-    p_pool_free(sched.fibers, p_pool_address_to_index(sched.fibers, fiber));
+    p_pool_free(group->stacks, p_pool_address_to_index(group->stacks, fiber->stack));
+    p_pool_free(group->fibers, p_pool_address_to_index(group->fibers, fiber));
 }
 
 static __attribute__((noreturn)) void fiber_main()
 {
     current_fiber->func(current_fiber->arg);
     // We can't call fiber_destroy from here because we're still using the stack.
-    p_dlist_append(sched.queue, &sched.states[STATE_DONE], p_pool_address_to_index(sched.fibers, current_fiber));
+    p_dlist_append(sched.groups[sched.last_group].queue, &sched.groups[sched.last_group].states[STATE_DONE], p_pool_address_to_index(sched.groups[sched.last_group].fibers, current_fiber));
     p_scheduler_continue();
 }
 
-p_fiber *p_fiber_init(void (*func)(void *arg), void *arg)
+p_fiber *p_fiber_init(size_t group_index, void (*func)(void *arg), void *arg)
 {
-    p_index fiber_index = p_pool_alloc(sched.fibers);
-    p_fiber *fiber = p_pool_index_to_address(sched.fibers, fiber_index);
-    void *stack = p_pool_alloc_address(sched.stacks);
+    P_ASSERT(group_index < sched.group_count);
+    p_index fiber_index = p_pool_alloc(sched.groups[group_index].fibers);
+    p_fiber *fiber = p_pool_index_to_address(sched.groups[group_index].fibers, fiber_index);
+    void *stack = p_pool_alloc_address(sched.groups[group_index].stacks);
 
-    fiber->jmp_buf[0].__jmpbuf[JB_RSP] = ptr_mangle((intptr_t) stack + STACK_SIZE);
+    fiber->jmp_buf[0].__jmpbuf[JB_RSP] = ptr_mangle((intptr_t) stack + (intptr_t) sched.groups[sched.last_group].stack_size);
     fiber->jmp_buf[0].__jmpbuf[JB_PC] = ptr_mangle((intptr_t) fiber_main);
     fiber->stack = stack;
     fiber->func = func;
     fiber->arg = arg;
 
-    p_dlist_append(sched.queue, &sched.states[STATE_INIT], fiber_index);
+    p_dlist_append(sched.groups[group_index].queue, &sched.groups[group_index].states[STATE_INIT], fiber_index);
     return fiber;
 }
 
 void p_fiber_yield()
 {
     if (!setjmp(current_fiber->jmp_buf)) {
-        p_dlist_append(sched.queue, &sched.states[STATE_READY], p_pool_address_to_index(sched.fibers, current_fiber));
+        p_dlist_append(sched.groups[sched.last_group].queue, &sched.groups[sched.last_group].states[STATE_READY], p_pool_address_to_index(sched.groups[sched.last_group].fibers, current_fiber));
         p_scheduler_continue();
     }
 }
@@ -111,74 +117,84 @@ static __attribute__((noreturn)) void p_fiber_run(p_fiber *fiber)
     longjmp(current_fiber->jmp_buf, true);
 }
 
-#define FIBERS 128
-
-void p_scheduler_init()
+void p_scheduler_init(p_scheduler_config *config)
 {
-    sched.stacks = p_pool_init(FIBERS, STACK_SIZE);
-    sched.fibers = p_pool_init(FIBERS, sizeof(p_fiber));
-    sched.queue = p_dlist_init(FIBERS);
-    LOOP(STATE_COUNT, i) {
-        sched.states[i] = P_DLIST_ANCHOR_INIT;
+    sched.last_group = 0;
+    sched.group_count = config->group_count;
+    sched.groups = p_safe_cache_aligned_alloc(sizeof(p_fiber_group) * sched.group_count);
+
+    p_fiber_group_config *fiber_config;
+    p_fiber_group *fiber_group;
+
+    LOOP(sched.group_count, i) {
+        fiber_config = &config->fiber_groups[i];
+        fiber_group = &sched.groups[i];
+        fiber_group->stack_size = fiber_config->stack_size;
+        fiber_group->stacks = p_pool_init(fiber_config->fiber_count, fiber_config->stack_size);
+        fiber_group->fibers = p_pool_init(fiber_config->fiber_count, sizeof(p_fiber));
+        fiber_group->queue = p_dlist_init(fiber_config->fiber_count);
+        LOOP(STATE_COUNT, j) {
+            fiber_group->states[j] = P_DLIST_ANCHOR_INIT;
+        }
+        fiber_group->last_state = STATE_INIT;
     }
-    sched.last_state = STATE_INIT;
 }
 
 void p_scheduler_destroy()
 {
-    p_dlist_destroy(sched.queue);
-    p_pool_destroy(sched.fibers);
-    p_pool_destroy(sched.stacks);
-}
-
-static p_fiber_state get_next_state(p_fiber_state state)
-{
-    switch (state) {
-    case STATE_INIT:
-        return STATE_READY;
-    case STATE_READY:
-        return STATE_WAIT;
-    case STATE_WAIT:
-        return STATE_INIT;
-    case STATE_DONE:
-    case STATE_COUNT:
-    case STATE_RUNNING:
-        P_PANIC();
-    }
-    P_PANIC();
-}
-
-static void free_done_fibers()
-{
-    p_index fiber_index = sched.states[STATE_DONE];
-    while (fiber_index != P_DLIST_ANCHOR_INIT) {
-        if (fiber_index == p_pool_address_to_index(sched.fibers, current_fiber)) {
-            fiber_index = p_dlist_next(sched.queue, &sched.states[STATE_DONE], fiber_index);
-            if (fiber_index == p_pool_address_to_index(sched.fibers, current_fiber))
-                break;
+    p_fiber_group *fiber_group;
+    LOOP(sched.group_count, i) {
+        fiber_group = &sched.groups[i];
+        p_dlist_destroy(fiber_group->queue);
+        p_pool_destroy(fiber_group->fibers);
+        if (fiber_group->stacks != NULL) {
+            LOOP(sched.group_count, j)
+                if (i != j && sched.groups[j].stacks == fiber_group->stacks)
+                    sched.groups[j].stacks = NULL;
+            p_pool_destroy(fiber_group->stacks);
         }
-        fiber_destroy(p_pool_index_to_address(sched.fibers, fiber_index));
-        p_dlist_remove(sched.queue, &sched.states[STATE_DONE], fiber_index);
-        fiber_index = sched.states[STATE_DONE];
+    }
+    p_free(sched.groups);
+}
+
+static void free_done_fibers(p_fiber_group *fiber_group)
+{
+    p_index fiber_index = fiber_group->states[STATE_DONE];
+    while (fiber_index != P_DLIST_ANCHOR_INIT) {
+        if (fiber_index == p_pool_address_to_index(fiber_group->fibers, current_fiber)) {
+            fiber_index = p_dlist_next(fiber_group->queue, &fiber_group->states[STATE_DONE], fiber_index);
+            if (fiber_index == p_pool_address_to_index(fiber_group->fibers, current_fiber))
+                break; // there's only one fiber and it's the one currently running
+        }
+        fiber_destroy(fiber_group, p_pool_index_to_address(fiber_group->fibers, fiber_index));
+        p_dlist_remove(fiber_group->queue, &fiber_group->states[STATE_DONE], fiber_index);
+        fiber_index = fiber_group->states[STATE_DONE];
+
     }
 }
 
 static void p_scheduler_continue()
 {
-    free_done_fibers();
-
+    p_fiber_state state;
     p_index fiber_index;
-    p_fiber_state state = sched.last_state;
+    size_t fiber_group_index = sched.last_group;
+    p_fiber_group *fiber_group;
     do {
-        state = get_next_state(state);
-        fiber_index = p_dlist_pop(sched.queue, &sched.states[state]);
-        if (fiber_index != P_INVALID_INDEX) {
-            sched.last_state = state;
-            p_fiber_run(p_pool_index_to_address(sched.fibers, fiber_index));
-        }
-    } while(state != sched.last_state);
-
-    // if we got here it means all the queues are empty
+        fiber_group_index = (fiber_group_index + 1) % sched.group_count;
+        fiber_group = &sched.groups[fiber_group_index];
+        free_done_fibers(fiber_group);
+        state = sched.groups[fiber_group_index].last_state;
+        do {
+            state = state == STATE_INIT ? STATE_READY : STATE_INIT;
+            fiber_index = p_dlist_pop(fiber_group->queue, &fiber_group->states[state]);
+            if (fiber_index != P_INVALID_INDEX) {
+                fiber_group->last_state = state;
+                sched.last_group = fiber_group_index;
+                p_fiber_run(p_pool_index_to_address(fiber_group->fibers, fiber_index));
+            }
+        } while(state != fiber_group->last_state);
+    } while (fiber_group_index != sched.last_group);
+    // if we got here it means all the queues are empty, return to the user
     longjmp(sched.caller, true);
 }
 

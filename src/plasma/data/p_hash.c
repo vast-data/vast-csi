@@ -45,7 +45,6 @@ bool p_hash_set(p_hash *hash, void *key, size_t length, p_index value)
 {
     size_t bucket_index = hash->key_to_bucket(hash, key, length);
     p_dlist_anchor bucket = hash->buckets[bucket_index];
-    p_dlist_anchor i;
     P_DLIST_EACH(hash->values, bucket, i) {
         if (hash->match(hash->match_arg, i, key, length)) {
             if (i == value) {
@@ -64,7 +63,6 @@ bool p_hash_set(p_hash *hash, void *key, size_t length, p_index value)
 p_index p_hash_get(p_hash *hash, void *key, size_t length)
 {
     p_dlist_anchor bucket = hash->buckets[hash->key_to_bucket(hash, key, length)];
-    p_dlist_anchor i;
     P_DLIST_EACH(hash->values, bucket, i) {
         if (hash->match(hash->match_arg, i, key, length)) {
             return i;
@@ -77,7 +75,6 @@ bool p_hash_remove(p_hash *hash, void *key, size_t length)
 {
     size_t bucket_index = hash->key_to_bucket(hash, key, length);
     p_dlist_anchor bucket = hash->buckets[bucket_index];
-    p_dlist_anchor i;
     P_DLIST_EACH(hash->values, bucket, i) {
         if (hash->match(hash->match_arg, i, key, length)) {
             p_dlist_remove(hash->values, &bucket, i);
