@@ -32,3 +32,8 @@ void p_fiber_yield(void);
 void p_scheduler_init(p_scheduler_config *config);
 void p_scheduler_destroy(void);
 void p_scheduler_run(void);
+
+void p_join(p_fiber *fiber);
+void p_join_init(void);
+void p_join_add(p_fiber *fiber);
+void p_join_all(void);
