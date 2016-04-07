@@ -12,4 +12,4 @@
 #define P_CACHE_ALIGNED __attribute__ ((aligned(P_CACHE_LINE_BYTES)))
 #define P_PACKED __attribute__ ((packed)))
 
-int is_power_of_two (uintmax_t x);
+bool p_is_power_of_two (uintmax_t x);

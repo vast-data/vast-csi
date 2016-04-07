@@ -16,7 +16,7 @@ struct p_hash {
 p_hash *p_hash_init_custom(size_t n_buckets, p_index n_values, p_hash_match_func match, void *match_arg,
                            p_hash_key_to_bucket key_to_bucket)
 {
-    P_ASSERT(is_power_of_two(n_buckets));
+    P_ASSERT(p_is_power_of_two(n_buckets));
     p_hash *hash = p_safe_malloc(sizeof(p_hash));
     hash->match = match;
     hash->match_arg = match_arg;

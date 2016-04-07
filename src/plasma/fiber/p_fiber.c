@@ -7,7 +7,8 @@
  * 1. Out of fibers.
  * 2. How often should we poll providers.
  * 3. Split code to modules and add a public interface.
- * 4.
+ * 4. Fiber poll? unique fiber id?
+ * 5. starvation threshold
  */
 #include <p.h>
 
@@ -46,6 +47,7 @@ struct p_fiber {
     p_fiber *parent;
     p_fiber_group *group;
     p_fiber_state state;
+    uint64_t start_time;
     union {
         int join_count;
     };
@@ -86,9 +88,12 @@ static void fiber_destroy(p_fiber *fiber)
     p_pool_free(fiber->group->fibers, p_pool_address_to_index(fiber->group->fibers, fiber));
 }
 
+#define STARVATION_THRESHOLD_NS 100000000 // 100 ms
+
 static void context_switch()
 {
     P_ASSERT(current_fiber->state != STATE_RUNNING);
+    P_ASSERT(p_get_time_nano() - current_fiber->start_time < STARVATION_THRESHOLD_NS);
     if (!setjmp(current_fiber->jmp_buf)) {
         p_scheduler_continue();
     }
@@ -132,6 +137,7 @@ static __attribute__((noreturn)) void p_fiber_run(p_fiber *fiber)
 {
     current_fiber = fiber;
     current_fiber->state = STATE_RUNNING;
+    current_fiber->start_time = p_get_time_nano();
     longjmp(current_fiber->jmp_buf, true);
 }
 

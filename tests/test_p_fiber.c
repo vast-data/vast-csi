@@ -89,12 +89,38 @@ static void test_join_all(void **state)
     assert_int_equal(value, 6);
 }
 
+static void iter(void *arg) {
+    size_t *count = arg;
+    LOOP(*count, i)
+        p_fiber_yield();
+}
+
+static void test_perf(void **state)
+{
+    (void) state;
+
+    size_t iters = 100000;
+    size_t num_fibers = 10;
+
+    p_scheduler_init(&scheduler_config);
+    LOOP(num_fibers, i)
+        p_fiber_init(0, iter, &iters);
+
+    uint64_t start = p_get_clock_time_nano();
+    p_scheduler_run();
+    uint64_t end = p_get_clock_time_nano();
+    float avg = (float) (end - start) / (iters * num_fibers);
+    printf("Iterations: %lu. Average: %.3fns. Total: %lu\n", iters, avg, end - start);
+    assert_in_range(avg, 100, 500);
+}
+
 int main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_yield),
         cmocka_unit_test(test_join_single),
-        cmocka_unit_test(test_join_all)
+        cmocka_unit_test(test_join_all),
+        cmocka_unit_test(test_perf)
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
