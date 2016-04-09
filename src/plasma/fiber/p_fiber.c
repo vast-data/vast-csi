@@ -11,47 +11,9 @@
  * 5. starvation threshold
  */
 #include <p.h>
-
-typedef enum {
-    STATE_INIT,
-    STATE_READY,
-    STATE_RUNNING,
-    STATE_WAIT_JOIN,
-    STATE_DONE,
-    STATE_COUNT
-} p_fiber_state;
-
-typedef struct p_fiber_group p_fiber_group;
-struct p_fiber_group {
-    p_pool *stacks;
-    p_pool *fibers;
-    p_dlist *queue;
-    p_dlist_anchor states[STATE_COUNT];
-    p_fiber_state last_state;
-    size_t stack_size;
-};
-
-typedef struct p_scheduler p_scheduler;
-struct p_scheduler {
-    jmp_buf caller;
-    size_t group_count;
-    size_t last_group;
-    p_fiber_group *groups;
-};
-
-struct p_fiber {
-    jmp_buf jmp_buf;
-    void (*func)(void *arg);
-    void *arg;
-    void *stack;
-    p_fiber *parent;
-    p_fiber_group *group;
-    p_fiber_state state;
-    uint64_t start_time;
-    union {
-        int join_count;
-    };
-};
+#include <setjmp.h>
+#include "p_fiber_internal.h"
+#include "p_scheduler_internal.h"
 
 // The following attributes were found in glibc/sysdeps/x86_64/jmpbuf-offsets.h
 #define JB_RSP 6
@@ -76,13 +38,7 @@ static intptr_t ptr_mangle(intptr_t addr)
     return ret;
 }
 
-static __thread p_fiber *current_fiber;
-static __thread p_scheduler sched;
-
-static __attribute__((noreturn)) void p_scheduler_continue();
-static void p_scheduler_set_fiber_state(p_fiber *fiber, p_fiber_state state);
-
-static void fiber_destroy(p_fiber *fiber)
+void p_fiber_destroy(p_fiber *fiber)
 {
     p_pool_free(fiber->group->stacks, p_pool_address_to_index(fiber->group->stacks, fiber->stack));
     p_pool_free(fiber->group->fibers, p_pool_address_to_index(fiber->group->fibers, fiber));
@@ -92,18 +48,18 @@ static void fiber_destroy(p_fiber *fiber)
 
 static void context_switch()
 {
-    P_ASSERT(current_fiber->state != STATE_RUNNING);
-    P_ASSERT(p_get_time_nano() - current_fiber->start_time < STARVATION_THRESHOLD_NS);
-    if (!setjmp(current_fiber->jmp_buf)) {
+    P_ASSERT(sched.current_fiber->state != STATE_RUNNING);
+    P_ASSERT(p_get_time_nano() - sched.current_fiber->start_time < STARVATION_THRESHOLD_NS);
+    if (!setjmp(sched.current_fiber->jmp_buf)) {
         p_scheduler_continue();
     }
 }
 
-static __attribute__((noreturn)) void fiber_main()
+static void __attribute__((noreturn)) fiber_main()
 {
-    current_fiber->func(current_fiber->arg);
+    sched.current_fiber->func(sched.current_fiber->arg);
     // We can't call fiber_destroy from here because we're still using the stack.
-    p_scheduler_set_fiber_state(current_fiber, STATE_DONE);
+    p_scheduler_set_fiber_state(sched.current_fiber, STATE_DONE);
     p_scheduler_continue();
 }
 
@@ -129,135 +85,16 @@ p_fiber *p_fiber_init(size_t group_index, void (*func)(void *arg), void *arg)
 
 void p_fiber_yield()
 {
-    p_scheduler_set_fiber_state(current_fiber, STATE_READY);
+    p_scheduler_set_fiber_state(sched.current_fiber, STATE_READY);
     context_switch();
 }
 
-static __attribute__((noreturn)) void p_fiber_run(p_fiber *fiber)
+void __attribute__((noreturn)) p_fiber_run(p_fiber *fiber)
 {
-    current_fiber = fiber;
-    current_fiber->state = STATE_RUNNING;
-    current_fiber->start_time = p_get_time_nano();
-    longjmp(current_fiber->jmp_buf, true);
-}
-
-static p_pool *find_or_allocate_stacks(p_scheduler_config *config, size_t group_index)
-{
-    // search for an existing group with the same stack size
-    p_fiber_group *group = &sched.groups[group_index];
-    LOOP(group_index, i)
-        if (sched.groups[i].stack_size == group->stack_size)
-            return sched.groups[i].stacks;
-
-    // allocate a pool that accomodates the fiber_count of all groups with same stack_size
-    p_index fibers = config->fiber_groups[group_index].fiber_count;
-    LOOP_FROM(group_index + 1, sched.group_count, i)
-        if (config->fiber_groups[i].stack_size == group->stack_size)
-            fibers += config->fiber_groups[i].fiber_count;
-    return p_pool_init(fibers, group->stack_size);
-}
-
-void p_scheduler_init(p_scheduler_config *config)
-{
-    current_fiber = NULL;
-
-    sched.last_group = 0;
-    sched.group_count = config->group_count;
-    sched.groups = p_safe_cache_aligned_alloc(sizeof(p_fiber_group) * sched.group_count);
-
-    p_fiber_group_config *fiber_config;
-    p_fiber_group *group;
-
-    LOOP(sched.group_count, i) {
-        fiber_config = &config->fiber_groups[i];
-        group = &sched.groups[i];
-        group->stack_size = fiber_config->stack_size;
-        group->fibers = p_pool_init(fiber_config->fiber_count, sizeof(p_fiber));
-        group->queue = p_dlist_init(fiber_config->fiber_count);
-        LOOP(STATE_COUNT, j) {
-            group->states[j] = P_DLIST_ANCHOR_INIT;
-        }
-        group->last_state = STATE_INIT;
-        group->stacks = find_or_allocate_stacks(config, i);
-    }
-}
-
-void p_scheduler_destroy()
-{
-    p_fiber_group *fiber_group;
-    LOOP(sched.group_count, i) {
-        fiber_group = &sched.groups[i];
-        p_dlist_destroy(fiber_group->queue);
-        p_pool_destroy(fiber_group->fibers);
-        if (fiber_group->stacks != NULL) {
-            // delete all other pointers to the same stack pool
-            LOOP(sched.group_count, j)
-                if (i != j && sched.groups[j].stacks == fiber_group->stacks)
-                    sched.groups[j].stacks = NULL;
-            p_pool_destroy(fiber_group->stacks);
-        }
-    }
-    p_free(sched.groups);
-}
-
-static void free_done_fibers(p_fiber_group *group)
-{
-    p_index fiber_index = group->states[STATE_DONE];
-    p_fiber *fiber;
-    while (fiber_index != P_DLIST_ANCHOR_INIT) {
-        if (fiber_index == p_pool_address_to_index(group->fibers, current_fiber)) {
-            fiber_index = p_dlist_next(group->queue, &group->states[STATE_DONE], fiber_index);
-            if (fiber_index == p_pool_address_to_index(group->fibers, current_fiber))
-                break; // there's only one fiber and it's the one currently running
-        }
-        fiber = p_pool_index_to_address(group->fibers, fiber_index);
-        if (fiber->parent != NULL && fiber->parent->state == STATE_WAIT_JOIN) {
-            if (--fiber->parent->join_count == 0)
-                p_scheduler_set_fiber_state(fiber->parent, STATE_READY);
-        }
-        fiber_destroy(fiber);
-        p_dlist_remove(group->queue, &group->states[STATE_DONE], fiber_index);
-        fiber_index = group->states[STATE_DONE];
-    }
-}
-
-static void p_scheduler_set_fiber_state(p_fiber *fiber, p_fiber_state state)
-{
-    fiber->state = state;
-    p_dlist_append(fiber->group->queue,
-                   &fiber->group->states[state],
-                   p_pool_address_to_index(fiber->group->fibers, fiber));
-}
-
-static void p_scheduler_continue()
-{
-    p_fiber_state state;
-    p_index fiber_index;
-    size_t group_index = sched.last_group;
-    p_fiber_group *group;
-    do {
-        group_index = (group_index + 1) % sched.group_count;
-        group = &sched.groups[group_index];
-        free_done_fibers(group);
-        state = sched.groups[group_index].last_state;
-        do {
-            state = state == STATE_INIT ? STATE_READY : STATE_INIT;
-            fiber_index = p_dlist_pop(group->queue, &group->states[state]);
-            if (fiber_index != P_INVALID_INDEX) {
-                group->last_state = state;
-                sched.last_group = group_index;
-                p_fiber_run(p_pool_index_to_address(group->fibers, fiber_index));
-            }
-        } while(state != group->last_state);
-    } while (group_index != sched.last_group);
-    // if we got here it means all the queues are empty, return to the user
-    longjmp(sched.caller, true);
-}
-
-void p_scheduler_run()
-{
-    if (!setjmp(sched.caller))
-        p_scheduler_continue();
+    sched.current_fiber = fiber;
+    sched.current_fiber->state = STATE_RUNNING;
+    sched.current_fiber->start_time = p_get_time_nano();
+    longjmp(sched.current_fiber->jmp_buf, true);
 }
 
 void p_join(p_fiber *fiber)
@@ -269,17 +106,17 @@ void p_join(p_fiber *fiber)
 
 void p_join_init()
 {
-    current_fiber->join_count = 0;
+    sched.current_fiber->join_count = 0;
 }
 
 void p_join_add(p_fiber *fiber)
 {
-    fiber->parent = current_fiber;
-    current_fiber->join_count++;
+    fiber->parent = sched.current_fiber;
+    sched.current_fiber->join_count++;
 }
 
 void p_join_all()
 {
-    p_scheduler_set_fiber_state(current_fiber, STATE_WAIT_JOIN);
+    p_scheduler_set_fiber_state(sched.current_fiber, STATE_WAIT_JOIN);
     context_switch();
 }

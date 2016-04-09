@@ -21,5 +21,6 @@ typedef int32_t p_index;
 #include "plasma/data/p_dlist.h"
 #include "plasma/data/p_hash.h"
 #include "plasma/fiber/p_fiber.h"
+#include "plasma/fiber/p_scheduler.h"
 #include "plasma/utils.h"
 #include "plasma/time.h"
