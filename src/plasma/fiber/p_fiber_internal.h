@@ -9,7 +9,6 @@
 #include <p.h>
 
 typedef enum {
-    STATE_INIT,
     STATE_READY,
     STATE_RUNNING,
     STATE_WAIT_JOIN,
@@ -19,12 +18,11 @@ typedef enum {
 
 typedef struct p_fiber_group p_fiber_group;
 struct p_fiber_group {
+    p_dlist_anchor states[STATE_COUNT];
+    size_t stack_size;
     p_pool *stacks;
     p_pool *fibers;
     p_dlist *queue;
-    p_dlist_anchor states[STATE_COUNT];
-    p_fiber_state last_state;
-    size_t stack_size;
 };
 
 struct p_fiber {

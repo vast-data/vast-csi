@@ -44,7 +44,6 @@ void p_scheduler_init(p_scheduler_config *config)
         LOOP(STATE_COUNT, j) {
             group->states[j] = P_DLIST_ANCHOR_INIT;
         }
-        group->last_state = STATE_INIT;
         group->stacks = find_or_allocate_stacks(config, i);
     }
 }
@@ -98,7 +97,6 @@ static void free_done_fibers(p_fiber_group *group)
 
 void p_scheduler_continue()
 {
-    p_fiber_state state;
     p_index fiber_index;
     size_t group_index = sched.last_group;
     p_fiber_group *group;
@@ -106,16 +104,11 @@ void p_scheduler_continue()
         group_index = (group_index + 1) % sched.group_count;
         group = &sched.groups[group_index];
         free_done_fibers(group);
-        state = sched.groups[group_index].last_state;
-        do {
-            state = state == STATE_INIT ? STATE_READY : STATE_INIT;
-            fiber_index = p_dlist_pop(group->queue, &group->states[state]);
-            if (fiber_index != P_INVALID_INDEX) {
-                group->last_state = state;
-                sched.last_group = group_index;
-                p_fiber_run(p_pool_index_to_address(group->fibers, fiber_index));
-            }
-        } while(state != group->last_state);
+        fiber_index = p_dlist_pop(group->queue, &group->states[STATE_READY]);
+        if (fiber_index != P_INVALID_INDEX) {
+            sched.last_group = group_index;
+            p_fiber_run(p_pool_index_to_address(group->fibers, fiber_index));
+        }
     } while (group_index != sched.last_group);
     // if we got here it means all the queues are empty, return to the user
     longjmp(sched.caller, true);

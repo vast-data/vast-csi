@@ -78,7 +78,7 @@ p_fiber *p_fiber_init(size_t group_index, void (*func)(void *arg), void *arg)
     fiber->group = group;
     fiber->parent = NULL; // will be used by join
 
-    p_scheduler_set_fiber_state(fiber, STATE_INIT);
+    p_scheduler_set_fiber_state(fiber, STATE_READY);
     return fiber;
 }
 
