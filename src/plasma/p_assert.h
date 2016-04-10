@@ -1,7 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 
 /*!
- * \file assert.h
+ * \file p_assert.h
  * \brief Assert and panic functions
  */
 #pragma once

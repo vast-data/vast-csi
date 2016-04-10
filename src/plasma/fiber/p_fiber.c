@@ -4,11 +4,8 @@
  * Alternative implementations: https://swtch.com/libtask/amd64-ucontext.h
  * http://rethinkdb.com/blog/making-coroutines-fast/
  *
- * 1. Out of fibers.
- * 2. How often should we poll providers.
- * 3. Split code to modules and add a public interface.
- * 4. Fiber poll? unique fiber id?
- * 5. starvation threshold
+ * 1. No need for init state.
+ * 2. Expose a fiber_init + join interface.
  */
 #include <p.h>
 #include <setjmp.h>
@@ -68,6 +65,8 @@ p_fiber *p_fiber_init(size_t group_index, void (*func)(void *arg), void *arg)
     P_ASSERT(group_index < sched.group_count);
     p_fiber_group *group = &sched.groups[group_index];
     p_index fiber_index = p_pool_alloc(group->fibers);
+    if (fiber_index == P_INVALID_INDEX)
+        return NULL;
     p_fiber *fiber = p_pool_index_to_address(group->fibers, fiber_index);
     void *stack = p_pool_alloc_address(group->stacks);
 
@@ -111,6 +110,7 @@ void p_join_init()
 
 void p_join_add(p_fiber *fiber)
 {
+    P_ASSERT(fiber->parent == NULL);
     fiber->parent = sched.current_fiber;
     sched.current_fiber->join_count++;
 }

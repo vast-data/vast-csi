@@ -33,6 +33,7 @@ static void test_yield(void **state)
     p_fiber_init(1, increment, &value);
     p_fiber_init(2, increment, &value);
     p_scheduler_run();
+    p_scheduler_destroy();
 
     assert_int_equal(value, 12);
 }
@@ -58,6 +59,7 @@ static void test_join_single(void **state)
     p_scheduler_init(&scheduler_config);
     p_fiber_init(0, increment_twice_serial, &value);
     p_scheduler_run();
+    p_scheduler_destroy();
 
     assert_int_equal(value, 6);
 }
@@ -85,6 +87,7 @@ static void test_join_all(void **state)
     p_scheduler_init(&scheduler_config);
     p_fiber_init(0, increment_twice_parallel, &value);
     p_scheduler_run();
+    p_scheduler_destroy();
 
     assert_int_equal(value, 6);
 }
@@ -112,6 +115,8 @@ static void test_perf(void **state)
     float avg = (float) (end - start) / (iters * num_fibers);
     printf("Iterations: %lu. Average: %.3fns. Total: %lu\n", iters, avg, end - start);
     assert_in_range(avg, 100, 500);
+
+    p_scheduler_destroy();
 }
 
 int main(void)

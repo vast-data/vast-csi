@@ -1,4 +1,9 @@
 /* Copyright (C) Vast Data Ltd. */
+
+/*!
+ * \file utils.h
+ * \brief A collection of useful utilities
+ */
 #pragma once
 
 #include <p.h>

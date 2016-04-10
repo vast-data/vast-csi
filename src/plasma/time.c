@@ -20,7 +20,7 @@ static uint64_t rdtscp() {
 
 static void native_cpuid(uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx)
 {
-    /* ecx is often an input as well as an output. */
+    // ecx is often an input as well as an output.
     __asm__ volatile("cpuid"
                      : "=a" (*eax), "=b" (*ebx), "=c" (*ecx), "=d" (*edx)
                      : "0" (*eax), "2" (*ecx));
