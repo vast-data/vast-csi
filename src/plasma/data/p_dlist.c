@@ -105,3 +105,12 @@ void p_dlist_append(p_dlist *list, p_dlist_anchor *anchor, p_index index)
     else
         p_dlist_add_before(list, anchor, *anchor, index);
 }
+
+size_t p_dlist_length(p_dlist *list, p_dlist_anchor anchor)
+{
+    size_t count = 0;
+    P_DLIST_EACH(list, anchor, i) {
+        count++;
+    }
+    return count;
+}

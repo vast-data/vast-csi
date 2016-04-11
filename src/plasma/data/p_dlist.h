@@ -58,12 +58,13 @@ p_index p_dlist_prev(p_dlist *list, p_dlist_anchor *anchor, p_index index);
 p_index p_dlist_pop(p_dlist *list, p_dlist_anchor *anchor);
 void p_dlist_append(p_dlist *list, p_dlist_anchor *anchor, p_index index);
 
+size_t p_dlist_length(p_dlist *list, p_dlist_anchor anchor);
+
 /*!
  * Iterate over list elements. Don't remove elements during iteration.
  * Example usage:
  *
 \code{.c}
-p_dlist_anchor i;
 P_DLIST_EACH(list, anchor, i) {
    printf("%d", i);
 }

@@ -23,4 +23,5 @@ struct p_scheduler {
 extern __thread p_scheduler sched;
 
 void p_scheduler_set_fiber_state(p_fiber *fiber, p_fiber_state state);
+void p_scheduler_change_fiber_state(p_fiber *fiber, p_fiber_state state);
 void __attribute__((noreturn)) p_scheduler_continue(void);

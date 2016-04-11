@@ -4,8 +4,9 @@
  * Alternative implementations: https://swtch.com/libtask/amd64-ucontext.h
  * http://rethinkdb.com/blog/making-coroutines-fast/
  *
- * 1. No need for init state.
- * 2. Expose a fiber_init + join interface.
+ * 1. Expose a fiber_init + join interface.
+ * 2. Fiber destroy continues the scheduler on freed stack.
+ * 3. Wakeup time per group.
  */
 #include <p.h>
 #include <setjmp.h>
@@ -46,7 +47,8 @@ void p_fiber_destroy(p_fiber *fiber)
 static void context_switch()
 {
     P_ASSERT(sched.current_fiber->state != STATE_RUNNING);
-    P_ASSERT(p_get_time_nano() - sched.current_fiber->start_time < STARVATION_THRESHOLD_NS);
+    P_ASSERT(p_get_time_nano() - sched.current_fiber->switch_time < STARVATION_THRESHOLD_NS);
+    sched.current_fiber->switch_time = p_get_time_nano();
     if (!setjmp(sched.current_fiber->jmp_buf)) {
         p_scheduler_continue();
     }
@@ -54,9 +56,15 @@ static void context_switch()
 
 static void __attribute__((noreturn)) fiber_main()
 {
-    sched.current_fiber->func(sched.current_fiber->arg);
-    // We can't call fiber_destroy from here because we're still using the stack.
-    p_scheduler_set_fiber_state(sched.current_fiber, STATE_DONE);
+    p_fiber *fiber = sched.current_fiber;
+    fiber->func(sched.current_fiber->arg);
+
+    if (fiber->parent != NULL)
+        if (--fiber->parent->join_count == 0)
+            p_scheduler_change_fiber_state(fiber->parent, STATE_READY);
+    p_fiber_destroy(fiber);
+    // note that we're calling the scheduler using a stack we no longer own!
+    // this is fine since no other thread has access to the stack and fiber pools.
     p_scheduler_continue();
 }
 
@@ -88,11 +96,17 @@ void p_fiber_yield()
     context_switch();
 }
 
+void p_fiber_suspend(p_fiber_state state)
+{
+    p_scheduler_set_fiber_state(sched.current_fiber, state);
+    context_switch();
+}
+
 void __attribute__((noreturn)) p_fiber_run(p_fiber *fiber)
 {
     sched.current_fiber = fiber;
     sched.current_fiber->state = STATE_RUNNING;
-    sched.current_fiber->start_time = p_get_time_nano();
+    sched.current_fiber->switch_time = p_get_time_nano();
     longjmp(sched.current_fiber->jmp_buf, true);
 }
 
@@ -117,6 +131,5 @@ void p_join_add(p_fiber *fiber)
 
 void p_join_all()
 {
-    p_scheduler_set_fiber_state(sched.current_fiber, STATE_WAIT_JOIN);
-    context_switch();
+    p_fiber_suspend(STATE_JOIN);
 }

@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <string.h>
 
 typedef int32_t p_index;
@@ -18,9 +19,11 @@ typedef int32_t p_index;
 #include "plasma/p_assert.h"
 #include "plasma/memory/p_alloc.h"
 #include "plasma/memory/p_pool.h"
+#include "plasma/data/p_ilist.h"
 #include "plasma/data/p_dlist.h"
 #include "plasma/data/p_hash.h"
 #include "plasma/fiber/p_fiber.h"
 #include "plasma/fiber/p_scheduler.h"
+#include "plasma/fiber/p_sleep.h"
 #include "plasma/utils.h"
 #include "plasma/time.h"

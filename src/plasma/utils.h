@@ -8,6 +8,8 @@
 
 #include <p.h>
 
+#define MIN(a, b) (a > b ? b : a)
+
 #define NUM_ELEMENTS(array) (sizeof(array) / sizeof(array[0]))
 
 #define LOOP(until, i) for (size_t i = 0; i < (until); i++)

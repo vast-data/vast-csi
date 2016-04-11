@@ -32,10 +32,12 @@ lib = env.Library(target='dist/orion',
                           'build/src/plasma/time.c',
                           'build/src/plasma/memory/p_alloc.c',
                           'build/src/plasma/memory/p_pool.c',
+                          'build/src/plasma/data/p_ilist.c',
                           'build/src/plasma/data/p_dlist.c',
                           'build/src/plasma/data/p_hash.c',
                           'build/src/plasma/fiber/p_fiber.c',
                           'build/src/plasma/fiber/p_scheduler.c',
+                          'build/src/plasma/fiber/p_sleep.c',
                           murmur])
 
 def AddTest(target, source, env=env):
