@@ -19,15 +19,16 @@ static uint64_t interval_to_micro[] = {MILLI_TO_MICRO(100),
 
 void p_sleep_init()
 {
-    LOOP(sched.group_count, i)
-        sched.groups[i].wakeup_time = NO_PENDING_FIBERS;
+    LOOP(p_get_scheduler()->group_count, i)
+        p_get_scheduler()->groups[i].wakeup_time = NO_PENDING_FIBERS;
 }
 
 uint64_t p_sleep(p_sleep_interval interval)
 {
+    p_scheduler *scheduler = p_get_scheduler();
     uint64_t start_time = p_get_time_nano();
-    sched.groups[sched.last_group].wakeup_time = MIN(sched.groups[sched.last_group].wakeup_time,
-                                                     start_time + MICRO_TO_NANO(interval_to_micro[interval]));
+    scheduler->groups[scheduler->last_group].wakeup_time = MIN(scheduler->groups[scheduler->last_group].wakeup_time,
+                                                               start_time + MICRO_TO_NANO(interval_to_micro[interval]));
     p_fiber_suspend((p_fiber_state) (interval + FIRST_SLEEP_STATE));
     return (uint64_t) NANO_TO_MICRO(p_get_time_nano() - start_time);
 }

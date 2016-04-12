@@ -34,10 +34,14 @@ p_dlist *p_dlist_init(p_index size);
 
 void p_dlist_destroy(p_dlist *list);
 
+/*!
+ * Returns whether a list is empty.
+ */
 bool p_dlist_is_empty(p_dlist *list, p_dlist_anchor anchor);
 
 /*!
  * Insert a new element at the beginning of the list.
+ * The anchor is passed through a pointer because its value would be modified.
  */
 void p_dlist_insert(p_dlist *list, p_dlist_anchor *anchor, p_index index);
 
@@ -55,13 +59,23 @@ void p_dlist_remove(p_dlist *list, p_dlist_anchor *anchor, p_index index);
 p_index p_dlist_next(p_dlist *list, p_dlist_anchor *anchor, p_index index);
 p_index p_dlist_prev(p_dlist *list, p_dlist_anchor *anchor, p_index index);
 
+/*
+ * Remove the first element in the list and return it.
+ */
 p_index p_dlist_pop(p_dlist *list, p_dlist_anchor *anchor);
+
+/*
+ * Add an element to the end of the list.
+ */
 void p_dlist_append(p_dlist *list, p_dlist_anchor *anchor, p_index index);
 
+/*
+ * Return the length of the list. O(n) performance.
+ */
 size_t p_dlist_length(p_dlist *list, p_dlist_anchor anchor);
 
 /*!
- * Iterate over list elements. Don't remove elements during iteration.
+ * Iterate over list elements. It's forbidden to remove elements during iteration.
  * Example usage:
  *
 \code{.c}

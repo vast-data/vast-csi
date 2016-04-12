@@ -43,6 +43,8 @@ struct p_fiber {
     };
 };
 
+p_fiber *p_get_current_fiber(void);
+void p_fiber_resume(p_fiber *fiber);
 void p_fiber_suspend(p_fiber_state state);
-void p_fiber_destroy(p_fiber *fiber);
 void p_fiber_run(p_fiber *fiber);
+void p_fiber_destroy(p_fiber *fiber);
