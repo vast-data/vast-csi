@@ -98,7 +98,6 @@ static void test_join_all(void **state)
 static void first_sleeper(void *arg)
 {
     int *value = arg;
-
     assert_in_range(p_sleep(SLEEP_100_MILLI), 100000, 110000);
     *value = 1;
     assert_in_range(p_sleep_multi(SLEEP_100_MILLI, 2), 200000, 220000);
@@ -134,7 +133,7 @@ static void fast_sleeper(void *arg)
 {
     int *value = arg;
 
-    assert_in_range(p_fast_sleep(1000), 1000, 1100);
+    assert_in_range(p_fast_sleep(1000), 1000, 1200);
 
     *value = 1;
 }

@@ -8,5 +8,9 @@
 
 #include <p.h>
 
-void p_sleep_init(void);
-void p_sleep_poll(p_fiber_group *group);
+typedef struct p_scheduler p_scheduler;
+typedef struct p_timer_queues p_timer_queues;
+
+p_timer_queues *p_timer_queues_init(void);
+void p_timer_queues_destroy(p_timer_queues *timer_queue);
+void p_timer_queues_poll(p_timer_queues *timer_queue, p_scheduler *scheduler);

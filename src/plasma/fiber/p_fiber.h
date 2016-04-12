@@ -18,7 +18,7 @@ typedef struct p_fiber p_fiber;
  * \param arg an argument to be passed to the func.
  * \return a pointer to a fiber or NULL if the pool is empty.
  */
-p_fiber *p_fiber_init(size_t group_index, void (*func)(void *arg), void *arg);
+p_fiber *p_fiber_init(p_index group_index, void (*func)(void *arg), void *arg);
 
 /*!
  * A fiber should call this function to yield the CPU. Should be used in CPU-intensive code.

@@ -14,9 +14,25 @@ typedef enum {
     SLEEP_1_SECOND,
     SLEEP_10_SECOND,
     SLEEP_MINUTE,
-    INTERVAL_COUNT
+    SLEEP_INTERVAL_COUNT
 } p_sleep_interval;
 
-uint64_t p_sleep_multi(p_sleep_interval interval, uint32_t count);
+/*!
+ * Sleep for at least a given interval (100ms, 1 sec, etc').
+ *
+ * \return number of microseconds spent in sleep.
+ */
 uint64_t p_sleep(p_sleep_interval interval);
+
+/*!
+ * Sleep for at least a given interal times count.
+ *
+ * \return number of microseconds spent in sleep.
+ */
+uint64_t p_sleep_multi(p_sleep_interval interval, uint32_t count);
+
+/*!
+ * Sleep implemented using busy wait for short custom intervals.
+ * Note that this function wastes a lot of CPU.
+ */
 uint64_t p_fast_sleep(uint64_t usecs);

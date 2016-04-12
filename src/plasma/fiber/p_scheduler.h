@@ -19,7 +19,7 @@ typedef struct p_scheduler_config p_scheduler_config;
 
 struct p_scheduler_config {
     p_fiber_group_config *fiber_groups;
-    size_t group_count;
+    p_index group_count;
 };
 
 /*!

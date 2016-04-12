@@ -9,6 +9,7 @@ env.Replace(CC=ARGUMENTS.get('cc', 'clang'))
 env.Append(CFLAGS=['-std=gnu11',
                    '-Weverything' if env['CC'] == 'clang' else '-Wall',
                    '-Werror',
+                   '-Wno-vla',
                    '-Wno-padded'])
 env.Append(CPPPATH=['src',
                     'src/include'])

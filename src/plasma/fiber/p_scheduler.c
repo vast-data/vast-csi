@@ -4,9 +4,8 @@
  */
 #include <p.h>
 #include <setjmp.h>
+
 #include "p_scheduler_internal.h"
-#include "p_fiber_internal.h"
-#include "p_sleep_internal.h"
 
 static __thread p_scheduler *sched;
 
@@ -20,20 +19,27 @@ p_scheduler *p_get_scheduler()
  * between several groups is to avoid cache pollution: when a fiber in one group ends and releases
  * the stack it can be reused by a new fiber in a different group.
  */
-static p_pool *find_or_allocate_stacks(p_scheduler_config *config, size_t group_index)
+static p_pool *find_or_allocate_stacks(p_scheduler_config *config, p_index group_index, p_index *partition)
 {
     // search for an existing group with the same stack size
     p_fiber_group *group = &sched->groups[group_index];
+    p_pool *pool = NULL;
+    *partition = 0;
     LOOP(group_index, i)
-        if (sched->groups[i].stack_size == group->stack_size)
-            return sched->groups[i].stacks;
+        if (sched->groups[i].stack_size == group->stack_size) {
+            pool = sched->groups[i].stacks;
+            (*partition)++;
+        }
+    if (pool != NULL)
+        return pool;
 
     // allocate a pool that accomodates the fiber_count of all groups with same stack_size
-    p_index fibers = config->fiber_groups[group_index].fiber_count;
-    LOOP_FROM(group_index + 1, sched->group_count, i)
+    p_index num_partitions = 0;
+    p_index partitions[sched->group_count];
+    LOOP_FROM(group_index, sched->group_count, i)
         if (config->fiber_groups[i].stack_size == group->stack_size)
-            fibers += config->fiber_groups[i].fiber_count;
-    return p_pool_init(fibers, group->stack_size);
+            partitions[num_partitions++] = config->fiber_groups[i].fiber_count;
+    return p_pool_partitioned_init(group->stack_size, num_partitions, partitions);
 }
 
 void p_scheduler_init(p_scheduler_config *config)
@@ -42,26 +48,30 @@ void p_scheduler_init(p_scheduler_config *config)
     sched = p_safe_malloc(sizeof(p_scheduler));
 
     sched->current_fiber = NULL;
+    sched->running_fiber_count = 0;
     sched->last_group = 0;
     sched->group_count = config->group_count;
-    sched->groups = p_safe_cache_aligned_malloc(sizeof(p_fiber_group) * sched->group_count);
+    sched->groups = p_safe_cache_aligned_malloc(sizeof(p_fiber_group) * (size_t) sched->group_count);
 
     p_fiber_group_config *fiber_config;
     p_fiber_group *group;
+    p_index partitions[config->group_count];
+    p_index fibers = 0;
 
     LOOP(sched->group_count, i) {
         fiber_config = &config->fiber_groups[i];
         group = &sched->groups[i];
+        group->index = (p_index) i;
         group->stack_size = fiber_config->stack_size;
-        group->fibers = p_pool_init(fiber_config->fiber_count, sizeof(p_fiber));
-        group->queue = p_dlist_init(fiber_config->fiber_count);
-        LOOP(STATE_COUNT, j) {
-            group->states[j] = P_DLIST_ANCHOR_INIT;
-        }
-        group->stacks = find_or_allocate_stacks(config, i);
+        group->ready_queue = P_DLIST_ANCHOR_INIT;
+        partitions[i] = fiber_config->fiber_count;
+        fibers += fiber_config->fiber_count;
+        group->stacks = find_or_allocate_stacks(config, (p_index) i, &group->stacks_partition);
     }
 
-    p_sleep_init();
+    sched->fiber_pool = p_pool_partitioned_init(sizeof(p_fiber), config->group_count, partitions);
+    sched->fiber_queue = p_dlist_init(fibers);
+    sched->timer_queues = p_timer_queues_init();
 }
 
 void p_scheduler_destroy()
@@ -69,8 +79,6 @@ void p_scheduler_destroy()
     p_fiber_group *fiber_group;
     LOOP(sched->group_count, i) {
         fiber_group = &sched->groups[i];
-        p_dlist_destroy(fiber_group->queue);
-        p_pool_destroy(fiber_group->fibers);
         if (fiber_group->stacks != NULL) {
             // delete all other pointers to the same stack pool
             LOOP(sched->group_count, j)
@@ -79,50 +87,31 @@ void p_scheduler_destroy()
             p_pool_destroy(fiber_group->stacks);
         }
     }
+    p_timer_queues_destroy(sched->timer_queues);
+    p_dlist_destroy(sched->fiber_queue);
+    p_pool_destroy(sched->fiber_pool);
     p_free(sched->groups);
     sched = NULL;
-}
-
-void p_scheduler_set_fiber_state(p_fiber *fiber, p_fiber_state state)
-{
-    fiber->state = state;
-    p_dlist_append(fiber->group->queue,
-                   &fiber->group->states[state],
-                   p_pool_address_to_index(fiber->group->fibers, fiber));
-}
-
-void p_scheduler_change_fiber_state(p_fiber *fiber, p_fiber_state state)
-{
-    p_dlist_remove(fiber->group->queue,
-                   &fiber->group->states[fiber->state],
-                   p_pool_address_to_index(fiber->group->fibers, fiber));
-    p_scheduler_set_fiber_state(fiber, state);
 }
 
 void p_scheduler_continue()
 {
     p_index fiber_index;
-    size_t group_index = sched->last_group;
+    p_index group_index = sched->last_group;
     p_fiber_group *group;
-    bool fibers_pending = true;
-    while (fibers_pending) {
-        fibers_pending = false;
+
+    while (sched->running_fiber_count > 0) {
         do {
             group_index = (group_index + 1) % sched->group_count;
             group = &sched->groups[group_index];
-            fiber_index = p_dlist_pop(group->queue, &group->states[STATE_READY]);
+            fiber_index = p_dlist_pop(sched->fiber_queue, &group->ready_queue);
             if (fiber_index != P_INVALID_INDEX) {
                 sched->last_group = group_index;
-                p_fiber_run(p_pool_index_to_address(group->fibers, fiber_index));
+                p_fiber_run(p_pool_index_to_address(sched->fiber_pool, fiber_index));
             }
-            if (!fibers_pending)
-                fibers_pending = !p_dlist_is_empty(group->queue, group->states[STATE_JOIN]) ||
-                    !p_dlist_is_empty(group->queue, group->states[STATE_SLEEP_100_MILLI]) ||
-                    !p_dlist_is_empty(group->queue, group->states[STATE_SLEEP_1_SECOND]) ||
-                    !p_dlist_is_empty(group->queue, group->states[STATE_SLEEP_10_SECOND]) ||
-                    !p_dlist_is_empty(group->queue, group->states[STATE_SLEEP_1_MINUTE]);
         } while (group_index != sched->last_group);
-        p_sleep_poll(group);
+
+        p_timer_queues_poll(sched->timer_queues, sched);
     }
     longjmp(sched->caller, true);
 }
