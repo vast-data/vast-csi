@@ -21,6 +21,17 @@
 typedef struct p_pool p_pool;
 
 /*!
+ * Initialize a partitioned pool.
+ * In order to destroy the pool and release resources call p_pool_destroy().
+ *
+ * \param block_size the size of each block in bytes (minimum of 4 bytes).
+ * \param num_partitions the number of partitions
+ * \param partitions array with the number of blocks per partition
+ * \return a pointer to a pool.
+ */
+p_pool *p_pool_partitioned_init(size_t block_size, p_index num_partitions, p_index partitions[]);
+
+/*!
  * Initialize a pool.
  * In order to destroy the pool and release resources call p_pool_destroy().
  *
@@ -31,6 +42,14 @@ typedef struct p_pool p_pool;
 p_pool *p_pool_init(p_index blocks, size_t block_size);
 
 /*!
+ * Allocate a block from a partition within the pool.
+ * Note that the memory is not cleared (zeroed).
+ *
+ * \return the index of the free block or -1 if no free blocks exist.
+ */
+p_index p_pool_partitioned_alloc(p_pool *pool, p_index partition);
+
+/*!
  * Allocate a block from the pool and returns its index.
  * Note that the memory is not cleared (zeroed).
  *
@@ -39,7 +58,15 @@ p_pool *p_pool_init(p_index blocks, size_t block_size);
 p_index p_pool_alloc(p_pool *pool);
 
 /*!
- * Allocate a block from the pool and returns its address.
+ * Allocate a block from a partition within the pool.
+ * Note that the memory is not cleared (zeroed).
+ *
+ * \return the address of the free block or -1 if no free blocks exist.
+ */
+void *p_pool_partitioned_alloc_address(p_pool *pool, p_index partition);
+
+/*!
+ * Allocate a block from the pool.
  * Note that the memory is not cleared (zeroed).
  *
  * \return the address of the free block or -1 if no free blocks exist.
@@ -47,9 +74,19 @@ p_index p_pool_alloc(p_pool *pool);
 void *p_pool_alloc_address(p_pool *pool);
 
 /*!
+ * Return a block to the pool using its index and partition.
+ */
+void p_pool_partitioned_free(p_pool *pool, p_index index, p_index partition);
+
+/*!
  * Return a block to the pool using its index.
  */
 void p_pool_free(p_pool *pool, p_index index);
+
+/*!
+ * Return a block to the pool using its address and partition.
+ */
+void p_pool_partitioned_free_address(p_pool *pool, void *address, p_index partition);
 
 /*!
  * Return a block to the pool using its address.

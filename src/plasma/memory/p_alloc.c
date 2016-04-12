@@ -13,14 +13,14 @@ void *p_safe_malloc(size_t size)
     return buffer;
 }
 
-void *p_cache_aligned_alloc(size_t size)
+void *p_cache_aligned_malloc(size_t size)
 {
     return aligned_alloc(P_CACHE_LINE_BYTES, size);
 }
 
-void *p_safe_cache_aligned_alloc(size_t size)
+void *p_safe_cache_aligned_malloc(size_t size)
 {
-    void *buffer = p_cache_aligned_alloc(size);
+    void *buffer = p_cache_aligned_malloc(size);
     P_ASSERT(buffer != NULL);
     return buffer;
 }

@@ -44,7 +44,7 @@ void p_scheduler_init(p_scheduler_config *config)
     sched->current_fiber = NULL;
     sched->last_group = 0;
     sched->group_count = config->group_count;
-    sched->groups = p_safe_cache_aligned_alloc(sizeof(p_fiber_group) * sched->group_count);
+    sched->groups = p_safe_cache_aligned_malloc(sizeof(p_fiber_group) * sched->group_count);
 
     p_fiber_group_config *fiber_config;
     p_fiber_group *group;
