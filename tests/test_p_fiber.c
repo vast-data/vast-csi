@@ -14,10 +14,11 @@ static void increment(void *value)
     }
 }
 
+#define PAGE_SIZE 4096
 static p_fiber_group_config fiber_groups[] = {
-    {.fiber_count = 40, .stack_size = 8092},
-    {.fiber_count = 30, .stack_size = 4096},
-    {.fiber_count = 20, .stack_size = 4096}
+    {.fiber_count = 40, .stack_size = PAGE_SIZE * 16},
+    {.fiber_count = 30, .stack_size = PAGE_SIZE * 8},
+    {.fiber_count = 20, .stack_size = PAGE_SIZE * 8}
 };
 static p_scheduler_config scheduler_config = {
     .fiber_groups = fiber_groups, .group_count = NUM_ELEMENTS(fiber_groups)
@@ -180,6 +181,26 @@ static void test_perf(void **state)
     p_scheduler_destroy();
 }
 
+static void inner()
+{
+    p_show_backtrace();
+}
+
+static void outer(void *arg)
+{
+    inner();
+}
+
+static void test_backtrace(void **state)
+{
+    (void) state;
+
+    p_scheduler_init(&scheduler_config);
+    p_fiber_init(0, outer, NULL);
+    p_scheduler_run();
+    p_scheduler_destroy();
+}
+
 int main(void)
 {
     const struct CMUnitTest tests[] = {
@@ -188,8 +209,8 @@ int main(void)
         cmocka_unit_test(test_join_all),
         cmocka_unit_test(test_sleep),
         cmocka_unit_test(test_fast_sleep),
-        cmocka_unit_test(test_perf)
+        cmocka_unit_test(test_perf),
+        cmocka_unit_test(test_backtrace)
     };
-
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

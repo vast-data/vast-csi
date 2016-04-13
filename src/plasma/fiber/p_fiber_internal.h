@@ -7,6 +7,7 @@
 #pragma once
 
 #include <p.h>
+#include <setjmp.h>
 
 typedef enum {
     STATE_READY,
@@ -37,6 +38,8 @@ struct p_fiber {
         uint32_t join_count;
     };
 };
+
+#define P_FIBER_STACK_UNDERFLOW_MAGIC 0xDEADBEEF
 
 /*!
  * Return the currently running fiber.

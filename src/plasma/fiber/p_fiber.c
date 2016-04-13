@@ -86,8 +86,13 @@ p_fiber *p_fiber_init(p_index group_index, void (*func)(void *arg), void *arg)
         return NULL;
     p_fiber *fiber = p_pool_index_to_address(sched->fiber_pool, fiber_index);
     void *stack = p_pool_partitioned_alloc_address(group->stacks, group->stacks_partition);
-
-    fiber->jmp_buf[0].__jmpbuf[JB_RSP] = ptr_mangle((intptr_t) stack + (intptr_t) group->stack_size);
+    // the stack grows downward so add the stack size and leave room for the instruction pointer.
+    // the fiber will never return (it calls longjmp) so the instruction pointer is filled
+    // with a magic value that helps identify to top of the stack when printing backtraces.
+    void *stack_ptr = stack + group->stack_size - sizeof(uint64_t);
+    uint64_t *stack_int_ptr = stack_ptr;
+    *stack_int_ptr = (intptr_t) P_FIBER_STACK_UNDERFLOW_MAGIC;
+    fiber->jmp_buf[0].__jmpbuf[JB_RSP] = ptr_mangle((intptr_t) stack_ptr);
     fiber->jmp_buf[0].__jmpbuf[JB_PC] = ptr_mangle((intptr_t) fiber_main);
     fiber->stack = stack;
     fiber->func = func;

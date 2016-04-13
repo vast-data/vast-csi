@@ -25,5 +25,6 @@ typedef int32_t p_index;
 #include "plasma/fiber/p_fiber.h"
 #include "plasma/fiber/p_scheduler.h"
 #include "plasma/fiber/p_sleep.h"
+#include "plasma/backtrace.h"
 #include "plasma/utils.h"
 #include "plasma/time.h"

@@ -29,8 +29,9 @@ murmur_env.Append(CFLAGS=['-Wno-cast-align',
 murmur = murmur_env.Object('build/src/plasma/third_party/murmur3/murmur3.c')
 
 lib = env.Library(target='dist/orion',
-                  source=['build/src/plasma/utils.c',
-                          'build/src/plasma/time.c',
+                  source=['build/src/plasma/time.c',
+                          'build/src/plasma/utils.c',
+                          'build/src/plasma/backtrace.c',
                           'build/src/plasma/memory/p_alloc.c',
                           'build/src/plasma/memory/p_pool.c',
                           'build/src/plasma/data/p_ilist.c',
@@ -42,7 +43,7 @@ lib = env.Library(target='dist/orion',
                           murmur])
 
 def AddTest(target, source, env=env):
-    test = env.Program(target=target, source=source, LIBS=['cmocka', lib])
+    test = env.Program(target=target, source=source, LIBS=['cmocka', 'unwind', lib])
     env.Alias('test', test, test[0].abspath)
 
 AddTest(target='dist/test_p_pool',

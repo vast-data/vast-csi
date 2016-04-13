@@ -26,7 +26,7 @@ typedef struct p_pool p_pool;
  *
  * \param block_size the size of each block in bytes (minimum of 4 bytes).
  * \param num_partitions the number of partitions
- * \param partitions array with the number of blocks per partition
+ * \param partitions array with the number of blocks per partition, isn't modified nor used after init is done
  * \return a pointer to a pool.
  */
 p_pool *p_pool_partitioned_init(size_t block_size, p_index num_partitions, p_index partitions[]);
