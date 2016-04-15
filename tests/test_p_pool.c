@@ -61,6 +61,8 @@ static void test_partitions(void **state)
 
     b = p_pool_partitioned_alloc(pool, 1);
     assert_int_not_equal(b, -1);
+
+    p_pool_destroy(pool);
 }
 
 int main(void)

@@ -54,6 +54,7 @@ static void test_set(void **state)
     assert_int_equal(p_hash_get(hash, "foo", 3), p1i);
 
     p_hash_destroy(hash);
+    p_pool_destroy(pool);
 }
 
 static void test_remove(void **state)
@@ -81,6 +82,7 @@ static void test_remove(void **state)
     assert_false(p_hash_remove(hash, p2->name, 3));
 
     p_hash_destroy(hash);
+    p_pool_destroy(pool);
 }
 
 int main(void)

@@ -87,6 +87,7 @@ bool p_hash_remove(p_hash *hash, void *key, size_t length)
 
 void p_hash_destroy(p_hash *hash)
 {
+    p_dlist_destroy(hash->values);
     p_free(hash->buckets);
     p_free(hash);
 }

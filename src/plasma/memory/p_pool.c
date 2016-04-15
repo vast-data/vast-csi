@@ -110,7 +110,7 @@ void *p_pool_index_to_address(p_pool *pool, p_index index)
 }
 
 void p_pool_destroy(p_pool *pool) {
-    free(pool->partitions);
-    free(pool->mem);
-    free(pool);
+    p_free(pool->partitions);
+    p_free(pool->mem);
+    p_free(pool);
 }

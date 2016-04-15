@@ -91,6 +91,7 @@ void p_scheduler_destroy()
     p_dlist_destroy(sched->fiber_queue);
     p_pool_destroy(sched->fiber_pool);
     p_free(sched->groups);
+    p_free(sched);
     sched = NULL;
 }
 

@@ -101,6 +101,8 @@ static void test_each(void **state)
         assert_int_equal(i, j++);
     }
     assert_int_equal(j, 3);
+
+    p_dlist_destroy(list);
 }
 
 static void test_queue(void **state)
@@ -116,6 +118,8 @@ static void test_queue(void **state)
 
     assert_int_equal(p_dlist_pop(list, &anchor), 0);
     assert_int_equal(p_dlist_pop(list, &anchor), 1);
+
+    p_dlist_destroy(list);
 }
 
 int main(void)

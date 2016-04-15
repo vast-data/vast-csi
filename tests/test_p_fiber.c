@@ -188,6 +188,8 @@ static void inner()
 
 static void outer(void *arg)
 {
+    (void) arg;
+
     inner();
 }
 
