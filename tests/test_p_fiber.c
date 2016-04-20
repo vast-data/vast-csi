@@ -24,6 +24,12 @@ static p_scheduler_config scheduler_config = {
     .fiber_groups = fiber_groups, .group_count = NUM_ELEMENTS(fiber_groups)
 };
 
+enum test_fiber_group {
+    FG_A,
+    FG_B,
+    FG_C
+};
+
 static void test_yield(void **state)
 {
     (void) state;
@@ -31,10 +37,10 @@ static void test_yield(void **state)
     int value = 0;
 
     p_scheduler_init(&scheduler_config);
-    p_fiber_init(0, increment, &value);
-    p_fiber_init(1, increment, &value);
-    p_fiber_init(1, increment, &value);
-    p_fiber_init(2, increment, &value);
+    p_fiber_init(FG_A, increment, &value);
+    p_fiber_init(FG_B, increment, &value);
+    p_fiber_init(FG_B, increment, &value);
+    p_fiber_init(FG_C, increment, &value);
     p_scheduler_run();
     p_scheduler_destroy();
 
@@ -45,10 +51,10 @@ static void increment_twice_serial(void *value)
 {
     int *num_ptr = value;
     p_fiber *f1, *f2;
-    f1 = p_fiber_init(0, increment, value);
+    f1 = p_fiber_init(FG_A, increment, value);
     p_join(f1);
 
-    f2 = p_fiber_init(0, increment, value);
+    f2 = p_fiber_init(FG_A, increment, value);
     p_join(f2);
     assert_int_equal(*num_ptr, 6);
 }
@@ -60,7 +66,7 @@ static void test_join_single(void **state)
     int value = 0;
 
     p_scheduler_init(&scheduler_config);
-    p_fiber_init(0, increment_twice_serial, &value);
+    p_fiber_init(FG_A, increment_twice_serial, &value);
     p_scheduler_run();
     p_scheduler_destroy();
 
@@ -71,8 +77,8 @@ static void increment_twice_parallel(void *value)
 {
     int *num_ptr = value;
     p_fiber *f1, *f2;
-    f1 = p_fiber_init(0, increment, value);
-    f2 = p_fiber_init(0, increment, value);
+    f1 = p_fiber_init(FG_A, increment, value);
+    f2 = p_fiber_init(FG_A, increment, value);
 
     p_join_init();
     p_join_add(f1);
@@ -89,7 +95,7 @@ static void test_join_all(void **state)
     int value = 0;
 
     p_scheduler_init(&scheduler_config);
-    p_fiber_init(0, increment_twice_parallel, &value);
+    p_fiber_init(FG_A, increment_twice_parallel, &value);
     p_scheduler_run();
     p_scheduler_destroy();
 
@@ -121,8 +127,8 @@ static void test_sleep(void **state)
     int value = 0;
 
     p_scheduler_init(&scheduler_config);
-    p_fiber_init(0, first_sleeper, &value);
-    p_fiber_init(0, second_sleeper, &value);
+    p_fiber_init(FG_A, first_sleeper, &value);
+    p_fiber_init(FG_A, second_sleeper, &value);
 
     p_scheduler_run();
     assert_int_equal(value, 3);
@@ -146,7 +152,7 @@ static void test_fast_sleep(void **state)
     int value = 0;
 
     p_scheduler_init(&scheduler_config);
-    p_fiber_init(0, fast_sleeper, &value);
+    p_fiber_init(FG_A, fast_sleeper, &value);
 
     p_scheduler_run();
     assert_int_equal(value, 1);
@@ -169,7 +175,7 @@ static void test_perf(void **state)
 
     p_scheduler_init(&scheduler_config);
     LOOP(num_fibers, i)
-        p_fiber_init(0, iter, &iters);
+        p_fiber_init(FG_A, iter, &iters);
 
     uint64_t start = p_get_clock_time_nano();
     p_scheduler_run();
@@ -198,7 +204,7 @@ static void test_backtrace(void **state)
     (void) state;
 
     p_scheduler_init(&scheduler_config);
-    p_fiber_init(0, outer, NULL);
+    p_fiber_init(FG_A, outer, NULL);
     p_scheduler_run();
     p_scheduler_destroy();
 }
