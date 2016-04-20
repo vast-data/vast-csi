@@ -42,6 +42,8 @@ lib = env.Library(target='dist/orion',
                           'build/src/plasma/fiber/p_sleep.c',
                           murmur])
 
+env.Program(target='dist/env', source=['build/src/plasma/execution/env.c'], LIBS=['unwind', 'config', lib])
+
 def AddTest(target, source, env=env):
     test = env.Program(target=target, source=source, LIBS=['cmocka', 'unwind', lib])
     env.Alias('test', test, test[0].abspath)

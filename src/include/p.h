@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
+#include <libconfig.h>
 
 typedef int32_t p_index;
 #define P_INVALID_INDEX -1
