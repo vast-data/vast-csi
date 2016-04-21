@@ -40,12 +40,14 @@ lib = env.Library(target='dist/orion',
                           'build/src/plasma/fiber/p_fiber.c',
                           'build/src/plasma/fiber/p_scheduler.c',
                           'build/src/plasma/fiber/p_sleep.c',
+                          'build/src/plasma/execution/p_config.c',
                           murmur])
+LIBS = ['unwind', 'config', lib]
 
-env.Program(target='dist/env', source=['build/src/plasma/execution/env.c'], LIBS=['unwind', 'config', lib])
+env.Program(target='dist/env', source=['build/src/plasma/execution/env.c'], LIBS=LIBS)
 
 def AddTest(target, source, env=env):
-    test = env.Program(target=target, source=source, LIBS=['cmocka', 'unwind', lib])
+    test = env.Program(target=target, source=source, LIBS=LIBS + ['cmocka'])
     env.Alias('test', test, test[0].abspath)
 
 AddTest(target='dist/test_p_pool',
@@ -61,6 +63,8 @@ AddTest(target='dist/test_p_fiber',
                 'build/tests/test_p_fiber.c'])
 AddTest(target='dist/test_time',
         source=[lib, 'build/tests/test_time.c'])
+AddTest(target='dist/test_config',
+        source=[lib, 'build/tests/test_config.c'])
 env.AlwaysBuild('test')
 
 env.Alias('docs', lib, 'doxygen')

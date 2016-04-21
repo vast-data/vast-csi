@@ -1,6 +1,9 @@
 #include <p.h>
 #include <unistd.h>
 #include <signal.h>
+#include <libconfig.h>
+
+#include "p_config_internal.h"
 
 static void init_config(const char *path, config_t *config)
 {
@@ -11,7 +14,7 @@ static void init_config(const char *path, config_t *config)
         goto error;
     }
 
-    if (!config_read_file(config, path)) {
+    if (config_read_file(config, path) == CONFIG_FALSE) {
         fprintf(stderr, "%s:%d - %s\n", config_error_file(config), config_error_line(config), config_error_text(config));
         goto error;
     }
