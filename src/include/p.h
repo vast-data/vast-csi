@@ -14,7 +14,7 @@
 #include <string.h>
 #include <libconfig.h>
 
-typedef int32_t p_index;
+typedef int32_t PIndex;
 #define P_INVALID_INDEX -1
 
 #include "plasma/p_assert.h"

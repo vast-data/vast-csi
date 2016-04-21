@@ -16,8 +16,8 @@
 
 #include <p.h>
 
-typedef struct p_dlist p_dlist;
-typedef p_index p_dlist_anchor;
+typedef struct PDlist PDlist;
+typedef PIndex PDlistAnchor;
 
 // Since a list anchor is the index of the first element,
 // an empty list is simply an invalid index.
@@ -30,49 +30,49 @@ typedef p_index p_dlist_anchor;
  * \param size maximum number of nodes in the dlist.
  * \return a pointer to a dlist.
  */
-p_dlist *p_dlist_init(p_index size);
+PDlist *p_dlist_init(PIndex size);
 
-void p_dlist_destroy(p_dlist *list);
+void p_dlist_destroy(PDlist *list);
 
 /*!
  * Returns whether a list is empty.
  */
-bool p_dlist_is_empty(p_dlist *list, p_dlist_anchor anchor);
+bool p_dlist_is_empty(PDlist *list, PDlistAnchor anchor);
 
 /*!
  * Insert a new element at the beginning of the list.
  * The anchor is passed through a pointer because its value would be modified.
  */
-void p_dlist_insert(p_dlist *list, p_dlist_anchor *anchor, p_index index);
+void p_dlist_insert(PDlist *list, PDlistAnchor *anchor, PIndex index);
 
 /*!
  * Insert a new element after a given element.
  */
-void p_dlist_add_after(p_dlist *list, p_dlist_anchor *anchor, p_index index, p_index new);
+void p_dlist_add_after(PDlist *list, PDlistAnchor *anchor, PIndex index, PIndex new);
 
 /*!
  * Insert a new element before a given element.
  */
-void p_dlist_add_before(p_dlist *list, p_dlist_anchor *anchor, p_index index, p_index new);
+void p_dlist_add_before(PDlist *list, PDlistAnchor *anchor, PIndex index, PIndex new);
 
-void p_dlist_remove(p_dlist *list, p_dlist_anchor *anchor, p_index index);
-p_index p_dlist_next(p_dlist *list, p_dlist_anchor *anchor, p_index index);
-p_index p_dlist_prev(p_dlist *list, p_dlist_anchor *anchor, p_index index);
+void p_dlist_remove(PDlist *list, PDlistAnchor *anchor, PIndex index);
+PIndex p_dlist_next(PDlist *list, PDlistAnchor *anchor, PIndex index);
+PIndex p_dlist_prev(PDlist *list, PDlistAnchor *anchor, PIndex index);
 
 /*
  * Remove the first element in the list and return it.
  */
-p_index p_dlist_pop(p_dlist *list, p_dlist_anchor *anchor);
+PIndex p_dlist_pop(PDlist *list, PDlistAnchor *anchor);
 
 /*
  * Add an element to the end of the list.
  */
-void p_dlist_append(p_dlist *list, p_dlist_anchor *anchor, p_index index);
+void p_dlist_append(PDlist *list, PDlistAnchor *anchor, PIndex index);
 
 /*
  * Return the length of the list. O(n) performance.
  */
-size_t p_dlist_length(p_dlist *list, p_dlist_anchor anchor);
+size_t p_dlist_length(PDlist *list, PDlistAnchor anchor);
 
 /*!
  * Iterate over list elements. It's forbidden to remove elements during iteration.
@@ -84,7 +84,7 @@ P_DLIST_EACH(list, anchor, i) {
 }
 \endcode
  */
-#define P_DLIST_EACH(list, anchor, element) for (p_dlist_anchor element = anchor; \
+#define P_DLIST_EACH(list, anchor, element) for (PDlistAnchor element = anchor; \
                                                  element != P_INVALID_INDEX; \
                                                  element = p_dlist_next(list, &anchor, element), \
                                                      element = element != anchor ? element : P_INVALID_INDEX)

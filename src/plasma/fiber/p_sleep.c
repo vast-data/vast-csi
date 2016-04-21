@@ -16,28 +16,28 @@ static uint64_t interval_to_micro[] = {MILLI_TO_MICRO(100),
                                        SEC_TO_MICRO(10),
                                        SEC_TO_MICRO(60)};
 
-struct p_timer_queues {
+struct PTimerQueues {
     uint64_t wakeup_time;
-    p_dlist_anchor queues[SLEEP_INTERVAL_COUNT];
+    PDlistAnchor queues[SLEEP_INTERVAL_COUNT];
 };
 
-p_timer_queues *p_timer_queues_init()
+PTimerQueues *p_timer_queues_init()
 {
-    p_timer_queues *timer_queues = p_safe_malloc(sizeof(p_timer_queues));
+    PTimerQueues *timer_queues = p_safe_malloc(sizeof(PTimerQueues));
     LOOP(SLEEP_INTERVAL_COUNT, i)
         timer_queues->queues[i] = P_DLIST_ANCHOR_INIT;
     timer_queues->wakeup_time = NO_PENDING_FIBERS;
     return timer_queues;
 }
 
-void p_timer_queues_destroy(p_timer_queues *timer_queues)
+void p_timer_queues_destroy(PTimerQueues *timer_queues)
 {
     p_free(timer_queues);
 }
 
-uint64_t p_sleep(p_sleep_interval interval)
+uint64_t p_sleep(PSleepInterval interval)
 {
-    p_timer_queues *timer_queues = p_get_scheduler()->timer_queues;
+    PTimerQueues *timer_queues = p_get_scheduler()->timer_queues;
     uint64_t start_time = p_get_time_nano();
     timer_queues->wakeup_time = MIN(timer_queues->wakeup_time,
                                     start_time + MICRO_TO_NANO(interval_to_micro[interval]));
@@ -45,7 +45,7 @@ uint64_t p_sleep(p_sleep_interval interval)
     return (uint64_t) NANO_TO_MICRO(p_get_time_nano() - start_time);
 }
 
-uint64_t p_sleep_multi(p_sleep_interval interval, uint32_t count)
+uint64_t p_sleep_multi(PSleepInterval interval, uint32_t count)
 {
     uint64_t total = interval_to_micro[interval] * count;
     uint64_t micros = 0;
@@ -55,7 +55,7 @@ uint64_t p_sleep_multi(p_sleep_interval interval, uint32_t count)
     return micros;
 }
 
-void p_timer_queues_poll(p_timer_queues *timer_queues, p_scheduler *scheduler)
+void p_timer_queues_poll(PTimerQueues *timer_queues, PScheduler *scheduler)
 {
     uint64_t time;
 
@@ -64,9 +64,9 @@ void p_timer_queues_poll(p_timer_queues *timer_queues, p_scheduler *scheduler)
 
     timer_queues->wakeup_time = NO_PENDING_FIBERS;
     LOOP(SLEEP_INTERVAL_COUNT, i) {
-        p_dlist_anchor anchor = timer_queues->queues[i];
+        PDlistAnchor anchor = timer_queues->queues[i];
         while (!p_dlist_is_empty(scheduler->fiber_queue, anchor)) {
-            p_fiber *fiber = p_pool_index_to_address(scheduler->fiber_pool, anchor);
+            PFiber *fiber = p_pool_index_to_address(scheduler->fiber_pool, anchor);
             uint64_t fiber_wakeup = fiber->switch_time + MICRO_TO_NANO(interval_to_micro[i]);
             if (fiber_wakeup <= time) {
                 p_fiber_resume_and_deque(fiber, &timer_queues->queues[i]);

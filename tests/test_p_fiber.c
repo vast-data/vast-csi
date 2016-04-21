@@ -15,12 +15,12 @@ static void increment(void *value)
 }
 
 #define PAGE_SIZE 4096
-static p_fiber_group_config fiber_groups[] = {
+static PFiberGroupConfig fiber_groups[] = {
     {.fiber_count = 40, .stack_size = PAGE_SIZE * 16},
     {.fiber_count = 30, .stack_size = PAGE_SIZE * 8},
     {.fiber_count = 20, .stack_size = PAGE_SIZE * 8}
 };
-static p_scheduler_config scheduler_config = {
+static PSchedulerConfig scheduler_config = {
     .fiber_groups = fiber_groups, .group_count = NUM_ELEMENTS(fiber_groups)
 };
 
@@ -50,7 +50,7 @@ static void test_yield(void **state)
 static void increment_twice_serial(void *value)
 {
     int *num_ptr = value;
-    p_fiber *f1, *f2;
+    PFiber *f1, *f2;
     f1 = p_fiber_init(FG_A, increment, value);
     p_join(f1);
 
@@ -76,7 +76,7 @@ static void test_join_single(void **state)
 static void increment_twice_parallel(void *value)
 {
     int *num_ptr = value;
-    p_fiber *f1, *f2;
+    PFiber *f1, *f2;
     f1 = p_fiber_init(FG_A, increment, value);
     f2 = p_fiber_init(FG_A, increment, value);
 

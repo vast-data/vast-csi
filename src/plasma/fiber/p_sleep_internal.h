@@ -8,9 +8,9 @@
 
 #include <p.h>
 
-typedef struct p_scheduler p_scheduler;
-typedef struct p_timer_queues p_timer_queues;
+typedef struct PScheduler PScheduler;
+typedef struct PTimerQueues PTimerQueues;
 
-p_timer_queues *p_timer_queues_init(void);
-void p_timer_queues_destroy(p_timer_queues *timer_queue);
-void p_timer_queues_poll(p_timer_queues *timer_queue, p_scheduler *scheduler);
+PTimerQueues *p_timer_queues_init(void);
+void p_timer_queues_destroy(PTimerQueues *timer_queue);
+void p_timer_queues_poll(PTimerQueues *timer_queue, PScheduler *scheduler);

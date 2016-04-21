@@ -11,17 +11,17 @@
 
 #include <p.h>
 
-typedef struct p_ilist_node p_ilist_node;
+typedef struct PIlistNode PIlistNode;
 
-struct p_ilist_node {
-    p_ilist_node *prev, *next;
+struct PIlistNode {
+    PIlistNode *prev, *next;
 };
 
-void p_ilist_init(p_ilist_node *head);
-void p_ilist_append(p_ilist_node *head, p_ilist_node *node);
-p_ilist_node *p_ilist_next(p_ilist_node *node);
-bool p_ilist_empty(p_ilist_node *head);
-void p_ilist_remove(p_ilist_node *node);
+void p_ilist_init(PIlistNode *head);
+void p_ilist_append(PIlistNode *head, PIlistNode *node);
+PIlistNode *p_ilist_next(PIlistNode *node);
+bool p_ilist_empty(PIlistNode *head);
+void p_ilist_remove(PIlistNode *node);
 
 #define P_ILIST_ENTRY(type, member, member_ptr) ((type*) ((uintptr_t) (member_ptr) - offsetof(type, member)))
 #define P_ILIST_EACH(anchor, node) for (ilist_node *node = (anchor)->next; node != (anchor); node = node->next)

@@ -9,10 +9,10 @@ static void test_out_of_memory(void **state)
 {
     (void) state;
 
-    p_pool *pool = p_pool_init(2, sizeof(int));
+    PPool *pool = p_pool_init(2, sizeof(int));
     int *a = p_pool_alloc_address(pool);
     int *b = p_pool_alloc_address(pool);
-    p_index index = p_pool_alloc(pool);
+    PIndex index = p_pool_alloc(pool);
     *a = 1;
     *b = 2;
     assert_int_equal(*a, 1);
@@ -25,9 +25,9 @@ static void test_alloc_free(void **state)
 {
     (void) state;
 
-    p_pool *pool = p_pool_init(2, sizeof(int));
+    PPool *pool = p_pool_init(2, sizeof(int));
 
-    p_index index = p_pool_alloc(pool);
+    PIndex index = p_pool_alloc(pool);
     assert_int_not_equal(index, -1);
     p_pool_free(pool, index);
 
@@ -46,15 +46,15 @@ static void test_partitions(void **state)
 {
     (void) state;
 
-    p_index partitions[] = {1, 1};
-    p_pool *pool = p_pool_partitioned_init(sizeof(int), 2, partitions);
-    p_index a = p_pool_partitioned_alloc(pool, 0);
+    PIndex partitions[] = {1, 1};
+    PPool *pool = p_pool_partitioned_init(sizeof(int), 2, partitions);
+    PIndex a = p_pool_partitioned_alloc(pool, 0);
     assert_int_not_equal(a, -1);
-    p_index b = p_pool_partitioned_alloc(pool, 1);
+    PIndex b = p_pool_partitioned_alloc(pool, 1);
     assert_int_not_equal(b, -1);
-    p_index c = p_pool_partitioned_alloc(pool, 0);
+    PIndex c = p_pool_partitioned_alloc(pool, 0);
     assert_int_equal(c, -1);
-    p_index d = p_pool_partitioned_alloc(pool, 1);
+    PIndex d = p_pool_partitioned_alloc(pool, 1);
     assert_int_equal(d, -1);
 
     p_pool_partitioned_free(pool, b, 1);

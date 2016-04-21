@@ -15,14 +15,14 @@
 
 #define STARVATION_THRESHOLD_NS 100000000 // 100 ms
 
-p_fiber *p_get_current_fiber()
+PFiber *p_get_current_fiber()
 {
     return p_get_scheduler()->current_fiber;
 }
 
 static void context_switch()
 {
-    p_fiber *fiber = p_get_current_fiber();
+    PFiber *fiber = p_get_current_fiber();
     P_ASSERT(fiber->state != STATE_RUNNING);
     P_ASSERT(p_get_time_nano() - fiber->switch_time < STARVATION_THRESHOLD_NS);
     fiber->switch_time = p_get_time_nano();
@@ -33,7 +33,7 @@ static void context_switch()
 
 static void __attribute__((noreturn)) fiber_main()
 {
-    p_fiber *fiber = p_get_current_fiber();
+    PFiber *fiber = p_get_current_fiber();
     fiber->func(fiber->arg);
 
     if (fiber->parent != NULL)
@@ -68,23 +68,23 @@ static intptr_t ptr_mangle(intptr_t addr)
     return ret;
 }
 
-void p_fiber_destroy(p_fiber *fiber)
+void p_fiber_destroy(PFiber *fiber)
 {
-    p_scheduler *sched = p_get_scheduler();
+    PScheduler *sched = p_get_scheduler();
     p_pool_free(fiber->group->stacks, p_pool_address_to_index(fiber->group->stacks, fiber->stack));
     p_pool_free(sched->fiber_pool, p_pool_address_to_index(sched->fiber_pool, fiber));
     sched->running_fiber_count--;
 }
 
-p_fiber *p_fiber_init(p_index group_index, void (*func)(void *arg), void *arg)
+PFiber *p_fiber_init(PIndex group_index, void (*func)(void *arg), void *arg)
 {
-    p_scheduler *sched = p_get_scheduler();
+    PScheduler *sched = p_get_scheduler();
     P_ASSERT(group_index < sched->group_count);
-    p_fiber_group *group = &sched->groups[group_index];
-    p_index fiber_index = p_pool_partitioned_alloc(sched->fiber_pool, group_index);
+    PFiberGroup *group = &sched->groups[group_index];
+    PIndex fiber_index = p_pool_partitioned_alloc(sched->fiber_pool, group_index);
     if (fiber_index == P_INVALID_INDEX)
         return NULL;
-    p_fiber *fiber = p_pool_index_to_address(sched->fiber_pool, fiber_index);
+    PFiber *fiber = p_pool_index_to_address(sched->fiber_pool, fiber_index);
     void *stack = p_pool_partitioned_alloc_address(group->stacks, group->stacks_partition);
     // the stack grows downward so add the stack size and leave room for the instruction pointer.
     // the fiber will never return (it calls longjmp) so the instruction pointer is filled
@@ -113,42 +113,42 @@ void p_fiber_yield()
 
 void p_fiber_suspend()
 {
-    p_fiber *fiber = p_get_current_fiber();
+    PFiber *fiber = p_get_current_fiber();
     fiber->state = STATE_SUSPENDED;
     context_switch();
 }
 
-void p_fiber_suspend_and_queue(p_dlist_anchor *queue)
+void p_fiber_suspend_and_queue(PDlistAnchor *queue)
 {
-    p_scheduler *sched = p_get_scheduler();
+    PScheduler *sched = p_get_scheduler();
     p_dlist_append(sched->fiber_queue, queue, p_pool_address_to_index(sched->fiber_pool, sched->current_fiber));
     p_fiber_suspend();
 }
 
-void p_fiber_resume(p_fiber *fiber)
+void p_fiber_resume(PFiber *fiber)
 {
-    p_scheduler *sched = p_get_scheduler();
+    PScheduler *sched = p_get_scheduler();
     fiber->state = STATE_READY;
     p_dlist_append(sched->fiber_queue, &fiber->group->ready_queue, p_pool_address_to_index(sched->fiber_pool, fiber));
 }
 
-void p_fiber_resume_and_deque(p_fiber *fiber, p_dlist_anchor *anchor)
+void p_fiber_resume_and_deque(PFiber *fiber, PDlistAnchor *anchor)
 {
-    p_scheduler *sched = p_get_scheduler();
+    PScheduler *sched = p_get_scheduler();
     p_dlist_remove(sched->fiber_queue, anchor, p_pool_address_to_index(sched->fiber_pool, fiber));
     p_fiber_resume(fiber);
 }
 
-void __attribute__((noreturn)) p_fiber_run(p_fiber *fiber)
+void __attribute__((noreturn)) p_fiber_run(PFiber *fiber)
 {
-    p_scheduler *scheduler = p_get_scheduler();
-    scheduler->current_fiber = fiber;
+    PScheduler *sched = p_get_scheduler();
+    sched->current_fiber = fiber;
     fiber->state = STATE_RUNNING;
     fiber->switch_time = p_get_time_nano();
     longjmp(fiber->jmp_buf, true);
 }
 
-void p_join(p_fiber *fiber)
+void p_join(PFiber *fiber)
 {
     p_join_init();
     p_join_add(fiber);
@@ -160,7 +160,7 @@ void p_join_init()
     p_get_current_fiber()->join_count = 0;
 }
 
-void p_join_add(p_fiber *fiber)
+void p_join_add(PFiber *fiber)
 {
     P_ASSERT(fiber->parent == NULL);
     fiber->parent = p_get_current_fiber();

@@ -19,9 +19,9 @@ struct person {
     char name[64];
 };
 
-static bool match_person(void *match_arg, p_index index, void *key, size_t length)
+static bool match_person(void *match_arg, PIndex index, void *key, size_t length)
 {
-    p_pool *pool = match_arg;
+    PPool *pool = match_arg;
     person *p = p_pool_index_to_address(pool, index);
     return memcmp(key, p->name, length) == 0;
 }
@@ -30,12 +30,12 @@ static void test_set(void **state)
 {
     (void) state;
 
-    p_pool *pool = p_pool_init(4, sizeof(person));
-    p_hash *hash = p_hash_init(1, 4, match_person, pool);
+    PPool *pool = p_pool_init(4, sizeof(person));
+    PHash *hash = p_hash_init(1, 4, match_person, pool);
 
-    p_index p1i = p_pool_alloc(pool);
-    p_index p2i = p_pool_alloc(pool);
-    p_index p3i = p_pool_alloc(pool);
+    PIndex p1i = p_pool_alloc(pool);
+    PIndex p2i = p_pool_alloc(pool);
+    PIndex p3i = p_pool_alloc(pool);
     person *p1 = p_pool_index_to_address(pool, p1i);
     person *p2 = p_pool_index_to_address(pool, p2i);
     person *p3 = p_pool_index_to_address(pool, p3i);
@@ -61,11 +61,11 @@ static void test_remove(void **state)
 {
     (void) state;
 
-    p_pool *pool = p_pool_init(2, sizeof(person));
-    p_hash *hash = p_hash_init(1, 2, match_person, pool);
+    PPool *pool = p_pool_init(2, sizeof(person));
+    PHash *hash = p_hash_init(1, 2, match_person, pool);
 
-    p_index p1i = p_pool_alloc(pool);
-    p_index p2i = p_pool_alloc(pool);
+    PIndex p1i = p_pool_alloc(pool);
+    PIndex p2i = p_pool_alloc(pool);
     person *p1 = p_pool_index_to_address(pool, p1i);
     person *p2 = p_pool_index_to_address(pool, p2i);
 

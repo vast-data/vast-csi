@@ -18,7 +18,7 @@
 
 #include <p.h>
 
-typedef struct p_pool p_pool;
+typedef struct PPool PPool;
 
 /*!
  * Initialize a partitioned pool.
@@ -29,7 +29,7 @@ typedef struct p_pool p_pool;
  * \param partitions array with the number of blocks per partition, isn't modified nor used after init is done
  * \return a pointer to a pool.
  */
-p_pool *p_pool_partitioned_init(size_t block_size, p_index num_partitions, p_index partitions[]);
+PPool *p_pool_partitioned_init(size_t block_size, PIndex num_partitions, PIndex partitions[]);
 
 /*!
  * Initialize a pool.
@@ -39,7 +39,7 @@ p_pool *p_pool_partitioned_init(size_t block_size, p_index num_partitions, p_ind
  * \param block_size the size of each block in bytes (minimum of 4 bytes).
  * \return a pointer to a pool.
  */
-p_pool *p_pool_init(p_index blocks, size_t block_size);
+PPool *p_pool_init(PIndex blocks, size_t block_size);
 
 /*!
  * Allocate a block from a partition within the pool.
@@ -47,7 +47,7 @@ p_pool *p_pool_init(p_index blocks, size_t block_size);
  *
  * \return the index of the free block or -1 if no free blocks exist.
  */
-p_index p_pool_partitioned_alloc(p_pool *pool, p_index partition);
+PIndex p_pool_partitioned_alloc(PPool *pool, PIndex partition);
 
 /*!
  * Allocate a block from the pool and returns its index.
@@ -55,7 +55,7 @@ p_index p_pool_partitioned_alloc(p_pool *pool, p_index partition);
  *
  * \return the index of the free block or -1 if no free blocks exist.
  */
-p_index p_pool_alloc(p_pool *pool);
+PIndex p_pool_alloc(PPool *pool);
 
 /*!
  * Allocate a block from a partition within the pool.
@@ -63,7 +63,7 @@ p_index p_pool_alloc(p_pool *pool);
  *
  * \return the address of the free block or -1 if no free blocks exist.
  */
-void *p_pool_partitioned_alloc_address(p_pool *pool, p_index partition);
+void *p_pool_partitioned_alloc_address(PPool *pool, PIndex partition);
 
 /*!
  * Allocate a block from the pool.
@@ -71,40 +71,40 @@ void *p_pool_partitioned_alloc_address(p_pool *pool, p_index partition);
  *
  * \return the address of the free block or -1 if no free blocks exist.
  */
-void *p_pool_alloc_address(p_pool *pool);
+void *p_pool_alloc_address(PPool *pool);
 
 /*!
  * Return a block to the pool using its index and partition.
  */
-void p_pool_partitioned_free(p_pool *pool, p_index index, p_index partition);
+void p_pool_partitioned_free(PPool *pool, PIndex index, PIndex partition);
 
 /*!
  * Return a block to the pool using its index.
  */
-void p_pool_free(p_pool *pool, p_index index);
+void p_pool_free(PPool *pool, PIndex index);
 
 /*!
  * Return a block to the pool using its address and partition.
  */
-void p_pool_partitioned_free_address(p_pool *pool, void *address, p_index partition);
+void p_pool_partitioned_free_address(PPool *pool, void *address, PIndex partition);
 
 /*!
  * Return a block to the pool using its address.
  */
-void p_pool_free_address(p_pool *pool, void *address);
+void p_pool_free_address(PPool *pool, void *address);
 
 /*!
  * Translate a relative index to an absolute memory address.
  */
-void *p_pool_index_to_address(p_pool *pool, p_index index);
+void *p_pool_index_to_address(PPool *pool, PIndex index);
 
 /*!
  * Translates an absolute address to a relative index.
  */
-p_index p_pool_address_to_index(p_pool *pool, void *block);
+PIndex p_pool_address_to_index(PPool *pool, void *block);
 
 /*!
  * Destroy a pool in order to free its resources.
- * The p_pool object will be released along with the underlying memory region.
+ * The PPool object will be released along with the underlying memory region.
  */
-void p_pool_destroy(p_pool *pool);
+void p_pool_destroy(PPool *pool);

@@ -7,9 +7,9 @@
 
 #include "p_scheduler_internal.h"
 
-static __thread p_scheduler *sched;
+static __thread PScheduler *sched;
 
-p_scheduler *p_get_scheduler()
+PScheduler *p_get_scheduler()
 {
     return sched;
 }
@@ -19,11 +19,11 @@ p_scheduler *p_get_scheduler()
  * between several groups is to avoid cache pollution: when a fiber in one group ends and releases
  * the stack it can be reused by a new fiber in a different group.
  */
-static p_pool *find_or_allocate_stacks(p_scheduler_config *config, p_index group_index, p_index *partition)
+static PPool *find_or_allocate_stacks(PSchedulerConfig *config, PIndex group_index, PIndex *partition)
 {
     // search for an existing group with the same stack size
-    p_fiber_group *group = &sched->groups[group_index];
-    p_pool *pool = NULL;
+    PFiberGroup *group = &sched->groups[group_index];
+    PPool *pool = NULL;
     *partition = 0;
     LOOP(group_index, i)
         if (sched->groups[i].stack_size == group->stack_size) {
@@ -34,49 +34,49 @@ static p_pool *find_or_allocate_stacks(p_scheduler_config *config, p_index group
         return pool;
 
     // allocate a pool that accomodates the fiber_count of all groups with same stack_size
-    p_index num_partitions = 0;
-    p_index partitions[sched->group_count];
+    PIndex num_partitions = 0;
+    PIndex partitions[sched->group_count];
     LOOP_FROM(group_index, sched->group_count, i)
         if (config->fiber_groups[i].stack_size == group->stack_size)
             partitions[num_partitions++] = config->fiber_groups[i].fiber_count;
     return p_pool_partitioned_init(group->stack_size, num_partitions, partitions);
 }
 
-void p_scheduler_init(p_scheduler_config *config)
+void p_scheduler_init(PSchedulerConfig *config)
 {
     P_ASSERT(sched == NULL);
-    sched = p_safe_malloc(sizeof(p_scheduler));
+    sched = p_safe_malloc(sizeof(PScheduler));
 
     sched->current_fiber = NULL;
     sched->running_fiber_count = 0;
     sched->last_group = 0;
     sched->group_count = config->group_count;
-    sched->groups = p_safe_cache_aligned_malloc(sizeof(p_fiber_group) * (size_t) sched->group_count);
+    sched->groups = p_safe_cache_aligned_malloc(sizeof(PFiberGroup) * (size_t) sched->group_count);
 
-    p_fiber_group_config *fiber_config;
-    p_fiber_group *group;
-    p_index partitions[config->group_count];
-    p_index fibers = 0;
+    PFiberGroupConfig *fiber_config;
+    PFiberGroup *group;
+    PIndex partitions[config->group_count];
+    PIndex fibers = 0;
 
     LOOP(sched->group_count, i) {
         fiber_config = &config->fiber_groups[i];
         group = &sched->groups[i];
-        group->index = (p_index) i;
+        group->index = (PIndex) i;
         group->stack_size = fiber_config->stack_size;
         group->ready_queue = P_DLIST_ANCHOR_INIT;
         partitions[i] = fiber_config->fiber_count;
         fibers += fiber_config->fiber_count;
-        group->stacks = find_or_allocate_stacks(config, (p_index) i, &group->stacks_partition);
+        group->stacks = find_or_allocate_stacks(config, (PIndex) i, &group->stacks_partition);
     }
 
-    sched->fiber_pool = p_pool_partitioned_init(sizeof(p_fiber), config->group_count, partitions);
+    sched->fiber_pool = p_pool_partitioned_init(sizeof(PFiber), config->group_count, partitions);
     sched->fiber_queue = p_dlist_init(fibers);
     sched->timer_queues = p_timer_queues_init();
 }
 
 void p_scheduler_destroy()
 {
-    p_fiber_group *fiber_group;
+    PFiberGroup *fiber_group;
     LOOP(sched->group_count, i) {
         fiber_group = &sched->groups[i];
         if (fiber_group->stacks != NULL) {
@@ -97,9 +97,9 @@ void p_scheduler_destroy()
 
 void p_scheduler_continue()
 {
-    p_index fiber_index;
-    p_index group_index = sched->last_group;
-    p_fiber_group *group;
+    PIndex fiber_index;
+    PIndex group_index = sched->last_group;
+    PFiberGroup *group;
 
     while (sched->running_fiber_count > 0) {
         do {

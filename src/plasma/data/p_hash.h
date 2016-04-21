@@ -14,10 +14,10 @@
 
 #include <p.h>
 
-typedef struct p_hash p_hash;
+typedef struct PHash PHash;
 
-typedef bool (*p_hash_match_func)(void *match_arg, p_index value, void *key, size_t length);
-typedef size_t (*p_hash_key_to_bucket)(p_hash *hash, void *key, size_t length);
+typedef bool (*PHashMatchFunc)(void *match_arg, PIndex value, void *key, size_t length);
+typedef size_t (*PHashKeyToBucket)(PHash *hash, void *key, size_t length);
 
 /*!
  * Initialize a hash table. Call p_hash_destroy() to free allocated resources.
@@ -29,7 +29,7 @@ typedef size_t (*p_hash_key_to_bucket)(p_hash *hash, void *key, size_t length);
  * \param match_arg a parameter to pass over to match.
  * \return a pointer to a heap allocated hash table.
  */
-p_hash *p_hash_init(size_t n_buckets, p_index n_values, p_hash_match_func match, void *match_arg);
+PHash *p_hash_init(size_t n_buckets, PIndex n_values, PHashMatchFunc match, void *match_arg);
 
 /*!
  * Initialize a hash table with a custom hash function.
@@ -37,8 +37,8 @@ p_hash *p_hash_init(size_t n_buckets, p_index n_values, p_hash_match_func match,
  *
  * \param key_to_bucket a function that gets a key and returns its respective bucket.
  */
-p_hash *p_hash_init_custom(size_t n_buckets, p_index n_values, p_hash_match_func match, void *match_arg,
-                           p_hash_key_to_bucket key_to_bucket);
+PHash *p_hash_init_custom(size_t n_buckets, PIndex n_values, PHashMatchFunc match,
+                          void *match_arg, PHashKeyToBucket key_to_bucket);
 
 /*!
  * Set a key+value pair.
@@ -47,7 +47,7 @@ p_hash *p_hash_init_custom(size_t n_buckets, p_index n_values, p_hash_match_func
  * \param length size of the buffer in bytes.
  * \return a boolean indicating if the value was inserted.
  */
-bool p_hash_set(p_hash *hash, void *key, size_t length, p_index value);
+bool p_hash_set(PHash *hash, void *key, size_t length, PIndex value);
 
 /*!
  * Get the value of a key in the hash.
@@ -56,13 +56,13 @@ bool p_hash_set(p_hash *hash, void *key, size_t length, p_index value);
  * \param length size of the buffer in bytes.
  * \return the index if the key exists, otherwise P_INVALID_INDEX.
  */
-p_index p_hash_get(p_hash *hash, void *key, size_t length);
+PIndex p_hash_get(PHash *hash, void *key, size_t length);
 
 /*!
  * Remove a key from the hash.
  *
  * \return a boolean indicating whether the key existed or not.
  */
-bool p_hash_remove(p_hash *hash, void *key, size_t length);
+bool p_hash_remove(PHash *hash, void *key, size_t length);
 
-void p_hash_destroy(p_hash *hash);
+void p_hash_destroy(PHash *hash);

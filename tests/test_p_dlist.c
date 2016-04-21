@@ -9,8 +9,8 @@ static void test_insert(void **state)
 {
     (void) state;
 
-    p_dlist *list = p_dlist_init(3);
-    p_dlist_anchor anchor = P_DLIST_ANCHOR_INIT;
+    PDlist *list = p_dlist_init(3);
+    PDlistAnchor anchor = P_DLIST_ANCHOR_INIT;
     assert_true(p_dlist_is_empty(list, anchor));
 
     p_dlist_insert(list, &anchor, 1);
@@ -26,8 +26,8 @@ static void test_add_after(void **state)
 {
     (void) state;
 
-    p_dlist *list = p_dlist_init(3);
-    p_dlist_anchor anchor = P_DLIST_ANCHOR_INIT;
+    PDlist *list = p_dlist_init(3);
+    PDlistAnchor anchor = P_DLIST_ANCHOR_INIT;
 
     p_dlist_insert(list, &anchor, 0);
     p_dlist_add_after(list, &anchor, 0, 2);
@@ -44,8 +44,8 @@ static void test_add_before(void **state)
 {
     (void) state;
 
-    p_dlist *list = p_dlist_init(3);
-    p_dlist_anchor anchor = P_DLIST_ANCHOR_INIT;
+    PDlist *list = p_dlist_init(3);
+    PDlistAnchor anchor = P_DLIST_ANCHOR_INIT;
 
     p_dlist_insert(list, &anchor, 0);
     p_dlist_add_before(list, &anchor, 0, 2);
@@ -62,8 +62,8 @@ static void test_remove(void **state)
 {
     (void) state;
 
-    p_dlist *list = p_dlist_init(3);
-    p_dlist_anchor anchor = P_DLIST_ANCHOR_INIT;
+    PDlist *list = p_dlist_init(3);
+    PDlistAnchor anchor = P_DLIST_ANCHOR_INIT;
 
     p_dlist_insert(list, &anchor, 0);
     p_dlist_add_after(list, &anchor, 0, 1);
@@ -87,8 +87,8 @@ static void test_each(void **state)
     (void) state;
 
 
-    p_dlist *list = p_dlist_init(3);
-    p_dlist_anchor anchor = P_DLIST_ANCHOR_INIT;
+    PDlist *list = p_dlist_init(3);
+    PDlistAnchor anchor = P_DLIST_ANCHOR_INIT;
 
     P_DLIST_EACH(list, anchor, i) {}
 
@@ -96,7 +96,7 @@ static void test_each(void **state)
     p_dlist_add_after(list, &anchor, 0, 1);
     p_dlist_add_after(list, &anchor, 1, 2);
 
-    p_index j = 0;
+    PIndex j = 0;
     P_DLIST_EACH(list, anchor, i) {
         assert_int_equal(i, j++);
     }
@@ -110,8 +110,8 @@ static void test_queue(void **state)
     (void) state;
 
 
-    p_dlist *list = p_dlist_init(2);
-    p_dlist_anchor anchor = P_DLIST_ANCHOR_INIT;
+    PDlist *list = p_dlist_init(2);
+    PDlistAnchor anchor = P_DLIST_ANCHOR_INIT;
 
     p_dlist_append(list, &anchor, 0);
     p_dlist_append(list, &anchor, 1);
