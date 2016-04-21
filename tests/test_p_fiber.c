@@ -140,7 +140,7 @@ static void fast_sleeper(void *arg)
 {
     int *value = arg;
 
-    assert_in_range(p_fast_sleep(1000), 1000, 1200);
+    assert_in_range(p_fast_sleep(1000), 1000, 1500);
 
     *value = 1;
 }
