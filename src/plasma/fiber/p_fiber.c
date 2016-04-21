@@ -23,7 +23,7 @@ PFiber *p_get_current_fiber()
 static void context_switch()
 {
     PFiber *fiber = p_get_current_fiber();
-    P_ASSERT(fiber->state != STATE_RUNNING);
+    P_ASSERT(fiber->state != FIBER_STATE_RUNNING);
     P_ASSERT(p_get_time_nano() - fiber->switch_time < STARVATION_THRESHOLD_NS);
     fiber->switch_time = p_get_time_nano();
     if (!setjmp(fiber->jmp_buf)) {
@@ -114,7 +114,7 @@ void p_fiber_yield()
 void p_fiber_suspend()
 {
     PFiber *fiber = p_get_current_fiber();
-    fiber->state = STATE_SUSPENDED;
+    fiber->state = FIBER_STATE_SUSPENDED;
     context_switch();
 }
 
@@ -128,7 +128,7 @@ void p_fiber_suspend_and_queue(PDlistAnchor *queue)
 void p_fiber_resume(PFiber *fiber)
 {
     PScheduler *sched = p_get_scheduler();
-    fiber->state = STATE_READY;
+    fiber->state = FIBER_STATE_READY;
     p_dlist_append(sched->fiber_queue, &fiber->group->ready_queue, p_pool_address_to_index(sched->fiber_pool, fiber));
 }
 
@@ -143,7 +143,7 @@ void __attribute__((noreturn)) p_fiber_run(PFiber *fiber)
 {
     PScheduler *sched = p_get_scheduler();
     sched->current_fiber = fiber;
-    fiber->state = STATE_RUNNING;
+    fiber->state = FIBER_STATE_RUNNING;
     fiber->switch_time = p_get_time_nano();
     longjmp(fiber->jmp_buf, true);
 }

@@ -10,10 +10,10 @@
 #include <setjmp.h>
 
 typedef enum {
-    STATE_READY,
-    STATE_RUNNING,
-    STATE_SUSPENDED,
-    STATE_FREE
+    FIBER_STATE_READY,
+    FIBER_STATE_RUNNING,
+    FIBER_STATE_SUSPENDED,
+    FIBER_STATE_FREE
 } PFiberState;
 
 typedef struct PFiberGroup PFiberGroup;
