@@ -16,6 +16,7 @@ static void increment(void *value)
 
 #define PAGE_SIZE 4096
 static PFiberGroupConfig fiber_groups[] = {
+    {.fiber_count = 0, .stack_size = 0},
     {.fiber_count = 40, .stack_size = PAGE_SIZE * 16},
     {.fiber_count = 30, .stack_size = PAGE_SIZE * 8},
     {.fiber_count = 20, .stack_size = PAGE_SIZE * 8}
@@ -25,6 +26,7 @@ static PSchedulerConfig scheduler_config = {
 };
 
 enum test_fiber_group {
+    FG_EMPTY,
     FG_A,
     FG_B,
     FG_C

@@ -49,12 +49,11 @@ void p_scheduler_init(PSchedulerConfig *config)
 
     sched->current_fiber = NULL;
     sched->running_fiber_count = 0;
-    sched->last_group = 0;
     sched->group_count = config->group_count;
     sched->groups = p_safe_cache_aligned_malloc(sizeof(PFiberGroup) * (size_t) sched->group_count);
 
     PFiberGroupConfig *fiber_config;
-    PFiberGroup *group;
+    PFiberGroup *group, *last_group = NULL, *first_group = NULL;
     PIndex partitions[config->group_count];
     PIndex fibers = 0;
 
@@ -66,9 +65,19 @@ void p_scheduler_init(PSchedulerConfig *config)
         group->ready_queue = P_DLIST_ANCHOR_INIT;
         partitions[i] = fiber_config->fiber_count;
         fibers += fiber_config->fiber_count;
-        group->stacks = find_or_allocate_stacks(config, (PIndex) i, &group->stacks_partition);
+        if (fiber_config->fiber_count > 0) {
+            group->stacks = find_or_allocate_stacks(config, (PIndex) i, &group->stacks_partition);
+            if (last_group == NULL)
+                first_group = last_group = group;
+            else
+                last_group->next_group = group;
+            last_group = group;
+        } else {
+            group->stacks = NULL;
+        }
     }
-
+    last_group->next_group = first_group;
+    sched->last_group = last_group;
     sched->fiber_pool = p_pool_partitioned_init(sizeof(PFiber), config->group_count, partitions);
     sched->fiber_queue = p_dlist_init(fibers);
     sched->timer_queues = p_timer_queues_init();
@@ -98,19 +107,17 @@ void p_scheduler_destroy()
 void p_scheduler_continue()
 {
     PIndex fiber_index;
-    PIndex group_index = sched->last_group;
-    PFiberGroup *group;
+    PFiberGroup *group = sched->last_group;
 
     while (sched->running_fiber_count > 0) {
         do {
-            group_index = (group_index + 1) % sched->group_count;
-            group = &sched->groups[group_index];
+            group = group->next_group;
             fiber_index = p_dlist_pop(sched->fiber_queue, &group->ready_queue);
             if (fiber_index != P_INVALID_INDEX) {
-                sched->last_group = group_index;
+                sched->last_group = group;
                 p_fiber_run(p_pool_index_to_address(sched->fiber_pool, fiber_index));
             }
-        } while (group_index != sched->last_group);
+        } while (group != sched->last_group);
 
         p_timer_queues_poll(sched->timer_queues, sched);
     }

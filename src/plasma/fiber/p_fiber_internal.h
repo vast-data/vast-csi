@@ -23,6 +23,7 @@ struct PFiberGroup {
     PDlistAnchor ready_queue;
     PPool *stacks;
     PIndex stacks_partition;
+    PFiberGroup *next_group;
 };
 
 struct PFiber {

@@ -15,8 +15,8 @@
 typedef struct PScheduler PScheduler;
 struct PScheduler {
     jmp_buf caller;
-    PIndex last_group;
     PIndex group_count;
+    PFiberGroup *last_group;
     PFiberGroup *groups;
     PFiber *current_fiber;
     PPool *fiber_pool;
