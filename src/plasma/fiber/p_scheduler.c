@@ -62,6 +62,7 @@ void p_scheduler_init(PSchedulerConfig *config)
         group = &sched->groups[i];
         group->index = (PIndex) i;
         group->stack_size = fiber_config->stack_size;
+        group->module_id = fiber_config->module_id;
         group->ready_queue = P_DLIST_ANCHOR_INIT;
         partitions[i] = fiber_config->fiber_count;
         fibers += fiber_config->fiber_count;

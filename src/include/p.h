@@ -16,8 +16,10 @@
 typedef int32_t PIndex;
 #define P_INVALID_INDEX -1
 
+#include "defs.h"
 #include "plasma/time.h"
 #include "plasma/utils.h"
+#include "plasma/atomic.h"
 #include "plasma/p_assert.h"
 #include "plasma/backtrace.h"
 #include "plasma/memory/p_alloc.h"
@@ -29,3 +31,4 @@ typedef int32_t PIndex;
 #include "plasma/fiber/p_scheduler.h"
 #include "plasma/fiber/p_sleep.h"
 #include "plasma/execution/p_config.h"
+#include "plasma/execution/p_silo.h"

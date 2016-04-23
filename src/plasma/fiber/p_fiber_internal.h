@@ -24,6 +24,7 @@ struct PFiberGroup {
     PPool *stacks;
     PIndex stacks_partition;
     PFiberGroup *next_group;
+    ModuleId module_id;
 };
 
 struct PFiber {

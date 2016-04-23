@@ -4,11 +4,8 @@
 #include <stdarg.h>
 #include <setjmp.h>
 #include <cmocka.h>
-#include <libconfig.h>
 
 #include "plasma/execution/p_config_internal.h"
-
-typedef config_setting_t PConfigSetting;
 
 static char config_string[] = "group : {"
     "int: 123;"

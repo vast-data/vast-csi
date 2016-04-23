@@ -20,6 +20,11 @@ PFiber *p_get_current_fiber()
     return p_get_scheduler()->current_fiber;
 }
 
+ModuleId p_fiber_get_module_id()
+{
+    return p_get_current_fiber()->group->module_id;
+}
+
 static void context_switch()
 {
     PFiber *fiber = p_get_current_fiber();

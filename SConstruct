@@ -29,7 +29,10 @@ murmur_env.Append(CFLAGS=['-Wno-cast-align',
 murmur = murmur_env.Object('build/src/plasma/third_party/murmur3/murmur3.c')
 
 lib = env.Library(target='dist/orion',
-                  source=['build/src/plasma/time.c',
+                  source=['build/src/defs.c',
+                          'build/src/modules/p_module.c',
+                          'build/src/modules/i_module.c',
+                          'build/src/plasma/time.c',
                           'build/src/plasma/utils.c',
                           'build/src/plasma/backtrace.c',
                           'build/src/plasma/memory/p_alloc.c',
@@ -41,10 +44,12 @@ lib = env.Library(target='dist/orion',
                           'build/src/plasma/fiber/p_scheduler.c',
                           'build/src/plasma/fiber/p_sleep.c',
                           'build/src/plasma/execution/p_config.c',
+                          'build/src/plasma/execution/p_silo.c',
+                          'build/src/plasma/execution/p_env.c',
                           murmur])
-LIBS = ['unwind', 'config', lib]
+LIBS = ['unwind', 'config', 'pthread', lib]
 
-env.Program(target='dist/env', source=['build/src/plasma/execution/env.c'], LIBS=LIBS)
+env.Program(target='dist/env', source=['build/src/plasma/execution/main.c'], LIBS=LIBS)
 
 def AddTest(target, source, env=env):
     test = env.Program(target=target, source=source, LIBS=LIBS + ['cmocka'])
@@ -65,6 +70,8 @@ AddTest(target='dist/test_time',
         source=[lib, 'build/tests/test_time.c'])
 AddTest(target='dist/test_config',
         source=[lib, 'build/tests/test_config.c'])
+AddTest(target='dist/test_env',
+        source=[lib, 'build/tests/test_env.c'])
 env.AlwaysBuild('test')
 
 env.Alias('docs', lib, 'doxygen')

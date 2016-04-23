@@ -13,6 +13,7 @@ typedef struct PFiberGroupConfig PFiberGroupConfig;
 struct PFiberGroupConfig {
     size_t stack_size;
     PIndex fiber_count;
+    ModuleId module_id;
 };
 
 typedef struct PSchedulerConfig PSchedulerConfig;

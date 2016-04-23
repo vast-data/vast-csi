@@ -43,6 +43,24 @@ const char *p_config_setting_get_string(PConfigSetting *setting)
     return config_setting_get_string(setting);
 }
 
+int32_t p_config_setting_length(PConfigSetting *setting)
+{
+    P_ASSERT(config_setting_type(setting) == CONFIG_TYPE_GROUP ||
+             config_setting_type(setting) == CONFIG_TYPE_LIST ||
+             config_setting_type(setting) == CONFIG_TYPE_ARRAY);
+    return config_setting_length(setting);
+}
+
+PConfigSetting *p_config_setting_get_element(PConfigSetting *setting, uint32_t index)
+{
+    return config_setting_get_elem(setting, index);
+}
+
+const char *p_config_setting_name(PConfigSetting *setting)
+{
+    return config_setting_name(setting);
+}
+
 void p_config_init(PConfig *config)
 {
     config_init(config);

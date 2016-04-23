@@ -47,3 +47,8 @@ void p_join_add(PFiber *fiber);
  * Refer to p_join_init().
  */
 void p_join_all(void);
+
+/*!
+ * Get the module id of the current running fiber (determined by its fiber group)
+ */
+ModuleId p_fiber_get_module_id(void);
