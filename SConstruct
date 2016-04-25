@@ -51,9 +51,12 @@ LIBS = ['unwind', 'config', 'pthread', lib]
 
 env.Program(target='dist/env', source=['build/src/plasma/execution/main.c'], LIBS=LIBS)
 
-def AddTest(target, source, env=env):
-    test = env.Program(target=target, source=source, LIBS=LIBS + ['cmocka'])
-    env.Alias('test', test, test[0].abspath)
+def AddTest(target, source, env=env, wrap=[]):
+    test_env = env.Clone()
+    for func in wrap:
+        test_env.Append(LINKFLAGS='-Wl,-wrap,' + func)
+    test = test_env.Program(target=target, source=source, LIBS=LIBS + ['cmocka'])
+    test_env.Alias('test', test, test[0].abspath)
 
 AddTest(target='dist/test_p_pool',
         source=[lib, 'build/tests/test_p_pool.c'])
@@ -71,7 +74,8 @@ AddTest(target='dist/test_time',
 AddTest(target='dist/test_config',
         source=[lib, 'build/tests/test_config.c'])
 AddTest(target='dist/test_env',
-        source=[lib, 'build/tests/test_env.c'])
+        source=[lib, 'build/tests/test_env.c'],
+        wrap=['p_module_start', 'p_module_init'])
 env.AlwaysBuild('test')
 
 env.Alias('docs', lib, 'doxygen')

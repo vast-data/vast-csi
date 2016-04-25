@@ -28,3 +28,9 @@ void env_wait_for_run_state(void);
  * Most modules wait for input forever, therefore this function runs forever.
  */
 void env_run(const char *config_path);
+
+/*!
+ * Called when an error happens and the env and it silos should be stopped.
+ * Can be called by signal handlers or other error conditions.
+ */
+void env_error(void);

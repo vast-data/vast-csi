@@ -21,6 +21,14 @@ static void env_set_state(PEnvState state)
     env.state = state;
 }
 
+void env_error()
+{
+    env_set_state(ENV_STATE_ERROR);
+
+    LOOP(env.num_silos, i)
+        p_silo_halt(env.silos[i]);
+}
+
 static void parse_config(const char *path, PConfig *config)
 {
     p_config_init(config);

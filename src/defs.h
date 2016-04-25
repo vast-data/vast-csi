@@ -14,7 +14,6 @@
  */
 
 #define DEFINE_LOOKUP_ID(x) x
-#define DEFINE_LOOKUP_STRING(x) #x
 #define DEFINE_LOOKUP_PROTOTYPES(list, name, array, id_to_string, string_to_id) \
     typedef enum {                                                      \
         list(DEFINE_LOOKUP_ID)                                          \
@@ -53,3 +52,7 @@ DEFINE_LOOKUP_PROTOTYPES(FIBER_GROUP_LIST,
                          fiber_group_id_strings,
                          fiber_group_id_to_string,
                          string_to_fiber_group_id)
+
+typedef struct PSilo PSilo;
+extern void *(*module_init_functions[])(PSilo *silo);
+extern void (*module_start_functions[])(void);

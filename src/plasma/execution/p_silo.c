@@ -10,9 +10,6 @@
 #include "p_silo.h"
 #include "p_config_internal.h"
 
-#include "modules/p_module.h"
-#include "modules/i_module.h"
-
 typedef struct Module Module;
 struct Module {
     void *user_state;
@@ -25,17 +22,6 @@ struct PSilo {
     PSchedulerConfig scheduler_config;
     pthread_t pthread;
     int32_t affinity;
-};
-
-// the following arrays should be coordinated with the list of modules in defs.h
-static void *(*module_init_functions[]) (PSilo *silo) = {
-    p_module_init,
-    i_module_init
-};
-
-static void (*module_start_functions[])(void) = {
-    p_module_start,
-    i_module_start
 };
 
 PSilo *p_silo_init(PConfigSetting *silo_config, int32_t affinity)
@@ -71,7 +57,6 @@ PSilo *p_silo_init(PConfigSetting *silo_config, int32_t affinity)
             silo->scheduler_config.fiber_groups[group_id].fiber_count = p_config_setting_get_int32(count_setting);
             PConfigSetting *stack_size_setting = p_config_setting_lookup_required(fiber_group_setting, "stack_size");
             silo->scheduler_config.fiber_groups[group_id].stack_size = (size_t) p_config_setting_get_int32(stack_size_setting);
-
         }
     }
 
@@ -118,6 +103,7 @@ static void *silo_main(void *silo_arg)
     p_scheduler_init(&silo->scheduler_config);
     p_fiber_init(FIBER_GROUP_P_START, silo_start_in_fiber, silo);
     p_scheduler_run();
+    // we shouldn't regularly get here. it means all fiber have finished running.
     p_scheduler_destroy();
     return NULL;
 }

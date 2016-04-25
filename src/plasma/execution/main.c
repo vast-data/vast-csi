@@ -1,7 +1,7 @@
 #include <signal.h>
 #include <pthread.h>
 
-#include "env.h"
+#include "p_env.h"
 
 static void segfault_handler(int sig)
 {
@@ -10,15 +10,7 @@ static void segfault_handler(int sig)
     printf("===SEGFAULT===\n");
     p_show_backtrace();
 
-    env_set_state(ENV_STATE_ERROR);
-
-    PSilo *current_silo = p_silo_get();
-    LOOP(env.num_silos, i) {
-        if (current_silo != env.silos[i])
-            p_silo_halt(env.silos[i]);
-    }
-
-    pthread_kill(pthread_self(), SIGSTOP);
+    env_error();
 }
 
 /*!
