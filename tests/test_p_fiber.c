@@ -162,6 +162,48 @@ static void test_fast_sleep(void **state)
     p_scheduler_destroy();
 }
 
+static int lock_step = 0;
+
+static void first_locker(void *lock_arg)
+{
+    PQlock *lock = lock_arg;
+
+    assert_int_equal(lock_step++, 0);
+    p_qlock_lock(lock); // doesn't block
+    assert_int_equal(lock_step++, 1);
+    p_fiber_yield();
+    p_fiber_yield();
+    assert_int_equal(lock_step++, 3);
+    p_qlock_unlock(lock);
+}
+
+static void second_locker(void *lock_arg)
+{
+    PQlock *lock = lock_arg;
+
+    assert_int_equal(lock_step++, 2);
+    assert_false(p_qlock_trylock(lock));
+    p_qlock_lock(lock); // blocks!
+    assert_int_equal(lock_step++, 4);
+    p_qlock_unlock(lock);
+}
+
+static void test_qlock(void **state)
+{
+    (void) state;
+
+    PQlock lock = P_QLOCK_INIT;
+
+    p_scheduler_init(&scheduler_config);
+    p_fiber_init(FG_A, first_locker, &lock);
+    p_fiber_init(FG_A, second_locker, &lock);
+
+    p_qlock_destroy(&lock);
+
+    p_scheduler_run();
+    p_scheduler_destroy();
+}
+
 static void iter(void *arg) {
     size_t *count = arg;
     LOOP(*count, i)
@@ -219,6 +261,7 @@ int main(void)
         cmocka_unit_test(test_join_all),
         cmocka_unit_test(test_sleep),
         cmocka_unit_test(test_fast_sleep),
+        cmocka_unit_test(test_qlock),
         cmocka_unit_test(test_perf),
         cmocka_unit_test(test_backtrace)
     };

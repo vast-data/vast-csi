@@ -58,7 +58,7 @@ void p_fiber_resume(PFiber *fiber);
  * This function can be used to resume a fiber and deque it from a provider's
  * queue at the same time.
  */
-void p_fiber_resume_and_deque(PFiber *fiber, PDlistAnchor *anchor);
+void p_fiber_pop_and_resume(PDlistAnchor *anchor);
 
 /*!
  * Should be called from a provider or sync primitive in the context of a running fiber.

@@ -8,7 +8,6 @@
 
 #include <p.h>
 
-// The following enum should match the fiber states in p_fiber_internal.h
 typedef enum {
     SLEEP_100_MILLI,
     SLEEP_1_SECOND,

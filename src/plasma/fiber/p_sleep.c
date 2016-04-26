@@ -69,7 +69,7 @@ void p_timer_queues_poll(PTimerQueues *timer_queues, PScheduler *scheduler)
             PFiber *fiber = p_pool_index_to_address(scheduler->fiber_pool, anchor);
             uint64_t fiber_wakeup = fiber->switch_time + MICRO_TO_NANO(interval_to_micro[i]);
             if (fiber_wakeup <= time) {
-                p_fiber_resume_and_deque(fiber, &timer_queues->queues[i]);
+                p_fiber_pop_and_resume(&timer_queues->queues[i]);
                 anchor = timer_queues->queues[i];
             } else {
                 timer_queues->wakeup_time = MIN(timer_queues->wakeup_time, fiber_wakeup);

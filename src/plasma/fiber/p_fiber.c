@@ -123,10 +123,10 @@ void p_fiber_suspend()
     context_switch();
 }
 
-void p_fiber_suspend_and_queue(PDlistAnchor *queue)
+void p_fiber_suspend_and_queue(PDlistAnchor *anchor)
 {
     PScheduler *sched = p_get_scheduler();
-    p_dlist_append(sched->fiber_queue, queue, p_pool_address_to_index(sched->fiber_pool, sched->current_fiber));
+    p_dlist_append(sched->fiber_queue, anchor, p_pool_address_to_index(sched->fiber_pool, sched->current_fiber));
     p_fiber_suspend();
 }
 
@@ -137,10 +137,13 @@ void p_fiber_resume(PFiber *fiber)
     p_dlist_append(sched->fiber_queue, &fiber->group->ready_queue, p_pool_address_to_index(sched->fiber_pool, fiber));
 }
 
-void p_fiber_resume_and_deque(PFiber *fiber, PDlistAnchor *anchor)
+void p_fiber_pop_and_resume(PDlistAnchor *anchor)
 {
+    if (*anchor == P_DLIST_ANCHOR_INIT)
+        return;
     PScheduler *sched = p_get_scheduler();
-    p_dlist_remove(sched->fiber_queue, anchor, p_pool_address_to_index(sched->fiber_pool, fiber));
+    PFiber *fiber = p_pool_index_to_address(sched->fiber_pool, *anchor);
+    p_dlist_remove(sched->fiber_queue, anchor, *anchor);
     p_fiber_resume(fiber);
 }
 
