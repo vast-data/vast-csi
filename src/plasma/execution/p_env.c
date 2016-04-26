@@ -1,11 +1,10 @@
-#include <p.h>
+#include <signal.h>
 #include <unistd.h>
 #include <pthread.h>
-#include <libconfig.h>
+
+#include <p.h>
 
 #include "p_config_internal.h"
-#include "p_silo.h"
-#include "p_env.h"
 
 struct PEnv {
     uint32_t num_silos;
@@ -25,8 +24,13 @@ void env_error()
 {
     env_set_state(ENV_STATE_ERROR);
 
-    LOOP(env.num_silos, i)
-        p_silo_halt(env.silos[i]);
+    PSilo *current_silo = p_silo_get();
+    LOOP(env.num_silos, i) {
+        if (current_silo != env.silos[i])
+            p_silo_halt(env.silos[i]);
+    }
+
+    pthread_kill(pthread_self(), SIGSTOP);
 }
 
 static void parse_config(const char *path, PConfig *config)

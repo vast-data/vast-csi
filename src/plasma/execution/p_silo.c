@@ -1,13 +1,12 @@
 /* Copyright (C) Vast Data Ltd. */
 #define _GNU_SOURCE
 
-#include <p.h>
 #include <sched.h>
 #include <signal.h>
 #include <pthread.h>
 
-#include "p_env.h"
-#include "p_silo.h"
+#include <p.h>
+
 #include "p_config_internal.h"
 
 typedef struct Module Module;

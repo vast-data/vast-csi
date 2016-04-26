@@ -3,11 +3,22 @@
 
 #include "p_env.h"
 
-static void segfault_handler(int sig)
+static void error_handler(int sig)
 {
-    (void) sig;
+    switch(sig) {
+    case SIGSEGV:
+        printf("===SEGFAULT===\n");
+        break;
+    case SIGABRT:
+        printf("===PANIC===\n");
+        break;
+    case SIGTERM:
+        printf("===TERMINATED===\n");
+        break;
+    default:
+        P_PANIC();
+    }
 
-    printf("===SEGFAULT===\n");
     p_show_backtrace();
 
     env_error();
@@ -19,7 +30,9 @@ static void segfault_handler(int sig)
  */
 static void register_signals()
 {
-    signal(SIGSEGV, segfault_handler);
+    signal(SIGSEGV, error_handler);
+    signal(SIGABRT, error_handler);
+    signal(SIGTERM, error_handler);
 }
 
 int main(int argc, char **argv)

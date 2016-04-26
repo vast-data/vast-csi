@@ -6,8 +6,6 @@
  */
 #pragma once
 
-#include "plasma/p_assert.h"
-
 /*!
  * The following macros provide a template for creating an enum
  * Along with helper functions that convert between enum values and strings.

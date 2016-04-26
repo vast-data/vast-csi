@@ -32,3 +32,4 @@ typedef int32_t PIndex;
 #include "plasma/fiber/p_sleep.h"
 #include "plasma/execution/p_config.h"
 #include "plasma/execution/p_silo.h"
+#include "plasma/execution/p_env.h"
