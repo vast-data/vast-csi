@@ -8,13 +8,7 @@
 
 #include <p.h>
 
-typedef struct PQlock PQlock;
-struct PQlock {
-    PDlistAnchor anchor;
-    PFiber *owner;
-};
-
-#define P_QLOCK_INIT {.anchor = P_DLIST_ANCHOR_INIT, .owner = NULL}
+#include "p_qlock_private.h"
 
 /*!
  * Initialize a qlock object. A qlock can also be defined and initialized in a single line:

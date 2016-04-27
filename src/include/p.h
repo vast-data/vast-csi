@@ -31,6 +31,7 @@ typedef int32_t PIndex;
 #include "plasma/fiber/p_scheduler.h"
 #include "plasma/fiber/p_sleep.h"
 #include "plasma/sync/p_qlock.h"
+#include "plasma/sync/p_rwlock.h"
 #include "plasma/execution/p_config.h"
 #include "plasma/execution/p_silo.h"
 #include "plasma/execution/p_env.h"

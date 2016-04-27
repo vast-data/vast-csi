@@ -137,14 +137,23 @@ void p_fiber_resume(PFiber *fiber)
     p_dlist_append(sched->fiber_queue, &fiber->group->ready_queue, p_pool_address_to_index(sched->fiber_pool, fiber));
 }
 
-void p_fiber_pop_and_resume(PDlistAnchor *anchor)
+PFiber *p_fiber_pop_and_resume(PDlistAnchor *anchor)
 {
     if (*anchor == P_DLIST_ANCHOR_INIT)
-        return;
+        return NULL;
     PScheduler *sched = p_get_scheduler();
     PFiber *fiber = p_pool_index_to_address(sched->fiber_pool, *anchor);
     p_dlist_remove(sched->fiber_queue, anchor, *anchor);
     p_fiber_resume(fiber);
+    return fiber;
+}
+
+PFiber *p_fiber_queue_peek(PDlistAnchor *anchor)
+{
+    if (*anchor == P_DLIST_ANCHOR_INIT)
+        return NULL;
+    PScheduler *sched = p_get_scheduler();
+    return p_pool_index_to_address(sched->fiber_pool, *anchor);
 }
 
 void __attribute__((noreturn)) p_fiber_run(PFiber *fiber)

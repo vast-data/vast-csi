@@ -162,29 +162,29 @@ static void test_fast_sleep(void **state)
     p_scheduler_destroy();
 }
 
-static int lock_step = 0;
+static int qlock_step = 0;
 
-static void first_locker(void *lock_arg)
+static void first_qlocker(void *lock_arg)
 {
     PQlock *lock = lock_arg;
 
-    assert_int_equal(lock_step++, 0);
+    assert_int_equal(qlock_step++, 0);
     p_qlock_lock(lock); // doesn't block
-    assert_int_equal(lock_step++, 1);
+    assert_int_equal(qlock_step++, 1);
     p_fiber_yield();
     p_fiber_yield();
-    assert_int_equal(lock_step++, 3);
+    assert_int_equal(qlock_step++, 3);
     p_qlock_unlock(lock);
 }
 
-static void second_locker(void *lock_arg)
+static void second_qlocker(void *lock_arg)
 {
     PQlock *lock = lock_arg;
 
-    assert_int_equal(lock_step++, 2);
+    assert_int_equal(qlock_step++, 2);
     assert_false(p_qlock_trylock(lock));
     p_qlock_lock(lock); // blocks!
-    assert_int_equal(lock_step++, 4);
+    assert_int_equal(qlock_step++, 4);
     p_qlock_unlock(lock);
 }
 
@@ -195,12 +195,88 @@ static void test_qlock(void **state)
     PQlock lock = P_QLOCK_INIT;
 
     p_scheduler_init(&scheduler_config);
-    p_fiber_init(FG_A, first_locker, &lock);
-    p_fiber_init(FG_A, second_locker, &lock);
+    p_fiber_init(FG_A, first_qlocker, &lock);
+    p_fiber_init(FG_A, second_qlocker, &lock);
 
     p_qlock_destroy(&lock);
 
     p_scheduler_run();
+    p_scheduler_destroy();
+}
+
+static int rwlock_state = 0;
+
+static void write_locker(void *lock_arg)
+{
+    PRWlock *lock = lock_arg;
+
+    assert_int_equal(rwlock_state++, 0);
+
+    p_rwlock_lock_write(lock);
+
+    assert_int_equal(rwlock_state++, 1);
+
+    LOOP(100, i)
+        p_fiber_yield();
+
+    p_rwlock_unlock(lock);
+
+    assert_int_equal(rwlock_state++, 5);
+}
+
+static void read_locker(void *lock_arg)
+{
+    PRWlock *lock = lock_arg;
+
+    assert_in_range(rwlock_state++, 1, 4); // 3 fibers
+
+    p_rwlock_lock_read(lock);
+
+    assert_in_range(rwlock_state++, 6, 8); // 3 fibers
+
+    p_rwlock_unlock(lock);
+}
+
+static void test_rwlock_barrier(void **state)
+{
+    (void) state;
+
+    PRWlock lock = P_RWLOCK_INIT;
+
+    p_scheduler_init(&scheduler_config);
+    p_fiber_init(FG_A, write_locker, &lock);
+    p_fiber_init(FG_A, read_locker, &lock);
+    p_fiber_init(FG_A, read_locker, &lock);
+    p_fiber_init(FG_A, read_locker, &lock);
+    p_scheduler_run();
+
+    p_rwlock_destroy(&lock);
+    p_scheduler_destroy();
+}
+
+static void simple_locker(void *lock_arg)
+{
+    PRWlock *lock = lock_arg;
+
+    p_rwlock_lock_read(lock);
+    p_rwlock_unlock(lock);
+    p_rwlock_lock_write(lock);
+    p_rwlock_unlock(lock);
+}
+
+static void test_rwlock_simple(void **state)
+{
+    (void) state;
+
+    PRWlock lock;
+
+    p_rwlock_init(&lock);
+
+    p_scheduler_init(&scheduler_config);
+    p_fiber_init(FG_A, simple_locker, &lock);
+    p_scheduler_run();
+
+    p_rwlock_destroy(&lock);
     p_scheduler_destroy();
 }
 
@@ -262,6 +338,8 @@ int main(void)
         cmocka_unit_test(test_sleep),
         cmocka_unit_test(test_fast_sleep),
         cmocka_unit_test(test_qlock),
+        cmocka_unit_test(test_rwlock_barrier),
+        cmocka_unit_test(test_rwlock_simple),
         cmocka_unit_test(test_perf),
         cmocka_unit_test(test_backtrace)
     };

@@ -38,6 +38,7 @@ struct PFiber {
     uint64_t switch_time; // updated when a fiber is resumed or suspended
     union {
         uint32_t join_count;
+        PRWlockType rw_lock_type;
     };
 };
 
@@ -58,7 +59,12 @@ void p_fiber_resume(PFiber *fiber);
  * This function can be used to resume a fiber and deque it from a provider's
  * queue at the same time.
  */
-void p_fiber_pop_and_resume(PDlistAnchor *anchor);
+PFiber *p_fiber_pop_and_resume(PDlistAnchor *anchor);
+
+/*!
+ * Get the next fiber to be popped without popping it.
+ */
+PFiber *p_fiber_queue_peek(PDlistAnchor *anchor);
 
 /*!
  * Should be called from a provider or sync primitive in the context of a running fiber.
