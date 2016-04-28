@@ -280,6 +280,79 @@ static void test_rwlock_simple(void **state)
     p_scheduler_destroy();
 }
 
+static void sem_nonblocking(void *sem_arg)
+{
+    PSem *sem = sem_arg;
+
+    assert_true(p_sem_trydec(sem, 2));
+    assert_false(p_sem_trydec(sem, 1));
+    p_sem_inc(sem, 2);
+    assert_true(p_sem_trydec(sem, 2));
+    assert_false(p_sem_trydec(sem, 1));
+    p_sem_inc(sem, 2);
+}
+
+static void test_sem_nonblocking(void **state)
+{
+    (void) state;
+
+    PSem sem;
+
+    p_sem_init(&sem, 2);
+
+    p_scheduler_init(&scheduler_config);
+    p_fiber_init(FG_A, sem_nonblocking, &sem);
+    p_scheduler_run();
+
+    p_sem_destroy(&sem);
+    p_scheduler_destroy();
+}
+
+static int sem_step = 0;
+static int sem_flag = false;
+
+static void incrementer(void *sem_arg)
+{
+    PSem *sem = sem_arg;
+    assert_int_equal(sem_step++, 4);
+    p_sem_inc(sem, 2);
+    LOOP(100, i)
+        p_fiber_yield();
+    sem_flag = true;
+    p_sem_inc(sem, 2);
+}
+
+static void decrementer(void *sem_arg)
+{
+    PSem *sem = sem_arg;
+    assert_in_range(sem_step++, 0, 3);
+    p_sem_dec(sem, 1);
+    if (sem_flag)
+        assert_in_range(sem_step++, 7, 8);
+    else
+        assert_in_range(sem_step++, 5, 6);
+}
+
+static void test_sem_blocking(void **state)
+{
+    (void) state;
+
+    PSem sem;
+
+    p_sem_init(&sem, 0);
+
+    p_scheduler_init(&scheduler_config);
+
+    LOOP(4, i)
+        p_fiber_init(FG_A, decrementer, &sem);
+    p_fiber_init(FG_A, incrementer, &sem);
+
+    p_scheduler_run();
+
+    p_sem_destroy(&sem);
+    p_scheduler_destroy();
+}
+
 static void iter(void *arg) {
     size_t *count = arg;
     LOOP(*count, i)
@@ -340,6 +413,8 @@ int main(void)
         cmocka_unit_test(test_qlock),
         cmocka_unit_test(test_rwlock_barrier),
         cmocka_unit_test(test_rwlock_simple),
+        cmocka_unit_test(test_sem_nonblocking),
+        cmocka_unit_test(test_sem_blocking),
         cmocka_unit_test(test_perf),
         cmocka_unit_test(test_backtrace)
     };

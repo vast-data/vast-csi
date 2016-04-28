@@ -38,6 +38,7 @@ struct PFiber {
     uint64_t switch_time; // updated when a fiber is resumed or suspended
     union {
         uint32_t join_count;
+        uint32_t sem_count;
         PRWlockType rw_lock_type;
     };
 };
