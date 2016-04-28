@@ -6,20 +6,17 @@ env = Environment()
 env['ENV']['TERM'] = os.environ['TERM'] # enable terminal colors in clang
 
 env.Replace(CC=ARGUMENTS.get('cc', 'clang'))
-env.Append(CFLAGS=['-std=gnu11',
+env.Append(CFLAGS=['-g',
+                   '-std=gnu11',
+                   '-O' + ARGUMENTS.get('O', '2'),
+                   '-fno-omit-frame-pointer', # with -O2 this is required to be able to generate backtraces
                    '-Weverything' if env['CC'] == 'clang' else '-Wall',
                    '-Werror',
+                   '-Wno-disabled-macro-expansion',
                    '-Wno-vla',
                    '-Wno-padded'])
 env.Append(CPPPATH=['src',
                     'src/include'])
-
-debug = ARGUMENTS.get('debug', 0)
-if int(debug):
-   env.Append(CFLAGS='-g')
-else:
-   env.Append(CFLAGS='-O' + ARGUMENTS.get('O', '2'))
-   env.Append(CFLAGS='-fno-omit-frame-pointer') # required for debugging and generating backtraces
 
 murmur_env = env.Clone()
 murmur_env.Append(CFLAGS=['-Wno-cast-align',
@@ -43,8 +40,9 @@ lib = env.Library(target='dist/orion',
                           'build/src/plasma/fiber/p_fiber.c',
                           'build/src/plasma/fiber/p_scheduler.c',
                           'build/src/plasma/fiber/p_sleep.c',
+                          'build/src/plasma/sync/p_spin_lock.c',
                           'build/src/plasma/sync/p_qlock.c',
-                          'build/src/plasma/sync/p_rwlock.c',  
+                          'build/src/plasma/sync/p_rwlock.c',
                           'build/src/plasma/execution/p_config.c',
                           'build/src/plasma/execution/p_silo.c',
                           'build/src/plasma/execution/p_env.c',

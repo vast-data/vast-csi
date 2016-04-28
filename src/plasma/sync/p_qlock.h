@@ -2,7 +2,7 @@
 
 /*!
  * \file p_qlock.h
- * \brief A lock for inter-fiber coordination
+ * \brief A lock for cross-fiber coordination
  */
 #pragma once
 

@@ -2,7 +2,7 @@
 
 /*!
  * \file p_rwlock.h
- * \brief A readers-writers lock for inter-fiber coordination
+ * \brief A readers-writers lock for cross-fiber coordination
  *
  * A readers-writers lock allows a single writer or multiple readers hold a lock.
  * It can be used to implement barriers or shared access to a memory region.
