@@ -353,6 +353,82 @@ static void test_sem_blocking(void **state)
     p_scheduler_destroy();
 }
 
+static int event_step = 0;
+
+static void event_one_waiter(void *event_arg)
+{
+    PEvent *event = event_arg;
+
+    assert_in_range(event_step++, 0, 3);
+    p_event_wait(event);
+    assert_int_equal((event_step++) % 2, 1);
+}
+
+static void event_one_setter(void *event_arg)
+{
+    PEvent *event = event_arg;
+
+    LOOP(4, i) {
+        p_event_release_one(event);
+        assert_int_equal((event_step++) % 2, 0);
+        p_fiber_yield();
+    }
+}
+
+static void test_event_one(void **state)
+{
+    (void) state;
+
+    PEvent event;
+
+    p_event_init(&event);
+
+    p_scheduler_init(&scheduler_config);
+
+    LOOP(4, i)
+        p_fiber_init(FG_A, event_one_waiter, &event);
+    p_fiber_init(FG_A, event_one_setter, &event);
+
+    p_scheduler_run();
+
+    p_event_destroy(&event);
+    p_scheduler_destroy();
+}
+
+static void event_all_waiter(void *event_arg)
+{
+    PEvent *event = event_arg;
+
+    p_event_wait(event);
+}
+
+static void event_all_setter(void *event_arg)
+{
+    PEvent *event = event_arg;
+
+    p_event_release_all(event);
+}
+
+static void test_event_all(void **state)
+{
+    (void) state;
+
+    PEvent event;
+
+    p_event_init(&event);
+
+    p_scheduler_init(&scheduler_config);
+
+    LOOP(4, i)
+        p_fiber_init(FG_A, event_all_waiter, &event);
+    p_fiber_init(FG_A, event_all_setter, &event);
+
+    p_scheduler_run();
+
+    p_event_destroy(&event);
+    p_scheduler_destroy();
+}
+
 static void iter(void *arg) {
     size_t *count = arg;
     LOOP(*count, i)
@@ -415,6 +491,8 @@ int main(void)
         cmocka_unit_test(test_rwlock_simple),
         cmocka_unit_test(test_sem_nonblocking),
         cmocka_unit_test(test_sem_blocking),
+        cmocka_unit_test(test_event_one),
+        cmocka_unit_test(test_event_all),
         cmocka_unit_test(test_perf),
         cmocka_unit_test(test_backtrace)
     };
