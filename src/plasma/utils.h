@@ -8,7 +8,8 @@
 
 #include <p.h>
 
-#define MIN(a, b) (a > b ? b : a)
+#define MIN(a, b) ((a) > (b) ? (b) : (a))
+#define MAX(a, b) ((a) < (b) ? (b) : (a))
 
 #define NUM_ELEMENTS(array) (sizeof(array) / sizeof(array[0]))
 

@@ -6,6 +6,9 @@ env = Environment()
 env['ENV']['TERM'] = os.environ['TERM'] # enable terminal colors in clang
 
 env.Replace(CC=ARGUMENTS.get('cc', 'clang'))
+debug = ARGUMENTS.get('debug')
+if debug is not None:
+   env.Append(CPPDEFINES=['DEBUG'])
 env.Append(CFLAGS=['-g',
                    '-std=gnu11',
                    '-O' + ARGUMENTS.get('O', '2'),
@@ -48,6 +51,7 @@ lib = env.Library(target='dist/orion',
                           'build/src/plasma/execution/p_config.c',
                           'build/src/plasma/execution/p_silo.c',
                           'build/src/plasma/execution/p_env.c',
+                          'build/src/plasma/trace/p_dbuffer.c',
                           murmur])
 LIBS = ['unwind', 'config', 'pthread', lib]
 
@@ -78,6 +82,8 @@ AddTest(target='dist/test_config',
 AddTest(target='dist/test_env',
         source=[lib, 'build/tests/test_env.c'],
         wrap=['p_module_start', 'p_module_init'])
+AddTest(target='dist/test_trace',
+        source=[lib, 'build/tests/test_trace.c'])
 env.AlwaysBuild('test')
 
 env.Alias('docs', lib, 'doxygen')
