@@ -8,8 +8,10 @@ struct PModuleState {
     char foo;
 };
 
-void *p_module_init(PSilo *silo)
+void *p_module_init(PSilo *silo, PConfigSetting *setting)
 {
+    (void) setting;
+
     PModuleState *state = p_safe_malloc(sizeof(PModuleState));
     state->foo = 'a';
     p_silo_set_component_state(silo, MODULE_P, CURRENT_COMPONENT, state);

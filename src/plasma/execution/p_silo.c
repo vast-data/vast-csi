@@ -40,7 +40,7 @@ PSilo *p_silo_init(PConfigSetting *silo_config, int32_t affinity)
 
         ModuleId module_id = string_to_module_id(module_name);
         silo->modules[module_id].defined = true;
-        silo->modules[module_id].user_state = module_init_functions[module_id](silo);
+        silo->modules[module_id].user_state = module_init_functions[module_id](silo, module_setting);
 
         PConfigSetting *fibers_setting = p_config_setting_lookup_required(module_setting, "fibers");
         LOOP(p_config_setting_length(fibers_setting), j) {

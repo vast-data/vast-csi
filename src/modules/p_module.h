@@ -10,5 +10,5 @@
 
 #include <p.h>
 
-void *p_module_init(PSilo *silo);
+void *p_module_init(PSilo *silo, PConfigSetting *setting);
 void p_module_start(void);

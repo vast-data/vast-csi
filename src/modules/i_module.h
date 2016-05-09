@@ -8,5 +8,5 @@
 
 #include <p.h>
 
-void *i_module_init(PSilo *silo);
+void *i_module_init(PSilo *silo, PConfigSetting *setting);
 void i_module_start(void);

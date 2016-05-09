@@ -52,5 +52,6 @@ DEFINE_LOOKUP_PROTOTYPES(FIBER_GROUP_LIST,
                          string_to_fiber_group_id)
 
 typedef struct PSilo PSilo;
-extern void *(*module_init_functions[])(PSilo *silo);
+typedef struct config_setting_t PConfigSetting;
+extern void *(*module_init_functions[])(PSilo *silo, PConfigSetting *setting);
 extern void (*module_start_functions[])(void);
