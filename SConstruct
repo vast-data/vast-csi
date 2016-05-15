@@ -1,6 +1,10 @@
 import fnmatch
 import os
 
+DEFAULT_COMPILER = 'clang'
+DEFAULT_OPTIMIZATION_LEVEL = '2'
+DEFAULT_BUILD_DIR = 'build'
+
 def RGlob(path, pattern, ignore_dirs=[], ignore_files=[]):
    matches = []
    for root, dirnames, filenames in os.walk(path):
@@ -14,10 +18,30 @@ def RGlob(path, pattern, ignore_dirs=[], ignore_files=[]):
 
 pre_sources = RGlob('src', '*.c', ['src/plasma/third_party/murmur3'], ['src/plasma/execution/main.c'])
 
-VariantDir('build/src', 'src')
-VariantDir('build/tests', 'tests')
+VariantDir(DEFAULT_BUILD_DIR + '/src', 'src')
+VariantDir(DEFAULT_BUILD_DIR + '/tests', 'tests')
 
-env = Environment()
+vars = Variables(None, ARGUMENTS)
+vars.Add(BoolVariable('debug', 'Set debug to 1 to compile a debug version (defines the DEBUG macro)', False))
+vars.Add(EnumVariable('cc', 'A c compiler', DEFAULT_COMPILER, allowed_values=('clang', 'gcc')))
+vars.Add('O', 'Optimization level', DEFAULT_OPTIMIZATION_LEVEL)
+
+env = Environment(variables=vars)
+help_text = """
+Targets
+-------
+Available targets:
+1. <none> - when running scons with no targets all executables are built.
+2. test - builds all test executables and invokes them.
+3. docs - builds the documentation. The result is located at docs/html/index.html.
+
+Parameters
+----------
+Parameters are passed as key=value. For example: scons debug=yes.
+
+""" + vars.GenerateHelpText(env)
+Help(help_text)
+
 trace_builder = Builder(action='cat $SOURCE > $TARGET')
 env.Append(BUILDERS={'SourceFile': trace_builder})
 
@@ -61,15 +85,15 @@ def AddTest(target, source, env=env, wrap=[]):
     test = test_env.Program(target=target, source=source, LIBS=LIBS + ['cmocka'])
     test_env.Alias('test', test, test[0].abspath)
 
-AddTest(target='dist/test_p_pool', source=[lib, 'build/tests/test_p_pool.c'])
-AddTest(target='dist/test_p_dlist', source=[lib, 'build/tests/test_p_dlist.c'])
-AddTest(target='dist/test_p_hash', env=murmur_env, source=[lib, 'build/tests/test_p_hash.c',
+AddTest(target='dist/tests/test_p_pool', source=[lib, 'build/tests/test_p_pool.c'])
+AddTest(target='dist/tests/test_p_dlist', source=[lib, 'build/tests/test_p_dlist.c'])
+AddTest(target='dist/tests/test_p_hash', env=murmur_env, source=[lib, 'build/tests/test_p_hash.c',
                                                            'build/src/plasma/third_party/murmur3/test.c'])
-AddTest(target='dist/test_p_fiber', source=[lib, 'build/tests/test_p_fiber.c'])
-AddTest(target='dist/test_time', source=[lib, 'build/tests/test_time.c'])
-AddTest(target='dist/test_config', source=[lib, 'build/tests/test_config.c'])
-AddTest(target='dist/test_env', source=[lib, 'build/tests/test_env.c'], wrap=['p_module_start', 'p_module_init'])
-AddTest(target='dist/test_trace', source=[lib, 'build/tests/test_trace.c'])
+AddTest(target='dist/tests/test_p_fiber', source=[lib, 'build/tests/test_p_fiber.c'])
+AddTest(target='dist/tests/test_time', source=[lib, 'build/tests/test_time.c'])
+AddTest(target='dist/tests/test_config', source=[lib, 'build/tests/test_config.c'])
+AddTest(target='dist/tests/test_env', source=[lib, 'build/tests/test_env.c'], wrap=['p_module_start', 'p_module_init'])
+AddTest(target='dist/tests/test_trace', source=[lib, 'build/tests/test_trace.c'])
 env.AlwaysBuild('test')
 
 env.Alias('docs', lib, 'doxygen')
