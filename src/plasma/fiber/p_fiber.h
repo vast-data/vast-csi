@@ -52,3 +52,8 @@ void p_join_all(void);
  * Get the module id of the current running fiber (determined by its fiber group)
  */
 ModuleId p_fiber_get_module_id(void);
+
+/*!
+ * Get the current/last job id performed by this fiber
+ */
+uint64_t get_job_id(PFiber *fiber);

@@ -81,6 +81,11 @@ void p_fiber_destroy(PFiber *fiber)
     sched->running_fiber_count--;
 }
 
+uint64_t get_job_id(PFiber *fiber)
+{
+	return fiber->job_id;
+}
+
 static void init_job_id(PFiber *fiber)
 {
 	fiber->job_id = ++p_get_scheduler()->curr_job_id;
