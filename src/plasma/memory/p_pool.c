@@ -33,7 +33,7 @@ PPool *p_pool_partitioned_init(size_t block_size, PIndex num_partitions, PIndex 
     pool->num_partitions = num_partitions;
 
     // every free node contains the index of the next free node.
-    // the end of the list is marked with index == blocks.
+    // the end of the list is marked with index == P_INVALID_INDEX.
     for (PIndex i = 0; i < pool->blocks - 1; i++) {
         INDEX_TO_VALUE(pool, i) = i + 1;
     }
@@ -49,6 +49,7 @@ PPool *p_pool_init(PIndex blocks, size_t block_size)
 
 PIndex p_pool_partitioned_alloc(PPool *pool, PIndex partition)
 {
+    P_ASSERT(partition < pool->num_partitions);
     if (pool->partitions[partition] == 0)
         return P_INVALID_INDEX;
 
@@ -77,6 +78,7 @@ void *p_pool_alloc_address(PPool *pool)
 
 void p_pool_partitioned_free(PPool *pool, PIndex index, PIndex partition)
 {
+    P_ASSERT(partition < pool->num_partitions);
     P_ASSERT(index < pool->blocks);
     pool->partitions[partition]++;
     INDEX_TO_VALUE(pool, index) = pool->free_head;

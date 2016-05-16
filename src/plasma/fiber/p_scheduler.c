@@ -33,7 +33,7 @@ static PPool *find_or_allocate_stacks(PSchedulerConfig *config, PIndex group_ind
     if (pool != NULL)
         return pool;
 
-    // allocate a pool that accomodates the fiber_count of all groups with same stack_size
+    // allocate a pool that accommodates the fiber_count of all groups with same stack_size
     PIndex num_partitions = 0;
     PIndex partitions[sched->group_count];
     LOOP_FROM(group_index, sched->group_count, i)
@@ -70,7 +70,7 @@ void p_scheduler_init(PSchedulerConfig *config)
         if (fiber_config->fiber_count > 0) {
             group->stacks = find_or_allocate_stacks(config, (PIndex) i, &group->stacks_partition);
             if (last_group == NULL)
-                first_group = last_group = group;
+                first_group = group;
             else
                 last_group->next_group = group;
             last_group = group;
@@ -87,6 +87,8 @@ void p_scheduler_init(PSchedulerConfig *config)
 
 void p_scheduler_destroy()
 {
+    P_ASSERT(sched->running_fiber_count == 0);
+
     PFiberGroup *fiber_group;
     LOOP(sched->group_count, i) {
         fiber_group = &sched->groups[i];

@@ -7,6 +7,11 @@
  * This doubly-linked list is used to store indices. Usually indices of objects allocated by a memory pool.
  * Therefore, the linked should be initialized with the size of the memory pool.
  *
+ * The dlist object is actually called PDListPool because it's able to hold several sublists with the invariant
+ * that every element can appear in a single list at a time.
+ *
+ * More information is available here: https://vastdata.atlassian.net/wiki/display/DEV/Data+Structures
+ *
  * Future considerations:
  * 1. Add thread safety.
  * 2. Consider adding debug checks to protect a user mixing anchors.
@@ -26,9 +31,9 @@ struct PDListNode {
 typedef struct PDListNode PDListNode;
 
 struct PDListAnchor {
-	PIndex index;
+    PIndex index;
 #ifdef DEBUG
-	PDListNode *node;
+    PDListNode *node;
 #endif
 };
 typedef struct PDListAnchor PDListAnchor;
@@ -108,11 +113,6 @@ PIndex p_dlist_pop(PDList *list);
 void p_dlist_append(PDList *list, PIndex index);
 
 /*!
- * Return the length of the list. O(n) performance.
- */
-size_t p_dlist_length(PDList *list);
-
-/*!
  * True if the item in index is the last in the list (right before the anchor element)..
  */
 bool p_dlist_is_last(PDList *list, PIndex index);
@@ -135,4 +135,3 @@ P_DLIST_EACH(list, anchor, i) {
 #define P_DLIST_EACH(list, element) for (PIndex element = p_dlist_get_first(list); \
                                          element != P_INVALID_INDEX; \
                                          element = p_dlist_is_last(list, element) ? P_INVALID_INDEX : p_dlist_next(list, element))
-

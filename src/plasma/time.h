@@ -8,6 +8,11 @@
 
 #include <p.h>
 
+#define MILLI_TO_MICRO(n) ((n) * 1000)
+#define MICRO_TO_NANO(n) ((n) * 1000)
+#define NANO_TO_MICRO(n) ((n) / 1000)
+#define SEC_TO_MICRO(n) (MILLI_TO_MICRO(n) * 1000)
+
 /*!
  * Get the current time in nano seconds. This function is VERY fast and returns a
  * monotonically rising value not affected by the system time, ntp, etc'.

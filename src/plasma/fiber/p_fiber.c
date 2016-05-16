@@ -6,7 +6,6 @@
  *
  * 1. Expose a fiber_init + join interface.
  * 2. Wakeup time per group.
- * 3.
  */
 #include <p.h>
 #include <setjmp.h>

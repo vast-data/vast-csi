@@ -146,13 +146,3 @@ void p_dlist_append(PDList *list, PIndex index)
         p_dlist_add_after(list, last, index);
     }
 }
-
-size_t p_dlist_length(PDList *list)
-{
-    size_t count = 0;
-    P_DLIST_EACH(list, element) {
-        count++;
-    }
-    return count;
-}
-

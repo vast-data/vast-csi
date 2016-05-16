@@ -5,10 +5,6 @@
 #include "p_sleep_internal.h"
 #include "p_scheduler_internal.h"
 
-#define MILLI_TO_MICRO(n) ((n) * 1000)
-#define MICRO_TO_NANO(n) ((n) * 1000)
-#define NANO_TO_MICRO(n) ((n) / 1000)
-#define SEC_TO_MICRO(n) (MILLI_TO_MICRO(n) * 1000)
 #define NO_PENDING_FIBERS UINT64_MAX
 
 static uint64_t interval_to_micro[] = {MILLI_TO_MICRO(100),

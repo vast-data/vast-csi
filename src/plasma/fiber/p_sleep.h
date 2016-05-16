@@ -24,7 +24,7 @@ typedef enum {
 uint64_t p_sleep(PSleepInterval interval);
 
 /*!
- * Sleep for at least a given interal times count.
+ * Sleep for at least a given interval times count.
  *
  * \return number of microseconds spent in sleep.
  */
