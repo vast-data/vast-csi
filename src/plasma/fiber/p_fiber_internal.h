@@ -36,6 +36,7 @@ struct PFiber {
     PFiberGroup *group;
     PFiberState state; // currently used for debug purposes
     uint64_t switch_time; // updated when a fiber is resumed or suspended
+    uint64_t job_id;
     union {
         uint32_t join_count;
         uint32_t sem_count;
