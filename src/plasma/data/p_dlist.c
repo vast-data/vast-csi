@@ -1,116 +1,158 @@
 /* Copyright (C) Vast Data Ltd. */
 #include <p.h>
 
-struct PDlistNode {
-    PIndex prev;
-    PIndex next;
+// Since a list anchor is the index of the first element,
+// an empty list is simply an invalid index.
+#define P_DLIST_ANCHOR_INIT P_INVALID_INDEX
+
+struct PDListPool {
+    struct PDListNode *nodes;
+#ifdef DEBUG
+    PIndex pool_size;
+#endif
 };
 
-struct PDlist {
-    struct PDlistNode *nodes;
-};
-
-PDlist *p_dlist_init(PIndex size)
+inline void p_dlistanchor_init(PDListAnchor* anchor OUT)
 {
-    PDlist *list = p_safe_malloc(sizeof(PDlist));
-    list->nodes = p_safe_malloc(sizeof(struct PDlistNode) * (size_t) size);
-    return list;
+    anchor->index = P_DLIST_ANCHOR_INIT;
+#ifdef DEBUG
+    anchor->node = NULL;
+#endif
 }
 
-void p_dlist_destroy(PDlist *list)
+void p_dlist_init(PDList* list OUT, PDListAnchor* anchor IN, PDListPool* list_pool IN)
+{
+    list->anchor = anchor;
+    list->list_pool = list_pool;
+}
+
+PDListPool *p_dlistpool_init(PIndex size)
+{
+    PDListPool *listpool = p_safe_malloc(sizeof(PDList));
+    listpool->nodes = p_safe_malloc(sizeof(struct PDListNode) * (size_t) size);
+
+#ifdef DEBUG
+    listpool->pool_size = size;
+    LOOP(size, index) {
+        listpool->nodes[index].prev = P_INVALID_INDEX;
+        listpool->nodes[index].next = P_INVALID_INDEX;
+    }
+#endif
+    return listpool;
+}
+
+void p_dlistpool_destroy(PDListPool *list)
 {
     p_free(list->nodes);
     p_free(list);
 }
 
-bool p_dlist_is_empty(PDlist *list, PDlistAnchor anchor) {
-    (void) list;
-    return anchor == P_DLIST_ANCHOR_INIT;
+inline bool p_dlistanchor_is_empty(PDListAnchor *anchor)
+{
+    return anchor->index == P_DLIST_ANCHOR_INIT;
 }
 
-void p_dlist_insert(PDlist *list, PDlistAnchor *anchor, PIndex index)
+inline bool p_dlist_is_empty(PDList *list)
 {
-    if (*anchor != P_DLIST_ANCHOR_INIT) {
-        list->nodes[index].next = *anchor;
-        list->nodes[index].prev = list->nodes[*anchor].prev;
-        list->nodes[*anchor].prev = index;
-        list->nodes[list->nodes[index].prev].next = index;
-    } else {
-        list->nodes[index].prev = index;
-        list->nodes[index].next = index;
+    return p_dlistanchor_is_empty(list->anchor);
+}
+
+inline bool p_dlist_is_last(PDList *list, PIndex index)
+{
+    return list->list_pool->nodes[index].next == list->anchor->index;
+}
+
+inline PIndex p_dlist_get_first(PDList *list)
+{
+    return list->anchor->index;
+}
+
+void p_dlist_add_after(PDList *list, PIndex index, PIndex new)
+{
+    P_ASSERT(!p_dlist_is_empty(list));
+    list->list_pool->nodes[new].prev = index;
+    list->list_pool->nodes[new].next = list->list_pool->nodes[index].next;
+    list->list_pool->nodes[list->list_pool->nodes[new].next].prev = new;
+    list->list_pool->nodes[index].next = new;
+}
+
+void p_dlist_add_before(PDList *list, PIndex index, PIndex new)
+{
+    P_ASSERT(!p_dlist_is_empty(list));
+    list->list_pool->nodes[new].next = index;
+    list->list_pool->nodes[new].prev = list->list_pool->nodes[index].prev;
+    list->list_pool->nodes[list->list_pool->nodes[new].prev].next = new;
+    list->list_pool->nodes[index].prev = new;
+
+    if (list->anchor->index == index) {
+        list->anchor->index = new;
     }
-    *anchor = index;
 }
 
-void p_dlist_add_after(PDlist *list, PDlistAnchor *anchor, PIndex index, PIndex new)
+void p_dlist_insert(PDList *list, PIndex index)
 {
-    P_ASSERT(!p_dlist_is_empty(list, *anchor));
-    list->nodes[new].prev = index;
-    list->nodes[new].next = list->nodes[index].next;
-    list->nodes[list->nodes[new].next].prev = new;
-    list->nodes[index].next = new;
+    if (list->anchor->index != P_DLIST_ANCHOR_INIT) {
+        p_dlist_add_before(list, list->anchor->index, index);
+    } else {
+        list->list_pool->nodes[index].prev = index;
+        list->list_pool->nodes[index].next = index;
+        list->anchor->index = index;
+    }
 }
 
-void p_dlist_add_before(PDlist *list, PDlistAnchor *anchor, PIndex index, PIndex new)
+void p_dlist_remove(PDList *list, PIndex index)
 {
-    P_ASSERT(!p_dlist_is_empty(list, *anchor));
-    list->nodes[new].next = index;
-    list->nodes[new].prev = list->nodes[index].prev;
-    list->nodes[list->nodes[new].prev].next = new;
-    list->nodes[index].prev = new;
-}
+    PIndex prev = list->list_pool->nodes[index].prev;
+    PIndex next = list->list_pool->nodes[index].next;
+    list->list_pool->nodes[prev].next = next;
+    list->list_pool->nodes[next].prev = prev;
 
-void p_dlist_remove(PDlist *list, PDlistAnchor *anchor, PIndex index)
-{
-    (void) anchor;
-
-    PIndex prev = list->nodes[index].prev;
-    PIndex next = list->nodes[index].next;
-    list->nodes[prev].next = next;
-    list->nodes[next].prev = prev;
-
-    if (index == *anchor)
-        *anchor = next;
+    if (index == list->anchor->index)
+        list->anchor->index = next;
     if (index == next)
-        *anchor = P_DLIST_ANCHOR_INIT;
+        list->anchor->index = P_DLIST_ANCHOR_INIT;
+
+#ifdef  DEBUG
+    list->list_pool->nodes[index].prev = P_INVALID_INDEX;
+    list->list_pool->nodes[index].next = P_INVALID_INDEX;
+#endif
 }
 
-PIndex p_dlist_next(PDlist *list, PDlistAnchor *anchor, PIndex index)
+PIndex p_dlist_next(PDList *list, PIndex index)
 {
-    (void) anchor;
-
-    return list->nodes[index].next;
+    return list->list_pool->nodes[index].next;
 }
 
-PIndex p_dlist_prev(PDlist *list, PDlistAnchor *anchor, PIndex index)
+PIndex p_dlist_prev(PDList *list, PIndex index)
 {
-    (void) anchor;
-
-    return list->nodes[index].prev;
+    return list->list_pool->nodes[index].prev;
 }
 
-PIndex p_dlist_pop(PDlist *list, PDlistAnchor *anchor)
+PIndex p_dlist_pop(PDList *list)
 {
-    if (*anchor == P_DLIST_ANCHOR_INIT)
+    if (list->anchor->index == P_DLIST_ANCHOR_INIT)
         return P_INVALID_INDEX;
-    PIndex head = *anchor;
-    p_dlist_remove(list, anchor, *anchor);
-    return head;
+    PIndex prev_head = list->anchor->index;
+    p_dlist_remove(list, list->anchor->index);
+    return prev_head;
 }
 
-void p_dlist_append(PDlist *list, PDlistAnchor *anchor, PIndex index)
+void p_dlist_append(PDList *list, PIndex index)
 {
-    if (*anchor == P_DLIST_ANCHOR_INIT)
-        p_dlist_insert(list, anchor, index);
-    else
-        p_dlist_add_before(list, anchor, *anchor, index);
+    if (list->anchor->index == P_DLIST_ANCHOR_INIT)
+        p_dlist_insert(list, index);
+    else {
+        PIndex last = list->list_pool->nodes[list->anchor->index].prev;
+        p_dlist_add_after(list, last, index);
+    }
 }
 
-size_t p_dlist_length(PDlist *list, PDlistAnchor anchor)
+size_t p_dlist_length(PDList *list)
 {
     size_t count = 0;
-    P_DLIST_EACH(list, anchor, i) {
+    P_DLIST_EACH(list, element) {
         count++;
     }
     return count;
 }
+

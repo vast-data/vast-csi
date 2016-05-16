@@ -7,7 +7,5 @@ typedef struct PQlock PQlock;
 
 struct PQlock {
     PFiber *owner;
-    PDlistAnchor anchor;
+    PDListAnchor  anchor;
 };
-
-#define P_QLOCK_INIT {.anchor = P_DLIST_ANCHOR_INIT, .owner = NULL}

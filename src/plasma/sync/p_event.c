@@ -4,19 +4,19 @@
 
 void p_event_init(PEvent *event)
 {
-    event->wait_anchor = P_DLIST_ANCHOR_INIT;
+    p_dlistanchor_init(&event->wait_anchor);
     event->state = P_EVENT_CLEARED;
 }
 
 void p_event_destroy(PEvent *event)
 {
-    P_ASSERT(event->wait_anchor == P_DLIST_ANCHOR_INIT);
+    P_ASSERT(p_dlistanchor_is_empty(&event->wait_anchor));
 }
 
 void p_event_wait(PEvent *event)
 {
     if (event->state == P_EVENT_SET) {
-        P_ASSERT(event->wait_anchor == P_DLIST_ANCHOR_INIT);
+        P_ASSERT(p_dlistanchor_is_empty(&event->wait_anchor));
         return;
     }
     p_fiber_suspend_and_queue(&event->wait_anchor);

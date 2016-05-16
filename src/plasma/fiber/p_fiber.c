@@ -138,10 +138,12 @@ void p_fiber_suspend()
     context_switch();
 }
 
-void p_fiber_suspend_and_queue(PDlistAnchor *anchor)
+void p_fiber_suspend_and_queue(PDListAnchor *anchor)
 {
     PScheduler *sched = p_get_scheduler();
-    p_dlist_append(sched->fiber_queue, anchor, p_pool_address_to_index(sched->fiber_pool, sched->current_fiber));
+    PDList queue;
+    p_dlist_init(&queue, anchor, sched->fiber_queues);
+    p_dlist_append(&queue, p_pool_address_to_index(sched->fiber_pool, sched->current_fiber));
     p_fiber_suspend();
 }
 
@@ -149,26 +151,36 @@ void p_fiber_resume(PFiber *fiber)
 {
     PScheduler *sched = p_get_scheduler();
     fiber->state = FIBER_STATE_READY;
-    p_dlist_append(sched->fiber_queue, &fiber->group->ready_queue, p_pool_address_to_index(sched->fiber_pool, fiber));
+    PDList queue;
+    p_dlist_init(&queue, &fiber->group->ready_queue, sched->fiber_queues);
+    p_dlist_append(&queue, p_pool_address_to_index(sched->fiber_pool, fiber));
 }
 
-PFiber *p_fiber_pop_and_resume(PDlistAnchor *anchor)
+PFiber *p_fiber_queue_peek(PDListAnchor *anchor)
 {
-    if (*anchor == P_DLIST_ANCHOR_INIT)
-        return NULL;
     PScheduler *sched = p_get_scheduler();
-    PFiber *fiber = p_pool_index_to_address(sched->fiber_pool, *anchor);
-    p_dlist_remove(sched->fiber_queue, anchor, *anchor);
+    PDList queue;
+    p_dlist_init(&queue, anchor, sched->fiber_queues);
+    if (p_dlist_is_empty(&queue))
+        return NULL;
+
+    return p_pool_index_to_address(sched->fiber_pool, p_dlist_get_first(&queue));
+}
+
+PFiber *p_fiber_pop_and_resume(PDListAnchor* anchor)
+{
+    PFiber *fiber = p_fiber_queue_peek(anchor);
+    if (fiber == NULL) {
+        return NULL;
+    }
+
+    PScheduler *sched = p_get_scheduler();
+    PDList queue;
+    p_dlist_init(&queue, anchor, sched->fiber_queues);
+    PIndex poped_idx= p_dlist_pop(&queue);
+    P_ASSERT(poped_idx == p_pool_address_to_index(sched->fiber_pool, fiber));
     p_fiber_resume(fiber);
     return fiber;
-}
-
-PFiber *p_fiber_queue_peek(PDlistAnchor *anchor)
-{
-    if (*anchor == P_DLIST_ANCHOR_INIT)
-        return NULL;
-    PScheduler *sched = p_get_scheduler();
-    return p_pool_index_to_address(sched->fiber_pool, *anchor);
 }
 
 void __attribute__((noreturn)) p_fiber_run(PFiber *fiber)

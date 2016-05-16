@@ -6,7 +6,7 @@ typedef struct PSem PSem;
 
 struct PSem {
     uint32_t value;
-    PDlistAnchor wait_anchor;
+    PDListAnchor wait_anchor;
 };
 
 #define P_SEM_INIT(value) {                 \

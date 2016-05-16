@@ -64,7 +64,7 @@ void p_scheduler_init(PSchedulerConfig *config)
         group->index = (PIndex) i;
         group->stack_size = fiber_config->stack_size;
         group->module_id = fiber_config->module_id;
-        group->ready_queue = P_DLIST_ANCHOR_INIT;
+        p_dlistanchor_init(&group->ready_queue);
         partitions[i] = fiber_config->fiber_count;
         fibers += fiber_config->fiber_count;
         if (fiber_config->fiber_count > 0) {
@@ -81,7 +81,7 @@ void p_scheduler_init(PSchedulerConfig *config)
     last_group->next_group = first_group;
     sched->last_group = last_group;
     sched->fiber_pool = p_pool_partitioned_init(sizeof(PFiber), config->group_count, partitions);
-    sched->fiber_queue = p_dlist_init(fibers);
+    sched->fiber_queues = p_dlistpool_init(fibers);
     sched->timer_queues = p_timer_queues_init();
 }
 
@@ -99,7 +99,7 @@ void p_scheduler_destroy()
         }
     }
     p_timer_queues_destroy(sched->timer_queues);
-    p_dlist_destroy(sched->fiber_queue);
+    p_dlistpool_destroy(sched->fiber_queues);
     p_pool_destroy(sched->fiber_pool);
     p_free(sched->groups);
     p_free(sched);
@@ -114,7 +114,9 @@ void p_scheduler_continue()
     while (sched->running_fiber_count > 0) {
         do {
             group = group->next_group;
-            fiber_index = p_dlist_pop(sched->fiber_queue, &group->ready_queue);
+            PDList queue;
+            p_dlist_init(&queue, &group->ready_queue, sched->fiber_queues);
+            fiber_index = p_dlist_pop(&queue);
             if (fiber_index != P_INVALID_INDEX) {
                 sched->last_group = group;
                 p_fiber_run(p_pool_index_to_address(sched->fiber_pool, fiber_index));

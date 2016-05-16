@@ -21,3 +21,8 @@
 #define P_PACKED __attribute__ ((packed)))
 
 bool p_is_power_of_two (uintmax_t x);
+
+#define IN
+#define OUT
+#define INOUT
+#define UNUSED __attribute__((unused))

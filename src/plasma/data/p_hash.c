@@ -6,8 +6,8 @@
 
 struct PHash {
     size_t n_buckets;
-    PDlistAnchor *buckets;
-    PDlist *values;
+    PDListAnchor *buckets;
+    PDListPool *values;
     PHashMatchFunc match;
     void *match_arg;
     PHashKeyToBucket key_to_bucket;
@@ -22,10 +22,10 @@ PHash *p_hash_init_custom(size_t n_buckets, PIndex n_values, PHashMatchFunc matc
     hash->match_arg = match_arg;
     hash->key_to_bucket = key_to_bucket;
     hash->n_buckets = n_buckets;
-    hash->buckets = p_safe_malloc(sizeof(PDlistAnchor) * n_buckets);
-    hash->values = p_dlist_init(n_values);
+    hash->buckets = p_safe_malloc(sizeof(PDListAnchor) * n_buckets);
+    hash->values = p_dlistpool_init(n_values);
     LOOP(n_buckets, i)
-        hash->buckets[i] = P_DLIST_ANCHOR_INIT;
+        p_dlistanchor_init(&hash->buckets[i]);
     return hash;
 }
 
@@ -44,26 +44,28 @@ PHash *p_hash_init(size_t n_buckets, PIndex n_values, PHashMatchFunc match, void
 bool p_hash_set(PHash *hash, void *key, size_t length, PIndex value)
 {
     size_t bucket_index = hash->key_to_bucket(hash, key, length);
-    PDlistAnchor bucket = hash->buckets[bucket_index];
-    P_DLIST_EACH(hash->values, bucket, i) {
+    PDList list;
+    p_dlist_init(&list, &hash->buckets[bucket_index], hash->values);
+    P_DLIST_EACH(&list, i) {
         if (hash->match(hash->match_arg, i, key, length)) {
             if (i == value) {
                 return false;
             } else {
-                p_dlist_remove(hash->values, &bucket, i);
+                p_dlist_remove(&list, i);
                 break;
             }
         }
     }
-    p_dlist_insert(hash->values, &bucket, value);
-    hash->buckets[bucket_index] = bucket;
+    p_dlist_insert(&list, value);
     return true;
 }
 
 PIndex p_hash_get(PHash *hash, void *key, size_t length)
 {
-    PDlistAnchor bucket = hash->buckets[hash->key_to_bucket(hash, key, length)];
-    P_DLIST_EACH(hash->values, bucket, i) {
+    PDListAnchor* bucket = &hash->buckets[hash->key_to_bucket(hash, key, length)];
+    PDList list;
+    p_dlist_init(&list, bucket, hash->values);
+    P_DLIST_EACH(&list, i) {
         if (hash->match(hash->match_arg, i, key, length)) {
             return i;
         }
@@ -74,11 +76,12 @@ PIndex p_hash_get(PHash *hash, void *key, size_t length)
 bool p_hash_remove(PHash *hash, void *key, size_t length)
 {
     size_t bucket_index = hash->key_to_bucket(hash, key, length);
-    PDlistAnchor bucket = hash->buckets[bucket_index];
-    P_DLIST_EACH(hash->values, bucket, i) {
+    PDListAnchor* bucket = &hash->buckets[bucket_index];
+    PDList list;
+    p_dlist_init(&list, bucket, hash->values);
+    P_DLIST_EACH(&list, i) {
         if (hash->match(hash->match_arg, i, key, length)) {
-            p_dlist_remove(hash->values, &bucket, i);
-            hash->buckets[bucket_index] = bucket;
+            p_dlist_remove(&list, i);
             return true;
         }
     }
@@ -87,7 +90,7 @@ bool p_hash_remove(PHash *hash, void *key, size_t length)
 
 void p_hash_destroy(PHash *hash)
 {
-    p_dlist_destroy(hash->values);
+    p_dlistpool_destroy(hash->values);
     p_free(hash->buckets);
     p_free(hash);
 }

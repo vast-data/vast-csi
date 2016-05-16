@@ -26,10 +26,8 @@ static bool match_person(void *match_arg, PIndex index, void *key, size_t length
     return memcmp(key, p->name, length) == 0;
 }
 
-static void test_set(void **state)
+static void test_set(void **state UNUSED)
 {
-    (void) state;
-
     PPool *pool = p_pool_init(4, sizeof(person));
     PHash *hash = p_hash_init(1, 4, match_person, pool);
 
@@ -57,10 +55,8 @@ static void test_set(void **state)
     p_pool_destroy(pool);
 }
 
-static void test_remove(void **state)
+static void test_remove(void **state UNUSED)
 {
-    (void) state;
-
     PPool *pool = p_pool_init(2, sizeof(person));
     PHash *hash = p_hash_init(1, 2, match_person, pool);
 

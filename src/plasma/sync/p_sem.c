@@ -5,7 +5,7 @@
 void p_sem_init(PSem *sem, uint32_t value)
 {
     sem->value = value;
-    sem->wait_anchor = P_DLIST_ANCHOR_INIT;
+    p_dlistanchor_init(&sem->wait_anchor);
 }
 
 void p_sem_inc(PSem *sem, uint32_t count)
@@ -41,5 +41,5 @@ void p_sem_dec(PSem *sem, uint32_t count)
 
 void p_sem_destroy(PSem *sem)
 {
-    P_ASSERT(sem->wait_anchor == P_DLIST_ANCHOR_INIT);
+    P_ASSERT(p_dlistanchor_is_empty(&sem->wait_anchor));
 }

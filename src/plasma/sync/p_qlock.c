@@ -4,7 +4,7 @@
 
 void p_qlock_init(PQlock *lock)
 {
-    lock->anchor = P_DLIST_ANCHOR_INIT;
+    p_dlistanchor_init(&lock->anchor);
     lock->owner = NULL;
 }
 

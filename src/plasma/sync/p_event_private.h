@@ -10,7 +10,7 @@ typedef enum {
 typedef struct PEvent PEvent;
 
 struct PEvent {
-    PDlistAnchor wait_anchor;
+    PDListAnchor wait_anchor;
     PEventState state;
 };
 

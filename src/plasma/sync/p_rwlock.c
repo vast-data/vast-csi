@@ -5,7 +5,7 @@
 void p_rwlock_init(PRWlock *lock)
 {
     lock->writer = NULL;
-    lock->wait_anchor = P_DLIST_ANCHOR_INIT;
+    p_dlistanchor_init(&lock->wait_anchor);
     lock->read_count = 0;
     lock->state = P_RWLOCK_FREE;
 }
@@ -15,7 +15,7 @@ void p_rwlock_destroy(PRWlock *lock)
     P_ASSERT(lock->writer == NULL);
     P_ASSERT(lock->read_count == 0);
     P_ASSERT(lock->state == P_RWLOCK_FREE);
-    P_ASSERT(lock->wait_anchor == P_DLIST_ANCHOR_INIT);
+    P_ASSERT(p_dlistanchor_is_empty(&lock->wait_anchor));
 }
 
 void p_rwlock_lock_read(PRWlock *lock)
@@ -33,7 +33,7 @@ void p_rwlock_lock_read(PRWlock *lock)
     case P_RWLOCK_READ:
         P_ASSERT(lock->read_count > 0);
         // if there are waiters, there's a writer before us and we should suspend
-        if (lock->wait_anchor != P_DLIST_ANCHOR_INIT) {
+        if (p_dlistanchor_is_empty(&lock->wait_anchor)) {
             p_fiber_suspend_and_queue(&lock->wait_anchor);
         } else { // otherwise, we join the current readers
             lock->read_count++;

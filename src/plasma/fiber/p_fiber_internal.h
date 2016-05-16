@@ -20,7 +20,7 @@ typedef struct PFiberGroup PFiberGroup;
 struct PFiberGroup {
     PIndex index;
     size_t stack_size;
-    PDlistAnchor ready_queue;
+    PDListAnchor ready_queue;
     PPool *stacks;
     PIndex stacks_partition;
     PFiberGroup *next_group;
@@ -62,12 +62,12 @@ void p_fiber_resume(PFiber *fiber);
  * This function can be used to resume a fiber and deque it from a provider's
  * queue at the same time.
  */
-PFiber *p_fiber_pop_and_resume(PDlistAnchor *anchor);
+PFiber *p_fiber_pop_and_resume(PDListAnchor *anchor);
 
 /*!
  * Get the next fiber to be popped without popping it.
  */
-PFiber *p_fiber_queue_peek(PDlistAnchor *anchor);
+PFiber *p_fiber_queue_peek(PDListAnchor *anchor);
 
 /*!
  * Should be called from a provider or sync primitive in the context of a running fiber.
@@ -78,7 +78,7 @@ void p_fiber_suspend(void);
  * Should be called from a provider or sync primitive in the context of a running fiber.
  * This function accepts a queue argument for suspending the fiber and storing it in a queue at the same time.
  */
-void p_fiber_suspend_and_queue(PDlistAnchor *queue);
+void p_fiber_suspend_and_queue(PDListAnchor *queue);
 
 /*!
  * Run a fiber. Should be called from the scheduler.

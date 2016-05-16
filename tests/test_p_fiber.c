@@ -32,10 +32,8 @@ enum test_fiber_group {
     FG_C
 };
 
-static void test_yield(void **state)
+static void test_yield(void **state UNUSED)
 {
-    (void) state;
-
     int value = 0;
 
     p_scheduler_init(&scheduler_config);
@@ -61,10 +59,8 @@ static void increment_twice_serial(void *value)
     assert_int_equal(*num_ptr, 6);
 }
 
-static void test_join_single(void **state)
+static void test_join_single(void **state UNUSED)
 {
-    (void) state;
-
     int value = 0;
 
     p_scheduler_init(&scheduler_config);
@@ -90,10 +86,8 @@ static void increment_twice_parallel(void *value)
     (*num_ptr)++;
 }
 
-static void test_join_all(void **state)
+static void test_join_all(void **state UNUSED)
 {
-    (void) state;
-
     int value = 0;
 
     p_scheduler_init(&scheduler_config);
@@ -122,10 +116,8 @@ static void second_sleeper(void *arg)
     *value = 2;
 }
 
-static void test_sleep(void **state)
+static void test_sleep(void **state UNUSED)
 {
-    (void) state;
-
     int value = 0;
 
     p_scheduler_init(&scheduler_config);
@@ -147,10 +139,8 @@ static void fast_sleeper(void *arg)
     *value = 1;
 }
 
-static void test_fast_sleep(void **state)
+static void test_fast_sleep(void **state UNUSED)
 {
-    (void) state;
-
     int value = 0;
 
     p_scheduler_init(&scheduler_config);
@@ -188,11 +178,10 @@ static void second_qlocker(void *lock_arg)
     p_qlock_unlock(lock);
 }
 
-static void test_qlock(void **state)
+static void test_qlock(void **state UNUSED)
 {
-    (void) state;
-
-    PQlock lock = P_QLOCK_INIT;
+    PQlock lock;
+    p_qlock_init(&lock);
 
     p_scheduler_init(&scheduler_config);
     p_fiber_init(FG_A, first_qlocker, &lock);
@@ -237,11 +226,10 @@ static void read_locker(void *lock_arg)
     p_rwlock_unlock(lock);
 }
 
-static void test_rwlock_barrier(void **state)
+static void test_rwlock_barrier(void **state UNUSED)
 {
-    (void) state;
-
-    PRWlock lock = P_RWLOCK_INIT;
+    PRWlock lock;
+    p_rwlock_init(&lock);
 
     p_scheduler_init(&scheduler_config);
     p_fiber_init(FG_A, write_locker, &lock);
@@ -264,10 +252,8 @@ static void simple_locker(void *lock_arg)
     p_rwlock_unlock(lock);
 }
 
-static void test_rwlock_simple(void **state)
+static void test_rwlock_simple(void **state UNUSED)
 {
-    (void) state;
-
     PRWlock lock;
 
     p_rwlock_init(&lock);
@@ -292,10 +278,8 @@ static void sem_nonblocking(void *sem_arg)
     p_sem_inc(sem, 2);
 }
 
-static void test_sem_nonblocking(void **state)
+static void test_sem_nonblocking(void **state UNUSED)
 {
-    (void) state;
-
     PSem sem;
 
     p_sem_init(&sem, 2);
@@ -333,10 +317,8 @@ static void decrementer(void *sem_arg)
         assert_in_range(sem_step++, 5, 6);
 }
 
-static void test_sem_blocking(void **state)
+static void test_sem_blocking(void **state UNUSED)
 {
-    (void) state;
-
     PSem sem;
 
     p_sem_init(&sem, 0);
@@ -375,10 +357,8 @@ static void event_one_setter(void *event_arg)
     }
 }
 
-static void test_event_one(void **state)
+static void test_event_one(void **state UNUSED)
 {
-    (void) state;
-
     PEvent event;
 
     p_event_init(&event);
@@ -409,10 +389,8 @@ static void event_all_setter(void *event_arg)
     p_event_release_all(event);
 }
 
-static void test_event_all(void **state)
+static void test_event_all(void **state UNUSED)
 {
-    (void) state;
-
     PEvent event;
 
     p_event_init(&event);
@@ -435,10 +413,8 @@ static void iter(void *arg) {
         p_fiber_yield();
 }
 
-static void test_perf(void **state)
+static void test_perf(void **state UNUSED)
 {
-    (void) state;
-
     size_t iters = 100000;
     size_t num_fibers = 10;
 
@@ -468,10 +444,8 @@ static void outer(void *arg)
     inner();
 }
 
-static void test_backtrace(void **state)
+static void test_backtrace(void **state UNUSED)
 {
-    (void) state;
-
     p_scheduler_init(&scheduler_config);
     p_fiber_init(FG_A, outer, NULL);
     p_scheduler_run();

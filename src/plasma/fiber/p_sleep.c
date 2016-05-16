@@ -18,14 +18,14 @@ static uint64_t interval_to_micro[] = {MILLI_TO_MICRO(100),
 
 struct PTimerQueues {
     uint64_t wakeup_time;
-    PDlistAnchor queues[SLEEP_INTERVAL_COUNT];
+    PDListAnchor queues[SLEEP_INTERVAL_COUNT];
 };
 
 PTimerQueues *p_timer_queues_init()
 {
     PTimerQueues *timer_queues = p_safe_malloc(sizeof(PTimerQueues));
     LOOP(SLEEP_INTERVAL_COUNT, i)
-        timer_queues->queues[i] = P_DLIST_ANCHOR_INIT;
+        p_dlistanchor_init(&timer_queues->queues[i]);
     timer_queues->wakeup_time = NO_PENDING_FIBERS;
     return timer_queues;
 }
@@ -64,13 +64,14 @@ void p_timer_queues_poll(PTimerQueues *timer_queues, PScheduler *scheduler)
 
     timer_queues->wakeup_time = NO_PENDING_FIBERS;
     LOOP(SLEEP_INTERVAL_COUNT, i) {
-        PDlistAnchor anchor = timer_queues->queues[i];
-        while (!p_dlist_is_empty(scheduler->fiber_queue, anchor)) {
-            PFiber *fiber = p_pool_index_to_address(scheduler->fiber_pool, anchor);
+        PDListAnchor* anchor = &timer_queues->queues[i];
+        PDList queue;
+        p_dlist_init(&queue, anchor, scheduler->fiber_queues);
+        while (!p_dlist_is_empty(&queue)) {
+            PFiber *fiber = p_pool_index_to_address(scheduler->fiber_pool, p_dlist_get_first(&queue));
             uint64_t fiber_wakeup = fiber->switch_time + MICRO_TO_NANO(interval_to_micro[i]);
             if (fiber_wakeup <= time) {
-                p_fiber_pop_and_resume(&timer_queues->queues[i]);
-                anchor = timer_queues->queues[i];
+                p_fiber_pop_and_resume(anchor);
             } else {
                 timer_queues->wakeup_time = MIN(timer_queues->wakeup_time, fiber_wakeup);
                 break;

@@ -11,10 +11,7 @@
 #include "p_qlock_private.h"
 
 /*!
- * Initialize a qlock object. A qlock can also be defined and initialized in a single line:
-\code{.c}
-    PQlock lock = P_QLOCK_INIT;
-\endcode
+ * Initialize a qlock object.
  */
 void p_qlock_init(PQlock *lock);
 

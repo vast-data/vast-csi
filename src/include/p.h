@@ -14,7 +14,7 @@
 #include <string.h>
 
 typedef int32_t PIndex;
-#define P_INVALID_INDEX -1
+#define P_INVALID_INDEX (-1)
 
 #include "defs.h"
 #include "plasma/time.h"

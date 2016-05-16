@@ -20,7 +20,7 @@ struct PScheduler {
     PFiberGroup *groups;
     PFiber *current_fiber;
     PPool *fiber_pool;
-    PDlist *fiber_queue;
+    PDListPool *fiber_queues;
     PIndex running_fiber_count;
     uint64_t curr_job_id;
     PTimerQueues *timer_queues;

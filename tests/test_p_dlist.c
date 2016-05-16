@@ -5,121 +5,126 @@
 #include <setjmp.h>
 #include <cmocka.h>
 
-static void test_insert(void **state)
+static void test_insert(void **state UNUSED)
 {
-    (void) state;
+    PDListPool *listpool = p_dlistpool_init(3);
+    PDListAnchor anchor;
+    p_dlistanchor_init(&anchor);
+    PDList list;
+    p_dlist_init(&list, &anchor, listpool);
 
-    PDlist *list = p_dlist_init(3);
-    PDlistAnchor anchor = P_DLIST_ANCHOR_INIT;
-    assert_true(p_dlist_is_empty(list, anchor));
+    assert_true(p_dlist_is_empty(&list));
 
-    p_dlist_insert(list, &anchor, 1);
-    assert_false(p_dlist_is_empty(list, anchor));
+    p_dlist_insert(&list, 1);
+    assert_false(p_dlist_is_empty(&list));
 
-    p_dlist_insert(list, &anchor, 2);
-    assert_int_equal(anchor, 2);
+    p_dlist_insert(&list, 2);
+    assert_int_equal(p_dlist_get_first(&list), 2);
 
-    p_dlist_destroy(list);
+    p_dlistpool_destroy(listpool);
 }
 
-static void test_add_after(void **state)
+static void test_add_after(void **state UNUSED)
 {
-    (void) state;
+    PDListPool *listpool = p_dlistpool_init(3);
+    PDListAnchor anchor;
+    p_dlistanchor_init(&anchor);
+    PDList list;
+    p_dlist_init(&list, &anchor, listpool);
 
-    PDlist *list = p_dlist_init(3);
-    PDlistAnchor anchor = P_DLIST_ANCHOR_INIT;
+    p_dlist_insert(&list, 0);
+    p_dlist_add_after(&list, 0, 2);
+    p_dlist_add_after(&list, 0, 1);
+    assert_int_equal(p_dlist_get_first(&list), 0);
+    assert_int_equal(p_dlist_next(&list, 0), 1);
+    assert_int_equal(p_dlist_next(&list, 1), 2);
+    assert_int_equal(p_dlist_next(&list, 2), 0);
 
-    p_dlist_insert(list, &anchor, 0);
-    p_dlist_add_after(list, &anchor, 0, 2);
-    p_dlist_add_after(list, &anchor, 0, 1);
-    assert_int_equal(anchor, 0);
-    assert_int_equal(p_dlist_next(list, &anchor, 0), 1);
-    assert_int_equal(p_dlist_next(list, &anchor, 1), 2);
-    assert_int_equal(p_dlist_next(list, &anchor, 2), 0);
-
-    p_dlist_destroy(list);
+    p_dlistpool_destroy(listpool);
 }
 
-static void test_add_before(void **state)
+static void test_add_before(void **state UNUSED)
 {
-    (void) state;
+    PDListPool *listpool = p_dlistpool_init(3);
+    PDListAnchor anchor;
+    p_dlistanchor_init(&anchor);
+    PDList list;
+    p_dlist_init(&list, &anchor, listpool);
 
-    PDlist *list = p_dlist_init(3);
-    PDlistAnchor anchor = P_DLIST_ANCHOR_INIT;
+    p_dlist_insert(&list, 0);
+    p_dlist_add_before(&list, 0, 2);
+    p_dlist_add_before(&list, 0, 1);
+    assert_int_equal(p_dlist_get_first(&list), 2);
+    assert_int_equal(p_dlist_next(&list, 2), 1);
+    assert_int_equal(p_dlist_next(&list, 1), 0);
+    assert_int_equal(p_dlist_next(&list, 0), 2);
 
-    p_dlist_insert(list, &anchor, 0);
-    p_dlist_add_before(list, &anchor, 0, 2);
-    p_dlist_add_before(list, &anchor, 0, 1);
-    assert_int_equal(anchor, 0);
-    assert_int_equal(p_dlist_next(list, &anchor, 2), 1);
-    assert_int_equal(p_dlist_next(list, &anchor, 1), 0);
-    assert_int_equal(p_dlist_next(list, &anchor, 0), 2);
-
-    p_dlist_destroy(list);
+    p_dlistpool_destroy(listpool);
 }
 
-static void test_remove(void **state)
+static void test_remove(void **state UNUSED)
 {
-    (void) state;
+    PDListPool *listpool = p_dlistpool_init(3);
+    PDListAnchor anchor;
+    p_dlistanchor_init(&anchor);
+    PDList list;
+    p_dlist_init(&list, &anchor, listpool);
 
-    PDlist *list = p_dlist_init(3);
-    PDlistAnchor anchor = P_DLIST_ANCHOR_INIT;
+    p_dlist_insert(&list, 0);
+    p_dlist_add_after(&list, 0, 1);
+    p_dlist_add_after(&list, 1, 2);
 
-    p_dlist_insert(list, &anchor, 0);
-    p_dlist_add_after(list, &anchor, 0, 1);
-    p_dlist_add_after(list, &anchor, 1, 2);
+    p_dlist_remove(&list, 1);
+    assert_int_equal(p_dlist_get_first(&list), 0);
+    assert_int_equal(p_dlist_next(&list, 0), 2);
 
-    p_dlist_remove(list, &anchor, 1);
-    assert_int_equal(anchor, 0);
-    assert_int_equal(p_dlist_next(list, &anchor, 0), 2);
+    p_dlist_remove(&list, 0);
+    assert_int_equal(p_dlist_get_first(&list), 2);
 
-    p_dlist_remove(list, &anchor, 0);
-    assert_int_equal(anchor, 2);
+    p_dlist_remove(&list, 2);
+    assert_true(p_dlist_is_empty(&list));
 
-    p_dlist_remove(list, &anchor, 2);
-    assert_true(p_dlist_is_empty(list, anchor));
-
-    p_dlist_destroy(list);
+    p_dlistpool_destroy(listpool);
 }
 
-static void test_each(void **state)
+static void test_each(void **state UNUSED)
 {
-    (void) state;
+    PDListPool *listpool = p_dlistpool_init(3);
+    PDListAnchor anchor;
+    p_dlistanchor_init(&anchor);
+    PDList list;
+    p_dlist_init(&list, &anchor, listpool);
 
+    P_DLIST_EACH(&list,  i) {}
 
-    PDlist *list = p_dlist_init(3);
-    PDlistAnchor anchor = P_DLIST_ANCHOR_INIT;
-
-    P_DLIST_EACH(list, anchor, i) {}
-
-    p_dlist_insert(list, &anchor, 0);
-    p_dlist_add_after(list, &anchor, 0, 1);
-    p_dlist_add_after(list, &anchor, 1, 2);
+    p_dlist_insert(&list, 0);
+    p_dlist_add_after(&list, 0, 1);
+    p_dlist_add_after(&list, 1, 2);
 
     PIndex j = 0;
-    P_DLIST_EACH(list, anchor, i) {
+    P_DLIST_EACH(&list, i) {
         assert_int_equal(i, j++);
     }
     assert_int_equal(j, 3);
 
-    p_dlist_destroy(list);
+    p_dlistpool_destroy(listpool);
 }
 
-static void test_queue(void **state)
+static void test_queue(void **state UNUSED)
 {
-    (void) state;
+    PDListPool *listpool = p_dlistpool_init(2);
+    PDListAnchor anchor;
+    p_dlistanchor_init(&anchor);
+    PDList list;
+    p_dlist_init(&list, &anchor, listpool);
 
+    p_dlist_append(&list, 0);
+    p_dlist_append(&list, 1);
 
-    PDlist *list = p_dlist_init(2);
-    PDlistAnchor anchor = P_DLIST_ANCHOR_INIT;
+    assert_int_equal(p_dlist_pop(&list), 0);
+    assert_int_equal(p_dlist_pop(&list), 1);
 
-    p_dlist_append(list, &anchor, 0);
-    p_dlist_append(list, &anchor, 1);
-
-    assert_int_equal(p_dlist_pop(list, &anchor), 0);
-    assert_int_equal(p_dlist_pop(list, &anchor), 1);
-
-    p_dlist_destroy(list);
+    p_dlistpool_destroy(listpool);
 }
 
 int main(void)
