@@ -7,3 +7,4 @@ yum -y install libunwind libunwind-devel
 yum -y install libconfig libconfig-devel
 yum -y install doxygen
 yum -y install xorg-x11-xauth
+yum -y install vim-enhanced
