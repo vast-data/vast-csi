@@ -1,4 +1,5 @@
 #include "p_spin_lock.h"
+#include <errno.h>
 
 void p_spin_lock_init(PSpinLock *lock)
 {
@@ -15,9 +16,15 @@ void p_spin_lock_lock(PSpinLock *lock)
     P_ASSERT(pthread_spin_lock(lock) == 0);
 }
 
-void p_spin_lock_trylock(PSpinLock *lock)
+bool p_spin_lock_trylock(PSpinLock *lock)
 {
-    P_ASSERT(pthread_spin_trylock(lock) == 0);
+    int result = pthread_spin_trylock(lock);
+    if (result == 0) {
+        return true;
+    } else {
+        P_ASSERT(result == EBUSY);
+        return false;
+    }
 }
 
 void p_spin_lock_unlock(PSpinLock *lock)
