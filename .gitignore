@@ -5,3 +5,5 @@ docs/*
 nbproject/private/
 .vagrant/
 ignore
+TAGS
+data

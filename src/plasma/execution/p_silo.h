@@ -2,7 +2,7 @@
 
 /*!
  * \file p_silo.h
- * \bried a silo wraps a pthread and initialization our execution model (modules, components, fibers, etc')
+ * \brief a silo wraps a pthread and initializes our execution model (modules, components, fibers, etc')
  */
 #pragma once
 
@@ -41,10 +41,13 @@ typedef uint8_t PSiloId;
        )
      }
    }
+   traces: {
+
+   }
  }
 \endcode
  */
-PSilo *p_silo_init(PConfigSetting *silo_config, int32_t affinity, PSiloId silo_id);
+PSilo *p_silo_init(PConfigSetting *silo_config, int32_t affinity, PSiloId silo_id, const char *data_dir);
 
 /*!
  * Launch a silo (starts a pthread) and return immediately.
@@ -99,4 +102,3 @@ void p_silo_destroy(PSilo *silo);
 #ifdef __cplusplus
 }
 #endif
-

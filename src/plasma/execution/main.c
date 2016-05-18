@@ -22,6 +22,8 @@ static void error_handler(int sig)
     p_show_backtrace();
 
     env_error();
+
+    printf("===FINISH===\n");
 }
 
 /*!

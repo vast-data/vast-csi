@@ -6,7 +6,7 @@
  */
 #pragma once
 
-#include <p.h>
+#include <stdint.h>
 
 #define MAGNITUDE(n)        ((n) * 1000)
 

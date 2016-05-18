@@ -4,7 +4,8 @@
 #include <setjmp.h>
 #include <cmocka.h>
 
-#include "plasma/trace/p_dbuffer.h"
+#include <p.h>
+#include "plasma/execution/p_config_internal.h"
 
 static void test_dbuffer_sanity(void **state)
 {
@@ -94,12 +95,70 @@ static void test_dbuffer_overflow(void **state)
     p_dbuffer_destroy(buf);
 }
 
+static char config_string[] = QUOTE(traces: {
+    COMPONENT_PLASMA: {
+      min_severity: "P_TRACE_DEBUG",
+      buffer_size_mb: 1,
+      persistent: true,
+      file_size_mb: 2,
+      file_count: 10
+    }
+  });
+
+#define DATADIR "./data"
+#define ITERS 1000000
+static void test_emitter(void **state UNUSED)
+{
+    PConfig config;
+    p_config_init(&config);
+
+    assert_int_equal(config_read_string(&config, config_string), CONFIG_TRUE);
+
+    PConfigSetting *setting = p_config_lookup(&config, "traces");
+
+    PTraceEmitter *emitter = p_trace_emitter_init(setting);
+    PTraceDumper *dumper = p_trace_dumper_init(setting, emitter, DATADIR);
+    p_trace_emitter_set(emitter);
+    p_trace_dumper_start(dumper);
+
+    P_TRACE(P_TRACE_INFO, 0, "Parameterless trace");
+
+    long l = 1;
+    int i = 2;
+    short s = 3;
+    char c = '4';
+    void *ptr = &l;
+    const char *str = "ABC";
+    uint64_t start = p_get_clock_time_nano();
+    LOOP(ITERS, _) {
+        P_TRACE(P_TRACE_INFO, 0, "%ld %d %hd %c %p %s", l, i, s, c, ptr, str);
+    }
+    uint64_t end = p_get_clock_time_nano();
+    float avg = (float) (end - start) / ITERS;
+    printf("Iterations: %d. Average: %.3fns. Total: %lu\n", ITERS, avg, end - start);
+
+    p_trace_dumper_stop(dumper);
+    p_trace_dumper_wait(dumper);
+    p_trace_dumper_destroy(dumper);
+    p_trace_emitter_destroy(emitter);
+}
+
+static void test_trace_file(void **state UNUSED)
+{
+    PTraceRecord record;
+    PTraceFile *file = p_trace_file_init("bla", DATADIR, 512, 3);
+    p_trace_file_emit(file, &record, P_TRACE_RECORD_MAX_SIZE);
+    p_trace_file_destroy(file);
+}
+
 int main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_dbuffer_sanity),
         cmocka_unit_test(test_dbuffer_wraparound),
-        cmocka_unit_test(test_dbuffer_overflow)
+        cmocka_unit_test(test_dbuffer_overflow),
+        cmocka_unit_test(test_emitter),
+        cmocka_unit_test(test_trace_file)
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

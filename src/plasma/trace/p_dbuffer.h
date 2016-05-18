@@ -1,10 +1,16 @@
-#include <p.h>
+/* Copyright (C) Vast Data Ltd. */
 
-typedef enum {
-    PDBUFFER_READ_SUCCESS,
-    PDBUFFER_READ_NOTHING,
-    PDBUFFER_READ_OVERFLOW,
-} PDbufferReadResult;
+/*!
+ * \file p_dbuffer.h
+ * \brief a double buffer that can be used as a lockless queue with variable sized records
+ */
+#pragma once
+
+#include <stdint.h>
+#include <stdbool.h>
+
+#include "../memory/p_alloc.h"
+#include "../utils.h"
 
 typedef struct PDbuffer PDbuffer;
 
@@ -17,8 +23,15 @@ typedef struct PDbufferReader PDbufferReader;
 struct PDbufferReader {
     PDbuffer *dbuf;
     uint32_t generation;
-    uint8_t read_index;
+    uint32_t read_index;
 };
 
 void p_dbuffer_reader_init(PDbufferReader *reader, PDbuffer *dbuf);
-PDbufferReadResult p_dbuffer_read(PDbufferReader *dbuf_reader, void *out_data, uint8_t *out_length, bool force);
+
+typedef enum {
+    PDBUFFER_READ_SUCCESS,
+    PDBUFFER_READ_NOTHING,
+    PDBUFFER_READ_OVERFLOW,
+} PDbufferReadResult;
+
+PDbufferReadResult p_dbuffer_read(PDbufferReader *dbuf_reader, void *data OUT, uint8_t *length OUT, bool force);

@@ -49,7 +49,7 @@ void p_scheduler_init(PSchedulerConfig *config)
 
     sched->current_fiber = NULL;
     sched->running_fiber_count = 0;
-    sched->curr_job_id = 0;
+    sched->curr_job_id = 1; // save 0 for trace records not created within fibers
     sched->group_count = config->group_count;
     sched->groups = p_safe_cache_aligned_malloc(sizeof(PFiberGroup) * (size_t) sched->group_count);
 

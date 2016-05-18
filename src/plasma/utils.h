@@ -6,7 +6,11 @@
  */
 #pragma once
 
-#include <p.h>
+#include <stdint.h>
+#include <stdbool.h>
+
+typedef int32_t PIndex;
+#define P_INVALID_INDEX (-1)
 
 typedef uint8_t byte;
 
@@ -30,9 +34,9 @@ typedef uint8_t byte;
 #define P_CACHE_ALIGNED __attribute__ ((aligned(P_CACHE_LINE_BYTES)))
 #define P_PACKED __attribute__ ((packed)))
 
-// copied from linux kernel
-#define likely(x)       __builtin_expect((x),1)
-#define unlikely(x)     __builtin_expect((x),0)
+// ad defined in the linux kernel
+#define likely(x)      __builtin_expect(!!(x), 1)
+#define unlikely(x)    __builtin_expect(!!(x), 0)
 
 #define IN
 #define OUT
@@ -72,3 +76,4 @@ typedef uint8_t byte;
                          max_spinning_attempts, attempts_per_yield, max_attempts, loop_body)
 
 bool p_is_power_of_two (uintmax_t x);
+void p_ensure_directory_exists(const char *dir);

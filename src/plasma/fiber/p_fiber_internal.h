@@ -34,9 +34,9 @@ struct PFiber {
     void *stack;
     PFiber *parent;
     PFiberGroup *group;
-    PFiberState state; // currently used for debug purposes
     uint64_t switch_time; // updated when a fiber is resumed or suspended
-    uint64_t job_id;
+    PFiberState state; // currently used for debug purposes
+    uint32_t job_id;
     union {
         uint32_t sem_count;
         uint32_t waited_future_count;
@@ -47,11 +47,6 @@ struct PFiber {
 
 #define P_FIBER_STACK_UNDERFLOW_MAGIC 0xDEADBEEF
 #define P_FIBER_STACK_OVERFLOW_MAGIC  0xBABECAFE
-
-/*!
- * Return the currently running fiber.
- */
-PFiber *p_get_current_fiber(void);
 
 /*!
  * Resume a fiber. Should be used by providers or sync primitives.

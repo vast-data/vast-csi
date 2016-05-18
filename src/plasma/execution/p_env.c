@@ -56,6 +56,9 @@ error:
 
 static void env_init(PConfig *config)
 {
+    const char *data_dir = "./data";
+    p_ensure_directory_exists(data_dir);
+
     PConfigSetting *silos_setting = p_config_lookup(config, "silos");
     PConfigSetting *silo_types_setting = p_config_lookup(config, "silo_types");
     env.num_silos = (uint32_t) p_config_setting_length(silos_setting);
@@ -68,7 +71,7 @@ static void env_init(PConfig *config)
         const char *silo_type_name = p_config_setting_get_string(silo_type_name_setting);
         // SiloId is 8 bit
         P_ASSERT(i < P_INVALID_SILO_ID);
-        env.silos[i] = p_silo_init(p_config_setting_lookup_required(silo_types_setting, silo_type_name), affinity, (PSiloId)i);
+        env.silos[i] = p_silo_init(p_config_setting_lookup_required(silo_types_setting, silo_type_name), affinity, (PSiloId)i, data_dir);
     }
     // Initialize a barrier for all silos and the main thread, used for synchronizing state
     P_ASSERT(pthread_barrier_init(&env.state_barrier, NULL, env.num_silos + 1) == 0);

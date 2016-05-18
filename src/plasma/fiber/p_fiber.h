@@ -6,7 +6,8 @@
  */
 #pragma once
 
-#include <p.h>
+#include "../utils.h"
+#include "../../defs.h"
 
 typedef struct PFiber PFiber;
 
@@ -38,4 +39,9 @@ ModuleId p_fiber_get_module_id(void);
 /*!
  * Get the current/last job id performed by this fiber
  */
-uint64_t get_job_id(PFiber *fiber);
+uint32_t p_fiber_get_job_id(PFiber *fiber);
+
+/*!
+ * Return the currently running fiber.
+ */
+PFiber *p_get_current_fiber(void);

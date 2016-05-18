@@ -7,13 +7,13 @@
 
 #include "plasma/execution/p_config_internal.h"
 
-static char config_string[] = "group : {"
-    "int: 123;"
-    "int64: 124L;"
-    "bool: true;"
-    "string: \"bla\";"
-    "float: 1.2"
-    "}";
+static char config_string[] = QUOTE(group: {
+    int: 123;
+    int64: 124L;
+    bool: true;
+    string: "bla";
+    float: 1.2
+  });
 
 static void test(void **state)
 {

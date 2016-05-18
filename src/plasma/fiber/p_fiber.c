@@ -16,6 +16,9 @@
 
 PFiber *p_get_current_fiber()
 {
+    PScheduler *sched = p_get_scheduler();
+    if (sched == NULL)
+        return NULL;
     return p_get_scheduler()->current_fiber;
 }
 
@@ -89,14 +92,14 @@ void p_fiber_destroy(PFiber *fiber)
     sched->running_fiber_count--;
 }
 
-uint64_t get_job_id(PFiber *fiber)
+uint32_t p_fiber_get_job_id(PFiber *fiber)
 {
-	return fiber->job_id;
+    return fiber->job_id;
 }
 
 static void init_job_id(PFiber *fiber)
 {
-	fiber->job_id = ++p_get_scheduler()->curr_job_id;
+    fiber->job_id = ++p_get_scheduler()->curr_job_id;
 }
 
 PFiber *p_fiber_init(PIndex group_index, void (*func)(void *arg), void *arg, bool parent_will_join)

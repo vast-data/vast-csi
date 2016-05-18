@@ -1,9 +1,14 @@
 yum -y groupinstall 'Development Tools'
-yum -y install epel-release net-tools which clang lldb scons libcmocka-devel libunwind-devel libconfig libconfig-devel install doxygen xorg-x11-xauth vim-enhanced zsh libaio-devel
+yum -y install epel-release
+yum -y install net-tools which clang lldb scons libcmocka-devel libunwind-devel libconfig-devel install doxygen xorg-x11-xauth vim-enhanced zsh centos-release-scl libaio-devel
+yum -y install devtoolset-3-gcc
 
+pip install --upgrade pip
+pip install virtualenv
+
+# install oh-my-zsh for the vagrant user
 chsh -s /bin/zsh vagrant
 
-# install oh-my-zsh
 su vagrant << EOF
 if [ ! -d ~/.oh-my-zsh ]; then
     git clone git://github.com/robbyrussell/oh-my-zsh.git ~/.oh-my-zsh

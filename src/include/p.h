@@ -13,12 +13,11 @@
 #include <stddef.h>
 #include <string.h>
 
-typedef int32_t PIndex;
-#define P_INVALID_INDEX (-1)
-
 #include "defs.h"
 #include "globals.h"
 #include "plasma/time.h"
+#include "plasma/macro.h"
+#include "plasma/units.h"
 #include "plasma/utils.h"
 #include "plasma/p_assert.h"
 #include "plasma/backtrace.h"
@@ -41,3 +40,6 @@ typedef int32_t PIndex;
 #include "plasma/execution/p_env.h"
 #include "plasma/io/p_devio.h"
 #include "plasma/io/p_io_provider.h"
+#include "plasma/trace/emitter.h"
+#include "plasma/trace/dumper.h"
+#include "plasma/trace/file.h"

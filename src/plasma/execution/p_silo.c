@@ -8,6 +8,7 @@
 #include <p.h>
 
 #include "p_config_internal.h"
+#include "../internal.h"
 
 typedef struct Module Module;
 struct Module {
@@ -19,12 +20,14 @@ struct Module {
 struct PSilo {
     Module modules[MODULE_COUNT];
     PSchedulerConfig scheduler_config;
+    PTraceEmitter *trace_emitter;
+    PTraceDumper *trace_dumper;
     pthread_t pthread;
     int32_t affinity;
     PSiloId silo_id;
 };
 
-PSilo *p_silo_init(PConfigSetting *silo_config, int32_t affinity, PSiloId silo_id)
+PSilo *p_silo_init(PConfigSetting *silo_config, int32_t affinity, PSiloId silo_id, const char *data_dir)
 {
     PSilo *silo = p_safe_malloc(sizeof(PSilo));
     p_fill_zeroes(silo, sizeof(PSilo));
@@ -40,7 +43,7 @@ PSilo *p_silo_init(PConfigSetting *silo_config, int32_t affinity, PSiloId silo_i
         PConfigSetting *module_setting = p_config_setting_get_element(modules_setting, (uint32_t) i);
         const char *module_name = p_config_setting_name(module_setting);
 
-        ModuleId module_id = string_to_module_id(module_name);
+        ModuleId module_id = module_id_from_string(module_name);
         silo->modules[module_id].defined = true;
         silo->modules[module_id].user_state = module_init_functions[module_id](silo, module_setting);
 
@@ -48,7 +51,7 @@ PSilo *p_silo_init(PConfigSetting *silo_config, int32_t affinity, PSiloId silo_i
         LOOP(p_config_setting_length(fibers_setting), j) {
             PConfigSetting *fiber_group_setting = p_config_setting_get_element(fibers_setting, (uint32_t) j);
             PConfigSetting *group_id_setting = p_config_setting_lookup_required(fiber_group_setting, "group_id");
-            FiberGroupId group_id = string_to_fiber_group_id(p_config_setting_get_string(group_id_setting));
+            FiberGroupId group_id = fiber_group_id_from_string(p_config_setting_get_string(group_id_setting));
             // verify the same fiber group hadn't been defined twice
             P_ASSERT(silo->scheduler_config.fiber_groups[group_id].stack_size == 0);
 
@@ -61,6 +64,9 @@ PSilo *p_silo_init(PConfigSetting *silo_config, int32_t affinity, PSiloId silo_i
         }
     }
 
+    PConfigSetting *trace_config = p_config_setting_lookup_required(silo_config, "traces");
+    silo->trace_emitter = p_trace_emitter_init(trace_config);
+    silo->trace_dumper = p_trace_dumper_init(trace_config, silo->trace_emitter, data_dir);
     return silo;
 }
 
@@ -77,9 +83,10 @@ static void pin_to_core(int32_t core_id)
 
 static void silo_start_in_fiber(void *silo_arg)
 {
+    PSilo *silo = silo_arg;
+
     env_wait_for_run_state();
 
-    PSilo *silo = silo_arg;
     LOOP(MODULE_COUNT, i) {
         if (silo->modules[i].defined) {
             module_start_functions[i]();
@@ -108,11 +115,23 @@ static void *silo_main(void *silo_arg)
     if (silo->affinity != NO_AFFINITY)
         pin_to_core(silo->affinity);
     current_silo = silo;
+
+    p_trace_emitter_set(silo->trace_emitter);
+    p_trace_dumper_start(silo->trace_dumper);
+
+    PT_INFO("Silo started. Affinity set to: %d", silo->affinity);
+
     p_scheduler_init(&silo->scheduler_config);
     p_fiber_init(FIBER_GROUP_P, silo_start_in_fiber, silo, false);
     p_scheduler_run();
     // we shouldn't regularly get here. it means all fiber have finished running.
     p_scheduler_destroy();
+
+    PT_INFO("Silo finished");
+
+    p_trace_dumper_stop(silo->trace_dumper);
+    p_trace_dumper_wait(silo->trace_dumper);
+
     return NULL;
 }
 
@@ -148,11 +167,16 @@ void *p_silo_get_component_state(ComponentId component_id)
 
 void p_silo_halt(PSilo *silo)
 {
+    p_trace_dumper_stop(silo->trace_dumper);
+    p_trace_dumper_wait(silo->trace_dumper);
+
     pthread_kill(silo->pthread, SIGSTOP);
 }
 
 void p_silo_destroy(PSilo *silo)
 {
+    p_trace_dumper_destroy(silo->trace_dumper);
+    p_trace_emitter_destroy(silo->trace_emitter);
     p_free(silo->scheduler_config.fiber_groups);
     p_free(silo);
 }

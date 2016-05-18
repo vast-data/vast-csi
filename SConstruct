@@ -44,25 +44,33 @@ Help(help_text)
 
 env['ENV']['TERM'] = os.environ['TERM'] # enable terminal colors in clang
 
-env.Replace(CC=ARGUMENTS.get('cc', 'clang'))
-
 optimizations = ARGUMENTS.get('O', '2')
 debug = ARGUMENTS.get('debug')
 if debug is not None:
-   optimizations = '0'
-   env.Append(CPPDEFINES=['DEBUG'])
+    optimizations = '0'
+    env.Append(CPPDEFINES=['DEBUG'])
+
+compiler = ARGUMENTS.get('cc', 'clang')
+if compiler == 'clang':
+    env.Replace(CC=compiler)
+    env.Append(CFLAGS=['-Weverything',
+                       '-Wno-disabled-macro-expansion',
+                       '-Wno-gnu-zero-variadic-macro-arguments'])
+else:
+    assert compiler == 'gcc'
+    env.Replace(CC='/opt/rh/devtoolset-3/root/usr/bin/gcc')
+    env.Append(CFLAGS=['-Wall'])
+
 env.Append(CFLAGS=['-g',
                    '-std=gnu11',
                    '-O' + optimizations,
                    '-fno-omit-frame-pointer', # with -O2 this is required to be able to generate backtraces
-                   '-Weverything' if env['CC'] == 'clang' else '-Wall',
                    '-Werror',
-                   '-Wno-disabled-macro-expansion',
-                   '-Wno-gnu-zero-variadic-macro-arguments',
                    '-Wno-vla',
                    '-Wno-padded',
                    '-Wno-cast-align'])
 env.Append(CPPPATH=['src', 'src/include'])
+env.Append(LINKFLAGS=['-pthread'])
 
 murmur_env = env.Clone()
 murmur_env.Append(CFLAGS=['-Wno-cast-align',
@@ -74,7 +82,8 @@ murmur = murmur_env.Object(DEFAULT_BUILD_DIR + '/src/plasma/third_party/murmur3/
 sources.append(murmur)
 
 lib = env.Library(target='dist/orion', source=sources)
-LIBS = ['unwind', 'config', 'pthread', 'libaio', lib]
+LIBS = ['unwind', 'config', 'libaio', lib]
+
 env.Program(target='dist/env', source=[DEFAULT_BUILD_DIR + '/src/plasma/execution/main.c'], LIBS=LIBS)
 
 def AddTest(target, source, env=env, wrap=[]):
