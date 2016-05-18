@@ -30,6 +30,8 @@ static void context_switch()
     PFiber *fiber = p_get_current_fiber();
     P_ASSERT(fiber->state != FIBER_STATE_RUNNING);
     P_ASSERT(p_get_time_nano() - fiber->switch_time < STARVATION_THRESHOLD_NS);
+    P_ASSERT(*((intptr_t *) fiber->stack) == (intptr_t) P_FIBER_STACK_OVERFLOW_MAGIC);
+
     fiber->switch_time = p_get_time_nano();
     if (!setjmp(fiber->jmp_buf)) {
         p_scheduler_continue();
@@ -101,11 +103,13 @@ PFiber *p_fiber_init(PIndex group_index, void (*func)(void *arg), void *arg)
         return NULL;
     PFiber *fiber = p_pool_index_to_address(sched->fiber_pool, fiber_index);
     void *stack = p_pool_partitioned_alloc_address(group->stacks, group->stacks_partition);
+    uint64_t *stack_int_ptr = stack;
+    *stack_int_ptr = (intptr_t) P_FIBER_STACK_OVERFLOW_MAGIC;
     // the stack grows downward so add the stack size and leave room for the instruction pointer.
     // the fiber will never return (it calls longjmp) so the instruction pointer is filled
     // with a magic value that helps identify to top of the stack when printing backtraces.
     void *stack_ptr = (void*) ((intptr_t) stack + (intptr_t) group->stack_size - (intptr_t) sizeof(uint64_t));
-    uint64_t *stack_int_ptr = stack_ptr;
+    stack_int_ptr = stack_ptr;
     *stack_int_ptr = (intptr_t) P_FIBER_STACK_UNDERFLOW_MAGIC;
     fiber->jmp_buf[0].__jmpbuf[JB_RSP] = ptr_mangle((intptr_t) stack_ptr);
     fiber->jmp_buf[0].__jmpbuf[JB_PC] = ptr_mangle((intptr_t) fiber_main);

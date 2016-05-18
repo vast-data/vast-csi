@@ -45,6 +45,7 @@ struct PFiber {
 };
 
 #define P_FIBER_STACK_UNDERFLOW_MAGIC 0xDEADBEEF
+#define P_FIBER_STACK_OVERFLOW_MAGIC  0xBABECAFE
 
 /*!
  * Return the currently running fiber.
