@@ -10,7 +10,11 @@ yum -y install xorg-x11-xauth
 yum -y install vim-enhanced
 yum -y install zsh
 
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/robbyrussell/oh-my-zsh/master/tools/install.sh)"
-sed -i 's/ZSH_THEME="robbyrussell"/ZSH_THEME="risto"/g' /home/vagrant/.zshrc
-sudo chsh -s /bin/zsh vagrant
-zsh
+chsh -s /bin/zsh vagrant
+
+# install oh-my-zsh
+su vagrant << EOF
+git clone git://github.com/robbyrussell/oh-my-zsh.git ~/.oh-my-zsh
+cp ~/.oh-my-zsh/templates/zshrc.zsh-template ~/.zshrc
+sed -i 's/ZSH_THEME="robbyrussell"/ZSH_THEME="risto"/g' ~/.zshrc
+EOF
