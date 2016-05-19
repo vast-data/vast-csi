@@ -46,6 +46,10 @@ static void __attribute__((noreturn)) fiber_main()
     if (fiber->parent != NULL)
         if (--fiber->parent->join_count == 0)
             p_fiber_resume(fiber->parent);
+
+    // We must join children before we die
+    assert(fiber->join_count == 0);
+
     p_fiber_destroy(fiber);
     // note that we're calling the scheduler using a stack we no longer own!
     // this is fine since no other thread has access to the stack and fiber pools.
@@ -93,7 +97,7 @@ static void init_job_id(PFiber *fiber)
 	fiber->job_id = ++p_get_scheduler()->curr_job_id;
 }
 
-PFiber *p_fiber_init(PIndex group_index, void (*func)(void *arg), void *arg)
+PFiber *p_fiber_init(PIndex group_index, void (*func)(void *arg), void *arg, bool parent_will_join)
 {
     PScheduler *sched = p_get_scheduler();
     P_ASSERT(group_index < sched->group_count);
@@ -118,6 +122,11 @@ PFiber *p_fiber_init(PIndex group_index, void (*func)(void *arg), void *arg)
     fiber->arg = arg;
     fiber->group = group;
     fiber->parent = NULL; // will be used by join
+    fiber->join_count = 0;
+    if (parent_will_join) {
+        fiber->parent = p_get_current_fiber();
+        fiber->parent->join_count++;
+    }
     init_job_id(fiber);
 
     p_fiber_resume(fiber);
@@ -192,26 +201,10 @@ void __attribute__((noreturn)) p_fiber_run(PFiber *fiber)
     longjmp(fiber->jmp_buf, true);
 }
 
-void p_join(PFiber *fiber)
+void p_fiber_join_all()
 {
-    p_join_init();
-    p_join_add(fiber);
-    p_join_all();
-}
-
-void p_join_init()
-{
-    p_get_current_fiber()->join_count = 0;
-}
-
-void p_join_add(PFiber *fiber)
-{
-    P_ASSERT(fiber->parent == NULL);
-    fiber->parent = p_get_current_fiber();
-    p_get_current_fiber()->join_count++;
-}
-
-void p_join_all()
-{
-    p_fiber_suspend();
+    // make sure there is a child fiber that will perform resume
+    if (p_get_current_fiber()->join_count > 0) {
+        p_fiber_suspend();
+    }
 }

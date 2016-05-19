@@ -38,10 +38,10 @@ struct PFiber {
     uint64_t switch_time; // updated when a fiber is resumed or suspended
     uint64_t job_id;
     union {
-        uint32_t join_count;
         uint32_t sem_count;
         PRWlockType rw_lock_type;
     };
+    uint32_t join_count;
 };
 
 #define P_FIBER_STACK_UNDERFLOW_MAGIC 0xDEADBEEF
