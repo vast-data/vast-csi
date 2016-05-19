@@ -8,15 +8,25 @@
 
 #include <p.h>
 
+typedef uint8_t byte;
+
 #define MIN(a, b) ((a) > (b) ? (b) : (a))
 #define MAX(a, b) ((a) < (b) ? (b) : (a))
 
 #define NUM_ELEMENTS(array) (sizeof(array) / sizeof(array[0]))
 
-#define LOOP(until, i) for (size_t i = 0; i < (size_t) (until); i++)
-#define LOOP_FROM(start, until, i) for (size_t i = (size_t) (start); i < (size_t) (until); i++)
+#define LOOP_FROM_TYPE(type, start, until, i)   for (type i = (type) (start); i < (type) (until); ++i)
+#define LOOP_TYPE(type, until, i)               LOOP_FROM_TYPE(type, 0, until, i)
+#define LOOP_FROM(start, until, i)              LOOP_FROM_TYPE(size_t, start, until, i)
+#define LOOP(until, i)                          LOOP_FROM(0, until, i)
 
-#define P_CACHE_LINE_BYTES 64
+// Todo: should we enforce same type here?
+#define PTR2IDX(ptr, base_ptr) ((PIndex)((ptr) - (base_ptr)))
+
+// Todo: when we move to C++ we should use reinterpret cast here and allow cast-align warning again.
+#define MEMBER2OBJECT(member_ptr, object_type, member_name) ((object_type*)((byte*)member_ptr - offsetof(object_type, member_name)))
+
+#define P_CACHE_LINE_BYTES (64)
 #define P_CACHE_ALIGNED __attribute__ ((aligned(P_CACHE_LINE_BYTES)))
 #define P_PACKED __attribute__ ((packed)))
 
@@ -26,3 +36,25 @@ bool p_is_power_of_two (uintmax_t x);
 #define OUT
 #define INOUT
 #define UNUSED __attribute__((unused))
+#define WARN_UNUSED __attribute__((warn_unused_result))
+#define NO_RETURN __attribute__((noreturn))
+
+#define RETRY_LOOP(prefix, max_spinning_attempts, attempts_per_yield, max_attempts, loop_body)  \
+    uint64_t prefix##_attempt_count = 0;                                                        \
+    static const uint32_t prefix##_max_spinning_attempts = max_spinning_attempts;               \
+    static const uint32_t prefix##_attempts_per_yield = attempts_per_yield;                     \
+    static const uint32_t prefix##_max_attempts = max_attempts;                                 \
+                                                                                                \
+    while (true) {                                                                              \
+        prefix##_attempt_count++;                                                               \
+        if (prefix##_attempt_count > prefix##_max_spinning_attempts) {                          \
+            if (prefix##_attempt_count > prefix##_max_attempts) {                               \
+                P_PANIC();                                                                      \
+            }                                                                                   \
+            if (prefix##_attempt_count % prefix##_attempts_per_yield == 0) {                    \
+                p_fiber_yield();                                                                \
+            }                                                                                   \
+        }                                                                                       \
+        loop_body                                                                               \
+    }
+

@@ -27,4 +27,4 @@ struct PScheduler {
 };
 
 PScheduler *p_get_scheduler(void);
-void __attribute__((noreturn)) p_scheduler_continue(void);
+void NO_RETURN p_scheduler_continue(void);

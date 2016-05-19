@@ -41,10 +41,16 @@ PDListPool *p_dlistpool_init(PIndex size)
     return listpool;
 }
 
-void p_dlistpool_destroy(PDListPool *list)
+void p_dlistpool_destroy(PDListPool *listpool)
 {
-    p_free(list->nodes);
-    p_free(list);
+    p_free(listpool->nodes);
+    p_free(listpool);
+}
+
+void p_dlist_destroy(PDList *list)
+{
+    P_ASSERT(p_dlistanchor_is_empty(list->anchor));
+    p_dlistpool_destroy(list->list_pool);
 }
 
 inline bool p_dlistanchor_is_empty(PDListAnchor *anchor)

@@ -1,5 +1,5 @@
 yum -y groupinstall 'Development Tools'
-yum -y install epel-release net-tools which clang lldb scons libcmocka libcmocka-devel libunwind libunwind-devel libconfig libconfig-devel install doxygen xorg-x11-xauth vim-enhanced zsh
+yum -y install epel-release net-tools which clang lldb scons libcmocka libcmocka-devel libunwind libunwind-devel libconfig libconfig-devel install doxygen xorg-x11-xauth vim-enhanced zsh libaio
 
 chsh -s /bin/zsh vagrant
 

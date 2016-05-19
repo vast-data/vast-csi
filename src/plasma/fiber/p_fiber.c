@@ -37,7 +37,7 @@ static void context_switch()
     }
 }
 
-static void __attribute__((noreturn)) fiber_main()
+static void NO_RETURN fiber_main()
 {
     PFiber *fiber = p_get_current_fiber();
     fiber->func(fiber->arg);
@@ -191,7 +191,7 @@ PFiber *p_fiber_pop_and_resume(PDListAnchor* anchor)
     return fiber;
 }
 
-void __attribute__((noreturn)) p_fiber_run(PFiber *fiber)
+void NO_RETURN p_fiber_run(PFiber *fiber)
 {
     PScheduler *sched = p_get_scheduler();
     sched->current_fiber = fiber;

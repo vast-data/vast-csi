@@ -123,6 +123,12 @@ bool p_dlist_is_last(PDList *list, PIndex index);
 PIndex p_dlist_get_first(PDList *list);
 
 /*!
+ * destroys a dlist structure.
+ * NOTE: Assumes no other lists use this listpool!!!
+ */
+void p_dlist_destroy(PDList *list);
+
+/*!
  * Iterate over list elements. It's forbidden to remove elements during iteration.
  * Example usage:
  *

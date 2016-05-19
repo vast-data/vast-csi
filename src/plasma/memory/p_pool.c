@@ -73,7 +73,12 @@ void *p_pool_partitioned_alloc_address(PPool *pool, PIndex partition)
 
 void *p_pool_alloc_address(PPool *pool)
 {
-    return p_pool_index_to_address(pool, p_pool_alloc(pool));
+    PIndex index = p_pool_alloc(pool);
+    if (index == P_INVALID_INDEX) {
+        return NULL;
+    }
+
+    return p_pool_index_to_address(pool, index);
 }
 
 void p_pool_partitioned_free(PPool *pool, PIndex index, PIndex partition)

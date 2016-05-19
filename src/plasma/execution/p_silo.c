@@ -100,7 +100,7 @@ static void *silo_main(void *silo_arg)
         pin_to_core(silo->affinity);
     current_silo = silo;
     p_scheduler_init(&silo->scheduler_config);
-    p_fiber_init(FIBER_GROUP_P_START, silo_start_in_fiber, silo, false);
+    p_fiber_init(FIBER_GROUP_P, silo_start_in_fiber, silo, false);
     p_scheduler_run();
     // we shouldn't regularly get here. it means all fiber have finished running.
     p_scheduler_destroy();

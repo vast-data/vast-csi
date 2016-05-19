@@ -57,7 +57,8 @@ env.Append(CFLAGS=['-g',
                    '-Wno-disabled-macro-expansion',
                    '-Wno-gnu-zero-variadic-macro-arguments',
                    '-Wno-vla',
-                   '-Wno-padded'])
+                   '-Wno-padded',
+                   '-Wno-cast-align'])
 env.Append(CPPPATH=['src', 'src/include'])
 
 murmur_env = env.Clone()
@@ -70,7 +71,7 @@ murmur = murmur_env.Object(DEFAULT_BUILD_DIR + '/src/plasma/third_party/murmur3/
 sources.append(murmur)
 
 lib = env.Library(target='dist/orion', source=sources)
-LIBS = ['unwind', 'config', 'pthread', lib]
+LIBS = ['unwind', 'config', 'pthread', 'libaio', lib]
 env.Program(target='dist/env', source=[DEFAULT_BUILD_DIR + '/src/plasma/execution/main.c'], LIBS=LIBS)
 
 def AddTest(target, source, env=env, wrap=[]):

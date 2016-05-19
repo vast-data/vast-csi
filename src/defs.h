@@ -41,7 +41,8 @@ DEFINE_LOOKUP_PROTOTYPES(COMPONENT_LIST,
                          string_to_component_id)
 
 #define FIBER_GROUP_LIST(X)                       \
-    X(FIBER_GROUP_P_START),                       \
+    X(FIBER_GROUP_P),                       \
+    X(FIBER_GROUP_P_IO_POLLING),                         \
     X(FIBER_GROUP_I_START),                       \
     X(FIBER_GROUP_COUNT)
 
