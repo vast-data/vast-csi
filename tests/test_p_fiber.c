@@ -50,12 +50,11 @@ static void test_yield(void **state UNUSED)
 static void increment_twice_serial(void *value)
 {
     int *num_ptr = value;
-    PFiber *f1, *f2;
-    f1 = p_fiber_init(FG_A, increment, value, true);
+    p_fiber_init(FG_A, increment, value, true);
     p_fiber_join_all();
-    f2 = p_fiber_init(FG_A, increment, value, true);
+    p_fiber_init(FG_A, increment, value, true);
     p_fiber_join_all();
-    
+
     assert_int_equal(*num_ptr, 6);
 }
 
@@ -74,9 +73,8 @@ static void test_join_single(void **state UNUSED)
 static void increment_twice_parallel(void *value)
 {
     int *num_ptr = value;
-    PFiber *f1, *f2;
-    f1 = p_fiber_init(FG_A, increment, value, true);
-    f2 = p_fiber_init(FG_A, increment, value, true);
+    p_fiber_init(FG_A, increment, value, true);
+    p_fiber_init(FG_A, increment, value, true);
 
     p_fiber_join_all();
     assert_int_equal(*num_ptr, 6);
