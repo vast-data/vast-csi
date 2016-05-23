@@ -11,8 +11,9 @@
 #include "p_future_private.h"
 
 /*!
- *
-*/
+ * Initializes a future structure.
+ * /param is optional. can hold a value that should be valid only once the future is set.
+ */
 void p_future_init(PFuture *future, void *value);
 
 /*!
