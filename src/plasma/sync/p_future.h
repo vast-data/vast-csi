@@ -28,17 +28,17 @@ bool p_future_is_set(PFuture *future);
 /*!
  * Wait for subset_count futures to be set. If this amount futures (or more) are already set, return immediately. Otherwise, block.
  */
-void p_future_wait_subset(PFuture futures[], size_t total_count, size_t subset_count);
+void p_future_wait_subset(PFuture futures[], uint32_t total_count, uint32_t subset_count);
 
 /*!
  * Wait for all futures to be set. If the futures are already set, return immediately. Otherwise, block.
  */
-void p_future_wait_all(PFuture futures[], size_t count);
+void p_future_wait_all(PFuture futures[], uint32_t count);
 
 /*!
  * Wait for any of the futures to be set. If even one of the futures is already set, return immediately. Otherwise, block.
  */
-void p_future_wait_any(PFuture futures[], size_t count);
+void p_future_wait_any(PFuture futures[], uint32_t count);
 
 /*!
  * Wait for the future to be set. If the future is already set, return immediately. Otherwise, block.
