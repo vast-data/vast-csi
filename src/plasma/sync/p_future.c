@@ -24,7 +24,6 @@ static bool p_future_try_unmark_waiting(PFuture *future)
     return true;
 }
 
-
 static bool p_future_try_mark_waiting(PFuture *future)
 {
     if (p_future_is_set(future)) {
@@ -68,7 +67,7 @@ void p_future_wait_subset(PFuture futures[], uint32_t total_count, uint32_t subs
             }
         }
 
-        P_ASSERT(set_count_after_suspend == subset_count);
+        P_ASSERT(set_count_after_suspend >= subset_count);
     }
 }
 
@@ -99,4 +98,9 @@ void p_future_set(PFuture *future)
             p_fiber_resume(future->owner);
         }
     }
+}
+
+void* p_future_get_value(PFuture *future)
+{
+    return future->value;
 }
