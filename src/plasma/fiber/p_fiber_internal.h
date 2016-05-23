@@ -39,6 +39,7 @@ struct PFiber {
     uint64_t job_id;
     union {
         uint32_t sem_count;
+        uint32_t waited_future_count;
         PRWlockType rw_lock_type;
     };
     uint32_t join_count;
