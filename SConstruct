@@ -16,7 +16,7 @@ def RGlob(path, pattern, ignore_dirs=[], ignore_files=[]):
             matches.append(filename)
    return matches
 
-pre_sources = RGlob('src', '*.c', ['src/plasma/third_party/murmur3'], ['src/plasma/execution/main.c'])
+sources = [DEFAULT_BUILD_DIR + '/' + i for i in RGlob('src', '*.c', ['src/plasma/third_party/murmur3'], ['src/plasma/execution/main.c'])]
 
 VariantDir(DEFAULT_BUILD_DIR + '/src', 'src')
 VariantDir(DEFAULT_BUILD_DIR + '/tests', 'tests')
@@ -42,9 +42,6 @@ Parameters are passed as key=value. For example: scons debug=yes.
 """ + vars.GenerateHelpText(env)
 Help(help_text)
 
-trace_builder = Builder(action='cat $SOURCE > $TARGET')
-env.Append(BUILDERS={'SourceFile': trace_builder})
-
 env['ENV']['TERM'] = os.environ['TERM'] # enable terminal colors in clang
 
 env.Replace(CC=ARGUMENTS.get('cc', 'clang'))
@@ -58,6 +55,7 @@ env.Append(CFLAGS=['-g',
                    '-Weverything' if env['CC'] == 'clang' else '-Wall',
                    '-Werror',
                    '-Wno-disabled-macro-expansion',
+                   '-Wno-gnu-zero-variadic-macro-arguments',
                    '-Wno-vla',
                    '-Wno-padded'])
 env.Append(CPPPATH=['src', 'src/include'])
@@ -67,16 +65,13 @@ murmur_env.Append(CFLAGS=['-Wno-cast-align',
                           '-Wno-sign-conversion',
                           '-Wno-shorten-64-to-32',
                           '-Wno-incompatible-pointer-types-discards-qualifiers'])
-murmur = murmur_env.Object('build/src/plasma/third_party/murmur3/murmur3.c')
+murmur = murmur_env.Object(DEFAULT_BUILD_DIR + '/src/plasma/third_party/murmur3/murmur3.c')
 
-post_sources = [murmur]
-for source_file in pre_sources:
-   post_sources.append(env.Object(env.SourceFile('build/' + source_file.replace('.c', '.post.c'), source_file)))
+sources.append(murmur)
 
-tracemeta = env.Command('dist/tracemeta.json', pre_sources, "echo $SOURCES > $TARGET")
-lib = env.Library(target='dist/orion', source=post_sources)
+lib = env.Library(target='dist/orion', source=sources)
 LIBS = ['unwind', 'config', 'pthread', lib]
-env.Program(target='dist/env', source=['build/src/plasma/execution/main.c'], LIBS=LIBS)
+env.Program(target='dist/env', source=[DEFAULT_BUILD_DIR + '/src/plasma/execution/main.c'], LIBS=LIBS)
 
 def AddTest(target, source, env=env, wrap=[]):
     test_env = env.Clone()
@@ -85,15 +80,15 @@ def AddTest(target, source, env=env, wrap=[]):
     test = test_env.Program(target=target, source=source, LIBS=LIBS + ['cmocka'])
     test_env.Alias('test', test, test[0].abspath)
 
-AddTest(target='dist/tests/test_p_pool', source=[lib, 'build/tests/test_p_pool.c'])
-AddTest(target='dist/tests/test_p_dlist', source=[lib, 'build/tests/test_p_dlist.c'])
-AddTest(target='dist/tests/test_p_hash', env=murmur_env, source=[lib, 'build/tests/test_p_hash.c',
-                                                           'build/src/plasma/third_party/murmur3/test.c'])
-AddTest(target='dist/tests/test_p_fiber', source=[lib, 'build/tests/test_p_fiber.c'])
-AddTest(target='dist/tests/test_time', source=[lib, 'build/tests/test_time.c'])
-AddTest(target='dist/tests/test_config', source=[lib, 'build/tests/test_config.c'])
-AddTest(target='dist/tests/test_env', source=[lib, 'build/tests/test_env.c'], wrap=['p_module_start', 'p_module_init'])
-AddTest(target='dist/tests/test_trace', source=[lib, 'build/tests/test_trace.c'])
+AddTest(target='dist/tests/test_p_pool', source=[lib, DEFAULT_BUILD_DIR + '/tests/test_p_pool.c'])
+AddTest(target='dist/tests/test_p_dlist', source=[lib, DEFAULT_BUILD_DIR + '/tests/test_p_dlist.c'])
+AddTest(target='dist/tests/test_p_hash', env=murmur_env, source=[lib, DEFAULT_BUILD_DIR + '/tests/test_p_hash.c',
+                                                           DEFAULT_BUILD_DIR + '/src/plasma/third_party/murmur3/test.c'])
+AddTest(target='dist/tests/test_p_fiber', source=[lib, DEFAULT_BUILD_DIR + '/tests/test_p_fiber.c'])
+AddTest(target='dist/tests/test_time', source=[lib, DEFAULT_BUILD_DIR + '/tests/test_time.c'])
+AddTest(target='dist/tests/test_config', source=[lib, DEFAULT_BUILD_DIR + '/tests/test_config.c'])
+AddTest(target='dist/tests/test_env', source=[lib, DEFAULT_BUILD_DIR + '/tests/test_env.c'], wrap=['p_module_start', 'p_module_init'])
+AddTest(target='dist/tests/test_trace', source=[lib, DEFAULT_BUILD_DIR + '/tests/test_trace.c'])
 env.AlwaysBuild('test')
 
 env.Alias('docs', lib, 'doxygen')
