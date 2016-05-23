@@ -13,7 +13,7 @@
 /*!
  *
 */
-void p_future_init(PFuture *future, void* value);
+void p_future_init(PFuture *future, void *value);
 
 /*!
  * Destroy an future object. Can be called only when no pending fibers are waiting for the future to be set.
@@ -54,4 +54,4 @@ void p_future_set(PFuture *future);
 /*!
  * Returns the future's value. Can only be called if the future is SET.
  */
-void* p_future_get_value(PFuture *future);
+void *p_future_get_value(PFuture *future);

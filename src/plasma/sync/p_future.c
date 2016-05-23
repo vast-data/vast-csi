@@ -2,7 +2,7 @@
 
 #include "p_future.h"
 
-void p_future_init(PFuture *future OUT, void* value)
+void p_future_init(PFuture *future OUT, void *value)
 {
     future->owner = p_get_current_fiber();
     future->value = value;
@@ -42,7 +42,7 @@ bool p_future_is_set(PFuture *future)
 void p_future_wait_subset(PFuture futures[], uint32_t total_count, uint32_t subset_count)
 {
     uint32_t set_count = 0;
-    PFiber* this_fiber = p_get_current_fiber();
+    PFiber *this_fiber = p_get_current_fiber();
 
     LOOP(total_count, i) {
         P_ASSERT(futures[i].owner == this_fiber);
@@ -100,7 +100,7 @@ void p_future_set(PFuture *future)
     }
 }
 
-void* p_future_get_value(PFuture *future)
+void *p_future_get_value(PFuture *future)
 {
     return future->value;
 }
