@@ -18,6 +18,10 @@
 
 #include <p.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct PPool PPool;
 
 /*!
@@ -104,7 +108,16 @@ void *p_pool_index_to_address(PPool *pool, PIndex index);
 PIndex p_pool_address_to_index(PPool *pool, void *block);
 
 /*!
+ * Return the number of initially allocated blocks in the pool
+ */
+PIndex p_pool_get_initial_n_blocks(PPool *pool);
+
+/*!
  * Destroy a pool in order to free its resources.
  * The PPool object will be released along with the underlying memory region.
  */
 void p_pool_destroy(PPool *pool);
+
+#ifdef __cplusplus
+}
+#endif

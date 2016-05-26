@@ -91,12 +91,12 @@ void p_dlist_insert(PDList *list, PIndex index);
 /*!
  * Insert a new element after a given element.
  */
-void p_dlist_add_after(PDList *list, PIndex index, PIndex new);
+void p_dlist_add_after(PDList *list, PIndex index, PIndex new_index);
 
 /*!
  * Insert a new element before a given element.
  */
-void p_dlist_add_before(PDList *list, PIndex index, PIndex new);
+void p_dlist_add_before(PDList *list, PIndex index, PIndex new_index);
 
 void p_dlist_remove(PDList *list, PIndex index);
 PIndex p_dlist_next(PDList *list, PIndex index);

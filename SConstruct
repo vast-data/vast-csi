@@ -97,3 +97,27 @@ env.AlwaysBuild('test')
 
 env.Alias('docs', lib, 'doxygen')
 env.AlwaysBuild('docs')
+
+# CPP Env
+cpp_env = Environment(variables=vars)
+cpp_sources = [DEFAULT_BUILD_DIR + '/' + i for i in RGlob('src', '*.cpp')]
+cpp_env['ENV']['TERM'] = os.environ['TERM'] # enable terminal colors in clang
+
+cpp_env.Replace(CPP=ARGUMENTS.get('cc', 'clang'))
+if debug is not None:
+    cpp_env.Append(CPPDEFINES=['DEBUG'])
+cpp_env.Append(CPPFLAGS=['-g',
+                       '-std=c++11',
+                       '-O' + ARGUMENTS.get('O', '2'),
+                       '-fno-omit-frame-pointer', # with -O2 this is required to be able to generate backtraces
+                       '-Weverything' if cpp_env['CC'] == 'clang' else '-Wall',
+                       '-Werror',
+                       '-Wno-disabled-macro-expansion',
+                       '-Wno-gnu-zero-variadic-macro-arguments',
+                       '-Wno-vla',
+                       '-Wno-padded'])
+cpp_env.Append(CPPPATH=['src', 'src/include'])
+cpplib = cpp_env.Library(target='dist/cpp_orion', source=cpp_sources)
+LIBS = ['unwind', 'config', 'pthread', cpplib, lib]
+AddTest(target='dist/tests/test_cpool', source=[lib, cpplib, DEFAULT_BUILD_DIR + '/tests/test_cpool.cpp'], env=cpp_env, wrap=['p_silo_get_id'])
+cpp_env.AlwaysBuild('test')

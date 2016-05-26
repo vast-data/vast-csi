@@ -116,6 +116,11 @@ void *p_pool_index_to_address(PPool *pool, PIndex index)
     return (void*) (((uintptr_t) pool->mem) + (size_t) index * pool->block_size);
 }
 
+PIndex p_pool_get_initial_n_blocks(PPool *pool)
+{
+    return pool->blocks;
+}
+
 void p_pool_destroy(PPool *pool) {
     p_free(pool->partitions);
     p_free(pool->mem);

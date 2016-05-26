@@ -73,25 +73,25 @@ inline PIndex p_dlist_get_first(PDList *list)
     return list->anchor->index;
 }
 
-void p_dlist_add_after(PDList *list, PIndex index, PIndex new)
+void p_dlist_add_after(PDList *list, PIndex index, PIndex new_index)
 {
     P_ASSERT(!p_dlist_is_empty(list));
-    list->list_pool->nodes[new].prev = index;
-    list->list_pool->nodes[new].next = list->list_pool->nodes[index].next;
-    list->list_pool->nodes[list->list_pool->nodes[new].next].prev = new;
-    list->list_pool->nodes[index].next = new;
+    list->list_pool->nodes[new_index].prev = index;
+    list->list_pool->nodes[new_index].next = list->list_pool->nodes[index].next;
+    list->list_pool->nodes[list->list_pool->nodes[new_index].next].prev = new_index;
+    list->list_pool->nodes[index].next = new_index;
 }
 
-void p_dlist_add_before(PDList *list, PIndex index, PIndex new)
+void p_dlist_add_before(PDList *list, PIndex index, PIndex new_index)
 {
     P_ASSERT(!p_dlist_is_empty(list));
-    list->list_pool->nodes[new].next = index;
-    list->list_pool->nodes[new].prev = list->list_pool->nodes[index].prev;
-    list->list_pool->nodes[list->list_pool->nodes[new].prev].next = new;
-    list->list_pool->nodes[index].prev = new;
+    list->list_pool->nodes[new_index].next = index;
+    list->list_pool->nodes[new_index].prev = list->list_pool->nodes[index].prev;
+    list->list_pool->nodes[list->list_pool->nodes[new_index].prev].next = new_index;
+    list->list_pool->nodes[index].prev = new_index;
 
     if (list->anchor->index == index) {
-        list->anchor->index = new;
+        list->anchor->index = new_index;
     }
 }
 
