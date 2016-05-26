@@ -8,9 +8,15 @@
 
 #include <p.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define NO_AFFINITY -1
 
 typedef struct PSilo PSilo;
+typedef uint8_t PSiloId;
+#define P_INVALID_SILO_ID (255)
 
 /*!
  * Initialize a silo. Returns a pointer to a heap-allocated PSilo object.
@@ -38,7 +44,7 @@ typedef struct PSilo PSilo;
  }
 \endcode
  */
-PSilo *p_silo_init(PConfigSetting *silo_config, int32_t affinity);
+PSilo *p_silo_init(PConfigSetting *silo_config, int32_t affinity, PSiloId silo_id);
 
 /*!
  * Launch a silo (starts a pthread) and return immediately.
@@ -49,6 +55,12 @@ void p_silo_start(PSilo *silo);
  * Return the currently running silo. Implemented using thread local storage.
  */
 PSilo *p_silo_get(void);
+
+/*!
+ * Return the id of the currently running silo.
+ * If called by a non silo thread will return P_INVALID_SILO_ID
+ */
+PSiloId p_silo_get_id(void);
 
 /*!
  * Return the current module state. Each module sets the state with the return value of %_module_init. The current module is determined by the fiber group of the currently runnning fiber (each fiber group belongs to a module).
@@ -83,3 +95,8 @@ void p_silo_halt(PSilo *silo);
 void p_silo_destroy(PSilo *silo);
 
 #define COMPONENT_GET_STATE() p_silo_get_component_state(CURRENT_COMPONENT)
+
+#ifdef __cplusplus
+}
+#endif
+

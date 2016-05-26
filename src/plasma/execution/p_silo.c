@@ -21,13 +21,15 @@ struct PSilo {
     PSchedulerConfig scheduler_config;
     pthread_t pthread;
     int32_t affinity;
+    PSiloId silo_id;
 };
 
-PSilo *p_silo_init(PConfigSetting *silo_config, int32_t affinity)
+PSilo *p_silo_init(PConfigSetting *silo_config, int32_t affinity, PSiloId silo_id)
 {
     PSilo *silo = p_safe_malloc(sizeof(PSilo));
     p_fill_zeroes(silo, sizeof(PSilo));
     silo->affinity = affinity;
+    silo->silo_id = silo_id;
 
     silo->scheduler_config.group_count = FIBER_GROUP_COUNT;
     silo->scheduler_config.fiber_groups = p_safe_malloc(sizeof(PFiberGroupConfig) * FIBER_GROUP_COUNT);
@@ -86,12 +88,19 @@ static void silo_start_in_fiber(void *silo_arg)
 
 }
 
-static __thread PSilo *current_silo;
+static __thread PSilo *current_silo = NULL;
 
 PSilo *p_silo_get()
 {
     return current_silo;
 }
+
+PSiloId p_silo_get_id(void)
+{
+    PSilo *silo = p_silo_get();
+    return silo != NULL ? silo->silo_id : P_INVALID_SILO_ID;
+}
+
 
 static void *silo_main(void *silo_arg)
 {

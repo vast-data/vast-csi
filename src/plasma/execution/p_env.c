@@ -66,7 +66,9 @@ static void env_init(PConfig *config)
         PConfigSetting *silo_affinity_setting = p_config_setting_lookup_optional(silo_setting, "affinity");
         int32_t affinity = silo_affinity_setting == NULL ? NO_AFFINITY : p_config_setting_get_int32(silo_affinity_setting);
         const char *silo_type_name = p_config_setting_get_string(silo_type_name_setting);
-        env.silos[i] = p_silo_init(p_config_setting_lookup_required(silo_types_setting, silo_type_name), affinity);
+        // SiloId is 8 bit
+        P_ASSERT(i < P_INVALID_SILO_ID);
+        env.silos[i] = p_silo_init(p_config_setting_lookup_required(silo_types_setting, silo_type_name), affinity, (PSiloId)i);
     }
     // Initialize a barrier for all silos and the main thread, used for synchronizing state
     P_ASSERT(pthread_barrier_init(&env.state_barrier, NULL, env.num_silos + 1) == 0);
