@@ -89,6 +89,7 @@ static void silo_start_in_fiber(void *silo_arg)
 
     LOOP(MODULE_COUNT, i) {
         if (silo->modules[i].defined) {
+            PT_INFO("Starting module: %s.", module_id_to_string((ModuleId) i));
             module_start_functions[i]();
         }
     }
@@ -119,7 +120,7 @@ static void *silo_main(void *silo_arg)
     p_trace_emitter_set(silo->trace_emitter);
     p_trace_dumper_start(silo->trace_dumper);
 
-    PT_INFO("Silo started. Affinity set to: %d", silo->affinity);
+    PT_INFO("Silo started. Affinity set to: %d.", silo->affinity);
 
     p_scheduler_init(&silo->scheduler_config);
     p_fiber_init(FIBER_GROUP_P, silo_start_in_fiber, silo, false);
@@ -127,7 +128,7 @@ static void *silo_main(void *silo_arg)
     // we shouldn't regularly get here. it means all fiber have finished running.
     p_scheduler_destroy();
 
-    PT_INFO("Silo finished");
+    PT_INFO("Silo finished.");
 
     p_trace_dumper_stop(silo->trace_dumper);
     p_trace_dumper_wait(silo->trace_dumper);

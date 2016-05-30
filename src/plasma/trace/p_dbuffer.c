@@ -97,7 +97,7 @@ static void reader_reset(PDbufferReader *reader, uint8_t *buffers_lost OUT)
 {
     reader->read_index = 0;
     if (buffers_lost != NULL)
-        *buffers_lost = (uint8_t) (reader->dbuf->generation - reader->generation);
+        *buffers_lost = (uint8_t) (reader->dbuf->generation - reader->generation - 1);
     if (reader->dbuf->generation >= BUFFER_COUNT)
         reader->generation = reader->dbuf->generation - BUFFER_COUNT + 1;
     else

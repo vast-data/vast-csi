@@ -37,14 +37,19 @@ static void write_file(PTraceFile *trace_file, void *data, size_t length)
     trace_file->file_offset += length;
 }
 
+static size_t trace_section_size()
+{
+    return (uintptr_t) __stop_traces - (uintptr_t) __start_traces;
+}
+
 #define VERSION 1
 static void write_header(PTraceFile *trace_file)
 {
     uint16_t version = VERSION;
     write_file(trace_file, &version, sizeof(version));
-
-    size_t section_size = (uintptr_t) __stop_traces - (uintptr_t) __start_traces;
-    write_file(trace_file, &section_size, sizeof(section_size));
+    size_t section_size = trace_section_size();
+    uint16_t num_records = (uint16_t) (section_size / sizeof(PTraceInfo));
+    write_file(trace_file, &num_records, sizeof(num_records));
     write_file(trace_file, __start_traces, section_size);
 }
 
@@ -77,6 +82,7 @@ static void create_file(PTraceFile *trace_file)
     trace_file->file = fopen(path, "w");
     P_ASSERT(trace_file->file != NULL);
     trace_file->file_offset = 0;
+    trace_file->bytes_left_in_chunk = CHUNK_SIZE;
     write_header(trace_file);
 }
 
@@ -155,7 +161,8 @@ static void rotate_file_if_needed(PTraceFile *trace_file, uint8_t length)
 static void rotate_chunk_if_needed(PTraceFile *trace_file, uint8_t length)
 {
     if (length > trace_file->bytes_left_in_chunk) {
-        fseek(trace_file->file, trace_file->bytes_left_in_chunk, SEEK_CUR);
+        P_ASSERT(fseek(trace_file->file, trace_file->bytes_left_in_chunk, SEEK_CUR) == 0);
+        P_ASSERT(ftell(trace_file->file) % CHUNK_SIZE == trace_section_size() + 2 + 2);
         trace_file->file_offset += trace_file->bytes_left_in_chunk;
         trace_file->bytes_left_in_chunk = CHUNK_SIZE;
     }
@@ -165,9 +172,9 @@ void p_trace_file_emit(PTraceFile *trace_file, PTraceRecord *record, uint8_t len
 {
     if (trace_file->file == NULL)
         create_file(trace_file);
-    rotate_chunk_if_needed(trace_file, length);
-    rotate_file_if_needed(trace_file, length);
+    rotate_chunk_if_needed(trace_file, length + 1);
+    rotate_file_if_needed(trace_file, length + 1);
     write_file(trace_file, &length, sizeof(uint8_t));
     write_file(trace_file, record, length);
-    trace_file->bytes_left_in_chunk -= length;
+    trace_file->bytes_left_in_chunk -= (length + 1);
 }

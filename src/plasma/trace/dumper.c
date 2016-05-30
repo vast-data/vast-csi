@@ -14,6 +14,7 @@ struct PTraceDumper {
     PDbufferReader *readers[COMPONENT_COUNT];
     PTraceFile *files[COMPONENT_COUNT];
     char file_prefixes[COMPONENT_COUNT][MAX_PREFIX_SIZE];
+    uint64_t times[COMPONENT_COUNT];
     PTraceEmitter *emitter;
     pthread_t pthread;
     uint32_t bytes_written;
@@ -33,6 +34,7 @@ PTraceDumper *p_trace_dumper_init(PConfigSetting *setting, PTraceEmitter *emitte
 
     LOOP(COMPONENT_COUNT, i) {
         dumper->readers[i] = NULL;
+        dumper->times[i] = 0;
     }
 
     LOOP(p_config_setting_length(setting), i) {
@@ -72,14 +74,13 @@ void p_trace_dumper_destroy(PTraceDumper *dumper)
 
 static bool dumper_iteration(PTraceDumper *dumper, bool force)
 {
-    static PTraceInfo SECTIONIZE(traces) overflow_info = {.format = "Trace overflow. %u buffers lost.",
+    static PTraceInfo SECTIONIZE(traces) overflow_info = {.format = "Trace overflow. %hhd buffers lost.",
                                                           .func_ptr = __func__,
                                                           .file = __FILE__,
                                                           .line = __LINE__};
     uint16_t overflow_index = p_trace_info_index(&overflow_info);
 
     PTraceRecord record;
-    uint64_t times[COMPONENT_COUNT] = {0};
     uint8_t length;
     bool found = false;
     LOOP(COMPONENT_COUNT, i) {
@@ -89,15 +90,15 @@ static bool dumper_iteration(PTraceDumper *dumper, bool force)
             case PDBUFFER_READ_NOTHING:
                 break;
             case PDBUFFER_READ_SUCCESS:
+                dumper->times[i] = record.time;
                 p_trace_file_emit(dumper->files[i], &record, length);
-                times[i] = record.time;
                 found = true;
                 break;
             case PDBUFFER_READ_OVERFLOW:
                 found = true;
                 // set the time of the last record emitted for this component.
                 // the reader expects timestamps to be monotonically increasing (does a merge sort).
-                record.time = times[i];
+                record.time = dumper->times[i];
                 record.job_id = 0; // no fiber
                 record.severity = P_TRACE_ERROR;
                 record.info_index = overflow_index;

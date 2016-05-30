@@ -55,17 +55,17 @@ DEFINE_LOOKUP_PROTOTYPES(SEVERITY_LIST,
 typedef struct {
     uint8_t format[128];
     uint8_t file[64];
-    uint8_t func[48];
-    const char *func_ptr;
+    uint8_t func[54];
     uint16_t line;
+    const char *func_ptr;
 } PTraceInfo;
 
 #define P_TRACE_RECORD_MAX_SIZE UINT8_MAX
 typedef struct {
     uint64_t time;
     uint32_t job_id;
-    PTraceSeverity severity;
     uint16_t info_index;
+    uint8_t severity;
     uint8_t params[P_TRACE_RECORD_MAX_SIZE - sizeof(uint16_t) - sizeof(PTraceSeverity)];
 } PTraceRecord;
 
@@ -171,7 +171,7 @@ static inline void p_trace_arg_string(const char *value)
 
 static inline void p_trace_arg_ptr(const void *value)
 {
-    p_emit_param(value, sizeof(void*));
+    p_emit_param(&value, sizeof(void*));
 }
 
 static inline void p_trace_arg_int(int value)
