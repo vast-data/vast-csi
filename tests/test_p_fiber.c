@@ -402,6 +402,87 @@ static void test_event_all(void **state UNUSED)
     p_scheduler_destroy();
 }
 
+static void future_fast_setter(void *arg)
+{
+    PFuture* future = (PFuture*)arg;
+    p_future_set(future);
+}
+
+static void future_slow_setter(void *arg)
+{
+    PFuture* future = (PFuture*)arg;
+
+    p_sleep(SLEEP_100_MILLI);
+    p_future_set(future);
+}
+
+static void future_main_setter(void *arg)
+{
+    PFuture* future = (PFuture*)arg;
+    enum {
+        child_future_wait_subset = 7,
+        child_future_count = 10
+    };
+    PFuture child_futures[child_future_count];
+    LOOP(child_future_count, i) {
+        p_future_init(&child_futures[i], NULL);
+    }
+
+    // launch setters for subset
+    LOOP(child_future_wait_subset - 1, i) {
+        p_fiber_init(FG_C, future_fast_setter, &child_futures[i], false);
+    }
+
+    p_future_wait_any(child_futures, child_future_count);
+
+    p_fiber_init(FG_C, future_slow_setter, &child_futures[child_future_count - 1], false);
+
+    // wait for subset
+    p_future_wait_subset(child_futures, child_future_count, child_future_wait_subset);
+
+    // launch setters for completions
+    LOOP_FROM(child_future_wait_subset - 1, child_future_count - 1, i) {
+        assert_false(p_future_is_set(&child_futures[i]));
+        p_fiber_init(FG_C, future_fast_setter, &child_futures[i], false);
+    }
+
+    p_future_wait_all(child_futures, child_future_count);
+
+    LOOP(child_future_count, i) {
+        assert_true(p_future_is_set(&child_futures[i]));
+        p_future_destroy(&child_futures[i]);
+    }
+
+    p_future_set(future);
+}
+
+static void future_main_waiter(void *arg UNUSED)
+{
+    PFuture future;
+    p_future_init(&future, NULL);
+
+    p_fiber_init(FG_B, future_main_setter, &future, false);
+
+    p_future_wait(&future);
+
+    p_future_destroy(&future);
+}
+
+static void test_future(void **state UNUSED)
+{
+    p_scheduler_init(&scheduler_config);
+
+    p_fiber_init(FG_A, future_main_waiter, NULL, false);
+
+    uint64_t start = p_get_time_nano();
+    p_scheduler_run();
+    uint64_t end = p_get_time_nano();
+
+    assert_in_range(NANO_TO_MILLI(end - start), 98, 102);
+
+    p_scheduler_destroy();
+}
+
 static void iter(void *arg) {
     size_t *count = arg;
     LOOP(*count, i)
@@ -462,6 +543,7 @@ int main(void)
         cmocka_unit_test(test_sem_blocking),
         cmocka_unit_test(test_event_one),
         cmocka_unit_test(test_event_all),
+        cmocka_unit_test(test_future),
         cmocka_unit_test(test_perf),
         cmocka_unit_test(test_backtrace)
     };

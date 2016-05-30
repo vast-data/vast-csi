@@ -33,6 +33,7 @@ typedef int32_t PIndex;
 #include "plasma/sync/p_rwlock.h"
 #include "plasma/sync/p_sem.h"
 #include "plasma/sync/p_event.h"
+#include "plasma/sync/p_future.h"
 #include "plasma/execution/p_config.h"
 #include "plasma/execution/p_silo.h"
 #include "plasma/execution/p_env.h"

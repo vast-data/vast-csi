@@ -8,10 +8,28 @@
 
 #include <p.h>
 
-#define MILLI_TO_MICRO(n) ((n) * 1000)
-#define MICRO_TO_NANO(n) ((n) * 1000)
-#define NANO_TO_MICRO(n) ((n) / 1000)
-#define SEC_TO_MICRO(n) (MILLI_TO_MICRO(n) * 1000)
+#define MAGNITUDE(n)        ((n) * 1000)
+
+#define MICRO_TO_NANO(n)    MAGNITUDE(n)
+#define MILLI_TO_MICRO(n)   MAGNITUDE(n)
+#define SEC_TO_MILLI(n)     MAGNITUDE(n)
+
+#define MILLI_TO_NANO(n)    MICRO_TO_NANO(MILLI_TO_MICRO(n))
+#define SEC_TO_MICRO(n)     MILLI_TO_MICRO(SEC_TO_MILLI(n))
+
+#define SEC_TO_NANO(n)      MICRO_TO_NANO(SEC_TO_MICRO(n))
+
+
+#define MINITUDE(n)         ((n) / 1000)
+
+#define NANO_TO_MICRO(n)    MINITUDE(n)
+#define MICRO_TO_MILLI(n)   MINITUDE(n)
+#define MILLI_TO_SEC(n)     MINITUDE(n)
+
+#define NANO_TO_MILLI(n)    MICRO_TO_MILLI(NANO_TO_MICRO(n))
+#define MICRO_TO_SEC(n)     MILLI_TO_SEC(MICRO_TO_MILLI(n))
+
+#define NANO_TO_SEC(n)      MICRO_TO_SEC(NANO_TO_MICRO(n))
 
 /*!
  * Get the current time in nano seconds. This function is VERY fast and returns a
