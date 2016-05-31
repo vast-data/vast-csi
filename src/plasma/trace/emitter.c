@@ -10,6 +10,7 @@ DEFINE_LOOKUP_IMPLEMENTATION(SEVERITY_LIST,
 
 __thread PTraceEmitter *p_trace_emitter = NULL;
 
+#define BUFFER_COUNT 4
 PTraceEmitter *p_trace_emitter_init(PConfigSetting *setting)
 {
     PTraceEmitter *emitter = p_safe_malloc(sizeof(PTraceEmitter));
@@ -33,7 +34,7 @@ PTraceEmitter *p_trace_emitter_init(PConfigSetting *setting)
         uint32_t buf_size = P_TRACE_EMITTER_DEFAULT_BUF_SIZE_MB;
         if (buf_size_setting != NULL)
             buf_size = (uint32_t) p_config_setting_get_int32(buf_size_setting);
-        emitter->buffers[comp_id] = p_dbuffer_init(buf_size * UNIT_MiB);
+        emitter->buffers[comp_id] = p_dbuffer_init(BUFFER_COUNT, buf_size * UNIT_MiB);
 
         PConfigSetting *min_severity_setting = p_config_setting_lookup_optional(comp_setting, "min_severity");
         PTraceSeverity min_severity = P_TRACE_DEBUG;

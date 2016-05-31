@@ -54,30 +54,31 @@ static inline void buffer_reset(Buffer *buf)
     buf->write_index = 0;
 }
 
-#define BUFFER_COUNT 2
-
 struct PDbuffer {
-    Buffer buffers[BUFFER_COUNT];
+    Buffer *buffers;
     volatile uint32_t generation;
+    uint8_t buffer_count;
 };
 
 static inline Buffer *current_buffer(PDbuffer *dbuf)
 {
-    return &dbuf->buffers[dbuf->generation % BUFFER_COUNT];
+    return &dbuf->buffers[dbuf->generation % dbuf->buffer_count];
 }
 
-PDbuffer *p_dbuffer_init(uint32_t size)
+PDbuffer *p_dbuffer_init(uint8_t buffer_count, uint32_t size)
 {
     PDbuffer *dbuf = p_safe_malloc(sizeof(PDbuffer));
+    dbuf->buffer_count = buffer_count;
+    dbuf->buffers = p_safe_malloc(sizeof(Buffer) * buffer_count);
     dbuf->generation = 0;
-    LOOP(BUFFER_COUNT, i)
-        buffer_init(&dbuf->buffers[i], size / BUFFER_COUNT);
+    LOOP(buffer_count, i)
+        buffer_init(&dbuf->buffers[i], size / buffer_count);
     return dbuf;
 }
 
 void p_dbuffer_destroy(PDbuffer *dbuf)
 {
-    LOOP(BUFFER_COUNT, i)
+    LOOP(dbuf->buffer_count, i)
         buffer_destroy(&dbuf->buffers[i]);
     p_free(dbuf);
 }
@@ -99,8 +100,8 @@ static void reader_reset(PDbufferReader *reader, P_DBUFFER_LENGTH_TYPE *buffers_
     reader->read_index = 0;
     if (buffers_lost != NULL)
         *buffers_lost = (P_DBUFFER_LENGTH_TYPE) (reader->dbuf->generation - reader->generation - 1);
-    if (reader->dbuf->generation >= BUFFER_COUNT)
-        reader->generation = reader->dbuf->generation - BUFFER_COUNT + 1;
+    if (reader->dbuf->generation >= reader->dbuf->buffer_count)
+        reader->generation = reader->dbuf->generation - reader->dbuf->buffer_count + 1;
     else
         reader->generation = 0;
 }
@@ -113,7 +114,7 @@ void p_dbuffer_reader_init(PDbufferReader *reader, PDbuffer *dbuf)
 
 static inline bool reader_overflow(PDbufferReader *reader)
 {
-    return reader->dbuf->generation - reader->generation >= BUFFER_COUNT;
+    return reader->dbuf->generation - reader->generation >= reader->dbuf->buffer_count;
 }
 
 PDbufferReadResult p_dbuffer_read(PDbufferReader *reader, void *data OUT, P_DBUFFER_LENGTH_TYPE *length OUT, bool force)

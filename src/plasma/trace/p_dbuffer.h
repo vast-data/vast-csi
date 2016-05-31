@@ -19,7 +19,7 @@
 
 typedef struct PDbuffer PDbuffer;
 
-PDbuffer *p_dbuffer_init(uint32_t size);
+PDbuffer *p_dbuffer_init(uint8_t buffer_count, uint32_t size);
 void p_dbuffer_destroy(PDbuffer *dbuf);
 void p_dbuffer_write(PDbuffer *dbuf, void *data, P_DBUFFER_LENGTH_TYPE length);
 

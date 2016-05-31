@@ -11,7 +11,7 @@ static void test_dbuffer_sanity(void **state)
 {
     (void) state;
 
-    PDbuffer *buf = p_dbuffer_init(128);
+    PDbuffer *buf = p_dbuffer_init(2, 128);
     char data[] = "abcd";
 
     p_dbuffer_write(buf, &data, 4);
@@ -40,7 +40,7 @@ static void test_dbuffer_wraparound(void **state)
 {
     (void) state;
 
-    PDbuffer *buf = p_dbuffer_init(32);
+    PDbuffer *buf = p_dbuffer_init(2, 32);
     char data[] = "abcdefgh";
 
     p_dbuffer_write(buf, &data, 8);
@@ -68,7 +68,7 @@ static void test_dbuffer_overflow(void **state)
 {
     (void) state;
 
-    PDbuffer *buf = p_dbuffer_init(32);
+    PDbuffer *buf = p_dbuffer_init(2, 32);
     char data[] = "abcdefgh";
 
     PDbufferReader reader;
