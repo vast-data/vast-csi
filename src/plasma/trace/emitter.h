@@ -3,28 +3,6 @@
 /*!
  * \file emitter.h
  * \brief
- *
- * We considered two strategies for organizing metadata:
- * 1. Within a section in the executable.
- * 2. In an external metadata file populated by a script that parses trace records.
- *
- * Method 1 downsides:
- * 1. bloat in the trace files.
- *
- * Method 2 downsides:
- * 1. assuming the metadata won't be stored in the trace files, it would be hard to maintain uniqueness of trace_info_index.
- *
- * Using the printf compiler validation is great for catching errors but also has downsides:
- * 1. The printf format doesn't support bool and it's displayed as a number.
- * 2. Requires strings to be null delimited (slower and no support for user specified length).
- * TODO: what to do if the user specifies a string that's too long.
- *
- * The emitter currently uses a recursive macro instead of a function call. Since all functions are inlined it generates more
- * code even though it's faster. (it could become slower overall if the code doesn't fit in L1 cache)
- * The alternative requires a translation script. If it would be implemented it would be a good idea to also store the function
- * name as it cannot be saved to a static section like the line or filename.
- *
- * Consider adding support for backtraces in traces.
  */
 #pragma once
 
@@ -52,6 +30,7 @@ DEFINE_LOOKUP_PROTOTYPES(SEVERITY_LIST,
                          p_trace_severity_to_string, // the function that converts an enum value to string
                          p_trace_severity_from_string) // the function that converts a string to an enum value
 
+#define P_TRACE_INFO_SIZE 256
 typedef struct {
     uint8_t format[128];
     uint8_t file[64];
@@ -60,20 +39,23 @@ typedef struct {
     const char *func_ptr;
 } PTraceInfo;
 
-#define P_TRACE_RECORD_MAX_SIZE UINT8_MAX
+// The potential maximum record size could be bigger but we pre allocate a trace
+// record per silo per component. There's no real reason to allocate more.
+#define P_TRACE_RECORD_MAX_SIZE (4096 * 4)
+
 typedef struct {
     uint64_t time;
     uint32_t job_id;
     uint16_t info_index;
     uint8_t severity;
-    uint8_t params[P_TRACE_RECORD_MAX_SIZE - sizeof(uint16_t) - sizeof(PTraceSeverity)];
+    uint8_t params[P_TRACE_RECORD_MAX_SIZE - (8 + 4 + 2 + 1)];
 } PTraceRecord;
 
 typedef struct {
     PDbuffer *buffers[COMPONENT_COUNT];
     PTraceSeverity min_severity[COMPONENT_COUNT];
     PTraceRecord record;
-    uint8_t write_index;
+    P_DBUFFER_LENGTH_TYPE write_index;
 } PTraceEmitter;
 
 extern __thread PTraceEmitter *p_trace_emitter;
@@ -92,7 +74,9 @@ void p_trace_emitter_set(PTraceEmitter *emitter);
                                   short: p_trace_arg_short,               \
                                   int: p_trace_arg_int,                   \
                                   long: p_trace_arg_long,                 \
-                                  _Bool: p_trace_arg_short                \
+                                  bool: p_trace_arg_bool,                 \
+                                  float: p_trace_arg_float,               \
+                                  double: p_trace_arg_double              \
         )(arg);
 
 // __start_%s and __stop_%s are automatically set by the linker as the start/end addresses of the section
@@ -132,7 +116,7 @@ static inline __attribute__ ((format (printf, 1, 2))) void p_validate_format(con
     (void) format;
 }
 
-static inline void p_emit_param(const void *data, uint8_t length)
+static inline void p_emit_param(const void *data, uint16_t length)
 {
     P_DEBUG_ASSERT(P_TRACE_RECORD_MAX_SIZE - (p_trace_emitter->write_index + offsetof(PTraceRecord, params)) > length);
     memcpy(&p_trace_emitter->record.params[p_trace_emitter->write_index], data, length);
@@ -157,15 +141,14 @@ static inline void p_trace_record_finish(ComponentId comp)
     p_dbuffer_write(p_trace_emitter->buffers[comp], &p_trace_emitter->record, offsetof(PTraceRecord, params) + p_trace_emitter->write_index);
 }
 
-#define STR_LENGTH_TYPE uint8_t
-#define STR_LENGTH_BYTES (1)
-#define STR_LENGTH_MAX UINT8_MAX
+#define P_TRACE_MAX_STR_LEN 4096
+#define P_TRACE_STR_LEN_TYPE uint16_t
 static inline void p_trace_arg_string(const char *value)
 {
     size_t length = strlen(value);
-    P_ASSERT(length < STR_LENGTH_MAX);
-    STR_LENGTH_TYPE short_length = (STR_LENGTH_TYPE) length;
-    p_emit_param(&short_length, STR_LENGTH_BYTES);
+    P_ASSERT(length < P_TRACE_MAX_STR_LEN);
+    P_TRACE_STR_LEN_TYPE short_length = (P_TRACE_STR_LEN_TYPE) length;
+    p_emit_param(&short_length, sizeof(short_length));
     p_emit_param(value, short_length);
 }
 
@@ -192,4 +175,19 @@ static inline void p_trace_arg_short(short value)
 static inline void p_trace_arg_char(char value)
 {
     p_emit_param(&value, sizeof(char));
+}
+
+static inline void p_trace_arg_bool(bool value)
+{
+    p_emit_param(&value, sizeof(bool));
+}
+
+static inline void p_trace_arg_float(float value)
+{
+    p_emit_param(&value, sizeof(float));
+}
+
+static inline void p_trace_arg_double(double value)
+{
+    p_emit_param(&value, sizeof(double));
 }

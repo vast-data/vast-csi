@@ -12,11 +12,16 @@
 #include "../memory/p_alloc.h"
 #include "../utils.h"
 
+#define P_DBUFFER_LENGTH_TYPE uint16_t
+#define P_DBUFFER_LENGTH_BYTES sizeof(P_DBUFFER_LENGTH_TYPE)
+// the buffer with the largest record still needs to hold its size and an empty size indicating its the last
+#define P_DBUFFER_MAX_RECORD (UINT16_MAX - (P_DBUFFER_LENGTH_BYTES * 2))
+
 typedef struct PDbuffer PDbuffer;
 
 PDbuffer *p_dbuffer_init(uint32_t size);
 void p_dbuffer_destroy(PDbuffer *dbuf);
-void p_dbuffer_write(PDbuffer *dbuf, void *data, uint8_t length);
+void p_dbuffer_write(PDbuffer *dbuf, void *data, P_DBUFFER_LENGTH_TYPE length);
 
 typedef struct PDbufferReader PDbufferReader;
 
@@ -34,4 +39,4 @@ typedef enum {
     PDBUFFER_READ_OVERFLOW,
 } PDbufferReadResult;
 
-PDbufferReadResult p_dbuffer_read(PDbufferReader *dbuf_reader, void *data OUT, uint8_t *length OUT, bool force);
+PDbufferReadResult p_dbuffer_read(PDbufferReader *dbuf_reader, void *data OUT, P_DBUFFER_LENGTH_TYPE *length OUT, bool force);

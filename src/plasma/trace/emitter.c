@@ -1,6 +1,6 @@
 #include "emitter.h"
 
-#include <p.h>
+#include "../execution/p_config.h"
 
 DEFINE_LOOKUP_IMPLEMENTATION(SEVERITY_LIST,
                              PTraceSeverity,
@@ -60,6 +60,9 @@ void p_trace_emitter_set(PTraceEmitter *emitter)
 
 static __attribute__ ((constructor)) void init_section()
 {
+    P_ASSERT(sizeof(PTraceInfo) == P_TRACE_INFO_SIZE);
+    P_ASSERT(sizeof(PTraceRecord) == P_TRACE_RECORD_MAX_SIZE);
+
     // the following trace is defined just in case this code is compiled in an executable that doesn't have a single trace
     // in that case, the section isn't created and the __start/stop_traces symbols are not resolved in link time
     static PTraceInfo SECTIONIZE(traces) t = {.format = "first trace",

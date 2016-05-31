@@ -17,44 +17,47 @@ assert trace_info_struct.size == 256
 TraceHeader = collections.namedtuple('TraceHeader', ['time', 'job_id', 'info_index', 'severity'])
 trace_header_struct = struct.Struct('QIHB')
 
-def strip_nulls(s):
+def bytes_to_string(b):
+    s = b.decode('utf-8')
     return s[:s.index('\x00')]
 
-def get_trace_info(f):
-    version, = struct.unpack('H', f.read(2))
-    count, = struct.unpack('H', f.read(2))
-    for i in xrange(count):
-        fields = trace_info_struct.unpack(f.read(trace_info_struct.size))
-        yield TraceInfo._make(strip_nulls(i) if isinstance(i, str) else i for i in fields)
+def get_trace_info(stream):
+    version, = struct.unpack('H', stream.read(2))
+    count, = struct.unpack('H', stream.read(2))
+    for i in range(count):
+        fields = trace_info_struct.unpack(stream.read(trace_info_struct.size))
+        yield TraceInfo._make(bytes_to_string(i) if isinstance(i, bytes) else i for i in fields)
 
-def get_traces(f):
+RECORD_LENGTH_TYPE = 'H'
+RECORD_LENGTH_SIZE = 2
+def get_traces(stream):
     while True:
         bytes_left_in_chunk = CHUNK_SIZE
         while bytes_left_in_chunk > 0:
-            length_data = f.read(1)
-            if length_data == '':
+            length_data = stream.read(RECORD_LENGTH_SIZE)
+            if length_data == b'':
                 return
-            length, = struct.unpack('B', length_data)
-            bytes_left_in_chunk -= 1
+            length, = struct.unpack(RECORD_LENGTH_TYPE, length_data)
+            bytes_left_in_chunk -= RECORD_LENGTH_SIZE
             if length == 0:
-                padding = f.read(bytes_left_in_chunk)
-                assert padding == len(padding) * '\x00', "Found data within the padding: (length: {}) {}...".format(len(padding), padding[:100].encode('hex'))
+                padding = stream.read(bytes_left_in_chunk)
+                assert padding == len(padding) * b'\x00', 'Found data within the padding: (length: {}) {}{}'.format(len(padding), padding[:100], '...' if len(padding) > 0 else '')
                 break
 
-            header_data = f.read(trace_header_struct.size)
-            params_data = f.read(length - trace_header_struct.size)
-            assert len(params_data) + len(header_data) == length, "Expected {}. Got {} + {}".format(length, len(params_data), len(header_data))
+            header_data = stream.read(trace_header_struct.size)
+            params_data = stream.read(length - trace_header_struct.size)
+            assert len(params_data) + len(header_data) == length, 'Expected {}. Got {} + {}'.format(length, len(params_data), len(header_data))
 
             header = TraceHeader._make(trace_header_struct.unpack(header_data))
             yield header, params_data
 
             bytes_left_in_chunk -= length
             if (bytes_left_in_chunk < 0):
-                assert bytes_left_in_chunk >= 0, "Overflow from chunk size {} with length {}".format(bytes_left_in_chunk, length)
+                assert bytes_left_in_chunk >= 0, 'Overflow from chunk size {} with length {}'.format(bytes_left_in_chunk, length)
 
 # we need to extract the length and type of each specifier
 format_re = re.compile('''\
-%                                  # literal "%"
+%                                  # literal %
 (?:[-+0 #]{0,5})                   # optional flags
 (?:\d+|\*)?                        # width
 (?:\.(?:\d+|\*))?                  # precision
@@ -63,7 +66,7 @@ format_re = re.compile('''\
 ''', re.VERBOSE)
 
 # the following info is extracted from here: http://www.cplusplus.com/reference/cstdio/printf/
-# for some reason printf interprets %c as an integer. we know it's a char.
+# we interpret chars as single bytes in order to be able to pass bools as a single byte and have them printed.
 specifier_map = {'c': ctypes.c_byte, 'p': ctypes.c_void_p}
 for int_specifier in 'di':
     specifier_map[int_specifier] = ctypes.c_int
@@ -84,7 +87,8 @@ for unsigned_specifier in 'uoxX':
     specifier_map['z' + int_specifier] = ctypes.c_longlong # size_t
     specifier_map['t' + int_specifier] = ctypes.c_longlong # ptrdiff_t
 for float_specifier in 'fFeEgGaA':
-    specifier_map[float_specifier] = ctypes.c_double
+    for length_specifier, dtype in [('', ctypes.c_float), ('l', ctypes.c_double)]:
+        specifier_map[length_specifier + float_specifier] = dtype
 
 dtype_to_field = {ctypes.c_byte: 'b',
                   ctypes.c_ubyte: 'B',
@@ -96,6 +100,7 @@ dtype_to_field = {ctypes.c_byte: 'b',
                   ctypes.c_ulong: 'L',
                   ctypes.c_longlong: 'q',
                   ctypes.c_ulonglong: 'Q',
+                  ctypes.c_float: 'f',
                   ctypes.c_double: 'd',
                   ctypes.c_void_p: 'P'}
 
@@ -104,27 +109,37 @@ missing = set(specifier_map.values()).symmetric_difference(dtype_to_field)
 assert not missing, missing
 del missing
 
+STR_LENGTH_TYPE = 'H'
+STR_LENGTH_SIZE = 2
 def parse_params(format, buffer):
     pos = 0
     params = []
-    for (length, type_) in format_re.findall(format):
-        specifier = length + type_
+    for (length, type) in format_re.findall(format):
+        specifier = length + type
         if specifier == 's':
-            size = ord(buffer[pos])
-            pos += 1
-            params.append(buffer[pos: pos + size])
+            size, = struct.unpack(STR_LENGTH_TYPE, buffer[pos:pos + STR_LENGTH_SIZE])
+            pos += STR_LENGTH_SIZE
+            params.append(buffer[pos:pos + size].decode('utf-8'))
             pos += size
         else:
             dtype = specifier_map[specifier]
             dtype_size = ctypes.sizeof(dtype)
             params.append(struct.unpack(dtype_to_field[dtype], buffer[pos:pos + dtype_size])[0])
             pos += dtype_size
+    assert len(buffer) == pos, 'Format string "{}" did not consume all params. Expected {} bytes and got {} instead.'.format(format, pos, len(buffer))
     return params
 
 def underline_variables(format):
     def on_match(match):
         return term.underline + match.group(0) + term.normal
     return format_re.sub(on_match, format)
+
+def c_format_to_python_format(format):
+    """
+    Python doesn't support %p and %hhd (single byte integer).
+    We replace %c with %d because booleans aren't supported in C's printf and are passed as %c.
+    """
+    return format.replace('%p', '0x%x').replace('%hhd', '%d').replace('%c', '%d')
 
 term = blessings.Terminal()
 TIME_FORMAT = '%y/%m/%d %H:%M:%S.%f'
@@ -135,24 +150,24 @@ severities = {0: term.red + 'DEV' + term.normal,
               2: term.cyan + 'INFO' + term.normal,
               3: term.yellow + 'WARN' + term.normal,
               4: term.red + 'ERROR' + term.normal}
+
 def handle_path(path):
     component, tid = file_re.findall(path)[0]
-    with open(path) as f:
+    with open(path, 'rb') as f:
         trace_infos = list(get_trace_info(f))
         for (header, params_data) in get_traces(f):
             info = trace_infos[header.info_index]
             params = parse_params(info.format, params_data)
             time = datetime.datetime.fromtimestamp(header.time / 1000000000.).strftime(TIME_FORMAT)
-            format = underline_variables(info.format)
-            message = format.replace('%p', '0x%x').replace('%hhd', '%d') % tuple(params)
+            message = c_format_to_python_format(underline_variables(info.format)) % tuple(params)
             yield TRACE_FORMAT.format(time=time, tid=tid, component=component, message=message,
                                       job_id=header.job_id, severity=severities[header.severity])
 
 def main(paths):
     for path in paths:
-        print "Opening file:", path
+        print("Opening file:", path)
         for trace in handle_path(path):
-            print trace
+            print(trace)
 
 if __name__ == '__main__':
     main(sys.argv[1:])

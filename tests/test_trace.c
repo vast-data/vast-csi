@@ -22,7 +22,7 @@ static void test_dbuffer_sanity(void **state)
     p_dbuffer_reader_init(&reader, buf);
 
     char out[4] = {0};
-    uint8_t length;
+    P_DBUFFER_LENGTH_TYPE length;
     assert_int_equal(p_dbuffer_read(&reader, out, &length, false), PDBUFFER_READ_NOTHING);
     assert_int_equal(p_dbuffer_read(&reader, out, &length, true), PDBUFFER_READ_SUCCESS);
     assert_int_equal(length, 4);
@@ -50,7 +50,7 @@ static void test_dbuffer_wraparound(void **state)
     p_dbuffer_reader_init(&reader, buf);
 
     char out[8] = {0};
-    uint8_t length;
+    P_DBUFFER_LENGTH_TYPE length;
 
     assert_int_equal(p_dbuffer_read(&reader, out, &length, false), PDBUFFER_READ_SUCCESS);
     assert_false(memcmp(data, out, 8));
@@ -79,7 +79,7 @@ static void test_dbuffer_overflow(void **state)
     p_dbuffer_write(buf, &data, 8);
 
     char out[8] = {0};
-    uint8_t length;
+    P_DBUFFER_LENGTH_TYPE length;
     assert_int_equal(p_dbuffer_read(&reader, out, &length, false), PDBUFFER_READ_OVERFLOW);
     assert_int_equal(p_dbuffer_read(&reader, out, &length, false), PDBUFFER_READ_SUCCESS);
     assert_false(memcmp(data, out, 8));
@@ -106,7 +106,7 @@ static char config_string[] = QUOTE(traces: {
   });
 
 #define DATADIR "./data"
-#define ITERS 1000000
+#define ITERS 10000000
 static void test_emitter(void **state UNUSED)
 {
     PConfig config;
@@ -121,21 +121,28 @@ static void test_emitter(void **state UNUSED)
     p_trace_emitter_set(emitter);
     p_trace_dumper_start(dumper);
 
-    P_TRACE(P_TRACE_INFO, 0, "Parameterless trace");
-
     long l = 1;
     int i = 2;
     short s = 3;
     char c = '4';
+    bool b = true;
     void *ptr = &l;
     const char *str = "ABC";
+    float f = 1.2f;
+    double d = 1.4;
+
     uint64_t start = p_get_clock_time_nano();
     LOOP(ITERS, _) {
-        P_TRACE(P_TRACE_INFO, 0, "%ld %d %hd %c %p %s", l, i, s, c, ptr, str);
+        P_TRACE(P_TRACE_INFO, 0, "%ld %d %hd %c %p %s %f %lf %c", l, i, s, c, ptr, str, f, d, b);
     }
     uint64_t end = p_get_clock_time_nano();
     float avg = (float) (end - start) / ITERS;
     printf("Iterations: %d. Average: %.3fns. Total: %lu\n", ITERS, avg, end - start);
+
+    P_TRACE(P_TRACE_INFO, 0, "Parameterless trace");
+    const char *string = "Loooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooong";
+    LOOP(10, _)
+        P_TRACE(P_TRACE_INFO, 0, "Long trace: %s", string);
 
     p_trace_dumper_stop(dumper);
     p_trace_dumper_wait(dumper);

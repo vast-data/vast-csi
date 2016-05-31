@@ -25,24 +25,25 @@ static void buffer_destroy(Buffer *buf)
     p_free(buf->mem);
 }
 
-static inline bool buffer_has_room(Buffer *buf, uint8_t length)
+static inline bool buffer_has_room(Buffer *buf, P_DBUFFER_LENGTH_TYPE length)
 {
-    length++; // for this record's length
-    length++; // for the next records length as the reader expects the last record to have a length byte of 0
+    length += sizeof(length); // for this record's length
+    length += sizeof(length); // for the next records length as the reader expects the last record to have a length byte of 0
     P_DEBUG_ASSERT(length < buf->size);
     return buf->write_index + length < buf->size;
 }
 
-static void buffer_write(Buffer *buf, void *data, uint8_t length)
+static void buffer_write(Buffer *buf, void *data, P_DBUFFER_LENGTH_TYPE length)
 {
     P_DEBUG_ASSERT(buffer_has_room(buf, length));
-    buf->mem[buf->write_index] = length;
-    memcpy(buf->mem + buf->write_index + 1, data, length);
-    buf->write_index += length + 1;
-    buf->mem[buf->write_index] = 0; // mark next record as empty
+    memcpy(buf->mem + buf->write_index, &length, sizeof(length));
+    memcpy(buf->mem + buf->write_index + sizeof(length), data, length);
+    buf->write_index += length + sizeof(length);
+    length = 0;
+    memcpy(buf->mem + buf->write_index, &length, sizeof(length)); // mark next record as empty
 }
 
-static void buffer_read(Buffer *buf, uint32_t offset, uint8_t *out_data, uint8_t length)
+static void buffer_read(Buffer *buf, uint32_t offset, void *out_data, P_DBUFFER_LENGTH_TYPE length)
 {
     P_DEBUG_ASSERT(length > 0);
     memcpy(out_data, buf->mem + offset, length);
@@ -81,9 +82,9 @@ void p_dbuffer_destroy(PDbuffer *dbuf)
     p_free(dbuf);
 }
 
-void p_dbuffer_write(PDbuffer *dbuf, void *data, uint8_t length)
+void p_dbuffer_write(PDbuffer *dbuf, void *data, P_DBUFFER_LENGTH_TYPE length)
 {
-    P_ASSERT(length > 0);
+    P_ASSERT(length <= P_DBUFFER_MAX_RECORD);
     Buffer *buf = current_buffer(dbuf);
     if (!buffer_has_room(buf, length)) {
         dbuf->generation++;
@@ -93,11 +94,11 @@ void p_dbuffer_write(PDbuffer *dbuf, void *data, uint8_t length)
     buffer_write(buf, data, length);
 }
 
-static void reader_reset(PDbufferReader *reader, uint8_t *buffers_lost OUT)
+static void reader_reset(PDbufferReader *reader, P_DBUFFER_LENGTH_TYPE *buffers_lost OUT)
 {
     reader->read_index = 0;
     if (buffers_lost != NULL)
-        *buffers_lost = (uint8_t) (reader->dbuf->generation - reader->generation - 1);
+        *buffers_lost = (P_DBUFFER_LENGTH_TYPE) (reader->dbuf->generation - reader->generation - 1);
     if (reader->dbuf->generation >= BUFFER_COUNT)
         reader->generation = reader->dbuf->generation - BUFFER_COUNT + 1;
     else
@@ -115,7 +116,7 @@ static inline bool reader_overflow(PDbufferReader *reader)
     return reader->dbuf->generation - reader->generation >= BUFFER_COUNT;
 }
 
-PDbufferReadResult p_dbuffer_read(PDbufferReader *reader, void *data OUT, uint8_t *length OUT, bool force)
+PDbufferReadResult p_dbuffer_read(PDbufferReader *reader, void *data OUT, P_DBUFFER_LENGTH_TYPE *length OUT, bool force)
 {
     if (!force && reader->generation == reader->dbuf->generation)
         return PDBUFFER_READ_NOTHING;
@@ -123,7 +124,7 @@ PDbufferReadResult p_dbuffer_read(PDbufferReader *reader, void *data OUT, uint8_
     if (reader_overflow(reader))
         goto overflow;
 
-    buffer_read(current_buffer(reader->dbuf), reader->read_index, length, 1);
+    buffer_read(current_buffer(reader->dbuf), reader->read_index, length, P_DBUFFER_LENGTH_BYTES);
 
     if (reader_overflow(reader))
         goto overflow;
@@ -134,11 +135,11 @@ PDbufferReadResult p_dbuffer_read(PDbufferReader *reader, void *data OUT, uint8_
         return PDBUFFER_READ_NOTHING;
     }
 
-    buffer_read(current_buffer(reader->dbuf), reader->read_index + 1, data, *length);
+    buffer_read(current_buffer(reader->dbuf), reader->read_index + P_DBUFFER_LENGTH_BYTES, data, *length);
     if (reader_overflow(reader))
         goto overflow;
 
-    reader->read_index += *length + 1;
+    reader->read_index += *length + P_DBUFFER_LENGTH_BYTES;
     return PDBUFFER_READ_SUCCESS;
 
 overflow:

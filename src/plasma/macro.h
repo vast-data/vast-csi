@@ -10,7 +10,7 @@
 /*!
  * The following macro magic is copied from https://codecraft.co/2014/11/25/variadic-macros-tricks/
  */
-#define _GET_NTH_ARG(_1, _2, _3, _4, _5, _6, _7, _8, N, ...) N
+#define _GET_NTH_ARG(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, N, ...) N
 
 #define _fe_0(_call, ...)
 #define _fe_1(_call, x) _call(x)
@@ -20,6 +20,10 @@
 #define _fe_5(_call, x, ...) _call(x) _fe_4(_call, __VA_ARGS__)
 #define _fe_6(_call, x, ...) _call(x) _fe_5(_call, __VA_ARGS__)
 #define _fe_7(_call, x, ...) _call(x) _fe_6(_call, __VA_ARGS__)
+#define _fe_8(_call, x, ...) _call(x) _fe_7(_call, __VA_ARGS__)
+#define _fe_9(_call, x, ...) _call(x) _fe_8(_call, __VA_ARGS__)
+#define _fe_10(_call, x, ...) _call(x) _fe_9(_call, __VA_ARGS__)
+#define _fe_11(_call, x, ...) _call(x) _fe_10(_call, __VA_ARGS__)
 
 /*!
  * Provide a for-each construct for variadic macros. Supports up
@@ -31,7 +35,7 @@
  */
 #define CALL_MACRO_X_FOR_EACH(x, ...)                                   \
     _GET_NTH_ARG("ignored", ##__VA_ARGS__,                              \
-                 _fe7, _fe_6, _fe_5, _fe_4, _fe_3, _fe_2, _fe_1, _fe_0)(x, ##__VA_ARGS__)
+                 _fe_11, _fe_10, _fe_9, _fe_8, _fe_7, _fe_6, _fe_5, _fe_4, _fe_3, _fe_2, _fe_1, _fe_0)(x, ##__VA_ARGS__)
 
 /*!
  * The following macros provide a template for creating an enum

@@ -74,14 +74,14 @@ void p_trace_dumper_destroy(PTraceDumper *dumper)
 
 static bool dumper_iteration(PTraceDumper *dumper, bool force)
 {
-    static PTraceInfo SECTIONIZE(traces) overflow_info = {.format = "Trace overflow. %hhd buffers lost.",
+    static PTraceInfo SECTIONIZE(traces) overflow_info = {.format = "Trace overflow. %hd buffers lost.",
                                                           .func_ptr = __func__,
                                                           .file = __FILE__,
                                                           .line = __LINE__};
     uint16_t overflow_index = p_trace_info_index(&overflow_info);
 
     PTraceRecord record;
-    uint8_t length;
+    P_DBUFFER_LENGTH_TYPE length;
     bool found = false;
     LOOP(COMPONENT_COUNT, i) {
         if (dumper->readers[i] != NULL) {
@@ -102,7 +102,7 @@ static bool dumper_iteration(PTraceDumper *dumper, bool force)
                 record.job_id = 0; // no fiber
                 record.severity = P_TRACE_ERROR;
                 record.info_index = overflow_index;
-                record.params[0] = length;
+                memcpy(record.params, &length, sizeof(length));
                 p_trace_file_emit(dumper->files[i], &record, offsetof(PTraceRecord, params) + sizeof(length));
                 break;
             }

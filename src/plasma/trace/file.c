@@ -149,7 +149,7 @@ static void delete_files_if_needed(PTraceFile *trace_file)
     free(namelist);
 }
 
-static void rotate_file_if_needed(PTraceFile *trace_file, uint8_t length)
+static void rotate_file_if_needed(PTraceFile *trace_file, P_DBUFFER_LENGTH_TYPE length)
 {
     if (trace_file->file_offset + length > trace_file->max_file_size) {
         close_file(trace_file);
@@ -158,7 +158,7 @@ static void rotate_file_if_needed(PTraceFile *trace_file, uint8_t length)
     }
 }
 
-static void rotate_chunk_if_needed(PTraceFile *trace_file, uint8_t length)
+static void rotate_chunk_if_needed(PTraceFile *trace_file, P_DBUFFER_LENGTH_TYPE length)
 {
     if (length > trace_file->bytes_left_in_chunk) {
         P_ASSERT(fseek(trace_file->file, trace_file->bytes_left_in_chunk, SEEK_CUR) == 0);
@@ -168,13 +168,13 @@ static void rotate_chunk_if_needed(PTraceFile *trace_file, uint8_t length)
     }
 }
 
-void p_trace_file_emit(PTraceFile *trace_file, PTraceRecord *record, uint8_t length)
+void p_trace_file_emit(PTraceFile *trace_file, PTraceRecord *record, P_DBUFFER_LENGTH_TYPE length)
 {
     if (trace_file->file == NULL)
         create_file(trace_file);
-    rotate_chunk_if_needed(trace_file, length + 1);
-    rotate_file_if_needed(trace_file, length + 1);
-    write_file(trace_file, &length, sizeof(uint8_t));
+    rotate_chunk_if_needed(trace_file, length + sizeof(P_DBUFFER_LENGTH_TYPE));
+    rotate_file_if_needed(trace_file, length + sizeof(P_DBUFFER_LENGTH_TYPE));
+    write_file(trace_file, &length, sizeof(P_DBUFFER_LENGTH_TYPE));
     write_file(trace_file, record, length);
-    trace_file->bytes_left_in_chunk -= (length + 1);
+    trace_file->bytes_left_in_chunk -= (length + sizeof(P_DBUFFER_LENGTH_TYPE));
 }

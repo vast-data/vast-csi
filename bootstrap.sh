@@ -1,10 +1,10 @@
 yum -y groupinstall 'Development Tools'
 yum -y install epel-release
-yum -y install net-tools which clang lldb scons libcmocka-devel libunwind-devel libconfig-devel install doxygen xorg-x11-xauth vim-enhanced zsh centos-release-scl libaio-devel
+yum -y install net-tools which clang lldb scons libcmocka-devel libunwind-devel libconfig-devel install doxygen xorg-x11-xauth vim-enhanced zsh centos-release-scl libaio-devel python34
 yum -y install devtoolset-3-gcc
 
-pip install --upgrade pip
-pip install virtualenv
+curl https://bootstrap.pypa.io/get-pip.py | python3.4
+pip3.4 install virtualenv
 
 # install oh-my-zsh for the vagrant user
 chsh -s /bin/zsh vagrant
