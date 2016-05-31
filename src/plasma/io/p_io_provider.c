@@ -1,13 +1,6 @@
 /* Copyright (C) Vast Data Ltd. */
 #include "p_io_provider.h"
 
-struct PIOProvider {
-    PDList active_devices;
-    PDListAnchor active_devices_anchor;
-    size_t device_count;
-    PDevIO *devices;
-};
-
 PIOProvider *p_io_provider_init(PDevIO devices[], size_t device_count)
 {
     PIOProvider *ioprovider_ret = malloc(sizeof(PIOProvider));
@@ -35,15 +28,16 @@ PIOProvider *p_io_provider_init_from_settings(PConfigSetting *io_module)
     PConfigSetting *devices_setting = p_config_setting_lookup_required(io_provider_setting, "devices");
     const size_t device_count = (size_t)p_config_setting_length(devices_setting);
     PDevIO* devices = malloc(device_count * sizeof(PDevIO));
-    LOOP(p_config_setting_length(devices_setting), i)
+    LOOP(device_count, i)
     {
         PConfigSetting *device_setting = p_config_setting_get_element(devices_setting, (uint32_t) i);
         PConfigSetting *dev_path_setting = p_config_setting_lookup_required(device_setting, "dev_path");
         PConfigSetting *io_depth_setting = p_config_setting_lookup_required(device_setting, "io_depth");
+        PConfigSetting *device_size_setting = p_config_setting_lookup_required(device_setting, "device_size");
 
         if (unlikely(!p_devio_init(&devices[i], p_config_setting_get_string(dev_path_setting),
-                                   (uint32_t)p_config_setting_get_int32(io_depth_setting),
-                                   iopool))) {
+                                   (uint32_t)p_config_setting_get_int32(io_depth_setting), iopool,
+                                   (size_t)p_config_setting_get_int32(device_size_setting)))) {
             // Todo: this should be replaces with a notification to control and then possibly skip/retry/panic?
             P_PANIC();
         }
@@ -53,9 +47,9 @@ PIOProvider *p_io_provider_init_from_settings(PConfigSetting *io_module)
 
 void p_io_provider_poll(PIOProvider *io_provider)
 {
-    P_DLIST_EACH(&io_provider->active_devices, index) {
+    P_DLIST_SAFE_EACH(&io_provider->active_devices, index,
         p_devio_poll_events(&io_provider->devices[index]);
-    }
+    )
 }
 
 void p_io_provider_enable_polling(PIOProvider *io_provider, PDevIO *device)

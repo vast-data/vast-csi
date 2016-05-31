@@ -16,6 +16,9 @@
 
 #include <limits.h>
 #include <libaio.h>
+#include <sys/uio.h>
+
+#define O_DIRECT_ALIGN (512)
 
 // This will probably move to a more general location...
 typedef uint64_t Baddr;
@@ -27,15 +30,17 @@ typedef struct PIOProvider PIOProvider;
 
 typedef struct PDevIO PDevIO;
 
+// Todo: do we need to enforce certain block size? (512 bytes for instance for O_DIRECT)
 struct PDevIO {
     io_context_t ctx;
     // Todo: should we have a different limitation for reads & writes?
     PSem available_ios;
     int file_desc;
     char dev_name[PATH_MAX];
-    uint32_t iodepth;
     PAtomicPool *iopool;
     PIOProvider *io_provider;
+    size_t size;    // in bytes.
+    uint32_t iodepth;
 };
 
 typedef enum {
@@ -49,7 +54,11 @@ typedef struct IOVecs {
     IOVec *iovecs;
 } IOVecs;
 
-typedef struct PDevIOFuture PDevIOFuture;
+typedef struct PDevIOFuture {
+    PFuture future;
+    uint32_t io_count;
+    IODevRet res;
+} PDevIOFuture;
 
 typedef struct PIO {
     struct iocb io;
@@ -70,8 +79,11 @@ typedef struct Baddrs {
  * \param dev_name the device path.
  * \param iodepth the maximum value of concurrent pending ios for this device.
  * \param iopool the shared object pool holding items of type PIO.
+ * \param device_size maximum address allowed for this device.
+ *  When 0 is passed device size is auto determined (block device only).
  */
-bool p_devio_init(PDevIO *devio OUT, const char dev_name[], uint32_t iodepth, PAtomicPool *iopool) WARN_UNUSED;
+bool WARN_UNUSED p_devio_init(PDevIO *devio OUT, const char dev_name[],
+                  uint32_t iodepth, PAtomicPool *iopool, size_t device_size) WARN_UNUSED;
 
 /*!
  * Perform a scatter => scatter write operation
@@ -80,7 +92,7 @@ bool p_devio_init(PDevIO *devio OUT, const char dev_name[], uint32_t iodepth, PA
  *        target_baddrs->count is the length of buffers array.
  * \param io_future the token to wait on for async execution. for sync operation set as NULL.
  */
-IODevRet p_devio_write_scatter(PDevIO *devio, IOVecs buffers[], Baddrs *target_baddrs, PDevIOFuture *io_future);
+IODevRet WARN_UNUSED p_devio_write_scatter(PDevIO *devio, IOVecs buffers[], Baddrs *target_baddrs, PDevIOFuture *io_future);
 
 /*!
  * Perform a scatter => scatter read operation
@@ -89,7 +101,7 @@ IODevRet p_devio_write_scatter(PDevIO *devio, IOVecs buffers[], Baddrs *target_b
  *        source_baddrs->count is the length of buffers array.
  * \param io_future the token to wait on for async execution. for sync operation set as NULL.
  */
-IODevRet p_devio_read_scatter(PDevIO *devio, IOVecs buffers[], Baddrs *source_baddrs, PDevIOFuture *io_future);
+IODevRet WARN_UNUSED p_devio_read_scatter(PDevIO *devio, IOVecs buffers[], Baddrs *source_baddrs, PDevIOFuture *io_future);
 
 /*!
  * Perform a single buffer to a single address write operation
@@ -97,7 +109,7 @@ IODevRet p_devio_read_scatter(PDevIO *devio, IOVecs buffers[], Baddrs *source_ba
  * \param target_baddr target device physical addresses to write to.
  * \param io_future the token to wait on for async execution. for sync operation set as NULL.
  */
-IODevRet p_devio_write(PDevIO *devio, IOVec *buffer, Baddr target_baddr, PDevIOFuture *io_future);
+IODevRet WARN_UNUSED p_devio_write(PDevIO *devio, IOVec *buffer, Baddr target_baddr, PDevIOFuture *io_future);
 
 /*!
  * Perform a single address to single buffer read operation
@@ -105,13 +117,13 @@ IODevRet p_devio_write(PDevIO *devio, IOVec *buffer, Baddr target_baddr, PDevIOF
  * \param source_baddr source device physical addresses from which the read is performed.
  * \param io_future the token to wait on for async execution. for sync operation set as NULL.
  */
-IODevRet p_devio_read(PDevIO *devio, IOVec *buffer, Baddr source_baddr, PDevIOFuture *io_future);
+IODevRet WARN_UNUSED p_devio_read(PDevIO *devio, IOVec *buffer, Baddr source_baddr, PDevIOFuture *io_future);
 
 /*!
  * Wait on an IO operation.
  * \param io_future the token used when submitting the IO operation.
  */
-void p_devio_wait(PDevIO *devio, PDevIOFuture *io_future);
+IODevRet WARN_UNUSED p_devio_wait(PDevIO *devio, PDevIOFuture *io_future);
 
 /*!
  * Poll for io done events and possibly release fibers that are IO pending.
@@ -128,4 +140,18 @@ void p_devio_set_ioprovider(PDevIO *devio, PIOProvider *io_provider);
  * \param devio is the structure to be released.
  */
 void p_devio_destroy(PDevIO *devio);
+
+// Next is still not operational, yet it should be in the future...
+
+/*!
+ * Performs trim/unmap of baddrs in the device.
+ */
+//IODevRet p_devio_trim(PDevIO *devio, Baddr base_offset, size_t block_count);
+
+/*!
+ * Performs flushing of the device.
+ */
+//void p_devio_flush(PDevIO *devio);
+
+
 

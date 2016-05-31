@@ -2,22 +2,21 @@
 #define _GNU_SOURCE
 
 #include "p_devio.h"
-#include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <linux/fs.h>
+#include <sys/ioctl.h>
 
-struct PDevIOFuture {
-    PFuture future;
-    uint32_t io_count;
-};
+#define IO_SUBMIT_SPINS             (100)
+#define IO_SUBMIT_YIELD_INTERVAL    (5)
+#define IO_SUBMIT_MAX_ATTEMPTS      (1000)
 
-static void p_pio_init(PIO *pio)
-{
-    io_set_callback(&pio->io, NULL);
-    pio->io_future = NULL;
-}
+#define IO_POLL_SPINS               (100)
+#define IO_POLL_YIELD_INTERVAL      (5)
+#define IO_POLL_MAX_ATTEMPTS        (1000)
 
-bool p_devio_init(PDevIO *devio OUT, const char dev_name[], uint32_t iodepth, PAtomicPool *iopool)
+bool p_devio_init(PDevIO *devio OUT, const char dev_name[],
+                  uint32_t iodepth, PAtomicPool *iopool, size_t device_size)
 {
     devio->iodepth = iodepth;
     devio->iopool = iopool;
@@ -34,20 +33,49 @@ bool p_devio_init(PDevIO *devio OUT, const char dev_name[], uint32_t iodepth, PA
 
     P_ASSERT(strnlen(dev_name, PATH_MAX) < PATH_MAX);
     strncpy(devio->dev_name, dev_name, PATH_MAX);
-    int open_flags = O_RDWR | O_CREAT | O_DIRECT;
+    int open_flags = O_RDWR | O_DIRECT;
     devio->file_desc = open(devio->dev_name, open_flags);
     if (unlikely(devio->file_desc == -1)) {
         // P_TRACE_ERR(/* TODO: informative string with the value of errno - might use strerror() / perror()) */);
         return false;
     }
 
+    if (device_size == 0) {
+        int ret = ioctl(devio->file_desc, BLKGETSIZE64, &device_size);
+        P_ASSERT(ret != -1);
+    }
+
+    devio->size = device_size;
+
     return true;
 }
 
 void p_devio_set_ioprovider(PDevIO *devio, PIOProvider *io_provider)
 {
-    P_ASSERT(devio == NULL);
+    P_ASSERT(devio->io_provider == NULL);
     devio->io_provider = io_provider;
+}
+
+static size_t io_byte_count(struct iocb *ios)
+{
+    switch (ios->aio_lio_opcode) {
+    case IO_CMD_PREAD:
+    case IO_CMD_PWRITE:
+        return ios->u.c.nbytes;
+    case IO_CMD_PREADV:
+    case IO_CMD_PWRITEV:
+        break;
+    default:
+        P_PANIC();
+    }
+
+    size_t ret_size = 0;
+    IOVec *iovec = (IOVec*) ios->u.c.buf;
+    LOOP(ios->u.c.nbytes, i) {
+        ret_size += iovec[i].iov_len;
+    }
+
+    return ret_size;
 }
 
 static void allocate_ios(PDevIO *devio, struct iocb *ios[], uint32_t count, PDevIOFuture *io_future)
@@ -58,7 +86,6 @@ static void allocate_ios(PDevIO *devio, struct iocb *ios[], uint32_t count, PDev
     p_atomic_pool_alloc_multiple(devio->iopool, element_idices, count);
     LOOP(count, i) {
         PIO *io = (PIO*)p_atomic_pool_index_to_element(devio->iopool, element_idices[i]);
-        p_pio_init(io);
         io->io_future = io_future;
         ios[i] = &io->io;
     }
@@ -95,6 +122,20 @@ static void p_devio_handle_io_done(PDevIO *devio, struct iocb *iocb_done)
     p_atomic_pool_free(devio->iopool, (void*)io);
 }
 
+static void p_devio_validate_io_event(PDevIO *devio, struct io_event *event)
+{
+    size_t io_size = io_byte_count(event->obj);
+    if (event->res != io_size) {
+        // TODO: get res and possibly res2- log all that we can here
+        PIO *io =  MEMBER2OBJECT(event->obj, PIO, io);
+        PIndex index = p_atomic_pool_element_to_index(devio->iopool, io);
+        printf("IO error: index=%u, res=%ld, res2=%ld nbytes = %ld, opcode = %d\n",
+               index, (long)event->res, (long)event->res2,
+               (long)event->obj->u.c.nbytes, event->obj->aio_lio_opcode);
+        io->io_future->res = P_IODEV_ERROR;
+    }
+}
+
 void p_devio_poll_events(PDevIO *devio)
 {
     const long active_ios = devio->iodepth - devio->available_ios.value;
@@ -103,7 +144,7 @@ void p_devio_poll_events(PDevIO *devio)
     P_ASSERT(active_ios > 0);
 
     int ios_done;
-    RETRY_LOOP(io_polling, 100, 5, 1000,
+    RETRY_LOOP(IO_POLL_SPINS, IO_POLL_YIELD_INTERVAL, IO_POLL_MAX_ATTEMPTS,
         ios_done = io_getevents(devio->ctx, 0, active_ios, events, NULL);
         if (ios_done >= 0) {
             break;
@@ -119,6 +160,7 @@ void p_devio_poll_events(PDevIO *devio)
     }
 
     LOOP_TYPE(uint32_t, ios_done, event_index) {
+        p_devio_validate_io_event(devio, &events[event_index]);
         p_devio_handle_io_done(devio, events[event_index].obj);
     }
 
@@ -132,7 +174,7 @@ void p_devio_poll_events(PDevIO *devio)
 
 static void submit_ios(PDevIO *devio, struct iocb **ios_ptr, uint32_t io_count)
 {
-    RETRY_LOOP(io_submition, 100, 5, 1000,
+    RETRY_LOOP(IO_SUBMIT_SPINS, IO_SUBMIT_YIELD_INTERVAL, IO_SUBMIT_MAX_ATTEMPTS,
         int submit_ret = io_submit(devio->ctx, io_count, ios_ptr);
         if (submit_ret == (int) io_count) {
             break;
@@ -151,9 +193,28 @@ static void submit_ios(PDevIO *devio, struct iocb **ios_ptr, uint32_t io_count)
     )
 }
 
-static IODevRet
+static void validate_io(PDevIO *devio, IOVecs buffers[], Baddrs *dev_offsets)
+{
+    LOOP(dev_offsets->count, baddr_idx) {
+        size_t io_size = 0;
+        LOOP (buffers[baddr_idx].count, iovec_idx) {
+            // O_DIRECT limitations
+            P_ASSERT(buffers[baddr_idx].iovecs[iovec_idx].iov_len % O_DIRECT_ALIGN == 0);
+            P_ASSERT((size_t)buffers[baddr_idx].iovecs[iovec_idx].iov_base % O_DIRECT_ALIGN == 0);
+
+            io_size += buffers[baddr_idx].iovecs[iovec_idx].iov_len;
+        }
+
+        // make sure the io doesn't go beyond device boundaries.
+        P_ASSERT(dev_offsets->baddrs[baddr_idx] + io_size <= devio->size);
+    }
+}
+
+static IODevRet WARN_UNUSED
 p_devio_perform_scattered_io(PDevIO *devio, IOVecs buffers[], Baddrs *dev_offsets, bool is_write, PDevIOFuture *io_future)
 {
+    validate_io(devio, buffers, dev_offsets);
+
     const uint32_t io_count = dev_offsets->count;
     // Todo: is this a proper size on the stack? - should set a maximum defined size here
     struct iocb *ios[io_count];
@@ -165,6 +226,7 @@ p_devio_perform_scattered_io(PDevIO *devio, IOVecs buffers[], Baddrs *dev_offset
     }
 
     io_future->io_count = io_count;
+    io_future->res = P_IODEV_SUCCESS;
     p_future_init(&io_future->future, NULL);
 
     allocate_ios(devio, ios, io_count, io_future);
@@ -175,23 +237,23 @@ p_devio_perform_scattered_io(PDevIO *devio, IOVecs buffers[], Baddrs *dev_offset
     submit_ios(devio, ios, io_count);
 
     if (blocking) {
-        p_devio_wait(devio, io_future);
+        return p_devio_wait(devio, io_future);
     }
 
     return P_IODEV_SUCCESS;
 }
 
-IODevRet p_devio_write_scatter(PDevIO *devio, IOVecs buffers[], Baddrs *target_baddrs, PDevIOFuture *io_future)
+IODevRet WARN_UNUSED p_devio_write_scatter(PDevIO *devio, IOVecs buffers[], Baddrs *target_baddrs, PDevIOFuture *io_future)
 {
     return p_devio_perform_scattered_io(devio, buffers, target_baddrs, true, io_future);
 }
 
-IODevRet p_devio_read_scatter(PDevIO *devio, IOVecs buffers[], Baddrs *source_baddrs, PDevIOFuture *io_future)
+IODevRet WARN_UNUSED p_devio_read_scatter(PDevIO *devio, IOVecs buffers[], Baddrs *source_baddrs, PDevIOFuture *io_future)
 {
     return p_devio_perform_scattered_io(devio, buffers, source_baddrs, false, io_future);
 }
 
-static IODevRet p_devio_perform_io(PDevIO *devio, IOVec *buffer, Baddr target_baddr, bool is_write, PDevIOFuture *io_future)
+static IODevRet WARN_UNUSED p_devio_perform_io(PDevIO *devio, IOVec *buffer, Baddr target_baddr, bool is_write, PDevIOFuture *io_future)
 {
     IOVecs iovecs;
     iovecs.count = 1;
@@ -214,14 +276,14 @@ IODevRet p_devio_read(PDevIO *devio, IOVec *buffer, Baddr source_baddr, PDevIOFu
     return p_devio_perform_io(devio, buffer, source_baddr, false, io_future);
 }
 
-void p_devio_wait(PDevIO *devio UNUSED, PDevIOFuture *io_future)
+IODevRet p_devio_wait(PDevIO *devio UNUSED, PDevIOFuture *io_future)
 {
-    if (p_future_is_set(&io_future->future)) {
-        return;
+    if (!p_future_is_set(&io_future->future)) {
+        p_future_wait(&io_future->future);
     }
-
-    p_future_wait(&io_future->future);
     P_ASSERT(io_future->io_count == 0);
+
+    return io_future->res;
 }
 
 void p_devio_destroy(PDevIO *devio)
@@ -230,3 +292,30 @@ void p_devio_destroy(PDevIO *devio)
     P_ASSERT(devio->available_ios.value == devio->iodepth);
     io_destroy(devio->ctx);
 }
+
+
+// Still not operational, yet it should be in the future...
+
+//IODevRet p_devio_trim(PDevIO *devio, Baddr base_offset, size_t block_count)
+//{
+//
+//    off_t trim_ext[2];
+//    trim_ext[0] = (off_t) base_offset;
+//    trim_ext[1] = (off_t) block_count;
+//
+//    int ret = ioctl(devio->file_desc, /* IOCATADELETE / BLKDISCARD */, trim_ext);
+//    if (ret < 0) {
+//        P_PANIC();
+//    }
+//
+//    return P_IODEV_SUCCESS;
+//}
+
+//void p_devio_flush(PDevIO *devio)
+//{
+//    int ret = ioctl(devio->file_desc, /* FDFLUSH / BLKFLSBUF, 0 */);
+//    if (ret < 0) {
+//        P_PANIC();
+//    }
+//}
+

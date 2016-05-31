@@ -11,9 +11,7 @@
 
 #include <p.h>
 
-typedef struct PDevIO PDevIO;
-
-typedef struct PIOProvider PIOProvider;
+#include "p_io_provider_private.h"
 
 /*!
  * Initialize a PIOProvider structure.

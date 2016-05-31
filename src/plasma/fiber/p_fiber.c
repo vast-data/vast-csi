@@ -28,7 +28,10 @@ static void context_switch()
 {
     PFiber *fiber = p_get_current_fiber();
     P_ASSERT(fiber->state != FIBER_STATE_RUNNING);
-    P_ASSERT(p_get_time_nano() - fiber->switch_time < STARVATION_THRESHOLD_NS);
+    if (likely(!debugging)) {
+        // don't want to measure time while debugging
+        P_ASSERT(p_get_time_nano() - fiber->switch_time < STARVATION_THRESHOLD_NS);
+    }
     P_ASSERT(*((intptr_t *) fiber->stack) == (intptr_t) P_FIBER_STACK_OVERFLOW_MAGIC);
 
     fiber->switch_time = p_get_time_nano();

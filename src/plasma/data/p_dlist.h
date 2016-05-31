@@ -141,3 +141,13 @@ P_DLIST_EACH(list, anchor, i) {
 #define P_DLIST_EACH(list, element) for (PIndex element = p_dlist_get_first(list); \
                                          element != P_INVALID_INDEX; \
                                          element = p_dlist_is_last(list, element) ? P_INVALID_INDEX : p_dlist_next(list, element))
+
+// This allows current item to be removed from the list in the body of the iteration
+#define P_DLIST_SAFE_EACH(list, element, body) for (PIndex element = p_dlist_get_first(list);                           \
+                                                    element != P_INVALID_INDEX; ) {                                     \
+                                                    PIndex next_element = p_dlist_is_last(list, element) ?               \
+                                                                         P_INVALID_INDEX : p_dlist_next(list, element); \
+                                                    {body}                                                              \
+                                                    element = next_element;                                             \
+                                                }
+

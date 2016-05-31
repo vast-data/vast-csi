@@ -404,13 +404,13 @@ static void test_event_all(void **state UNUSED)
 
 static void future_fast_setter(void *arg)
 {
-    PFuture* future = (PFuture*)arg;
+    PFuture* future = (PFuture*) arg;
     p_future_set(future);
 }
 
 static void future_slow_setter(void *arg)
 {
-    PFuture* future = (PFuture*)arg;
+    PFuture* future = (PFuture*) arg;
 
     p_sleep(SLEEP_100_MILLI);
     p_future_set(future);
@@ -418,7 +418,7 @@ static void future_slow_setter(void *arg)
 
 static void future_main_setter(void *arg)
 {
-    PFuture* future = (PFuture*)arg;
+    PFuture* future = (PFuture*) arg;
     enum {
         child_future_wait_subset = 7,
         child_future_count = 10

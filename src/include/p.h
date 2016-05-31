@@ -17,6 +17,7 @@ typedef int32_t PIndex;
 #define P_INVALID_INDEX (-1)
 
 #include "defs.h"
+#include "globals.h"
 #include "plasma/time.h"
 #include "plasma/utils.h"
 #include "plasma/p_assert.h"

@@ -92,6 +92,7 @@ AddTest(target='dist/tests/test_p_fiber', source=[lib, DEFAULT_BUILD_DIR + '/tes
 AddTest(target='dist/tests/test_time', source=[lib, DEFAULT_BUILD_DIR + '/tests/test_time.c'])
 AddTest(target='dist/tests/test_config', source=[lib, DEFAULT_BUILD_DIR + '/tests/test_config.c'])
 AddTest(target='dist/tests/test_env', source=[lib, DEFAULT_BUILD_DIR + '/tests/test_env.c'], wrap=['p_module_start', 'p_module_init'])
+AddTest(target='dist/tests/test_io_provider', source=[lib, DEFAULT_BUILD_DIR + '/tests/test_io_provider.c'])
 AddTest(target='dist/tests/test_trace', source=[lib, DEFAULT_BUILD_DIR + '/tests/test_trace.c'])
 env.AlwaysBuild('test')
 

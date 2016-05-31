@@ -13,7 +13,7 @@ typedef uint8_t byte;
 #define MIN(a, b) ((a) > (b) ? (b) : (a))
 #define MAX(a, b) ((a) < (b) ? (b) : (a))
 
-#define NUM_ELEMENTS(array) (sizeof(array) / sizeof(array[0]))
+#define NUM_ELEMENTS(array) (sizeof(array) / sizeof((array)[0]))
 
 #define LOOP_FROM_TYPE(type, start, until, i)   for (type i = (type) (start); i < (type) (until); ++i)
 #define LOOP_TYPE(type, until, i)               LOOP_FROM_TYPE(type, 0, until, i)
@@ -41,23 +41,34 @@ typedef uint8_t byte;
 #define WARN_UNUSED __attribute__((warn_unused_result))
 #define NO_RETURN __attribute__((noreturn))
 
-#define RETRY_LOOP(prefix, max_spinning_attempts, attempts_per_yield, max_attempts, loop_body)  \
-    uint64_t prefix##_attempt_count = 0;                                                        \
-    static const uint32_t prefix##_max_spinning_attempts = max_spinning_attempts;               \
-    static const uint32_t prefix##_attempts_per_yield = attempts_per_yield;                     \
-    static const uint32_t prefix##_max_attempts = max_attempts;                                 \
-                                                                                                \
-    while (true) {                                                                              \
-        prefix##_attempt_count++;                                                               \
-        if (prefix##_attempt_count > prefix##_max_spinning_attempts) {                          \
-            if (unlikely(prefix##_attempt_count > prefix##_max_attempts)) {                     \
-                P_PANIC();                                                                      \
-            }                                                                                   \
-            if (prefix##_attempt_count % prefix##_attempts_per_yield == 0) {                    \
-                p_fiber_yield();                                                                \
-            }                                                                                   \
-        }                                                                                       \
-        loop_body                                                                               \
-    }
+#define CONCAT_IMPL( x, y ) x##y
+#define MACRO_CONCAT( x, y ) CONCAT_IMPL( x, y )
+
+// Performs loop_body until it breaks.
+// Spins for max_spinning_attempts iterations, than performs yield every attempts_per_yield iterations
+// and eventually panics if we've reached max_attempts iterations.
+#define INNER_RETRY_LOOP(var_attempt_count, var_max_spinning_attempts, var_attempts_per_yield, var_max_attempts, max_spinning_attempts, attempts_per_yield, max_attempts, loop_body)  \
+    do { uint64_t var_attempt_count = 0;                                        \
+    static const uint32_t var_max_spinning_attempts = max_spinning_attempts;    \
+    static const uint32_t var_attempts_per_yield = attempts_per_yield;          \
+    static const uint32_t var_max_attempts = max_attempts;                      \
+                                                                                \
+    while (true) {                                                              \
+        var_attempt_count++;                                                    \
+        if (var_attempt_count > var_max_spinning_attempts) {                    \
+            if (unlikely(var_attempt_count > var_max_attempts)) {               \
+                P_PANIC();                                                      \
+            }                                                                   \
+            if (var_attempt_count % var_attempts_per_yield == 0) {              \
+                p_fiber_yield();                                                \
+            }                                                                   \
+        }                                                                       \
+        loop_body                                                               \
+    } } while (false);
+
+#define RETRY_LOOP(max_spinning_attempts, attempts_per_yield, max_attempts, loop_body)                                  \
+        INNER_RETRY_LOOP(MACRO_CONCAT(attempt_count_, __COUNTER__) , MACRO_CONCAT(max_spinning_attempts_, __COUNTER__), \
+                         MACRO_CONCAT(attempts_per_yield_, __COUNTER__), MACRO_CONCAT(max_attempts_, __COUNTER__),      \
+                         max_spinning_attempts, attempts_per_yield, max_attempts, loop_body)
 
 bool p_is_power_of_two (uintmax_t x);
