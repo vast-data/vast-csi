@@ -5,7 +5,7 @@
 
 typedef struct PModuleState PModuleState;
 struct PModuleState {
-    PIOProvider* io_provider;
+    PIOProvider *io_provider;
     char foo;
 };
 
@@ -13,7 +13,7 @@ void *p_module_init(PSilo *silo, PConfigSetting *module_setting)
 {
     PModuleState *state = p_safe_malloc(sizeof(PModuleState));
 
-    PConfigSetting* io_module_setting = p_config_setting_lookup_required(module_setting, "io_module");
+    PConfigSetting *io_module_setting = p_config_setting_lookup_required(module_setting, "io_module");
     state->io_provider = p_io_provider_init_from_settings(io_module_setting);
 
     state->foo = 'a';

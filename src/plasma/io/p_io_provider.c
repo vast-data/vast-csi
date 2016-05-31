@@ -10,7 +10,7 @@ struct PIOProvider {
 
 PIOProvider *p_io_provider_init(PDevIO devices[], size_t device_count)
 {
-    PIOProvider* ioprovider_ret = malloc(sizeof(PIOProvider));
+    PIOProvider *ioprovider_ret = malloc(sizeof(PIOProvider));
     ioprovider_ret->device_count = device_count;
     ioprovider_ret->devices = devices;
 
@@ -25,14 +25,14 @@ PIOProvider *p_io_provider_init(PDevIO devices[], size_t device_count)
     return ioprovider_ret;
 }
 
-PIOProvider *p_io_provider_init_from_settings(PConfigSetting* io_module)
+PIOProvider *p_io_provider_init_from_settings(PConfigSetting *io_module)
 {
     PConfigSetting* iopool_count_setting = p_config_setting_lookup_required(io_module, "io_pool_count");
     PIndex iopool_count = (PIndex) p_config_setting_get_int32(iopool_count_setting);
     PAtomicPool *iopool = p_atomic_pool_init(iopool_count, sizeof(PIO));
 
-    PConfigSetting* io_provider_setting = p_config_setting_lookup_required(io_module, "io_provider");
-    PConfigSetting* devices_setting = p_config_setting_lookup_required(io_provider_setting, "devices");
+    PConfigSetting *io_provider_setting = p_config_setting_lookup_required(io_module, "io_provider");
+    PConfigSetting *devices_setting = p_config_setting_lookup_required(io_provider_setting, "devices");
     const size_t device_count = (size_t)p_config_setting_length(devices_setting);
     PDevIO* devices = malloc(device_count * sizeof(PDevIO));
     LOOP(p_config_setting_length(devices_setting), i)
@@ -70,7 +70,7 @@ void p_io_provider_disable_polling(PIOProvider *io_provider,  PDevIO *device)
     p_dlist_remove(&io_provider->active_devices, index);
 }
 
-void p_io_provider_destroy(PIOProvider* io_provider)
+void p_io_provider_destroy(PIOProvider *io_provider)
 {
     p_dlist_destroy(&io_provider->active_devices);
     LOOP_TYPE(PIndex, io_provider->device_count, index) {

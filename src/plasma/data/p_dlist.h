@@ -39,8 +39,8 @@ struct PDListAnchor {
 typedef struct PDListAnchor PDListAnchor;
 
 struct PDList  {
-	PDListAnchor* anchor;
-	PDListPool* list_pool;
+	PDListAnchor *anchor;
+	PDListPool *list_pool;
 
 	// TODO: perform boundary tests according to size upon insert/remove.
 #ifdef DEBUG
@@ -53,13 +53,13 @@ typedef struct PDList PDList;
  * Initialize a dlist anchor.
   * \param anchor out structure for initialization initialize
  */
-void p_dlistanchor_init(PDListAnchor* anchor OUT);
+void p_dlistanchor_init(PDListAnchor *anchor OUT);
 
 /*!
  * Initialize a dlist.
   * \param list out structure to initialize according to anchor and listpool. params are kept by reference,
  */
-void p_dlist_init(PDList* list OUT, PDListAnchor* anchor IN, PDListPool* list_pool IN);
+void p_dlist_init(PDList *list OUT, PDListAnchor *anchor IN, PDListPool *list_pool IN);
 
 /*!
  * Initialize a dlistpool.

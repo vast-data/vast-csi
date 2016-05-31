@@ -46,7 +46,7 @@ typedef enum {
 
 typedef struct IOVecs {
     uint32_t count;
-    IOVec* iovecs;
+    IOVec *iovecs;
 } IOVecs;
 
 typedef struct PDevIOFuture PDevIOFuture;
@@ -60,7 +60,7 @@ typedef struct PIO {
 
 typedef struct Baddrs {
     uint32_t count;
-    Baddr* baddrs;
+    Baddr *baddrs;
 } Baddrs;
 
 /*!
@@ -97,7 +97,7 @@ IODevRet p_devio_read_scatter(PDevIO *devio, IOVecs buffers[], Baddrs *source_ba
  * \param target_baddr target device physical addresses to write to.
  * \param io_future the token to wait on for async execution. for sync operation set as NULL.
  */
-IODevRet p_devio_write(PDevIO *devio, IOVec* buffer, Baddr target_baddr, PDevIOFuture *io_future);
+IODevRet p_devio_write(PDevIO *devio, IOVec *buffer, Baddr target_baddr, PDevIOFuture *io_future);
 
 /*!
  * Perform a single address to single buffer read operation
@@ -105,7 +105,7 @@ IODevRet p_devio_write(PDevIO *devio, IOVec* buffer, Baddr target_baddr, PDevIOF
  * \param source_baddr source device physical addresses from which the read is performed.
  * \param io_future the token to wait on for async execution. for sync operation set as NULL.
  */
-IODevRet p_devio_read(PDevIO *devio, IOVec* buffer, Baddr source_baddr, PDevIOFuture *io_future);
+IODevRet p_devio_read(PDevIO *devio, IOVec *buffer, Baddr source_baddr, PDevIOFuture *io_future);
 
 /*!
  * Wait on an IO operation.

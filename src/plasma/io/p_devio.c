@@ -11,7 +11,7 @@ struct PDevIOFuture {
     uint32_t io_count;
 };
 
-static void p_pio_init(PIO* pio)
+static void p_pio_init(PIO *pio)
 {
     io_set_callback(&pio->io, NULL);
     pio->io_future = NULL;
@@ -24,7 +24,7 @@ bool p_devio_init(PDevIO *devio OUT, const char dev_name[], uint32_t iodepth, PA
     p_sem_init(&devio->available_ios, iodepth);
 
     devio->ctx = 0;
-    int setup_ret = io_setup((int)iodepth, &devio->ctx);
+    int setup_ret = io_setup((int) iodepth, &devio->ctx);
     if (setup_ret != 0) {
         P_PANIC(/* TODO: informative string with the value of setup_ret
                          (negated errno in this case - might use strerror(-setup_ret)) */);
@@ -130,7 +130,7 @@ void p_devio_poll_events(PDevIO *devio)
     }
 }
 
-static void submit_ios(PDevIO* devio, struct iocb** ios_ptr, uint32_t io_count)
+static void submit_ios(PDevIO *devio, struct iocb **ios_ptr, uint32_t io_count)
 {
     RETRY_LOOP(io_submition, 100, 5, 1000,
         int submit_ret = io_submit(devio->ctx, io_count, ios_ptr);
@@ -191,7 +191,7 @@ IODevRet p_devio_read_scatter(PDevIO *devio, IOVecs buffers[], Baddrs *source_ba
     return p_devio_perform_scattered_io(devio, buffers, source_baddrs, false, io_future);
 }
 
-static IODevRet p_devio_perform_io(PDevIO *devio, IOVec* buffer, Baddr target_baddr, bool is_write, PDevIOFuture *io_future)
+static IODevRet p_devio_perform_io(PDevIO *devio, IOVec *buffer, Baddr target_baddr, bool is_write, PDevIOFuture *io_future)
 {
     IOVecs iovecs;
     iovecs.count = 1;
@@ -204,12 +204,12 @@ static IODevRet p_devio_perform_io(PDevIO *devio, IOVec* buffer, Baddr target_ba
     return p_devio_perform_scattered_io(devio, &iovecs, &baddrs, is_write, io_future);
 }
 
-IODevRet p_devio_write(PDevIO *devio, IOVec* buffer, Baddr target_baddr, PDevIOFuture *io_future)
+IODevRet p_devio_write(PDevIO *devio, IOVec *buffer, Baddr target_baddr, PDevIOFuture *io_future)
 {
     return p_devio_perform_io(devio, buffer, target_baddr, true, io_future);
 }
 
-IODevRet p_devio_read(PDevIO *devio, IOVec* buffer, Baddr source_baddr, PDevIOFuture *io_future)
+IODevRet p_devio_read(PDevIO *devio, IOVec *buffer, Baddr source_baddr, PDevIOFuture *io_future)
 {
     return p_devio_perform_io(devio, buffer, source_baddr, false, io_future);
 }

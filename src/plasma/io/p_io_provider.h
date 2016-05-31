@@ -21,14 +21,14 @@ typedef struct PIOProvider PIOProvider;
  * \param devices is an array of IO devices to poll when needed.
  * \param device_count is the amount of IO devices passed for this provider.
  */
-PIOProvider *p_io_provider_init(PDevIO* devices, size_t device_count);
+PIOProvider *p_io_provider_init(PDevIO *devices, size_t device_count);
 
 /*!
  * Initialize a PIOProvider structure according to configuration settings.
  * Note: This instantiate a collection of devices and an IO atomic_pool as well.
  * \param io_module io_module configuration setting - containing iodepth and an array of io_device settings.
  */
-PIOProvider *p_io_provider_init_from_settings(PConfigSetting* io_module);
+PIOProvider *p_io_provider_init_from_settings(PConfigSetting *io_module);
 
 /*!
  * Polls for IO completions on "active" IO devices (those that have pending IOs).

@@ -12,7 +12,7 @@ struct PDListPool {
 #endif
 };
 
-inline void p_dlistanchor_init(PDListAnchor* anchor OUT)
+inline void p_dlistanchor_init(PDListAnchor *anchor OUT)
 {
     anchor->index = P_DLIST_ANCHOR_INIT;
 #ifdef DEBUG
@@ -20,7 +20,7 @@ inline void p_dlistanchor_init(PDListAnchor* anchor OUT)
 #endif
 }
 
-void p_dlist_init(PDList* list OUT, PDListAnchor* anchor IN, PDListPool* list_pool IN)
+void p_dlist_init(PDList *list OUT, PDListAnchor *anchor IN, PDListPool *list_pool IN)
 {
     list->anchor = anchor;
     list->list_pool = list_pool;
