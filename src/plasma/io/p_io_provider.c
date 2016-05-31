@@ -41,9 +41,9 @@ PIOProvider *p_io_provider_init_from_settings(PConfigSetting *io_module)
         PConfigSetting *dev_path_setting = p_config_setting_lookup_required(device_setting, "dev_path");
         PConfigSetting *io_depth_setting = p_config_setting_lookup_required(device_setting, "io_depth");
 
-        if (!p_devio_init(&devices[i], p_config_setting_get_string(dev_path_setting),
-                          (uint32_t)p_config_setting_get_int32(io_depth_setting),
-                          iopool)) {
+        if (unlikely(!p_devio_init(&devices[i], p_config_setting_get_string(dev_path_setting),
+                                   (uint32_t)p_config_setting_get_int32(io_depth_setting),
+                                   iopool))) {
             // Todo: this should be replaces with a notification to control and then possibly skip/retry/panic?
             P_PANIC();
         }

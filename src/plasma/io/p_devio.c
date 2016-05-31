@@ -25,7 +25,7 @@ bool p_devio_init(PDevIO *devio OUT, const char dev_name[], uint32_t iodepth, PA
 
     devio->ctx = 0;
     int setup_ret = io_setup((int) iodepth, &devio->ctx);
-    if (setup_ret != 0) {
+    if (unlikely(setup_ret != 0)) {
         P_PANIC(/* TODO: informative string with the value of setup_ret
                          (negated errno in this case - might use strerror(-setup_ret)) */);
     }
@@ -36,7 +36,7 @@ bool p_devio_init(PDevIO *devio OUT, const char dev_name[], uint32_t iodepth, PA
     strncpy(devio->dev_name, dev_name, PATH_MAX);
     int open_flags = O_RDWR | O_CREAT | O_DIRECT;
     devio->file_desc = open(devio->dev_name, open_flags);
-    if (devio->file_desc == -1) {
+    if (unlikely(devio->file_desc == -1)) {
         // P_TRACE_ERR(/* TODO: informative string with the value of errno - might use strerror() / perror()) */);
         return false;
     }
@@ -108,7 +108,7 @@ void p_devio_poll_events(PDevIO *devio)
         if (ios_done >= 0) {
             break;
         }
-        if ((ios_done < 0) && (ios_done != -EINTR)) {
+        if (unlikely((ios_done < 0) && (ios_done != -EINTR))) {
             P_PANIC();
         }
     )
@@ -137,7 +137,7 @@ static void submit_ios(PDevIO *devio, struct iocb **ios_ptr, uint32_t io_count)
         if (submit_ret == (int) io_count) {
             break;
         } else {
-            if ((submit_ret < 0) && (submit_ret != -EAGAIN)) {
+            if (unlikely((submit_ret < 0) && (submit_ret != -EAGAIN))) {
                 P_PANIC();
             }
             if (submit_ret > 0) {

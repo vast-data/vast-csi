@@ -30,7 +30,9 @@ typedef uint8_t byte;
 #define P_CACHE_ALIGNED __attribute__ ((aligned(P_CACHE_LINE_BYTES)))
 #define P_PACKED __attribute__ ((packed)))
 
-bool p_is_power_of_two (uintmax_t x);
+// copied from linux kernel
+#define likely(x)       __builtin_expect((x),1)
+#define unlikely(x)     __builtin_expect((x),0)
 
 #define IN
 #define OUT
@@ -48,7 +50,7 @@ bool p_is_power_of_two (uintmax_t x);
     while (true) {                                                                              \
         prefix##_attempt_count++;                                                               \
         if (prefix##_attempt_count > prefix##_max_spinning_attempts) {                          \
-            if (prefix##_attempt_count > prefix##_max_attempts) {                               \
+            if (unlikely(prefix##_attempt_count > prefix##_max_attempts)) {                     \
                 P_PANIC();                                                                      \
             }                                                                                   \
             if (prefix##_attempt_count % prefix##_attempts_per_yield == 0) {                    \
@@ -58,3 +60,4 @@ bool p_is_power_of_two (uintmax_t x);
         loop_body                                                                               \
     }
 
+bool p_is_power_of_two (uintmax_t x);
