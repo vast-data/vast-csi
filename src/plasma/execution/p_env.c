@@ -5,10 +5,12 @@
 #include <p.h>
 
 #include "p_config_internal.h"
+#define MAX_PATH_SIZE 512
 
 struct PEnv {
     uint32_t num_silos;
     PSilo **silos;
+    char data_dir[MAX_PATH_SIZE];
     PEnvState state;
     pthread_barrier_t state_barrier;
 };
@@ -56,11 +58,17 @@ error:
 
 static void env_init(PConfig *config)
 {
-    const char *data_dir = "./data";
+    PConfigSetting *data_dir_setting = p_config_lookup(config, "data_dir");
+    P_ASSERT(data_dir_setting != NULL);
+    const char *data_dir = p_config_setting_get_string(data_dir_setting);
+    P_ASSERT(strlen(data_dir) < MAX_PATH_SIZE);
+    strcpy(env.data_dir, data_dir);
     p_ensure_directory_exists(data_dir);
 
     PConfigSetting *silos_setting = p_config_lookup(config, "silos");
+    P_ASSERT(silos_setting != NULL);
     PConfigSetting *silo_types_setting = p_config_lookup(config, "silo_types");
+    P_ASSERT(silo_types_setting != NULL);
     env.num_silos = (uint32_t) p_config_setting_length(silos_setting);
     env.silos = p_safe_malloc(sizeof(PSilo*) * (size_t) env.num_silos);
     LOOP(env.num_silos, i) {
@@ -71,7 +79,7 @@ static void env_init(PConfig *config)
         const char *silo_type_name = p_config_setting_get_string(silo_type_name_setting);
         // SiloId is 8 bit
         P_ASSERT(i < P_INVALID_SILO_ID);
-        env.silos[i] = p_silo_init(p_config_setting_lookup_required(silo_types_setting, silo_type_name), affinity, (PSiloId)i, data_dir);
+        env.silos[i] = p_silo_init(p_config_setting_lookup_required(silo_types_setting, silo_type_name), affinity, (PSiloId)i, env.data_dir);
     }
     // Initialize a barrier for all silos and the main thread, used for synchronizing state
     P_ASSERT(pthread_barrier_init(&env.state_barrier, NULL, env.num_silos + 1) == 0);
