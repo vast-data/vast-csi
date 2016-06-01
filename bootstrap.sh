@@ -4,7 +4,7 @@ yum -y install net-tools which clang lldb scons libcmocka-devel libunwind-devel 
 yum -y install devtoolset-3-gcc
 
 curl https://bootstrap.pypa.io/get-pip.py | python3.4
-pip3.4 install virtualenv
+pip3.4 install setuptools virtualenv
 
 # install oh-my-zsh for the vagrant user
 chsh -s /bin/zsh vagrant

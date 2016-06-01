@@ -1,11 +1,6 @@
 import re
-import os
-import sys
-import mmap
 import ctypes
 import struct
-import datetime
-import blessings
 import collections
 
 CHUNK_SIZE = 2**20
@@ -30,7 +25,7 @@ def get_trace_info(stream):
 
 RECORD_LENGTH_TYPE = 'H'
 RECORD_LENGTH_SIZE = 2
-def get_traces(stream):
+def get_traces_header_and_data(stream):
     while True:
         bytes_left_in_chunk = CHUNK_SIZE
         while bytes_left_in_chunk > 0:
@@ -55,8 +50,8 @@ def get_traces(stream):
             if (bytes_left_in_chunk < 0):
                 assert bytes_left_in_chunk >= 0, 'Overflow from chunk size {} with length {}'.format(bytes_left_in_chunk, length)
 
-# we need to extract the length and type of each specifier
-format_re = re.compile('''\
+                # we need to extract the length and type of each specifier
+printf_format_re = re.compile('''\
 %                                  # literal %
 (?:[-+0 #]{0,5})                   # optional flags
 (?:\d+|\*)?                        # width
@@ -64,6 +59,13 @@ format_re = re.compile('''\
 (hh|h|l|ll|j|z|t)?                 # capture the length
 ([cdiouxXeEfgGaAps])               # capture the type
 ''', re.VERBOSE)
+
+def get_traces(stream, trace_infos):
+    trace_infos = list(trace_infos)
+    for header, params_data in get_traces_header_and_data(stream):
+        info = trace_infos[header.info_index]
+        params = parse_params(info.format, params_data)
+        yield info, header, params
 
 # the following info is extracted from here: http://www.cplusplus.com/reference/cstdio/printf/
 # we interpret chars as single bytes in order to be able to pass bools as a single byte and have them printed.
@@ -114,7 +116,7 @@ STR_LENGTH_SIZE = 2
 def parse_params(format, buffer):
     pos = 0
     params = []
-    for (length, type) in format_re.findall(format):
+    for (length, type) in printf_format_re.findall(format):
         specifier = length + type
         if specifier == 's':
             size, = struct.unpack(STR_LENGTH_TYPE, buffer[pos:pos + STR_LENGTH_SIZE])
@@ -128,46 +130,3 @@ def parse_params(format, buffer):
             pos += dtype_size
     assert len(buffer) == pos, 'Format string "{}" did not consume all params. Expected {} bytes and got {} instead.'.format(format, pos, len(buffer))
     return params
-
-def underline_variables(format):
-    def on_match(match):
-        return term.underline + match.group(0) + term.normal
-    return format_re.sub(on_match, format)
-
-def c_format_to_python_format(format):
-    """
-    Python doesn't support %p and %hhd (single byte integer).
-    We replace %c with %d because booleans aren't supported in C's printf and are passed as %c.
-    """
-    return format.replace('%p', '0x%x').replace('%hhd', '%d').replace('%c', '%d')
-
-term = blessings.Terminal()
-TIME_FORMAT = '%y/%m/%d %H:%M:%S.%f'
-TRACE_FORMAT = '{time} ({tid}|{job_id}) [{component}] {severity}: {message}'
-file_re = re.compile(r'(\w+)\.(\d+)')
-severities = {0: term.red + 'DEV' + term.normal,
-              1: term.green + 'DEBUG' + term.normal,
-              2: term.cyan + 'INFO' + term.normal,
-              3: term.yellow + 'WARN' + term.normal,
-              4: term.red + 'ERROR' + term.normal}
-
-def handle_path(path):
-    component, tid = file_re.findall(path)[0]
-    with open(path, 'rb') as f:
-        trace_infos = list(get_trace_info(f))
-        for (header, params_data) in get_traces(f):
-            info = trace_infos[header.info_index]
-            params = parse_params(info.format, params_data)
-            time = datetime.datetime.fromtimestamp(header.time / 1000000000.).strftime(TIME_FORMAT)
-            message = c_format_to_python_format(underline_variables(info.format)) % tuple(params)
-            yield TRACE_FORMAT.format(time=time, tid=tid, component=component, message=message,
-                                      job_id=header.job_id, severity=severities[header.severity])
-
-def main(paths):
-    for path in paths:
-        print("Opening file:", path)
-        for trace in handle_path(path):
-            print(trace)
-
-if __name__ == '__main__':
-    main(sys.argv[1:])
