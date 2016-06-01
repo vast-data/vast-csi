@@ -45,12 +45,15 @@ Help(help_text)
 env['ENV']['TERM'] = os.environ['TERM'] # enable terminal colors in clang
 
 env.Replace(CC=ARGUMENTS.get('cc', 'clang'))
+
+optimizations = ARGUMENTS.get('O', '2')
 debug = ARGUMENTS.get('debug')
 if debug is not None:
+   optimizations = '0'
    env.Append(CPPDEFINES=['DEBUG'])
 env.Append(CFLAGS=['-g',
                    '-std=gnu11',
-                   '-O' + ARGUMENTS.get('O', '2'),
+                   '-O' + optimizations,
                    '-fno-omit-frame-pointer', # with -O2 this is required to be able to generate backtraces
                    '-Weverything' if env['CC'] == 'clang' else '-Wall',
                    '-Werror',
