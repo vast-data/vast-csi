@@ -11,3 +11,10 @@ if [ ! -d ~/.oh-my-zsh ]; then
     sed -i 's/ZSH_THEME="robbyrussell"/ZSH_THEME="risto"/g' ~/.zshrc
 fi
 EOF
+
+# install soft iwarp
+git clone https://github.com/asaf-levy/softiwarp.git
+cd softiwarp
+./install_me.sh
+cd ..
+rm -rf softiwarp
