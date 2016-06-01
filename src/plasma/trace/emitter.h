@@ -2,7 +2,9 @@
 
 /*!
  * \file emitter.h
- * \brief
+ * \brief The trace user interface. The functions the user needs to know are PT_DEV, PT_DEBUG, PT_INFO, PT_WARN, PT_ERROR.
+ * PT_DEV is compiled out unless we're in debug mode. The aforementioned functions expect to run within a component's code;
+ * They rely on the CURRENT_COMPONENT macro to deduce what component is the trace originating from.
  */
 #pragma once
 
@@ -30,19 +32,18 @@ DEFINE_LOOKUP_PROTOTYPES(SEVERITY_LIST,
                          p_trace_severity_to_string, // the function that converts an enum value to string
                          p_trace_severity_from_string) // the function that converts a string to an enum value
 
-#define P_TRACE_INFO_SIZE 256
+#define P_TRACE_INFO_SIZE 256 // this number has to be self-aligned, that's why its not defined as a simple sizeof
 typedef struct {
     uint8_t format[128];
     uint8_t file[64];
     uint8_t func[54];
     uint16_t line;
-    const char *func_ptr;
+    const char *func_ptr; // .func starts off empty because __func__ isn't considered a static value. The init_section function sets the value in .func_ptr to .func.
 } PTraceInfo;
 
 // The potential maximum record size could be bigger but we pre allocate a trace
 // record per silo per component. There's no real reason to allocate more.
 #define P_TRACE_RECORD_MAX_SIZE (4096 * 4)
-
 typedef struct {
     uint64_t time;
     uint32_t job_id;
@@ -129,7 +130,7 @@ static inline void p_trace_record_start(uint16_t info_index, PTraceSeverity seve
     if (fiber != NULL)
         p_trace_emitter->record.job_id = p_fiber_get_job_id(fiber);
     else
-        p_trace_emitter->record.job_id = 0;
+        p_trace_emitter->record.job_id = 0; // trace records emitted before running within a scheduler
     p_trace_emitter->record.time = p_get_time_nano();
     p_trace_emitter->record.info_index = info_index;
     p_trace_emitter->record.severity = severity;

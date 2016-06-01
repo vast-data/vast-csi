@@ -36,6 +36,7 @@ void p_dbuffer_reader_init(PDbufferReader *reader, PDbuffer *dbuf);
 typedef enum {
     PDBUFFER_READ_SUCCESS,
     PDBUFFER_READ_NOTHING,
+    PDBUFFER_READ_NEXT,
     PDBUFFER_READ_OVERFLOW,
 } PDbufferReadResult;
 

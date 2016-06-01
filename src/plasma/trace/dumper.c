@@ -89,6 +89,9 @@ static bool dumper_iteration(PTraceDumper *dumper, bool force)
             switch (read_result) {
             case PDBUFFER_READ_NOTHING:
                 break;
+            case PDBUFFER_READ_NEXT:
+                found = true;
+                break;
             case PDBUFFER_READ_SUCCESS:
                 dumper->times[i] = record.time;
                 p_trace_file_emit(dumper->files[i], &record, length);

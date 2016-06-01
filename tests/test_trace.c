@@ -56,7 +56,7 @@ static void test_dbuffer_wraparound(void **state)
     assert_false(memcmp(data, out, 8));
 
     p_fill_zeroes(out, 8);
-    assert_int_equal(p_dbuffer_read(&reader, out, &length, false), PDBUFFER_READ_NOTHING);
+    assert_int_equal(p_dbuffer_read(&reader, out, &length, false), PDBUFFER_READ_NEXT);
     assert_int_equal(p_dbuffer_read(&reader, out, &length, true), PDBUFFER_READ_SUCCESS);
 
     assert_false(memcmp(data, out, 8));
@@ -64,7 +64,7 @@ static void test_dbuffer_wraparound(void **state)
     p_dbuffer_destroy(buf);
 }
 
-static void test_dbuffer_overflow(void **state)
+static void test_dbuffer_overflow_two_buffers(void **state)
 {
     (void) state;
 
@@ -81,16 +81,51 @@ static void test_dbuffer_overflow(void **state)
     char out[8] = {0};
     P_DBUFFER_LENGTH_TYPE length;
     assert_int_equal(p_dbuffer_read(&reader, out, &length, false), PDBUFFER_READ_OVERFLOW);
+    assert_int_equal(length, 1);
     assert_int_equal(p_dbuffer_read(&reader, out, &length, false), PDBUFFER_READ_SUCCESS);
     assert_false(memcmp(data, out, 8));
     assert_int_equal(length, 8);
 
     p_fill_zeroes(out, 8);
-    assert_int_equal(p_dbuffer_read(&reader, out, &length, false), PDBUFFER_READ_NOTHING);
+    assert_int_equal(p_dbuffer_read(&reader, out, &length, false), PDBUFFER_READ_NEXT);
     assert_int_equal(p_dbuffer_read(&reader, out, &length, true), PDBUFFER_READ_SUCCESS);
 
     assert_false(memcmp(data, out, 8));
     assert_int_equal(length, 8);
+
+    p_dbuffer_destroy(buf);
+}
+
+static void test_dbuffer_overflow_four_buffers(void **state)
+{
+    (void) state;
+
+    PDbuffer *buf = p_dbuffer_init(4, 32);
+    char data[] = "abcd";
+
+    PDbufferReader reader;
+    p_dbuffer_reader_init(&reader, buf);
+
+    LOOP(5, i)
+        p_dbuffer_write(buf, &data, 4);
+
+    char out[4] = {0};
+    P_DBUFFER_LENGTH_TYPE length;
+    assert_int_equal(p_dbuffer_read(&reader, out, &length, false), PDBUFFER_READ_OVERFLOW);
+    assert_int_equal(length, 1);
+    LOOP(3, i) {
+        assert_int_equal(p_dbuffer_read(&reader, out, &length, false), PDBUFFER_READ_SUCCESS);
+        assert_false(memcmp(data, out, 4));
+        assert_int_equal(length, 4);
+        assert_int_equal(p_dbuffer_read(&reader, out, &length, false), PDBUFFER_READ_NEXT);
+    }
+
+    p_fill_zeroes(out, 4);
+    assert_int_equal(p_dbuffer_read(&reader, out, &length, false), PDBUFFER_READ_NOTHING);
+    assert_int_equal(p_dbuffer_read(&reader, out, &length, true), PDBUFFER_READ_SUCCESS);
+    assert_false(memcmp(data, out, 4));
+    assert_int_equal(length, 4);
+    assert_int_equal(p_dbuffer_read(&reader, out, &length, false), PDBUFFER_READ_NOTHING);
 
     p_dbuffer_destroy(buf);
 }
@@ -105,7 +140,7 @@ static char config_string[] = QUOTE(traces: {
     }
   });
 
-#define DATADIR "./data"
+#define DATADIR "./testdata"
 #define ITERS 10000000
 static void test_emitter(void **state UNUSED)
 {
@@ -153,8 +188,9 @@ static void test_emitter(void **state UNUSED)
 static void test_trace_file(void **state UNUSED)
 {
     PTraceRecord record;
-    PTraceFile *file = p_trace_file_init("bla", DATADIR, 512, 3);
-    p_trace_file_emit(file, &record, P_TRACE_RECORD_MAX_SIZE);
+    PTraceFile *file = p_trace_file_init("bla", DATADIR, UNIT_MiB * 2, 3);
+    LOOP(3000, _)
+        p_trace_file_emit(file, &record, sizeof(record));
     p_trace_file_destroy(file);
 }
 
@@ -163,7 +199,8 @@ int main(void)
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_dbuffer_sanity),
         cmocka_unit_test(test_dbuffer_wraparound),
-        cmocka_unit_test(test_dbuffer_overflow),
+        cmocka_unit_test(test_dbuffer_overflow_two_buffers),
+        cmocka_unit_test(test_dbuffer_overflow_four_buffers),
         cmocka_unit_test(test_emitter),
         cmocka_unit_test(test_trace_file)
     };

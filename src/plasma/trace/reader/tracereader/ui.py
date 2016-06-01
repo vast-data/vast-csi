@@ -22,18 +22,18 @@ def underline_variables(format):
     return printf_format_re.sub(on_match, format)
 
 severities = {0: term.red + 'DEV' + term.normal,
-              1: term.green + 'DEBUG' + term.normal,
-              2: term.cyan + 'INFO' + term.normal,
-              3: term.yellow + 'WARN' + term.normal,
-              4: term.red + 'ERROR' + term.normal}
+              1: term.green + 'DBG' + term.normal,
+              2: term.cyan + 'INF' + term.normal,
+              3: term.yellow + 'WRN' + term.normal,
+              4: term.red + 'ERR' + term.normal}
 
 TIME_FORMAT = '%y/%m/%d %H:%M:%S.%f'
-TRACE_FORMAT = '{time} ({tid}|{job_id}) [{component}] {severity}: {message}'
+TRACE_FORMAT = '{time} ({tid:5d}|{job_id:08x}) [{component:.4}] {severity}: {message}'
 file_re = re.compile(r'(\w+)\.(\d+)')
 def print_trace(trace):
     time = datetime.datetime.fromtimestamp(trace.header.time / 1000000000.).strftime(TIME_FORMAT)
     message = c_format_to_python_format(underline_variables(trace.info.format)) % tuple(trace.params)
-    print(TRACE_FORMAT.format(time=time, tid=trace.tid, component=trace.component, message=message,
+    print(TRACE_FORMAT.format(time=time, tid=int(trace.tid), component=trace.component, message=message,
                               job_id=trace.header.job_id, severity=severities[trace.header.severity]))
 
 Trace = collections.namedtuple('Trace', ['info', 'header', 'params', 'component', 'tid'])
@@ -46,7 +46,6 @@ def handle_path(path):
             yield Trace(info=info, header=header, params=params, component=component, tid=tid)
 
 def run(paths):
-    paths = sys.argv[1:]
     for trace in merge_sort(map(handle_path, paths), lambda trace: trace.header.time):
         print_trace(trace)
 

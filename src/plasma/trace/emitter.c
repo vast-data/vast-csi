@@ -59,6 +59,10 @@ void p_trace_emitter_set(PTraceEmitter *emitter)
     p_trace_emitter = emitter;
 }
 
+/*!
+ * This function initializes the PTraceInfo structs by setting the value in .func_ptr to .func.
+ * It's required because __func__ isn't considered a static variable and can't be stored in a section at compile time.
+ */
 static __attribute__ ((constructor)) void init_section()
 {
     P_ASSERT(sizeof(PTraceInfo) == P_TRACE_INFO_SIZE);

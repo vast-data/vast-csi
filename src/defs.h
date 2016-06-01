@@ -27,10 +27,10 @@ DEFINE_LOOKUP_PROTOTYPES(COMPONENT_LIST,
                          component_id_to_string,
                          component_id_from_string)
 
-#define FIBER_GROUP_LIST(X)                       \
-    X(FIBER_GROUP_P),                       \
+#define FIBER_GROUP_LIST(X)                              \
+    X(FIBER_GROUP_P),                                    \
     X(FIBER_GROUP_P_IO_POLLING),                         \
-    X(FIBER_GROUP_I_START),                       \
+    X(FIBER_GROUP_I_TEST),                               \
     X(FIBER_GROUP_COUNT)
 
 DEFINE_LOOKUP_PROTOTYPES(FIBER_GROUP_LIST,

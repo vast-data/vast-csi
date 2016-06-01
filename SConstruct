@@ -131,3 +131,15 @@ cpplib = cpp_env.Library(target='dist/cpp_orion', source=cpp_sources)
 LIBS = ['unwind', 'config', 'pthread', cpplib, lib]
 AddTest(target='dist/tests/test_cpool', source=[lib, cpplib, DEFAULT_BUILD_DIR + '/tests/test_cpool.cpp'], env=cpp_env, wrap=['p_silo_get_id'])
 cpp_env.AlwaysBuild('test')
+
+venv = env.Command(target='venv/requirements.txt',
+                   source=['src/plasma/trace/reader/dev_requirements.txt',
+                           'src/plasma/trace/reader/setup.py'],
+                   action='virtualenv venv && '
+                   '. venv/bin/activate && '
+                   'cp $SOURCE $TARGET && '
+                   'pip install -r $SOURCE && '
+                   'cd src/plasma/trace/reader && '
+                   'python setup.py develop')
+trace_tests = env.Alias('test', [], './venv/bin/py.test src/plasma/trace/reader/tests')
+Depends(trace_tests, venv)

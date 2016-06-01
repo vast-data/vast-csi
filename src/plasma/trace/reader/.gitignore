@@ -1,0 +1,6 @@
+.cache/
+__pycache__/
+tracereader/__pycache__/
+tracereader.egg-info
+build
+dist

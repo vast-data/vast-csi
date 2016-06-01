@@ -29,8 +29,8 @@ static inline bool buffer_has_room(Buffer *buf, P_DBUFFER_LENGTH_TYPE length)
 {
     length += sizeof(length); // for this record's length
     length += sizeof(length); // for the next records length as the reader expects the last record to have a length byte of 0
-    P_DEBUG_ASSERT(length < buf->size);
-    return buf->write_index + length < buf->size;
+    P_DEBUG_ASSERT(length <= buf->size);
+    return buf->write_index + length <= buf->size;
 }
 
 static void buffer_write(Buffer *buf, void *data, P_DBUFFER_LENGTH_TYPE length)
@@ -97,13 +97,14 @@ void p_dbuffer_write(PDbuffer *dbuf, void *data, P_DBUFFER_LENGTH_TYPE length)
 
 static void reader_reset(PDbufferReader *reader, P_DBUFFER_LENGTH_TYPE *buffers_lost OUT)
 {
+    uint32_t generation = reader->generation;
     reader->read_index = 0;
-    if (buffers_lost != NULL)
-        *buffers_lost = (P_DBUFFER_LENGTH_TYPE) (reader->dbuf->generation - reader->generation - 1);
     if (reader->dbuf->generation >= reader->dbuf->buffer_count)
         reader->generation = reader->dbuf->generation - reader->dbuf->buffer_count + 1;
     else
         reader->generation = 0;
+    if (buffers_lost != NULL)
+        *buffers_lost = (uint16_t) (reader->generation - generation);
 }
 
 void p_dbuffer_reader_init(PDbufferReader *reader, PDbuffer *dbuf)
@@ -133,7 +134,9 @@ PDbufferReadResult p_dbuffer_read(PDbufferReader *reader, void *data OUT, P_DBUF
     if (*length == 0) {
         reader->generation++;
         reader->read_index = 0;
-        return PDBUFFER_READ_NOTHING;
+        if (force)
+            return PDBUFFER_READ_NOTHING;
+        return PDBUFFER_READ_NEXT;
     }
 
     buffer_read(current_buffer(reader->dbuf), reader->read_index + P_DBUFFER_LENGTH_BYTES, data, *length);

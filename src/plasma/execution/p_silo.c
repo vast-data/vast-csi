@@ -10,6 +10,8 @@
 #include "p_config_internal.h"
 #include "../internal.h"
 
+#define MAX_PATH_SIZE 512
+
 typedef struct Module Module;
 struct Module {
     void *user_state;
@@ -20,6 +22,7 @@ struct Module {
 struct PSilo {
     Module modules[MODULE_COUNT];
     PSchedulerConfig scheduler_config;
+    char trace_dir_path[MAX_PATH_SIZE];
     PTraceEmitter *trace_emitter;
     PTraceDumper *trace_dumper;
     pthread_t pthread;
@@ -64,9 +67,12 @@ PSilo *p_silo_init(PConfigSetting *silo_config, int32_t affinity, PSiloId silo_i
         }
     }
 
+    snprintf(silo->trace_dir_path, MAX_PATH_SIZE, "%s/traces", data_dir);
+    p_ensure_directory_exists(silo->trace_dir_path);
+
     PConfigSetting *trace_config = p_config_setting_lookup_required(silo_config, "traces");
     silo->trace_emitter = p_trace_emitter_init(trace_config);
-    silo->trace_dumper = p_trace_dumper_init(trace_config, silo->trace_emitter, data_dir);
+    silo->trace_dumper = p_trace_dumper_init(trace_config, silo->trace_emitter, silo->trace_dir_path);
     return silo;
 }
 

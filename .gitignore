@@ -8,3 +8,5 @@ ignore
 TAGS
 data
 env
+venv
+testdata

@@ -3,8 +3,6 @@ import ctypes
 import struct
 import collections
 
-CHUNK_SIZE = 2**20
-
 TraceInfo = collections.namedtuple('TraceInfo', ['format', 'file', 'func', 'line'])
 trace_info_struct = struct.Struct('128s64s54sH8x')
 assert trace_info_struct.size == 256
@@ -23,6 +21,7 @@ def get_trace_info(stream):
         fields = trace_info_struct.unpack(stream.read(trace_info_struct.size))
         yield TraceInfo._make(bytes_to_string(i) if isinstance(i, bytes) else i for i in fields)
 
+CHUNK_SIZE = 2**20
 RECORD_LENGTH_TYPE = 'H'
 RECORD_LENGTH_SIZE = 2
 def get_traces_header_and_data(stream):
@@ -126,7 +125,9 @@ def parse_params(format, buffer):
         else:
             dtype = specifier_map[specifier]
             dtype_size = ctypes.sizeof(dtype)
-            params.append(struct.unpack(dtype_to_field[dtype], buffer[pos:pos + dtype_size])[0])
+            part = buffer[pos:pos + dtype_size]
+            assert len(part) == dtype_size, 'Format string expects more data ({}) than received ({}): {}'.format(dtype_size, len(part), format)
+            params.append(struct.unpack(dtype_to_field[dtype], part)[0])
             pos += dtype_size
     assert len(buffer) == pos, 'Format string "{}" did not consume all params. Expected {} bytes and got {} instead.'.format(format, pos, len(buffer))
     return params

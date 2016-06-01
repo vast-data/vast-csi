@@ -172,9 +172,9 @@ void p_trace_file_emit(PTraceFile *trace_file, PTraceRecord *record, P_DBUFFER_L
 {
     if (trace_file->file == NULL)
         create_file(trace_file);
-    rotate_chunk_if_needed(trace_file, length + sizeof(P_DBUFFER_LENGTH_TYPE));
-    rotate_file_if_needed(trace_file, length + sizeof(P_DBUFFER_LENGTH_TYPE));
-    write_file(trace_file, &length, sizeof(P_DBUFFER_LENGTH_TYPE));
+    rotate_chunk_if_needed(trace_file, length + P_DBUFFER_LENGTH_BYTES);
+    rotate_file_if_needed(trace_file, length + P_DBUFFER_LENGTH_BYTES);
+    write_file(trace_file, &length, P_DBUFFER_LENGTH_BYTES);
     write_file(trace_file, record, length);
-    trace_file->bytes_left_in_chunk -= (length + sizeof(P_DBUFFER_LENGTH_TYPE));
+    trace_file->bytes_left_in_chunk -= (length + P_DBUFFER_LENGTH_BYTES);
 }
