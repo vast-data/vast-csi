@@ -47,5 +47,5 @@ def test_handle_path():
                     tid='20750')]
     assert list(handle_path(test_file)) == traces
 
-def test_run():
-    run([test_file, test_file, test_file])
+def test_main():
+    run([test_file, test_file, test_file], verbose=True)

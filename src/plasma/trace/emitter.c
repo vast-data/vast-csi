@@ -1,3 +1,4 @@
+/* Copyright (C) Vast Data Ltd. */
 #include "emitter.h"
 
 #include "../execution/p_config.h"

@@ -1,3 +1,4 @@
+/* Copyright (C) Vast Data Ltd. */
 #include <time.h>
 #include <stdio.h>
 #include <sys/types.h>

@@ -1,3 +1,4 @@
+/* Copyright (C) Vast Data Ltd. */
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>

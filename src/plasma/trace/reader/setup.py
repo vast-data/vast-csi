@@ -7,6 +7,7 @@ setup(name='tracereader',
       url='https://bitbucket.org/vastdev/orion',
       author='Alon Horev',
       author_email='alon@vastdata.com',
+      license='Copyright (C) Vast Data Ltd.',
       packages=['tracereader'],
       entry_points={'console_scripts': ['hubble=tracereader.ui:main']},
-      install_requires=['blessings'])
+      install_requires=['blessings', 'click'])

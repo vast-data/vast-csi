@@ -1,3 +1,5 @@
+"""Copyright (C) Vast Data Ltd."""
+
 import re
 import ctypes
 import struct

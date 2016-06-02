@@ -1,3 +1,4 @@
+/* Copyright (C) Vast Data Ltd. */
 #include <string.h>
 
 #include "p_dbuffer.h"

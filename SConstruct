@@ -43,6 +43,9 @@ Parameters are passed as key=value. For example: scons debug=yes.
 Help(help_text)
 
 env['ENV']['TERM'] = os.environ['TERM'] # enable terminal colors in clang
+env['ENV'].update(LC_ALL='en_US.UTF-8',
+                  LANG='en_US.UTF-8',
+                  LANGUAGE='en_US.UTF-8')
 
 optimizations = ARGUMENTS.get('O', '2')
 debug = ARGUMENTS.get('debug')

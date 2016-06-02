@@ -1,3 +1,5 @@
+"""Copyright (C) Vast Data Ltd."""
+
 import bisect
 
 def merge_sort(iters, key=lambda x: x):

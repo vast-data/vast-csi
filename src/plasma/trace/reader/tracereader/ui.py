@@ -1,5 +1,9 @@
+"""Copyright (C) Vast Data Ltd."""
+
+import os
 import re
 import sys
+import click
 import datetime
 import blessings
 import collections
@@ -28,16 +32,26 @@ severities = {0: term.red + 'DEV' + term.normal,
               4: term.red + 'ERR' + term.normal}
 
 TIME_FORMAT = '%y/%m/%d %H:%M:%S.%f'
-TRACE_FORMAT = '{time} ({tid:5d}|{job_id:08x}) [{component:.4}] {severity}: {message}'
+LOCATION_FORMAT = '[{file}:{func}:{line}] '
+TRACE_FORMAT = '{time} ({tid:5d}|{job_id:08x}) [{component:.4}] {location}{severity}: {message}'
 file_re = re.compile(r'(\w+)\.(\d+)')
-def print_trace(trace):
+def print_trace(trace, verbose):
     time = datetime.datetime.fromtimestamp(trace.header.time / 1000000000.).strftime(TIME_FORMAT)
     message = c_format_to_python_format(underline_variables(trace.info.format)) % tuple(trace.params)
-    print(TRACE_FORMAT.format(time=time, tid=int(trace.tid), component=trace.component, message=message,
-                              job_id=trace.header.job_id, severity=severities[trace.header.severity]))
+    location = LOCATION_FORMAT.format(file=trace.info.file.rsplit('/', 1)[1],
+                                      func=term.bold + trace.info.func + term.normal,
+                                      line=trace.info.line) if verbose else ''
+    print(TRACE_FORMAT.format(time=time,
+                              message=message,
+                              location=location,
+                              component=trace.component,
+                              tid=int(trace.tid),
+                              job_id=trace.header.job_id,
+                              severity=severities[trace.header.severity]))
 
 Trace = collections.namedtuple('Trace', ['info', 'header', 'params', 'component', 'tid'])
 def handle_path(path):
+    assert os.path.exists(path), 'File does not exist: {}'.format(path)
     match = file_re.search(path)
     assert match is not None, 'Not a trace file: {}'.format(path)
     component, tid = match.groups()
@@ -45,12 +59,15 @@ def handle_path(path):
         for info, header, params in get_traces(f, get_trace_info(f)):
             yield Trace(info=info, header=header, params=params, component=component, tid=tid)
 
-def run(paths):
+def run(paths, verbose):
     for trace in merge_sort(map(handle_path, paths), lambda trace: trace.header.time):
-        print_trace(trace)
+        print_trace(trace, verbose)
 
-def main():
-    run(sys.argv[1:])
+@click.command()
+@click.argument('paths', nargs=-1)
+@click.option('-v', '--verbose', is_flag=True)
+def main(paths, verbose):
+    run(paths, verbose)
 
 if __name__ == '__main__':
     main()
