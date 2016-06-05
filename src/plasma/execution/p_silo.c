@@ -2,6 +2,7 @@
 #define _GNU_SOURCE
 
 #include <sched.h>
+#include <limits.h>
 #include <signal.h>
 #include <pthread.h>
 
@@ -9,8 +10,6 @@
 
 #include "p_config_internal.h"
 #include "../internal.h"
-
-#define MAX_PATH_SIZE 512
 
 typedef struct Module Module;
 struct Module {
@@ -22,7 +21,7 @@ struct Module {
 struct PSilo {
     Module modules[MODULE_COUNT];
     PSchedulerConfig scheduler_config;
-    char trace_dir_path[MAX_PATH_SIZE];
+    char trace_dir_path[PATH_MAX];
     PTraceEmitter *trace_emitter;
     PTraceDumper *trace_dumper;
     pthread_t pthread;
@@ -67,7 +66,7 @@ PSilo *p_silo_init(PConfigSetting *silo_config, int32_t affinity, PSiloId silo_i
         }
     }
 
-    snprintf(silo->trace_dir_path, MAX_PATH_SIZE, "%s/traces", data_dir);
+    snprintf(silo->trace_dir_path, PATH_MAX, "%s/traces", data_dir);
     p_ensure_directory_exists(silo->trace_dir_path);
 
     PConfigSetting *trace_config = p_config_setting_lookup_required(silo_config, "traces");

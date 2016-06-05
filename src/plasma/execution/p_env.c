@@ -1,3 +1,4 @@
+#include <limits.h>
 #include <signal.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -5,12 +6,11 @@
 #include <p.h>
 
 #include "p_config_internal.h"
-#define MAX_PATH_SIZE 512
 
 struct PEnv {
     uint32_t num_silos;
     PSilo **silos;
-    char data_dir[MAX_PATH_SIZE];
+    char data_dir[PATH_MAX];
     PEnvState state;
     pthread_barrier_t state_barrier;
 };
@@ -61,7 +61,7 @@ static void env_init(PConfig *config)
     PConfigSetting *data_dir_setting = p_config_lookup(config, "data_dir");
     P_ASSERT(data_dir_setting != NULL);
     const char *data_dir = p_config_setting_get_string(data_dir_setting);
-    P_ASSERT(strlen(data_dir) < MAX_PATH_SIZE);
+    P_ASSERT(strlen(data_dir) < PATH_MAX);
     strcpy(env.data_dir, data_dir);
     p_ensure_directory_exists(data_dir);
 

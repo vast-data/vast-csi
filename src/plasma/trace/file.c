@@ -1,6 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 #include <time.h>
 #include <stdio.h>
+#include <limits.h>
 #include <sys/types.h>
 #include <stdint.h>
 #include <alloca.h>
@@ -127,10 +128,9 @@ void p_trace_file_destroy(PTraceFile *trace_file)
     p_free(trace_file);
 }
 
-#define MAX_PATH (512)
 static void delete_files_if_needed(PTraceFile *trace_file)
 {
-    char path[MAX_PATH];
+    char path[PATH_MAX];
     struct dirent **namelist;
     int32_t n = scandir(trace_file->dir, &namelist, NULL, alphasort);
     P_ASSERT(n >= 0);
@@ -138,7 +138,7 @@ static void delete_files_if_needed(PTraceFile *trace_file)
     while (n--) {
         if (strncmp(namelist[n]->d_name, trace_file->prefix, strlen(trace_file->prefix)) == 0) {
             if (max_files == 0) {
-                snprintf(path, MAX_PATH, "%s/%s", trace_file->dir, namelist[n]->d_name);
+                snprintf(path, PATH_MAX, "%s/%s", trace_file->dir, namelist[n]->d_name);
                 int remove_result = remove(path);
                 P_ASSERT(remove_result == 0);
             } else {
