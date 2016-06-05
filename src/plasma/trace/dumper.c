@@ -35,6 +35,7 @@ PTraceDumper *p_trace_dumper_init(PConfigSetting *setting, PTraceEmitter *emitte
 
     LOOP(COMPONENT_COUNT, i) {
         dumper->readers[i] = NULL;
+        dumper->files[i] = NULL;
         dumper->times[i] = 0;
     }
 
@@ -85,7 +86,7 @@ static bool dumper_iteration(PTraceDumper *dumper, bool force)
     P_DBUFFER_LENGTH_TYPE length;
     bool found = false;
     LOOP(COMPONENT_COUNT, i) {
-        if (dumper->readers[i] != NULL) {
+        if (dumper->files[i] != NULL) {
             PDbufferReadResult read_result = p_dbuffer_read(dumper->readers[i], &record, &length, force);
             switch (read_result) {
             case PDBUFFER_READ_NOTHING:

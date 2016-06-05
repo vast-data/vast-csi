@@ -81,6 +81,7 @@ void p_dbuffer_destroy(PDbuffer *dbuf)
 {
     LOOP(dbuf->buffer_count, i)
         buffer_destroy(&dbuf->buffers[i]);
+    p_free(dbuf->buffers);
     p_free(dbuf);
 }
 
@@ -116,11 +117,13 @@ void p_dbuffer_reader_init(PDbufferReader *reader, PDbuffer *dbuf)
 
 static inline bool reader_overflow(PDbufferReader *reader)
 {
+    P_ASSERT(reader->generation <= reader->dbuf->generation);
     return reader->dbuf->generation - reader->generation >= reader->dbuf->buffer_count;
 }
 
 PDbufferReadResult p_dbuffer_read(PDbufferReader *reader, void *data OUT, P_DBUFFER_LENGTH_TYPE *length OUT, bool force)
 {
+    // when force==true we are allowed to read from the writer's buffer.
     if (!force && reader->generation == reader->dbuf->generation)
         return PDBUFFER_READ_NOTHING;
 
@@ -133,11 +136,14 @@ PDbufferReadResult p_dbuffer_read(PDbufferReader *reader, void *data OUT, P_DBUF
         goto overflow;
 
     if (*length == 0) {
-        reader->generation++;
-        reader->read_index = 0;
-        if (force)
-            return PDBUFFER_READ_NOTHING;
-        return PDBUFFER_READ_NEXT;
+        // when force==true and we reached the end of the buffer, there's no next buffer to go to
+        PDbufferReadResult result = PDBUFFER_READ_NOTHING;
+        if (!force || reader->generation < reader->dbuf->generation) {
+            reader->generation++;
+            reader->read_index = 0;
+            result = PDBUFFER_READ_NEXT;
+        }
+        return result;
     }
 
     buffer_read(current_buffer(reader->dbuf), reader->read_index + P_DBUFFER_LENGTH_BYTES, data, *length);
