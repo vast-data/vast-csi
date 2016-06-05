@@ -41,7 +41,7 @@ typedef struct {
     uint16_t line;
     const char *func_ptr; // .func starts off empty because __func__ isn't considered a static value. The init_section function sets the value in .func_ptr to .func.
 } PTraceInfo;
-_Static_assert(P_TRACE_INFO_SIZE == sizeof(PTraceInfo), "PTraceInfo size mismatch");
+P_STATIC_ASSERT(P_TRACE_INFO_SIZE == sizeof(PTraceInfo), "PTraceInfo size mismatch");
 
 // The potential maximum record size could be bigger but we pre allocate a trace
 // record per silo per component. There's no real reason to allocate more.
@@ -53,7 +53,7 @@ typedef struct {
     uint8_t severity;
     uint8_t params[P_TRACE_RECORD_MAX_SIZE - (8 + 4 + 2 + 1)];
 } PTraceRecord;
-_Static_assert(P_TRACE_RECORD_MAX_SIZE == sizeof(PTraceRecord), "PTraceRecord size mismatch");
+P_STATIC_ASSERT(P_TRACE_RECORD_MAX_SIZE == sizeof(PTraceRecord), "PTraceRecord size mismatch");
 
 typedef struct {
     PDbuffer *buffers[COMPONENT_COUNT];

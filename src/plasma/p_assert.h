@@ -16,3 +16,9 @@
 
 #define P_ASSERT(expression) assert(expression)
 #define P_PANIC() abort();
+
+#ifdef __cplusplus
+  #define P_STATIC_ASSERT static_assert
+#else
+  #define P_STATIC_ASSERT _Static_assert
+#endif
