@@ -10,7 +10,6 @@
 
 #include <string.h>
 #include <stddef.h>
-#include <bsd/string.h>
 
 #include "defs.h"
 #include "../p_assert.h"
