@@ -34,7 +34,7 @@ typedef uint8_t byte;
 #define P_CACHE_ALIGNED __attribute__ ((aligned(P_CACHE_LINE_BYTES)))
 #define P_PACKED __attribute__ ((packed)))
 
-// ad defined in the linux kernel
+// as defined in the linux kernel
 #define likely(x)      __builtin_expect(!!(x), 1)
 #define unlikely(x)    __builtin_expect(!!(x), 0)
 

@@ -53,13 +53,14 @@ if debug is not None:
 
 compiler = ARGUMENTS.get('cc', 'clang')
 if compiler == 'clang':
-    env.Replace(CC=compiler)
+    env.Replace(CC=compiler, CXX=compiler + '++')
     env.Append(CFLAGS=['-Weverything',
                        '-Wno-disabled-macro-expansion',
                        '-Wno-gnu-zero-variadic-macro-arguments'])
 else:
     assert compiler == 'gcc'
-    env.Replace(CC='/opt/rh/devtoolset-3/root/usr/bin/gcc')
+    env.Replace(CC='/opt/rh/devtoolset-3/root/usr/bin/gcc',
+                CXX='g++')
     env.Append(CFLAGS=['-Wall'])
 
 env.Append(CPPFLAGS=['-g',
@@ -129,6 +130,15 @@ cpp_lib = cpp_env.Library(target='dist/orion_cpp', source=cpp_sources)
 cpp_env.Append(LIBS=cpp_lib)
 AddTest(target='dist/tests/test_cpool', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_cpool.cpp', cpp_lib], env=cpp_env, wrap=['p_silo_get_id'])
 cpp_env.AlwaysBuild('test')
+
+cpp_test_env = cpp_env.Clone()
+cpp_test_env.Append(LIBS=['gtest'])
+def AddCppTest(target, source):
+   test = cpp_test_env.Program(target=target, source=source)
+   cpp_test_env.Alias('test', test, test[0].abspath)
+   cpp_test_env.Alias('cpptest', test, test[0].abspath)
+AddCppTest(target='dist/tests/test_assert', source=[DEFAULT_BUILD_DIR + '/tests/test_assert.cpp'])
+cpp_test_env.AlwaysBuild('cpptest')
 
 # ----- Python Environment ----- #
 
