@@ -10,6 +10,7 @@
 
 #include <string.h>
 #include <stddef.h>
+#include <bsd/string.h>
 
 #include "defs.h"
 #include "../p_assert.h"
@@ -40,6 +41,7 @@ typedef struct {
     uint16_t line;
     const char *func_ptr; // .func starts off empty because __func__ isn't considered a static value. The init_section function sets the value in .func_ptr to .func.
 } PTraceInfo;
+_Static_assert(P_TRACE_INFO_SIZE == sizeof(PTraceInfo), "PTraceInfo size mismatch");
 
 // The potential maximum record size could be bigger but we pre allocate a trace
 // record per silo per component. There's no real reason to allocate more.
@@ -51,6 +53,7 @@ typedef struct {
     uint8_t severity;
     uint8_t params[P_TRACE_RECORD_MAX_SIZE - (8 + 4 + 2 + 1)];
 } PTraceRecord;
+_Static_assert(P_TRACE_RECORD_MAX_SIZE == sizeof(PTraceRecord), "PTraceRecord size mismatch");
 
 typedef struct {
     PDbuffer *buffers[COMPONENT_COUNT];
@@ -146,11 +149,18 @@ static inline void p_trace_record_finish(ComponentId comp)
 #define P_TRACE_STR_LEN_TYPE uint16_t
 static inline void p_trace_arg_string(const char *value)
 {
-    size_t length = strlen(value);
-    P_ASSERT(length < P_TRACE_MAX_STR_LEN);
+    size_t length = strnlen(value, P_TRACE_MAX_STR_LEN);
     P_TRACE_STR_LEN_TYPE short_length = (P_TRACE_STR_LEN_TYPE) length;
-    p_emit_param(&short_length, sizeof(short_length));
-    p_emit_param(value, short_length);
+    if (length == P_TRACE_MAX_STR_LEN) { // string too big
+        short_length = P_TRACE_MAX_STR_LEN;
+        p_emit_param(&short_length, sizeof(short_length));
+        p_emit_param(value, short_length - 1);
+        char null = '\0';
+        p_emit_param(&null, 1);
+    } else {
+        p_emit_param(&short_length, sizeof(short_length));
+        p_emit_param(value, short_length);
+    }
 }
 
 static inline void p_trace_arg_ptr(const void *value)

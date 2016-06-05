@@ -175,9 +175,13 @@ static void test_emitter(void **state UNUSED)
     printf("Iterations: %d. Average: %.3fns. Total: %lu\n", ITERS, avg, end - start);
 
     P_TRACE(P_TRACE_INFO, 0, "Parameterless trace");
-    const char *string = "Loooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooong";
+    char string[5000];
+    LOOP(4998, index)
+        string[index] = 'a';
+    string[4999] = '\0';
+
     LOOP(10, _)
-        P_TRACE(P_TRACE_INFO, 0, "Long trace: %s", string);
+        P_TRACE(P_TRACE_INFO, 0, "Long trace: %s", (char*) string);
 
     p_trace_dumper_stop(dumper);
     p_trace_dumper_wait(dumper);

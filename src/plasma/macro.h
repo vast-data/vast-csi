@@ -27,7 +27,7 @@
 
 /*!
  * Provide a for-each construct for variadic macros. Supports up
- * to 8 args.
+ * to 12 args.
  *
  * Example usage1:
  *     #define FWD_DECLARE_CLASS(cls) class cls;

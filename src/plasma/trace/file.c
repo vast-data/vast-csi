@@ -34,7 +34,7 @@ static void close_file(PTraceFile *trace_file)
 
 static void write_file(PTraceFile *trace_file, void *data, size_t length)
 {
-    P_ASSERT(fwrite(data, length, 1, trace_file->file) == 1);
+    P_ASSERT(fwrite_unlocked(data, length, 1, trace_file->file) == 1);
     trace_file->file_offset += length;
 }
 
