@@ -278,9 +278,7 @@ IODevRet p_devio_read(PDevIO *devio, IOVec *buffer, Baddr source_baddr, PDevIOFu
 
 IODevRet p_devio_wait(PDevIO *devio UNUSED, PDevIOFuture *io_future)
 {
-    if (!p_future_is_set(&io_future->future)) {
-        p_future_wait(&io_future->future);
-    }
+    p_future_wait(&io_future->future);
     P_ASSERT(io_future->io_count == 0);
 
     return io_future->res;
@@ -292,7 +290,6 @@ void p_devio_destroy(PDevIO *devio)
     P_ASSERT(devio->available_ios.value == devio->iodepth);
     io_destroy(devio->ctx);
 }
-
 
 // Still not operational, yet it should be in the future...
 
