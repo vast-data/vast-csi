@@ -16,8 +16,6 @@ def RGlob(path, pattern, ignore_dirs=[], ignore_files=[]):
             matches.append(filename)
    return matches
 
-sources = [DEFAULT_BUILD_DIR + '/' + i for i in RGlob('src', '*.c', ['src/plasma/third_party/murmur3'], ['src/plasma/execution/main.c'])]
-
 VariantDir(DEFAULT_BUILD_DIR + '/src', 'src')
 VariantDir(DEFAULT_BUILD_DIR + '/tests', 'tests')
 
@@ -64,76 +62,75 @@ else:
     env.Replace(CC='/opt/rh/devtoolset-3/root/usr/bin/gcc')
     env.Append(CFLAGS=['-Wall'])
 
-env.Append(CFLAGS=['-g',
-                   '-std=gnu11',
-                   '-O' + optimizations,
-                   '-fno-omit-frame-pointer', # with -O2 this is required to be able to generate backtraces
-                   '-Werror',
-                   '-Wno-vla',
-                   '-Wno-padded',
-                   '-Wno-cast-align'])
+env.Append(CPPFLAGS=['-g',
+                     '-O' + optimizations,
+                     '-fno-omit-frame-pointer', # with -O2 this is required to be able to generate backtraces
+                     '-Werror',
+                     '-Wno-vla',
+                     '-Wno-padded',
+                     '-Wno-cast-align'])
 env.Append(CPPPATH=['src', 'src/include'])
 env.Append(LINKFLAGS=['-pthread'])
+env.Append(LIBS=['unwind', 'config', 'libaio'])
 
-murmur_env = env.Clone()
+# ----- C Environment ----- #
+
+c_env = env.Clone()
+c_env.Append(CFLAGS='-std=gnu11')
+
+csources = [DEFAULT_BUILD_DIR + '/' + i for i in RGlob('src', '*.c', ['src/plasma/third_party/murmur3'], ['src/plasma/execution/main.c'])]
+
+murmur_env = c_env.Clone()
 murmur_env.Append(CFLAGS=['-Wno-cast-align',
                           '-Wno-sign-conversion',
                           '-Wno-shorten-64-to-32',
                           '-Wno-incompatible-pointer-types-discards-qualifiers'])
 murmur = murmur_env.Object(DEFAULT_BUILD_DIR + '/src/plasma/third_party/murmur3/murmur3.c')
 
-sources.append(murmur)
+csources.append(murmur)
 
-lib = env.Library(target='dist/orion', source=sources)
-LIBS = ['unwind', 'config', 'libaio', lib]
+c_lib = c_env.Library(target='dist/orion', source=csources)
+c_env.Append(LIBS=c_lib)
+murmur_env.Append(LIBS=c_lib)
+c_env.Program(target='dist/env', source=[DEFAULT_BUILD_DIR + '/src/plasma/execution/main.c'])
 
-env.Program(target='dist/env', source=[DEFAULT_BUILD_DIR + '/src/plasma/execution/main.c'], LIBS=LIBS)
 
-def AddTest(target, source, env=env, wrap=[]):
+def AddTest(target, source, env=c_env, wrap=[]):
     test_env = env.Clone()
+    test_env.Append(LIBS=['cmocka'])
     for func in wrap:
         test_env.Append(LINKFLAGS='-Wl,-wrap,' + func)
-    test = test_env.Program(target=target, source=source, LIBS=LIBS + ['cmocka'])
+    test = test_env.Program(target=target, source=source)
     test_env.Alias('test', test, test[0].abspath)
 
-AddTest(target='dist/tests/test_p_pool', source=[lib, DEFAULT_BUILD_DIR + '/tests/test_p_pool.c'])
-AddTest(target='dist/tests/test_p_dlist', source=[lib, DEFAULT_BUILD_DIR + '/tests/test_p_dlist.c'])
-AddTest(target='dist/tests/test_p_hash', env=murmur_env, source=[lib, DEFAULT_BUILD_DIR + '/tests/test_p_hash.c',
-                                                           DEFAULT_BUILD_DIR + '/src/plasma/third_party/murmur3/test.c'])
-AddTest(target='dist/tests/test_p_fiber', source=[lib, DEFAULT_BUILD_DIR + '/tests/test_p_fiber.c'])
-AddTest(target='dist/tests/test_time', source=[lib, DEFAULT_BUILD_DIR + '/tests/test_time.c'])
-AddTest(target='dist/tests/test_config', source=[lib, DEFAULT_BUILD_DIR + '/tests/test_config.c'])
-AddTest(target='dist/tests/test_env', source=[lib, DEFAULT_BUILD_DIR + '/tests/test_env.c'], wrap=['p_module_start', 'p_module_init'])
-AddTest(target='dist/tests/test_io_provider', source=[lib, DEFAULT_BUILD_DIR + '/tests/test_io_provider.c'])
-AddTest(target='dist/tests/test_trace', source=[lib, DEFAULT_BUILD_DIR + '/tests/test_trace.c'])
-env.AlwaysBuild('test')
+AddTest(target='dist/tests/test_p_pool', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_p_pool.c'])
+AddTest(target='dist/tests/test_p_dlist', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_p_dlist.c'])
+AddTest(target='dist/tests/test_p_hash', env=murmur_env,
+        source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_p_hash.c',
+                DEFAULT_BUILD_DIR + '/src/plasma/third_party/murmur3/test.c'])
+AddTest(target='dist/tests/test_p_fiber', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_p_fiber.c'])
+AddTest(target='dist/tests/test_time', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_time.c'])
+AddTest(target='dist/tests/test_config', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_config.c'])
+AddTest(target='dist/tests/test_env', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_env.c'], wrap=['p_module_start', 'p_module_init'])
+AddTest(target='dist/tests/test_io_provider', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_io_provider.c'])
+AddTest(target='dist/tests/test_trace', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_trace.c'])
+c_env.AlwaysBuild('test')
 
-env.Alias('docs', lib, 'doxygen')
-env.AlwaysBuild('docs')
+c_env.Alias('docs', c_lib, 'doxygen')
+c_env.AlwaysBuild('docs')
 
-# CPP Env
-cpp_env = Environment(variables=vars)
+# ----- C++ Environment ----- #
+
+cpp_env = env.Clone()
+cpp_env.Append(LIBS=c_lib)
+cpp_env.Append(CXXFLAGS=['-std=c++11'])
 cpp_sources = [DEFAULT_BUILD_DIR + '/' + i for i in RGlob('src', '*.cpp')]
-cpp_env['ENV']['TERM'] = os.environ['TERM'] # enable terminal colors in clang
-
-cpp_env.Replace(CPP=ARGUMENTS.get('cc', 'clang'))
-if debug is not None:
-    cpp_env.Append(CPPDEFINES=['DEBUG'])
-cpp_env.Append(CPPFLAGS=['-g',
-                       '-std=c++11',
-                       '-O' + ARGUMENTS.get('O', '2'),
-                       '-fno-omit-frame-pointer', # with -O2 this is required to be able to generate backtraces
-                       '-Weverything' if cpp_env['CC'] == 'clang' else '-Wall',
-                       '-Werror',
-                       '-Wno-disabled-macro-expansion',
-                       '-Wno-gnu-zero-variadic-macro-arguments',
-                       '-Wno-vla',
-                       '-Wno-padded'])
-cpp_env.Append(CPPPATH=['src', 'src/include'])
-cpplib = cpp_env.Library(target='dist/cpp_orion', source=cpp_sources)
-LIBS = ['unwind', 'config', 'pthread', cpplib, lib]
-AddTest(target='dist/tests/test_cpool', source=[lib, cpplib, DEFAULT_BUILD_DIR + '/tests/test_cpool.cpp'], env=cpp_env, wrap=['p_silo_get_id'])
+cpp_lib = cpp_env.Library(target='dist/orion_cpp', source=cpp_sources)
+cpp_env.Append(LIBS=cpp_lib)
+AddTest(target='dist/tests/test_cpool', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_cpool.cpp', cpp_lib], env=cpp_env, wrap=['p_silo_get_id'])
 cpp_env.AlwaysBuild('test')
+
+# ----- Python Environment ----- #
 
 venv = env.Command(target='venv/requirements.txt',
                    source=['src/plasma/trace/reader/dev_requirements.txt',
