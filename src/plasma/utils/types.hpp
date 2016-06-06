@@ -13,5 +13,6 @@ namespace P {
     typedef uint8_t byte;
     typedef int32_t Index;
     const Index INVALID_INDEX = -1;
+    using std::size_t;
 
 }

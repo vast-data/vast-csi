@@ -1,0 +1,58 @@
+/* Copyright (C) Vast Data Ltd. */
+
+/*!
+ * \file sleep.hpp
+ * \brief Fiber sleep functionality
+ */
+#pragma once
+
+#include "../utils/types.hpp"
+#include "../data/dlist.hpp"
+
+namespace P {
+
+enum class SleepInterval: byte {
+    SLEEP_100_MILLI,
+    SLEEP_1_SECOND,
+    SLEEP_10_SECOND,
+    SLEEP_MINUTE,
+    SLEEP_INTERVAL_COUNT
+};
+
+class TimerQueues {
+
+public:
+    // API for the scheduler
+    void init();
+    void poll();
+    void destroy();
+
+    // API for fiber implementors
+
+    /*!
+     * Sleep for at least a given interval (100ms, 1 sec, etc').
+     *
+     * \return number of microseconds spent in sleep.
+     */
+    static uint64_t sleep(SleepInterval interval);
+
+    /*!
+     * Sleep for at least a given interval times count.
+     *
+     * \return number of microseconds spent in sleep.
+     */
+    static uint64_t sleep_multi(SleepInterval interval, uint32_t count);
+
+    /*!
+     * Sleep implemented using busy wait for short custom intervals.
+     * Note that this function wastes a lot of CPU.
+     */
+    static uint64_t fast_sleep(uint64_t usecs);
+
+private:
+    uint64_t _wakeup_time;
+    DList::Anchor _queues[(byte) SleepInterval::SLEEP_INTERVAL_COUNT];
+
+};
+
+}

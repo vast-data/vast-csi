@@ -6,6 +6,11 @@
  */
 #pragma once
 
+#define MIN(a, b) ((a) > (b) ? (b) : (a))
+#define MAX(a, b) ((a) < (b) ? (b) : (a))
+
+#define NUM_ELEMENTS(array) (sizeof(array) / sizeof((array)[0]))
+
 #define CONCAT_IMPL( x, y ) x##y
 #define MACRO_CONCAT( x, y ) CONCAT_IMPL( x, y )
 

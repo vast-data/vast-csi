@@ -31,6 +31,10 @@
 
 #define NANO_TO_SEC(n)      MICRO_TO_SEC(NANO_TO_MICRO(n))
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*!
  * Get the current time in nano seconds. This function is VERY fast and returns a
  * monotonically rising value not affected by the system time, ntp, etc'.
@@ -47,3 +51,7 @@ uint64_t p_get_time_nano(void);
  * that can go back or forward if changed by an administrator or ntp.
  */
 uint64_t p_get_clock_time_nano(void);
+
+#ifdef __cplusplus
+}
+#endif

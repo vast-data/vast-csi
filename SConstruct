@@ -143,6 +143,8 @@ AddCppTest(target='dist/tests/test_cpool', source=[DEFAULT_BUILD_DIR + '/tests/t
 AddCppTest(target='dist/tests/test_config', source=[DEFAULT_BUILD_DIR + '/tests/test_config.cpp'])
 AddCppTest(target='dist/tests/test_dlist', source=[DEFAULT_BUILD_DIR + '/tests/test_dlist.cpp'])
 AddCppTest(target='dist/tests/test_io_provider', source=[DEFAULT_BUILD_DIR + '/tests/test_io_provider.cpp'])
+AddCppTest(target='dist/tests/test_fiber', source=[DEFAULT_BUILD_DIR + '/tests/test_fiber.cpp'])
+AddCppTest(target='dist/tests/test_sync', source=[DEFAULT_BUILD_DIR + '/tests/test_sync.cpp'])
 cpp_env.AlwaysBuild('test')
 cpp_env.AlwaysBuild('cpptest')
 
