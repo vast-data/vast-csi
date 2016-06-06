@@ -19,36 +19,36 @@
 
 #pragma once
 
-#include "../utils.h"
-#include <p.h>
+#include "../utils/types.hpp"
+#include "../memory/p_alloc.h"
 
 namespace P {
 
 class DList  {
 private:
     struct Node {
-        PIndex prev;
-        PIndex next;
+        Index prev;
+        Index next;
     };
 public:
     class Pool {
     public:
         /*!
          * Initialize a dlistpool.
-         * In order to destroy the listpool and release resources call p_dlistpool_destroy().
+         * In order to destroy the listpool and release resources call destroy().
          *
          * \param size maximum number of nodes in the dlistpool.
          * \return a pointer to a dlistpool.
          */
-        void init(PIndex size)
+        void init(Index size)
         {
             _nodes = (Node*) p_safe_malloc(sizeof(Node) * (size_t) size);
 
         #ifdef DEBUG
             _pool_size = size;
             LOOP(size, index) {
-                _nodes[index].prev = P_INVALID_INDEX;
-                _nodes[index].next = P_INVALID_INDEX;
+                _nodes[index].prev = INVALID_INDEX;
+                _nodes[index].next = INVALID_INDEX;
             }
         #endif
 
@@ -61,7 +61,7 @@ public:
 
         Node *_nodes;
     #ifdef DEBUG
-        PIndex _pool_size;
+        Index _pool_size;
     #endif
     };
 
@@ -89,8 +89,8 @@ public:
 
         // Since a list anchor is the index of the first element,
         // an empty list is simply an invalid index.
-        static const PIndex ANCHOR_INIT = P_INVALID_INDEX;
-        PIndex index;
+        static const Index ANCHOR_INIT = INVALID_INDEX;
+        Index index;
     #ifdef DEBUG
         Node *node;
     #endif
@@ -117,44 +117,41 @@ public:
      * Insert a new element at the beginning of the list.
      * The anchor is passed through a pointer because its value would be modified.
      */
-    void insert(PIndex index);
+    void insert(Index index);
 
     /*!
      * Insert a new element after a given element.
      */
-    void add_after(PIndex index, PIndex new_index);
+    void add_after(Index index, Index new_index);
 
     /*!
      * Insert a new element before a given element.
      */
-    void add_before(PIndex index, PIndex new_index);
+    void add_before(Index index, Index new_index);
 
-    void remove(PIndex index);
-    PIndex next(PIndex index);
-    PIndex prev(PIndex index);
+    void remove(Index index);
+    Index next(Index index);
+    Index prev(Index index);
 
     /*!
      * Remove the first element in the list and return it.
      */
-    PIndex pop();
+    Index pop();
 
     /*!
      * Add an element to the end of the list.
      */
-    void append(PIndex index);
+    void append(Index index);
 
     /*!
      * Get the first list element index (for traversal).
      */
-    PIndex get_first() { return _anchor->index; }
+    Index get_first() { return _anchor->index; }
 
     /*!
      * True if the item in index is the last in the list (right before the anchor element)..
      */
-    bool is_last(PIndex index) { return _list_pool->_nodes[index].next == _anchor->index; }
-
-
-
+    bool is_last(Index index) { return _list_pool->_nodes[index].next == _anchor->index; }
 
 private:
 
@@ -177,17 +174,16 @@ P_DLIST_EACH(list, anchor, i) {
 }
 \endcode
  */
-#define DLIST_EACH(list, element) for (PIndex element = list->get_first(); \
-                                         element != P_INVALID_INDEX; \
-                                         element = list->is_last(element) ? P_INVALID_INDEX : list->next(element))
+#define DLIST_EACH(list, element) for (P::Index element = (list)->get_first(); \
+                                       element != P::INVALID_INDEX;            \
+                                       element = (list)->is_last(element) ? P::INVALID_INDEX : (list)->next(element))
 
 // This allows current item to be removed from the list in the body of the iteration
-#define DLIST_SAFE_EACH(list, element, body) for (PIndex element = list->get_first();                           \
-                                                    element != P_INVALID_INDEX; ) {                                     \
-                                                    PIndex next_element = list->is_last(element) ?               \
-                                                                         P_INVALID_INDEX : list->next(element); \
-                                                    {body}                                                              \
-                                                    element = next_element;                                             \
-                                                }
+#define DLIST_SAFE_EACH(list, element, body)                                                         \
+    for (P::Index element = (list)->get_first(); element != P::INVALID_INDEX;) {                     \
+        P::Index next_element = (list)->is_last(element) ? P::INVALID_INDEX : (list)->next(element); \
+        {body}                                                                                       \
+        element = next_element;                                                                      \
+  }
 
 };

@@ -141,6 +141,7 @@ AddCppTest(target='dist/tests/test_assert', source=[DEFAULT_BUILD_DIR + '/tests/
 AddCppTest(target='dist/tests/test_pool', source=[DEFAULT_BUILD_DIR + '/tests/test_pool.cpp'])
 AddCppTest(target='dist/tests/test_cpool', source=[DEFAULT_BUILD_DIR + '/tests/test_cpool.cpp'], wrap=['p_silo_get_id'])
 AddCppTest(target='dist/tests/test_config', source=[DEFAULT_BUILD_DIR + '/tests/test_config.cpp'])
+AddCppTest(target='dist/tests/test_dlist', source=[DEFAULT_BUILD_DIR + '/tests/test_dlist.cpp'])
 cpp_env.AlwaysBuild('test')
 cpp_env.AlwaysBuild('cpptest')
 
