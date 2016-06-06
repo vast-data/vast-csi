@@ -128,8 +128,6 @@ cpp_env.Append(CXXFLAGS=['-std=c++11'])
 cpp_sources = [DEFAULT_BUILD_DIR + '/' + i for i in RGlob('src', '*.cpp')]
 cpp_lib = cpp_env.Library(target='dist/orion_cpp', source=cpp_sources)
 cpp_env.Append(LIBS=cpp_lib)
-cpp_env.AlwaysBuild('test')
-cpp_env.AlwaysBuild('cpptest')
 
 def AddCppTest(target, source, wrap=[]):
     cpp_test_env = cpp_env.Clone()
@@ -143,6 +141,8 @@ def AddCppTest(target, source, wrap=[]):
 AddCppTest(target='dist/tests/test_assert', source=[DEFAULT_BUILD_DIR + '/tests/test_assert.cpp'])
 AddCppTest(target='dist/tests/test_pool', source=[DEFAULT_BUILD_DIR + '/tests/test_pool.cpp'])
 AddCppTest(target='dist/tests/test_cpool', source=[DEFAULT_BUILD_DIR + '/tests/test_cpool.cpp'], wrap=['p_silo_get_id'])
+cpp_env.AlwaysBuild('test')
+cpp_env.AlwaysBuild('cpptest')
 
 # ----- Python Environment ----- #
 

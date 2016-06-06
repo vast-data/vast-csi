@@ -1,7 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 
 /*!
- * \file cpool.h
+ * \file cpool.hpp
  * \brief A fixed-block concurrent pool for efficient memory management.
  *
  * Uses a per SILO cache in order to reduce locking. In case the silo cache is empty a spinlock is taken.
@@ -10,7 +10,7 @@
 
 #include <stdint.h>
 #include "pool.hpp"
-#include "../sync/p_spin_lock.h"
+#include "../sync/spin_lock.hpp"
 
 namespace P {
 
@@ -54,7 +54,7 @@ private:
     uint32_t _n_silos;
     uint32_t _max_buffers_per_silo;
 
-    PSpinLock _lock;
+    SpinLock _lock;
 
     Index *_silo_heads;
     uint32_t *_silo_counts;

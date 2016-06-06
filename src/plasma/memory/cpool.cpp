@@ -1,7 +1,9 @@
+/* Copyright (C) Vast Data Ltd. */
 #include "cpool.hpp"
 
 #include <stdint.h>
-#include "plasma/utils/assert.hpp"
+#include "../utils/assert.hpp"
+#include "../execution/p_silo.h"
 
 namespace P {
 
@@ -21,11 +23,10 @@ void CPool::init(uint32_t n_silos, uint32_t max_buffers_per_silo, uint32_t n_buf
     ASSERT_OP(_silo_counts, !=, nullptr, "allocation failed");
 
     for (uint32_t j = 0; j < _n_silos; ++j) {
-        _silo_heads[j] = P_INVALID_INDEX;
+        _silo_heads[j] = INVALID_INDEX;
         _silo_counts[j] = 0;
     }
     _shared_count = n_buffers;
-    p_spin_lock_init(&_lock);
 }
 
 void CPool::destroy() {
@@ -36,7 +37,6 @@ void CPool::destroy() {
     }
     ASSERT_OP(pool_buffers, ==, _shared_pool.get_initial_n_blocks(), "leak detected");
 
-    p_spin_lock_destroy(&_lock);
     delete[] _silo_heads;
     delete[] _silo_counts;
     _shared_pool.destroy();
@@ -54,12 +54,12 @@ void *CPool::alloc() {
         return buffer;
     }
     // no buffer available in the silo pool, go to the shared pool
-    p_spin_lock_lock(&_lock);
+    _lock.lock();
     buffer = _shared_pool.alloc_address();
     if (buffer != NULL) {
         _shared_count--;
     }
-    p_spin_lock_unlock(&_lock);
+    _lock.unlock();
     return buffer;
 }
 
@@ -74,10 +74,10 @@ void CPool::free(void *buffer) {
         return;
     }
     // return the buffer to the shared pool
-    p_spin_lock_lock(&_lock);
+    _lock.lock();
     _shared_count++;
     _shared_pool.free_address(buffer);
-    p_spin_lock_unlock(&_lock);
+    _lock.unlock();
 }
 
 void CPool::print_counters() {
