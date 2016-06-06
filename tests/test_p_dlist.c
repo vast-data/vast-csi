@@ -102,7 +102,7 @@ static void test_each(void **state UNUSED)
     p_dlist_add_after(&list, 1, 2);
 
     PIndex j = 0;
-    P_DLIST_EACH(list, i) {
+    P_DLIST_EACH(&list, i) {
         assert_int_equal(i, j++);
     }
     assert_int_equal(j, 3);
