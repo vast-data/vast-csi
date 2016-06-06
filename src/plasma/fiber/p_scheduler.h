@@ -8,6 +8,10 @@
 
 #include <p.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct PFiberGroupConfig PFiberGroupConfig;
 
 struct PFiberGroupConfig {
@@ -30,3 +34,7 @@ struct PSchedulerConfig {
 void p_scheduler_init(PSchedulerConfig *config);
 void p_scheduler_destroy(void);
 void p_scheduler_run(void);
+
+#ifdef __cplusplus
+}
+#endif

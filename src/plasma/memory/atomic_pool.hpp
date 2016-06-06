@@ -28,12 +28,12 @@ public:
     /*!
      * Retrieve an identifier of the element in the pool (index)
      */
-    PIndex  element_to_index(void *element);
+    PIndex  element_to_index(void *element) { return _pool.address_to_index(element); }
 
     /*!
      * Get an element address from it's pool identifier (index)
      */
-    void *index_to_element(PIndex index);
+    void *index_to_element(PIndex index) { return _pool.index_to_address(index); }
 
     /*!
      * Allocate multiple elements.

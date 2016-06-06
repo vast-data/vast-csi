@@ -62,12 +62,12 @@ int32_t conf_setting_length(ConfigSetting *setting);
  * This function fetches the element at the given index index in the setting setting, which must be an array, list, or group.
  * It returns the requested setting on success, or NULL if index is out of range or if setting is not an array, list, or group.
  */
-ConfigSetting *conf_setting_element(ConfigSetting *setting, uint32_t index);
+ConfigSetting *conf_setting_get_element(ConfigSetting *setting, uint32_t index);
 
 /*!
  * Return the name of the given setting.
  */
-const char *conf_setting_name(ConfigSetting *setting);
+const char *conf_setting_get_name(ConfigSetting *setting);
 
 }
 

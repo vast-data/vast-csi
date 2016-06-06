@@ -144,7 +144,7 @@ void p_devio_poll_events(PDevIO *devio)
     P_ASSERT(active_ios > 0);
 
     int ios_done;
-    RETRY_LOOP(IO_POLL_SPINS, IO_POLL_YIELD_INTERVAL, IO_POLL_MAX_ATTEMPTS,
+    RETRY_LOOP_PARAMS(IO_POLL_SPINS, IO_POLL_YIELD_INTERVAL, IO_POLL_MAX_ATTEMPTS,
         ios_done = io_getevents(devio->ctx, 0, active_ios, events, NULL);
         if (ios_done >= 0) {
             break;
@@ -174,7 +174,7 @@ void p_devio_poll_events(PDevIO *devio)
 
 static void submit_ios(PDevIO *devio, struct iocb **ios_ptr, uint32_t io_count)
 {
-    RETRY_LOOP(IO_SUBMIT_SPINS, IO_SUBMIT_YIELD_INTERVAL, IO_SUBMIT_MAX_ATTEMPTS,
+    RETRY_LOOP_PARAMS(IO_SUBMIT_SPINS, IO_SUBMIT_YIELD_INTERVAL, IO_SUBMIT_MAX_ATTEMPTS,
         int submit_ret = io_submit(devio->ctx, io_count, ios_ptr);
         if (submit_ret == (int) io_count) {
             break;
@@ -210,7 +210,7 @@ static void validate_io(PDevIO *devio, IOVecs buffers[], Baddrs *dev_offsets)
     }
 }
 
-static IODevRet WARN_UNUSED
+static PIODevRet WARN_UNUSED
 p_devio_perform_scattered_io(PDevIO *devio, IOVecs buffers[], Baddrs *dev_offsets, bool is_write, PDevIOFuture *io_future)
 {
     validate_io(devio, buffers, dev_offsets);
@@ -243,17 +243,17 @@ p_devio_perform_scattered_io(PDevIO *devio, IOVecs buffers[], Baddrs *dev_offset
     return P_IODEV_SUCCESS;
 }
 
-IODevRet WARN_UNUSED p_devio_write_scatter(PDevIO *devio, IOVecs buffers[], Baddrs *target_baddrs, PDevIOFuture *io_future)
+PIODevRet WARN_UNUSED p_devio_write_scatter(PDevIO *devio, IOVecs buffers[], Baddrs *target_baddrs, PDevIOFuture *io_future)
 {
     return p_devio_perform_scattered_io(devio, buffers, target_baddrs, true, io_future);
 }
 
-IODevRet WARN_UNUSED p_devio_read_scatter(PDevIO *devio, IOVecs buffers[], Baddrs *source_baddrs, PDevIOFuture *io_future)
+PIODevRet WARN_UNUSED p_devio_read_scatter(PDevIO *devio, IOVecs buffers[], Baddrs *source_baddrs, PDevIOFuture *io_future)
 {
     return p_devio_perform_scattered_io(devio, buffers, source_baddrs, false, io_future);
 }
 
-static IODevRet WARN_UNUSED p_devio_perform_io(PDevIO *devio, IOVec *buffer, Baddr target_baddr, bool is_write, PDevIOFuture *io_future)
+static PIODevRet WARN_UNUSED p_devio_perform_io(PDevIO *devio, IOVec *buffer, Baddr target_baddr, bool is_write, PDevIOFuture *io_future)
 {
     IOVecs iovecs;
     iovecs.count = 1;
@@ -266,17 +266,17 @@ static IODevRet WARN_UNUSED p_devio_perform_io(PDevIO *devio, IOVec *buffer, Bad
     return p_devio_perform_scattered_io(devio, &iovecs, &baddrs, is_write, io_future);
 }
 
-IODevRet p_devio_write(PDevIO *devio, IOVec *buffer, Baddr target_baddr, PDevIOFuture *io_future)
+PIODevRet p_devio_write(PDevIO *devio, IOVec *buffer, Baddr target_baddr, PDevIOFuture *io_future)
 {
     return p_devio_perform_io(devio, buffer, target_baddr, true, io_future);
 }
 
-IODevRet p_devio_read(PDevIO *devio, IOVec *buffer, Baddr source_baddr, PDevIOFuture *io_future)
+PIODevRet p_devio_read(PDevIO *devio, IOVec *buffer, Baddr source_baddr, PDevIOFuture *io_future)
 {
     return p_devio_perform_io(devio, buffer, source_baddr, false, io_future);
 }
 
-IODevRet p_devio_wait(PDevIO *devio UNUSED, PDevIOFuture *io_future)
+PIODevRet p_devio_wait(PDevIO *devio UNUSED, PDevIOFuture *io_future)
 {
     p_future_wait(&io_future->future);
     P_ASSERT(io_future->io_count == 0);
@@ -293,7 +293,7 @@ void p_devio_destroy(PDevIO *devio)
 
 // Still not operational, yet it should be in the future...
 
-//IODevRet p_devio_trim(PDevIO *devio, Baddr base_offset, size_t block_count)
+//PIODevRet p_devio_trim(PDevIO *devio, Baddr base_offset, size_t block_count)
 //{
 //
 //    off_t trim_ext[2];

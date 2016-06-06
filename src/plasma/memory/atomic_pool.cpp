@@ -15,15 +15,6 @@ void AtomicPool::init(PIndex element_count, size_t element_size) //, element_ini
     p_sem_init(&_idle_elements, (uint32_t) element_count);
 }
 
-inline PIndex  AtomicPool::element_to_index(void *element)
-{
-    return _pool.address_to_index(element);
-}
-
-inline void *AtomicPool::index_to_element(PIndex index) {
-    return _pool.index_to_address(index);
-}
-
 void AtomicPool::alloc_multiple(PIndex idle_elements[] OUT, uint32_t element_count)
 {
     p_sem_dec(&_idle_elements, element_count);

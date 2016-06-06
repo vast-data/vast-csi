@@ -120,7 +120,7 @@ static void multiple_async_rw(PDevIO *device)
 
     // submit all write ios
     PDevIOFuture write_futures[io_submission_count];
-    IODevRet io_ret;
+    PIODevRet io_ret;
     LOOP(io_submission_count, i) {
 //        printf("sumitting write to %u addresses:\n", io_submission_baddrs[i].count);
 //        LOOP(io_submission_baddrs[i].count, j) {
@@ -175,7 +175,7 @@ static void simple_rw(PDevIO *device)
     io.iov_base = write_buffer;
     io.iov_len = buff_len;
 
-    IODevRet io_ret = p_devio_write(device, &io, 0, NULL);
+    PIODevRet io_ret = p_devio_write(device, &io, 0, NULL);
     assert_true(io_ret == P_IODEV_SUCCESS);
 
     char* read_buffer = aligned_alloc(O_DIRECT_ALIGN, buff_len);

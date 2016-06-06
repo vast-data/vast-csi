@@ -47,7 +47,7 @@ typedef enum {
     P_IODEV_SUCCESS,
     P_IODEV_ERROR,
     P_IODEV_RETRY
-} IODevRet;
+} PIODevRet;
 
 typedef struct IOVecs {
     uint32_t count;
@@ -57,7 +57,7 @@ typedef struct IOVecs {
 typedef struct PDevIOFuture {
     PFuture future;
     uint32_t io_count;
-    IODevRet res;
+    PIODevRet res;
 } PDevIOFuture;
 
 typedef struct PIO {
@@ -92,7 +92,7 @@ bool WARN_UNUSED p_devio_init(PDevIO *devio OUT, const char dev_name[],
  *        target_baddrs->count is the length of buffers array.
  * \param io_future the token to wait on for async execution. for sync operation set as NULL.
  */
-IODevRet WARN_UNUSED p_devio_write_scatter(PDevIO *devio, IOVecs buffers[], Baddrs *target_baddrs, PDevIOFuture *io_future);
+PIODevRet WARN_UNUSED p_devio_write_scatter(PDevIO *devio, IOVecs buffers[], Baddrs *target_baddrs, PDevIOFuture *io_future);
 
 /*!
  * Perform a scatter => scatter read operation
@@ -101,7 +101,7 @@ IODevRet WARN_UNUSED p_devio_write_scatter(PDevIO *devio, IOVecs buffers[], Badd
  *        source_baddrs->count is the length of buffers array.
  * \param io_future the token to wait on for async execution. for sync operation set as NULL.
  */
-IODevRet WARN_UNUSED p_devio_read_scatter(PDevIO *devio, IOVecs buffers[], Baddrs *source_baddrs, PDevIOFuture *io_future);
+PIODevRet WARN_UNUSED p_devio_read_scatter(PDevIO *devio, IOVecs buffers[], Baddrs *source_baddrs, PDevIOFuture *io_future);
 
 /*!
  * Perform a single buffer to a single address write operation
@@ -109,7 +109,7 @@ IODevRet WARN_UNUSED p_devio_read_scatter(PDevIO *devio, IOVecs buffers[], Baddr
  * \param target_baddr target device physical addresses to write to.
  * \param io_future the token to wait on for async execution. for sync operation set as NULL.
  */
-IODevRet WARN_UNUSED p_devio_write(PDevIO *devio, IOVec *buffer, Baddr target_baddr, PDevIOFuture *io_future);
+PIODevRet WARN_UNUSED p_devio_write(PDevIO *devio, IOVec *buffer, Baddr target_baddr, PDevIOFuture *io_future);
 
 /*!
  * Perform a single address to single buffer read operation
@@ -117,13 +117,13 @@ IODevRet WARN_UNUSED p_devio_write(PDevIO *devio, IOVec *buffer, Baddr target_ba
  * \param source_baddr source device physical addresses from which the read is performed.
  * \param io_future the token to wait on for async execution. for sync operation set as NULL.
  */
-IODevRet WARN_UNUSED p_devio_read(PDevIO *devio, IOVec *buffer, Baddr source_baddr, PDevIOFuture *io_future);
+PIODevRet WARN_UNUSED p_devio_read(PDevIO *devio, IOVec *buffer, Baddr source_baddr, PDevIOFuture *io_future);
 
 /*!
  * Wait on an IO operation.
  * \param io_future the token used when submitting the IO operation.
  */
-IODevRet WARN_UNUSED p_devio_wait(PDevIO *devio, PDevIOFuture *io_future);
+PIODevRet WARN_UNUSED p_devio_wait(PDevIO *devio, PDevIOFuture *io_future);
 
 /*!
  * Poll for io done events and possibly release fibers that are IO pending.
@@ -146,7 +146,7 @@ void p_devio_destroy(PDevIO *devio);
 /*!
  * Performs trim/unmap of baddrs in the device.
  */
-//IODevRet p_devio_trim(PDevIO *devio, Baddr base_offset, size_t block_count);
+//PIODevRet p_devio_trim(PDevIO *devio, Baddr base_offset, size_t block_count);
 
 /*!
  * Performs flushing of the device.

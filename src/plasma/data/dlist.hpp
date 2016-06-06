@@ -1,7 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 
 /*!
- * \file p_dlist.h
+ * \file p_dlist.hpp
  * \brief A circular doubly-linked list.
  *
  * This doubly-linked list is used to store indices. Usually indices of objects allocated by a memory pool.
@@ -20,6 +20,7 @@
 #pragma once
 
 #include "../utils/types.hpp"
+#include "../utils/macros.hpp"
 #include "../memory/p_alloc.h"
 
 namespace P {
@@ -46,9 +47,9 @@ public:
 
         #ifdef DEBUG
             _pool_size = size;
-            LOOP(size, index) {
-                _nodes[index].prev = INVALID_INDEX;
-                _nodes[index].next = INVALID_INDEX;
+            LOOP(size, i) {
+                _nodes[i].prev = INVALID_INDEX;
+                _nodes[i].next = INVALID_INDEX;
             }
         #endif
 

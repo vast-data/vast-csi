@@ -9,6 +9,10 @@
 #include "../utils.h"
 #include "../../defs.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct PFiber PFiber;
 
 /*!
@@ -45,3 +49,7 @@ uint32_t p_fiber_get_job_id(PFiber *fiber);
  * Return the currently running fiber.
  */
 PFiber *p_get_current_fiber(void);
+
+#ifdef __cplusplus
+}
+#endif

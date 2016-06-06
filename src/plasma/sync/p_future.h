@@ -8,6 +8,10 @@
 
 #include <p.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "p_future_private.h"
 
 /*!
@@ -56,3 +60,7 @@ void p_future_set(PFuture *future);
  * Returns the future's value. Can only be called if the future is SET.
  */
 void *p_future_get_value(PFuture *future);
+
+#ifdef __cplusplus
+}
+#endif
