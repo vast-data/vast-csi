@@ -132,12 +132,13 @@ AddTest(target='dist/tests/test_cpool', source=[c_lib, DEFAULT_BUILD_DIR + '/tes
 cpp_env.AlwaysBuild('test')
 
 cpp_test_env = cpp_env.Clone()
-cpp_test_env.Append(LIBS=['gtest'])
+cpp_test_env.Append(LIBS=['gtest', c_lib])
 def AddCppTest(target, source):
    test = cpp_test_env.Program(target=target, source=source)
    cpp_test_env.Alias('test', test, test[0].abspath)
    cpp_test_env.Alias('cpptest', test, test[0].abspath)
 AddCppTest(target='dist/tests/test_assert', source=[DEFAULT_BUILD_DIR + '/tests/test_assert.cpp'])
+AddCppTest(target='dist/tests/test_pool', source=[DEFAULT_BUILD_DIR + '/tests/test_pool.cpp'])
 cpp_test_env.AlwaysBuild('cpptest')
 
 # ----- Python Environment ----- #

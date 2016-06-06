@@ -22,4 +22,4 @@ git clone https://github.com/asaf-levy/softiwarp.git
 cd softiwarp
 ./install_me.sh
 cd ..
-rm -rf softiwarp
+rm -rf ./softiwarp
