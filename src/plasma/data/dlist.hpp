@@ -1,0 +1,193 @@
+/* Copyright (C) Vast Data Ltd. */
+
+/*!
+ * \file p_dlist.h
+ * \brief A circular doubly-linked list.
+ *
+ * This doubly-linked list is used to store indices. Usually indices of objects allocated by a memory pool.
+ * Therefore, the linked should be initialized with the size of the memory pool.
+ *
+ * The dlist object is actually called PDListPool because it's able to hold several sublists with the invariant
+ * that every element can appear in a single list at a time.
+ *
+ * More information is available here: https://vastdata.atlassian.net/wiki/display/DEV/Data+Structures
+ *
+ * Future considerations:
+ * 1. Add thread safety.
+ * 2. Consider adding debug checks to protect a user mixing anchors.
+ */
+
+#pragma once
+
+#include "../utils.h"
+#include <p.h>
+
+namespace P {
+
+class DList  {
+private:
+    struct Node {
+        PIndex prev;
+        PIndex next;
+    };
+public:
+    class Pool {
+    public:
+        /*!
+         * Initialize a dlistpool.
+         * In order to destroy the listpool and release resources call p_dlistpool_destroy().
+         *
+         * \param size maximum number of nodes in the dlistpool.
+         * \return a pointer to a dlistpool.
+         */
+        void init(PIndex size)
+        {
+            _nodes = (Node*) p_safe_malloc(sizeof(Node) * (size_t) size);
+
+        #ifdef DEBUG
+            _pool_size = size;
+            LOOP(size, index) {
+                _nodes[index].prev = P_INVALID_INDEX;
+                _nodes[index].next = P_INVALID_INDEX;
+            }
+        #endif
+
+        }
+
+        void destroy()
+        {
+            p_free(_nodes);
+        }
+
+        Node *_nodes;
+    #ifdef DEBUG
+        PIndex _pool_size;
+    #endif
+    };
+
+    class Anchor {
+    public:
+        /*!
+         * Initialize a dlist anchor.
+         * \param anchor out structure for initialization initialize
+         */
+        void init()
+        {
+            index = ANCHOR_INIT;
+        #ifdef DEBUG
+            node = NULL;
+        #endif
+        }
+
+        /*!
+         * Returns whether a list with this anchor is empty.
+         */
+        bool is_empty()
+        {
+            return index == ANCHOR_INIT;
+        }
+
+        // Since a list anchor is the index of the first element,
+        // an empty list is simply an invalid index.
+        static const PIndex ANCHOR_INIT = P_INVALID_INDEX;
+        PIndex index;
+    #ifdef DEBUG
+        Node *node;
+    #endif
+    };
+
+    /*!
+     * Initialize a dlist.
+      * \param list out structure to initialize according to anchor and listpool. params are kept by reference,
+     */
+    void init(Anchor *anchor, Pool *list_pool);
+
+    /*!
+     * destroys a dlist structure.
+     * NOTE: Assumes no other lists use this listpool!!!
+     */
+    void destroy();
+
+    /*!
+     * Returns whether a list is empty.
+     */
+    bool is_empty() { return _anchor->is_empty(); }
+
+    /*!
+     * Insert a new element at the beginning of the list.
+     * The anchor is passed through a pointer because its value would be modified.
+     */
+    void insert(PIndex index);
+
+    /*!
+     * Insert a new element after a given element.
+     */
+    void add_after(PIndex index, PIndex new_index);
+
+    /*!
+     * Insert a new element before a given element.
+     */
+    void add_before(PIndex index, PIndex new_index);
+
+    void remove(PIndex index);
+    PIndex next(PIndex index);
+    PIndex prev(PIndex index);
+
+    /*!
+     * Remove the first element in the list and return it.
+     */
+    PIndex pop();
+
+    /*!
+     * Add an element to the end of the list.
+     */
+    void append(PIndex index);
+
+    /*!
+     * Get the first list element index (for traversal).
+     */
+    PIndex get_first() { return _anchor->index; }
+
+    /*!
+     * True if the item in index is the last in the list (right before the anchor element)..
+     */
+    bool is_last(PIndex index) { return _list_pool->_nodes[index].next == _anchor->index; }
+
+
+
+
+private:
+
+    Anchor *_anchor;
+    Pool *_list_pool;
+
+    // TODO: perform boundary tests according to size upon insert/remove.
+#ifdef DEBUG
+    size_t pool_size;
+#endif
+};
+
+/*!
+ * Iterate over list elements. It's forbidden to remove elements during iteration.
+ * Example usage:
+ *
+\code{.c}
+P_DLIST_EACH(list, anchor, i) {
+   printf("%d", i);
+}
+\endcode
+ */
+#define DLIST_EACH(list, element) for (PIndex element = list->get_first(); \
+                                         element != P_INVALID_INDEX; \
+                                         element = list->is_last(element) ? P_INVALID_INDEX : list->next(element))
+
+// This allows current item to be removed from the list in the body of the iteration
+#define DLIST_SAFE_EACH(list, element, body) for (PIndex element = list->get_first();                           \
+                                                    element != P_INVALID_INDEX; ) {                                     \
+                                                    PIndex next_element = list->is_last(element) ?               \
+                                                                         P_INVALID_INDEX : list->next(element); \
+                                                    {body}                                                              \
+                                                    element = next_element;                                             \
+                                                }
+
+};
