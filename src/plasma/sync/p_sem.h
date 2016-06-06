@@ -6,9 +6,11 @@
  */
 #pragma once
 
-#include <p.h>
-
 #include "p_sem_private.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*!
  * Initialize a semaphore. A semaphore can also be defined and initialized in a single line:
@@ -35,3 +37,7 @@ bool p_sem_trydec(PSem *sem, uint32_t count);
 void p_sem_dec(PSem *sem, uint32_t count);
 
 void p_sem_destroy(PSem *sem);
+
+#ifdef __cplusplus
+}
+#endif

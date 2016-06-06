@@ -1,6 +1,11 @@
 #pragma once
 
-#include <p.h>
+#include <stdint.h>
+#include "../data/p_dlist.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef struct PSem PSem;
 
@@ -13,3 +18,8 @@ struct PSem {
         .value = value,                     \
         .wait_anchor = P_DLIST_ANCHOR_INIT, \
     }
+
+#ifdef __cplusplus
+}
+#endif
+
