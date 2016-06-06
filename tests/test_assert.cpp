@@ -27,6 +27,14 @@ TEST(TestAsserts, test_assert_op_panics) {
     ASSERT_DEATH(ASSERT_OP(var, >, 2, "var isn't larger than 2"), "assertion failed: \\(var > 2\\) \\(1 > 2\\) var isn't larger than 2");
 }
 
+TEST(TestAsserts, test_assert_not_null) {
+    void *p1 = nullptr;
+    ASSERT_DEATH(ASSERT_NOT_NULL(p1), "p1 is NULL");
+
+    void *p2 = NULL;
+    ASSERT_DEATH(ASSERT_NOT_NULL(p2), "p2 is NULL");
+}
+
 TEST(TestAsserts, test_assert_op_passes) {
     int var = 1;
     ASSERT_OP(var, <, 2, "var isn't smaller than 2");

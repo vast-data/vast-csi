@@ -13,11 +13,17 @@
 
 #define ASSERT_OP(left, operator, right, message) ASSERT(left operator right, "(" << left << " " #operator " " << right << ") " message)
 
+#define ASSERT_EQUAL(left, right) \
+    ASSERT_OP(left, ==, right, "")
+
 #define ASSERT(expr, message) {                                         \
         if (unlikely(!(expr))) {                                        \
             PANIC("assertion failed: (" #expr ") " message);            \
         }                                                               \
     }
+
+#define ASSERT_NOT_NULL(P) \
+    ASSERT(P != nullptr, MACRO_STRINGIFY(P) " is NULL")
 
 #define PANIC(message) {                                                \
         std::cerr << "PANIC: " message "\nat file: " __FILE__ " line: " MACRO_STRINGIFY(__LINE__) " func: " << __PRETTY_FUNCTION__ << "\n"; \

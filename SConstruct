@@ -111,7 +111,6 @@ AddTest(target='dist/tests/test_p_hash', env=murmur_env,
                 DEFAULT_BUILD_DIR + '/src/plasma/third_party/murmur3/test.c'])
 AddTest(target='dist/tests/test_p_fiber', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_p_fiber.c'])
 AddTest(target='dist/tests/test_time', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_time.c'])
-AddTest(target='dist/tests/test_config', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_config.c'])
 AddTest(target='dist/tests/test_env', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_env.c'], wrap=['p_module_start', 'p_module_init'])
 AddTest(target='dist/tests/test_io_provider', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_io_provider.c'])
 AddTest(target='dist/tests/test_trace', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_trace.c'])
@@ -141,6 +140,7 @@ def AddCppTest(target, source, wrap=[]):
 AddCppTest(target='dist/tests/test_assert', source=[DEFAULT_BUILD_DIR + '/tests/test_assert.cpp'])
 AddCppTest(target='dist/tests/test_pool', source=[DEFAULT_BUILD_DIR + '/tests/test_pool.cpp'])
 AddCppTest(target='dist/tests/test_cpool', source=[DEFAULT_BUILD_DIR + '/tests/test_cpool.cpp'], wrap=['p_silo_get_id'])
+AddCppTest(target='dist/tests/test_config', source=[DEFAULT_BUILD_DIR + '/tests/test_config.cpp'])
 cpp_env.AlwaysBuild('test')
 cpp_env.AlwaysBuild('cpptest')
 
