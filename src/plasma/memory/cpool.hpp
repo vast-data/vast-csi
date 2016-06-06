@@ -6,7 +6,6 @@
  *
  * Uses a per SILO cache in order to reduce locking. In case the silo cache is empty a spinlock is taken.
  */
-
 #pragma once
 
 #include <stdint.h>

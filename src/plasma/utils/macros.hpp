@@ -11,3 +11,8 @@
 
 #define STRINGIFY_IMPL(x) #x
 #define MACRO_STRINGIFY(x) STRINGIFY_IMPL(x)
+
+#define LOOP_FROM_TYPE(type, start, until, i)   for (type i = (type) (start); i < (type) (until); ++i)
+#define LOOP_TYPE(type, until, i)               LOOP_FROM_TYPE(type, 0, until, i)
+#define LOOP_FROM(start, until, i)              LOOP_FROM_TYPE(size_t, start, until, i)
+#define LOOP(until, i)                          LOOP_FROM(0, until, i)

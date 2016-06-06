@@ -12,6 +12,6 @@ namespace P {
 
     typedef uint8_t byte;
     typedef int32_t Index;
-    Index INVALID_INDEX = -1;
+    const Index INVALID_INDEX = -1;
 
 }

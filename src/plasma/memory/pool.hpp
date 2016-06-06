@@ -12,8 +12,9 @@
 
 #pragma once
 
-#include <plasma/utils.h>
 #include <stddef.h>
+
+#include "../utils/types.hpp"
 
 namespace P {
 
@@ -29,7 +30,7 @@ public:
     * \param partitions array with the number of blocks per partition, isn't modified nor used after init is done
     * \return a pointer to a pool.
     */
-    void partitioned_init(size_t block_size, PIndex num_partitions, PIndex partitions[]);
+    void partitioned_init(size_t block_size, Index num_partitions, Index partitions[]);
 
     /*!
     * Initialize a pool.
@@ -39,7 +40,7 @@ public:
     * \param block_size the size of each block in bytes (minimum of 4 bytes).
     * \return a pointer to a pool.
     */
-    void init(PIndex blocks, size_t block_size);
+    void init(Index blocks, size_t block_size);
 
     /*!
     * Allocate a block from a partition within the pool.
@@ -47,7 +48,7 @@ public:
     *
     * \return the index of the free block or -1 if no free blocks exist.
     */
-    PIndex partitioned_alloc(PIndex partition);
+    Index partitioned_alloc(Index partition);
 
     /*!
     * Allocate a block from the pool and returns its index.
@@ -55,7 +56,7 @@ public:
     *
     * \return the index of the free block or -1 if no free blocks exist.
     */
-    PIndex alloc();
+    Index alloc();
 
     /*!
     * Allocate a block from a partition within the pool.
@@ -63,7 +64,7 @@ public:
     *
     * \return the address of the free block or -1 if no free blocks exist.
     */
-    void *partitioned_alloc_address(PIndex partition);
+    void *partitioned_alloc_address(Index partition);
 
     /*!
     * Allocate a block from the pool.
@@ -76,17 +77,17 @@ public:
     /*!
     * Return a block to the pool using its index and partition.
     */
-    void partitioned_free(PIndex index, PIndex partition);
+    void partitioned_free(Index index, Index partition);
 
     /*!
     * Return a block to the pool using its index.
     */
-    void free(PIndex index);
+    void free(Index index);
 
     /*!
     * Return a block to the pool using its address and partition.
     */
-    void partitioned_free_address(void *address, PIndex partition);
+    void partitioned_free_address(void *address, Index partition);
 
     /*!
     * Return a block to the pool using its address.
@@ -96,17 +97,17 @@ public:
     /*!
     * Translate a relative index to an absolute memory address.
     */
-    void *index_to_address(PIndex index);
+    void *index_to_address(Index index);
 
     /*!
     * Translates an absolute address to a relative index.
     */
-    PIndex address_to_index(void *block);
+    Index address_to_index(void *block);
 
     /*!
     * Return the number of initially allocated blocks in the pool
     */
-    PIndex get_initial_n_blocks();
+    Index get_initial_n_blocks();
 
     /*!
     * Destroy a pool in order to free its resources.
@@ -117,10 +118,10 @@ public:
 private:
     void *_mem;
     size_t _block_size;
-    PIndex _num_partitions;
-    PIndex *_partitions;
-    PIndex _blocks;
-    PIndex _free_head;
+    Index _num_partitions;
+    Index *_partitions;
+    Index _blocks;
+    Index _free_head;
 };
 
 }
