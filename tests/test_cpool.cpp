@@ -1,6 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 #include <p.h>
-#include <plasma/memory/p_cpool.hpp>
+#include <plasma/memory/cpool.hpp>
+#include <gtest/gtest.h>
 
 static PSiloId curr_silo = 0;
 
@@ -16,8 +17,7 @@ PSiloId __wrap_p_silo_get_id(void) {
 #define N_BUFFERS 100
 #define N_SILOS 4
 
-static void test()
-{
+TEST(TestCPool, test) {
     void *buff[N_BUFFERS];
     P::CPool pool;
     pool.init(N_SILOS, 10, N_BUFFERS, 100);
@@ -25,11 +25,11 @@ static void test()
     curr_silo = 0;
     LOOP(N_BUFFERS, i) {
         buff[i] = pool.alloc();
-        P_ASSERT(buff[i]);
+        ASSERT_NE(buff[i], nullptr);
         curr_silo = (curr_silo + 1) % N_SILOS;
     }
 //    pool.print_counters();
-    P_ASSERT(pool.alloc() == nullptr);
+    ASSERT_EQ(pool.alloc(), nullptr);
     LOOP(N_BUFFERS, i) {
         pool.free(buff[i]);
         curr_silo = (curr_silo + 1) % N_SILOS;
@@ -38,7 +38,8 @@ static void test()
     pool.destroy();
 }
 
-int main(void)
-{
-    test();
+int main(int argc, char **argv) {
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
 }
