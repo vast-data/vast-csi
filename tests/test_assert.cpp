@@ -14,7 +14,7 @@ TEST(TestAsserts, test_panic_location) {
 
 TEST(TestAsserts, test_assert_panics) {
     int var = 1;
-    ASSERT_DEATH(ASSERT(var > 2, "var isn't larger than 2"), "assertion failed: var isn't larger than 2 \\(var > 2\\)");
+    ASSERT_DEATH(ASSERT(var > 2, "var isn't larger than 2"), "assertion failed: \\(var > 2\\) var isn't larger than 2");
 }
 
 TEST(TestAsserts, test_assert) {
@@ -24,7 +24,7 @@ TEST(TestAsserts, test_assert) {
 
 TEST(TestAsserts, test_assert_op_panics) {
     int var = 1;
-    ASSERT_DEATH(ASSERT_OP(var, >, 2, "var isn't larger than 2"), "assertion failed: var isn't larger than 2 \\(1 > 2\\)");
+    ASSERT_DEATH(ASSERT_OP(var, >, 2, "var isn't larger than 2"), "assertion failed: \\(var > 2\\) \\(1 > 2\\) var isn't larger than 2");
 }
 
 TEST(TestAsserts, test_assert_op_passes) {

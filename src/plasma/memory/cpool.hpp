@@ -56,7 +56,7 @@ private:
 
     PSpinLock _lock;
 
-    PIndex *_silo_heads;
+    Index *_silo_heads;
     uint32_t *_silo_counts;
     uint32_t _shared_count;
     Pool _shared_pool;
