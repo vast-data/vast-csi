@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "../utils/assert.hpp"
+#include "../sync/lock_guard.hpp"
 #include "../execution/p_silo.h"
 
 namespace P {
@@ -12,6 +13,7 @@ void CPool::init(uint32_t n_silos, uint32_t max_buffers_per_silo, uint32_t n_buf
     ASSERT_OP(n_buffers, >, max_buffers_per_silo * n_silos, "the number of buffers must be larger than the silo caches");
 
     _shared_pool.init(n_buffers, buffer_size);
+    _lock.init();
 
     _n_silos = n_silos;
     _max_buffers_per_silo = max_buffers_per_silo;
@@ -40,6 +42,7 @@ void CPool::destroy() {
     delete[] _silo_heads;
     delete[] _silo_counts;
     _shared_pool.destroy();
+    _lock.destroy();
 }
 
 void *CPool::alloc() {
@@ -54,12 +57,13 @@ void *CPool::alloc() {
         return buffer;
     }
     // no buffer available in the silo pool, go to the shared pool
-    _lock.lock();
-    buffer = _shared_pool.alloc_address();
-    if (buffer != NULL) {
-        _shared_count--;
+    {
+        LockGuard<SpinLock> guard(&_lock);
+        buffer = _shared_pool.alloc_address();
+        if (buffer != NULL) {
+            _shared_count--;
+        }
     }
-    _lock.unlock();
     return buffer;
 }
 
@@ -74,10 +78,11 @@ void CPool::free(void *buffer) {
         return;
     }
     // return the buffer to the shared pool
-    _lock.lock();
-    _shared_count++;
-    _shared_pool.free_address(buffer);
-    _lock.unlock();
+    {
+        LockGuard<SpinLock> guard(&_lock);
+        _shared_count++;
+        _shared_pool.free_address(buffer);
+    }
 }
 
 void CPool::print_counters() {

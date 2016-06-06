@@ -1,19 +1,22 @@
 /* Copyright (C) Vast Data Ltd. */
 
 /*!
- * \file cpool.h
- * \brief A fixed-block concurrent pool for efficient memory management.
- *
- * Uses a per SILO cache in order to reduce locking. In case the silo cache is empty a spinlock is taken.
+ * \file spin_lock.hpp
+ * \brief A SpinLock for inter-thread co-ordination
  */
 #pragma once
 
 #include <atomic>
+#include "../utils/assert.hpp"
 
 namespace P {
 
 class SpinLock {
 public:
+
+    void init() {
+
+    }
 
     void lock() {
         while(_lock.test_and_set(std::memory_order_acquire)) {
@@ -25,8 +28,12 @@ public:
         _lock.clear(std::memory_order_release);
     }
 
+    void destroy() {
+        DEBUG_ASSERT_OP(_lock, ==, ATOMIC_FLAG_INIT, "SpinLock destroyed while locked.");
+    }
+
 private:
-    std::atomic_flag _lock = ATOMIC_FLAG_INIT;
+    std::atomic_flag _lock = ATOMIC_FLAG_INIT; // atomic_flag requires static initialization
 };
 
 }
