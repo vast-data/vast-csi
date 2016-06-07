@@ -54,7 +54,7 @@ private:
     uint32_t _n_silos;
     uint32_t _max_buffers_per_silo;
 
-    SpinLock _lock;
+    Sync::SpinLock _lock;
 
     Index *_silo_heads;
     uint32_t *_silo_counts;

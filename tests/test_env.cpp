@@ -9,8 +9,8 @@
 TEST(TestEnv, test)
 {
     P::Env::get()->run("tests/env_test.config");
-    ASSERT(test_module_is_init(), "test module expected to be init");
-    ASSERT(test_module_is_started(), "test module expected to be started");
+    ASSERT_MSG(test_module_is_init(), "test module expected to be init");
+    ASSERT_MSG(test_module_is_started(), "test module expected to be started");
 }
 
 int main(int argc, char **argv) {

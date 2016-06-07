@@ -11,19 +11,22 @@
 #include "compiler.hpp"
 #include "macros.hpp"
 
-#define ASSERT_OP(left, operator, right, message) ASSERT(left operator right, "(" << left << " " #operator " " << right << ") " message)
+#define ASSERT_OP(left, operator, right, message) ASSERT_MSG(left operator right, "(" << left << " " #operator " " << right << ") " message)
 
 #define ASSERT_EQUAL(left, right) \
     ASSERT_OP(left, ==, right, "")
 
-#define ASSERT(expr, message) {                                         \
+#define ASSERT_MSG(expr, message) {                                     \
         if (unlikely(!(expr))) {                                        \
             PANIC("assertion failed: (" #expr ") " message);            \
         }                                                               \
     }
 
+#define ASSERT(expr) ASSERT_MSG(expr, "")
+
+
 #define ASSERT_NOT_NULL(P) \
-    ASSERT(P != nullptr, MACRO_STRINGIFY(P) " is NULL")
+    ASSERT_MSG(P != nullptr, MACRO_STRINGIFY(P) " is NULL")
 
 #define PANIC(message) {                                                \
         std::cerr << "PANIC: " message "\nat file: " __FILE__ " line: " MACRO_STRINGIFY(__LINE__) " func: " << __PRETTY_FUNCTION__ << "\n"; \
@@ -31,7 +34,7 @@
 }
 
 #ifdef DEBUG
-  #define DEBUG_ASSERT(expr, message) ASSERT(expr, message)
+  #define DEBUG_ASSERT(expr, message) ASSERT_MSG(expr, message)
   #define DEBUG_ASSERT_OP(left, operator, right, message) ASSERT_OP(left, operator, right, message)
 #else
   #define DEBUG_ASSERT(expr, message)

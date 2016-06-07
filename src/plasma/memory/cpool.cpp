@@ -61,7 +61,7 @@ void *CPool::alloc() {
     }
     // no buffer available in the silo pool, go to the shared pool
     {
-        LockGuard<SpinLock> guard(&_lock);
+        LockGuard<Sync::SpinLock> guard(&_lock);
         buffer = _shared_pool.alloc_address();
         if (buffer != NULL) {
             _shared_count--;
@@ -82,7 +82,7 @@ void CPool::free(void *buffer) {
     }
     // return the buffer to the shared pool
     {
-        LockGuard<SpinLock> guard(&_lock);
+        LockGuard<Sync::SpinLock> guard(&_lock);
         _shared_count++;
         _shared_pool.free_address(buffer);
     }

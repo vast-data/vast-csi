@@ -11,6 +11,8 @@
 
 namespace P {
 
+namespace Sync {
+
 class SpinLock {
 public:
 
@@ -36,4 +38,5 @@ private:
     std::atomic_flag _lock = ATOMIC_FLAG_INIT; // atomic_flag requires static initialization
 };
 
+}
 }

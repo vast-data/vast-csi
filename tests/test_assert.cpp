@@ -14,12 +14,12 @@ TEST(TestAsserts, test_panic_location) {
 
 TEST(TestAsserts, test_assert_panics) {
     int var = 1;
-    ASSERT_DEATH(ASSERT(var > 2, "var isn't larger than 2"), "assertion failed: \\(var > 2\\) var isn't larger than 2");
+    ASSERT_DEATH(ASSERT_MSG(var > 2, "var isn't larger than 2"), "assertion failed: \\(var > 2\\) var isn't larger than 2");
 }
 
 TEST(TestAsserts, test_assert) {
     int var = 1;
-    ASSERT(var < 2, "var isn't smaller than 2");
+    ASSERT_MSG(var < 2, "var isn't smaller than 2");
 }
 
 TEST(TestAsserts, test_assert_op_panics) {

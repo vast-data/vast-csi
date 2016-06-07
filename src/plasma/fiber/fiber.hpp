@@ -11,6 +11,7 @@
 #include "../utils/compiler.hpp"
 #include "../memory/pool.hpp"
 #include "../data/dlist.hpp"
+#include "../sync/rwlock.hpp"
 #include "../../defs.h"
 
 namespace P {
@@ -36,6 +37,12 @@ class Fiber {
         SUSPENDED,
         FREE
     };
+
+    typedef union {
+        uint32_t sem_count;
+        uint32_t waited_future_count;
+        Sync::RWlock::Type rw_lock_type;
+    } SuspendState;
 
 public:
     /*!
@@ -113,6 +120,8 @@ public:
      */
     void destroy();
 
+    SuspendState* get_suspend_state();
+
     static const uint64_t STACK_UNDERFLOW_MAGIC = 0xDEADBEEF;
     static const uint64_t STACK_OVERFLOW_MAGIC = 0xBABECAFE;
 
@@ -128,11 +137,7 @@ private:
     FiberGroup *_group;
     uint64_t _switch_time; // updated when a fiber is resumed or suspended
     uint32_t _job_id;
-    union {
-        uint32_t _sem_count;
-        uint32_t _waited_future_count;
-        //PRWlockType _rw_lock_type;
-    };
+    SuspendState _sus_state;
     uint32_t _join_count;
     State _state; // currently used for debug purposes
 };
