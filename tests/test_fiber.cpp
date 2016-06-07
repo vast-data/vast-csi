@@ -11,9 +11,9 @@ using namespace P;
 #define PAGE_SIZE 4096
 static FiberGroupConfig fiber_groups[] = {
     {0, 0},
-    {40, PAGE_SIZE * 16},
-    {30, PAGE_SIZE * 8},
-    {20, PAGE_SIZE * 8}
+    {PAGE_SIZE * 16, 40},
+    {PAGE_SIZE * 8, 30},
+    {PAGE_SIZE * 8, 20}
 };
 static SchedulerConfig scheduler_config = {
     fiber_groups, NUM_ELEMENTS(fiber_groups)
