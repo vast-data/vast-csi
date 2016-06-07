@@ -31,7 +31,7 @@ public:
     }
 
     void destroy() {
-        DEBUG_ASSERT_OP(_lock, ==, ATOMIC_FLAG_INIT, "SpinLock destroyed while locked.");
+
     }
 
 private:
