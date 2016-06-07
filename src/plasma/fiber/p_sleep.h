@@ -6,7 +6,9 @@
  */
 #pragma once
 
-#include <p.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef enum {
     SLEEP_100_MILLI,
@@ -35,3 +37,7 @@ uint64_t p_sleep_multi(PSleepInterval interval, uint32_t count);
  * Note that this function wastes a lot of CPU.
  */
 uint64_t p_fast_sleep(uint64_t usecs);
+
+#ifdef __cplusplus
+}
+#endif

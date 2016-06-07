@@ -1,6 +1,6 @@
 /* Copyright (C) Vast Data Ltd. */
 #include "emitter.h"
-
+#include "../units.h"
 #include "../execution/p_config.h"
 
 DEFINE_LOOKUP_IMPLEMENTATION(SEVERITY_LIST,

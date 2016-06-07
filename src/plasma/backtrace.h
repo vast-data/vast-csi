@@ -6,6 +6,12 @@
  */
 #pragma once
 
-#include <p.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 void p_show_backtrace(void);
+
+#ifdef __cplusplus
+}
+#endif

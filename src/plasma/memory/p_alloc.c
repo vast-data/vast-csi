@@ -1,6 +1,10 @@
 /* Copyright (C) Vast Data Ltd. */
 #include <p.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void *p_malloc(size_t size)
 {
     return malloc(size);
@@ -34,3 +38,7 @@ void p_free(void *buffer)
 {
     free(buffer);
 }
+
+#ifdef __cplusplus
+}
+#endif

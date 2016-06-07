@@ -1,7 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 
 /*!
- * \file config.h
+ * \file config.hpp
  * \brief An interface for the environment's configuration.
  *
  * This module provides functions for manipulating configuration settings.
@@ -67,7 +67,7 @@ ConfigSetting *conf_setting_get_element(ConfigSetting *setting, uint32_t index);
 /*!
  * Return the name of the given setting.
  */
-const char *conf_setting_get_name(ConfigSetting *setting);
+const char *conf_setting_name(ConfigSetting *setting);
 
 }
 

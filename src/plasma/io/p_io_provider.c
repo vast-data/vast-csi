@@ -1,5 +1,6 @@
 /* Copyright (C) Vast Data Ltd. */
 #include "p_io_provider.h"
+#include "p_devio.h"
 
 PIOProvider *p_io_provider_init(PDevIO devices[], size_t device_count)
 {

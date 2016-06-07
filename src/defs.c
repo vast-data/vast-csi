@@ -11,12 +11,12 @@ DEFINE_LOOKUP_IMPLEMENTATION(FIBER_GROUP_LIST, FiberGroupId, fiber_group_id_stri
 #include "modules/p_module.h"
 #include "modules/i_module.h"
 
-void *(*module_init_functions[])(PSilo *silo, PConfigSetting *setting) = {
-    p_module_init,
-    i_module_init
-};
+//void *(*module_init_functions[])(PSilo *silo, PConfigSetting *setting) = {
+//    p_module_init,
+//    i_module_init
+//};
 
-void (*module_start_functions[])(void) = {
-    p_module_start,
-    i_module_start
-};
+//void (*module_start_functions[])(void) = {
+//    p_module_start,
+//    i_module_start
+//};

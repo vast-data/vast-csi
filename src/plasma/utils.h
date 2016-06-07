@@ -9,6 +9,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef int32_t PIndex;
 #define P_INVALID_INDEX (-1)
 
@@ -85,5 +89,10 @@ struct RetryParams {
         RETRY_LOOP_PARAMS(retry_params.max_spinning_attempts, retry_params.attempts_per_yield, retry_params.max_attempts, loop_body)                                  \
 
 
-bool p_is_power_of_two (uintmax_t x);
+bool p_is_power_of_two(uintmax_t x);
 void p_ensure_directory_exists(const char *dir);
+
+#ifdef __cplusplus
+}
+#endif
+

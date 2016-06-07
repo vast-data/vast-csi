@@ -79,7 +79,7 @@ env.Append(LIBS=['unwind', 'config', 'libaio'])
 c_env = env.Clone()
 c_env.Append(CFLAGS='-std=gnu11')
 
-csources = [DEFAULT_BUILD_DIR + '/' + i for i in RGlob('src', '*.c', ['src/plasma/third_party/murmur3'], ['src/plasma/execution/main.c'])]
+csources = [DEFAULT_BUILD_DIR + '/' + i for i in RGlob('src', '*.c', ['src/plasma/third_party/murmur3', 'src/modules'], ['src/plasma/execution/main.c'])]
 
 murmur_env = c_env.Clone()
 murmur_env.Append(CFLAGS=['-Wno-cast-align',
@@ -93,8 +93,6 @@ csources.append(murmur)
 c_lib = c_env.Library(target='dist/orion', source=csources)
 c_env.Append(LIBS=c_lib)
 murmur_env.Append(LIBS=c_lib)
-c_env.Program(target='dist/env', source=[DEFAULT_BUILD_DIR + '/src/plasma/execution/main.c'])
-
 
 def AddTest(target, source, env=c_env, wrap=[]):
     test_env = env.Clone()
@@ -111,7 +109,6 @@ AddTest(target='dist/tests/test_p_hash', env=murmur_env,
                 DEFAULT_BUILD_DIR + '/src/plasma/third_party/murmur3/test.c'])
 AddTest(target='dist/tests/test_p_fiber', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_p_fiber.c'])
 AddTest(target='dist/tests/test_time', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_time.c'])
-AddTest(target='dist/tests/test_env', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_env.c'], wrap=['p_module_start', 'p_module_init'])
 AddTest(target='dist/tests/test_p_io_provider', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_p_io_provider.c'])
 AddTest(target='dist/tests/test_trace', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_trace.c'])
 c_env.AlwaysBuild('test')
@@ -124,13 +121,15 @@ c_env.AlwaysBuild('docs')
 cpp_env = env.Clone()
 cpp_env.Append(LIBS=c_lib)
 cpp_env.Append(CXXFLAGS=['-std=c++11'])
-cpp_sources = [DEFAULT_BUILD_DIR + '/' + i for i in RGlob('src', '*.cpp')]
+cpp_sources = [DEFAULT_BUILD_DIR + '/' + i for i in RGlob('src', '*.cpp', [], ['src/plasma/execution/main.cpp'])]
+cpp_sources = cpp_sources + [DEFAULT_BUILD_DIR + '/tests/test_module.cpp']
 cpp_lib = cpp_env.Library(target='dist/orion_cpp', source=cpp_sources)
-cpp_env.Append(LIBS=cpp_lib)
+cpp_env.Append(LIBS=[cpp_lib, c_lib])
+cpp_env.Program(target='dist/env', source=[DEFAULT_BUILD_DIR + '/src/plasma/execution/main.cpp'])
 
 def AddCppTest(target, source, wrap=[]):
     cpp_test_env = cpp_env.Clone()
-    cpp_test_env.Append(LIBS=['gtest', c_lib])
+    cpp_test_env.Append(LIBS=['gtest'])
     for func in wrap:
         cpp_test_env.Append(LINKFLAGS='-Wl,-wrap,' + func)
     test = cpp_test_env.Program(target=target, source=source)
@@ -144,6 +143,7 @@ AddCppTest(target='dist/tests/test_config', source=[DEFAULT_BUILD_DIR + '/tests/
 AddCppTest(target='dist/tests/test_dlist', source=[DEFAULT_BUILD_DIR + '/tests/test_dlist.cpp'])
 AddCppTest(target='dist/tests/test_io_provider', source=[DEFAULT_BUILD_DIR + '/tests/test_io_provider.cpp'])
 AddCppTest(target='dist/tests/test_fiber', source=[DEFAULT_BUILD_DIR + '/tests/test_fiber.cpp'])
+AddCppTest(target='dist/tests/test_env', source=[DEFAULT_BUILD_DIR + '/tests/test_env.cpp'])
 AddCppTest(target='dist/tests/test_sync', source=[DEFAULT_BUILD_DIR + '/tests/test_sync.cpp'])
 cpp_env.AlwaysBuild('test')
 cpp_env.AlwaysBuild('cpptest')

@@ -1,3 +1,5 @@
+#pragma once
+
 /*!
  * The macro_is_set was found here: http://stackoverflow.com/questions/5464170/using-definedmacro-inside-the-c-if-statement
  */

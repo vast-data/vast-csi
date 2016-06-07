@@ -9,6 +9,7 @@
 #include "../memory/p_alloc.h"
 #include "../utils.h"
 #include "dumper.h"
+#include "file.h"
 
 #define MAX_PREFIX_SIZE 128
 struct PTraceDumper {

@@ -1,7 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 
 /*!
- * \fileconfig_internal.h
+ * \file config_internal.hpp
  * \brief A configuration file parser and emitter based on libconfig.
  *
  * This module relies on libconfig and wraps its API (http://www.hyperrealm.com/libconfig/libconfig_manual.html)
@@ -18,7 +18,6 @@
 typedef struct config_t config_t;
 
 namespace P {
-
 namespace Conf {
 
 typedef config_t Config;
@@ -33,5 +32,4 @@ const char *conf_error_text(Config *config);
 ConfigSetting *conf_lookup(Config *config, const char *key);
 
 }
-
 }

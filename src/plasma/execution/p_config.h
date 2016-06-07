@@ -10,7 +10,8 @@
 
 #pragma once
 
-#include <p.h>
+#include <stdint.h>
+#include <stdbool.h>
 #include <libconfig.h>
 
 typedef config_setting_t PConfigSetting;

@@ -7,7 +7,6 @@
 #pragma once
 
 #include "../utils.h"
-#include "../../defs.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -36,6 +36,7 @@ bool p_devio_init(PDevIO *devio OUT, const char dev_name[],
     int open_flags = O_RDWR | O_DIRECT;
     devio->file_desc = open(devio->dev_name, open_flags);
     if (unlikely(devio->file_desc == -1)) {
+        printf("open '%s' failed errno=%d\n", devio->dev_name, errno);
         // P_TRACE_ERR(/* TODO: informative string with the value of errno - might use strerror() / perror()) */);
         return false;
     }

@@ -9,8 +9,11 @@
 
 #pragma once
 
-#include <p.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
 
+#include "../execution/p_config.h"
 #include "p_io_provider_private.h"
 
 /*!
@@ -48,3 +51,8 @@ void p_io_provider_disable_polling(PIOProvider *io_provider, PDevIO *device);
  * \param io_provider is the structure to be released.
  */
 void p_io_provider_destroy(PIOProvider *io_provider);
+
+#ifdef __cplusplus
+}
+#endif
+

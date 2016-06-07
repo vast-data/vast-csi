@@ -1,7 +1,8 @@
 /* Copyright (C) Vast Data Ltd. */
 #pragma once
 
-#include <p.h>
+#include <stddef.h>
+#include "../data/p_dlist.h"
 
 typedef struct PDevIO PDevIO;
 

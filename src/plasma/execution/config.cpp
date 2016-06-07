@@ -63,7 +63,7 @@ ConfigSetting *conf_setting_get_element(ConfigSetting *setting, uint32_t index)
     return config_setting_get_elem(setting, index);
 }
 
-const char *conf_setting_get_name(ConfigSetting *setting)
+const char *conf_setting_name(ConfigSetting *setting)
 {
     return config_setting_name(setting);
 }
