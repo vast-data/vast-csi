@@ -53,6 +53,7 @@ public:
 
     EnvState get_state() const { return _state; }
     void set_state(EnvState state) { _state = state; }
+    uint32_t get_num_silos() const { return _num_silos; }
 
 private:
 

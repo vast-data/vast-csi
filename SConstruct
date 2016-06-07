@@ -79,7 +79,7 @@ env.Append(LIBS=['unwind', 'config', 'libaio'])
 c_env = env.Clone()
 c_env.Append(CFLAGS='-std=gnu11')
 
-csources = [DEFAULT_BUILD_DIR + '/' + i for i in RGlob('src', '*.c', ['src/plasma/third_party/murmur3', 'src/modules'], ['src/plasma/execution/main.c'])]
+csources = [DEFAULT_BUILD_DIR + '/' + i for i in RGlob('src', '*.c', ['src/plasma/third_party/murmur3', 'src/modules'])]
 
 murmur_env = c_env.Clone()
 murmur_env.Append(CFLAGS=['-Wno-cast-align',

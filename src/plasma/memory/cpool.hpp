@@ -4,6 +4,7 @@
  * \file cpool.hpp
  * \brief A fixed-block concurrent pool for efficient memory management.
  *
+ * Note that the cpool must be initialized after the Env is initialized.
  * Uses a per SILO cache in order to reduce locking. In case the silo cache is empty a spinlock is taken.
  */
 #pragma once
@@ -20,12 +21,11 @@ public:
      * Initialize a concurrent pool.
      * In order to release the pool resources call destroy().
      *
-     * \param n_silos the number of silos in the Env using this pool
      * \param max_buffers_per_silo the maximal number of buffers that can be placed in the per silo cache.
      * \param n_buffers the total number of buffers in the pool.
      * \param buffer_size the size of each buffer in bytes (minimum of 4 bytes).
      */
-    void init(uint32_t n_silos, uint32_t max_buffers_per_silo, uint32_t n_buffers, uint32_t buffer_size);
+    void init(uint32_t max_buffers_per_silo, uint32_t n_buffers, uint32_t buffer_size);
 
     /*!
      * Frees the pool resources.

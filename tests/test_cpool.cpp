@@ -1,40 +1,39 @@
 /* Copyright (C) Vast Data Ltd. */
-#include <p.h>
 #include <plasma/memory/cpool.hpp>
 #include <gtest/gtest.h>
-
-static PSiloId curr_silo = 0;
-
-extern "C" {
-
-PSiloId __wrap_p_silo_get_id(void);
-PSiloId __wrap_p_silo_get_id(void) {
-    return curr_silo;
-}
-
-}
+#include <plasma/execution/silo.hpp>
+#include <plasma/execution/env.hpp>
+#include "test_module.hpp"
 
 #define N_BUFFERS 100
-#define N_SILOS 4
 
-TEST(TestCPool, test) {
+void init_cpool(void *ctx)
+{
+    P::CPool *pool = (P::CPool *)ctx;
+    pool->init(10, N_BUFFERS * P::Env::get()->get_num_silos(), 100);
+}
+
+void test_cpool(void *ctx)
+{
+    P::CPool *pool = (P::CPool *)ctx;
+
     void *buff[N_BUFFERS];
-    P::CPool pool;
-    pool.init(N_SILOS, 10, N_BUFFERS, 100);
 
-    curr_silo = 0;
     LOOP(N_BUFFERS, i) {
-        buff[i] = pool.alloc();
+        buff[i] = pool->alloc();
         ASSERT_NE(buff[i], nullptr);
-        curr_silo = (curr_silo + 1) % N_SILOS;
     }
-//    pool.print_counters();
-    ASSERT_EQ(pool.alloc(), nullptr);
     LOOP(N_BUFFERS, i) {
-        pool.free(buff[i]);
-        curr_silo = (curr_silo + 1) % N_SILOS;
+        pool->free(buff[i]);
     }
-//    pool.print_counters();
+}
+
+TEST(TestCPool, test)
+{
+    P::CPool pool;
+    test_module_set_init_func(init_cpool, &pool);
+    test_module_set_start_func(test_cpool, &pool);
+    P::Env::get()->run("tests/env_test.config");
     pool.destroy();
 }
 

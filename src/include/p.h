@@ -36,8 +36,6 @@
 #include "plasma/sync/p_future.h"
 #include "plasma/memory/p_atomic_pool.h"
 #include "plasma/execution/p_config.h"
-#include "plasma/execution/p_silo.h"
-#include "plasma/execution/p_env.h"
 #include "plasma/io/p_devio.h"
 #include "plasma/io/p_io_provider.h"
 #include "plasma/trace/emitter.h"
