@@ -14,9 +14,9 @@
     X(COUNT)
 
 DEFINE_LOOKUP_PROTOTYPES_CPP(COMPONENT_LIST,
-                         ComponentId,
-                         component_id_to_string,
-                         component_id_from_string)
+                             ComponentId,
+                             component_id_to_string,
+                             component_id_from_string)
 
 #define FIBER_GROUP_LIST(X)                  \
     X(P),                                    \
@@ -26,6 +26,6 @@ DEFINE_LOOKUP_PROTOTYPES_CPP(COMPONENT_LIST,
     X(COUNT)
 
 DEFINE_LOOKUP_PROTOTYPES_CPP(FIBER_GROUP_LIST,
-                         FiberGroupId,
-                         fiber_group_id_to_string,
-                         fiber_group_id_from_string)
+                             FiberGroupId,
+                             fiber_group_id_to_string,
+                             fiber_group_id_from_string)

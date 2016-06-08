@@ -2,11 +2,17 @@
 #include <gtest/gtest.h>
 
 #include "plasma/trace/dbuffer.hpp"
+#include "plasma/trace/emitter.hpp"
 #include "plasma/utils/macros.hpp"
 #include "plasma/memory/p_alloc.h"
+#include "plasma/execution/config.hpp"
+#include "plasma/execution/config_internal.hpp"
 
 using namespace P;
 using namespace P::Trace;
+using namespace P::Conf;
+
+#define CURRENT_COMPONENT ComponentId::PLASMA
 
 TEST(DBuffer, sanity)
 {
@@ -126,6 +132,40 @@ TEST(DBuffer, overflow_four_buffers)
     ASSERT_EQ(reader.read(out, &length, false), DBufferReader::ReadResult::NOTHING);
 
     buf.destroy();
+}
+
+static char config_string[] = QUOTE(traces: {
+    PLASMA: {
+        min_severity: "DEBUG",
+        buffer_size_mb: 1,
+        persistent: true,
+        file_size_mb: 2,
+        file_count: 10
+      }
+    });
+
+TEST(Trace, emitter)
+{
+    Config* conf = conf_init();
+
+    ASSERT_EQ(conf_read_string(conf, config_string), true);
+
+    ConfigSetting *setting = conf_lookup(conf, "traces");
+
+    Emitter emitter;
+    emitter.init(setting);
+    emitter.set();
+
+    long l = 1;
+    int i = 2;
+    void *ptr = &l;
+    const char *str = "ABC";
+    float f = 1.2f;
+
+    PT_INFO("Int: %d. Long: %ld. Ptr: %p. Str: %s. Float: %f", i, l, ptr, str, f);
+
+    emitter.destroy();
+    conf_destroy(conf);
 }
 
 int main(int argc, char **argv)

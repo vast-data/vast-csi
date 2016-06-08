@@ -7,13 +7,13 @@
 
 #define PAGE_SIZE 4096
 static P::FiberGroupConfig fiber_groups[] = {
-    {.fiber_count = 0, .stack_size = 0},
-    {.fiber_count = 40, .stack_size = PAGE_SIZE * 16},
-    {.fiber_count = 30, .stack_size = PAGE_SIZE * 8},
-    {.fiber_count = 20, .stack_size = PAGE_SIZE * 8}
+    {0, 0},
+    {PAGE_SIZE * 16, 40},
+    {PAGE_SIZE * 8, 30},
+    {PAGE_SIZE * 8, 20}
 };
 static P::SchedulerConfig scheduler_config = {
-    .fiber_groups = fiber_groups, .group_count = NUM_ELEMENTS(fiber_groups)
+    fiber_groups, NUM_ELEMENTS(fiber_groups)
 };
 
 enum test_fiber_group {
