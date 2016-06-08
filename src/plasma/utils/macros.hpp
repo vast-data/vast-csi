@@ -8,6 +8,7 @@
 
 #include <string.h>
 #include "assert.hpp"
+#include "types.hpp"
 
 #define MIN(a, b) ((a) > (b) ? (b) : (a))
 #define MAX(a, b) ((a) < (b) ? (b) : (a))
@@ -83,7 +84,7 @@
 // TODO get rid of the  "_CPP" once the c code is gone
 #define DEFINE_LOOKUP_ID_CPP(x) x
 #define DEFINE_LOOKUP_PROTOTYPES_CPP(list, name, id_to_string, string_to_id) \
-    enum class name : int {                                                  \
+    enum class name : P::byte {                                              \
         list(DEFINE_LOOKUP_ID_CPP)                                           \
     };                                                                       \
     const char *id_to_string(name id);                                       \
@@ -97,14 +98,14 @@
     };                                                                  \
     const char *id_to_string(name id)                                   \
     {                                                                   \
-        return array[(int)id];                                          \
+        return array[(P::byte)id];                                      \
     }                                                                   \
     name string_to_id(const char *string)                               \
     {                                                                   \
-        for (int i = 0; array[i] != nullptr; i++)           \
-            if (strcmp(array[i], string) == 0)                     \
-                return (name)i;                                               \
-        PANIC("invalid name");                                          \
+        for (P::byte i = 0; array[i] != nullptr; i++)                   \
+            if (strcmp(array[i], string) == 0)                          \
+                return (name)i;                                         \
+        PANIC("invalid " #name);                                        \
     }
 
 /*!

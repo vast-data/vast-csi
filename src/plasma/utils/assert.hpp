@@ -29,8 +29,8 @@
 #define ASSERT_EQUAL(left, right, ...)          \
     ASSERT_OP(left, ==, right, ##__VA_ARGS__)
 
-#define ASSERT_NOT_NULL(P, ...)                         \
-    ASSERT(P != nullptr, MACRO_STRINGIFY(P) " is NULL", ##__VA_ARGS__)
+#define ASSERT_NOT_NULL(P)                                              \
+    ASSERT(P != nullptr, MACRO_STRINGIFY(P) " is NULL")
 
 #ifdef DEBUG
   #define DEBUG_ASSERT(expr, ...) ASSERT(expr, ##__VA_ARGS__)

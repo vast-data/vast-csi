@@ -110,7 +110,7 @@ AddTest(target='dist/tests/test_p_hash', env=murmur_env,
 AddTest(target='dist/tests/test_p_fiber', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_p_fiber.c'])
 AddTest(target='dist/tests/test_time', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_time.c'])
 AddTest(target='dist/tests/test_p_io_provider', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_p_io_provider.c'])
-AddTest(target='dist/tests/test_trace', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_trace.c'])
+AddTest(target='dist/tests/test_p_trace', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_trace.c'])
 c_env.AlwaysBuild('test')
 
 c_env.Alias('docs', c_lib, 'doxygen')
@@ -147,6 +147,7 @@ AddCppTest(target='dist/tests/test_env', source=[DEFAULT_BUILD_DIR + '/tests/tes
 AddCppTest(target='dist/tests/test_sync', source=[DEFAULT_BUILD_DIR + '/tests/test_sync.cpp'])
 AddCppTest(target='dist/tests/test_hash', source=[DEFAULT_BUILD_DIR + '/tests/test_hash.cpp'])
 AddCppTest(target='dist/tests/test_queue', source=[DEFAULT_BUILD_DIR + '/tests/test_queue.cpp'])
+AddCppTest(target='dist/tests/test_trace', source=[DEFAULT_BUILD_DIR + '/tests/test_trace_cpp.cpp'])
 cpp_env.AlwaysBuild('test')
 cpp_env.AlwaysBuild('cpptest')
 

@@ -20,7 +20,7 @@ void *IModule::init(Silo *silo, ConfigSetting *setting)
     return state;
 }
 
-void IModule::start(void)
+void IModule::start()
 {
     printf("IModule::start\n");
 }

@@ -20,3 +20,5 @@
 #define CACHE_LINE_BYTES (64)
 #define CACHE_ALIGNED __attribute__ ((aligned(P_CACHE_LINE_BYTES)))
 #define PACKED __attribute__ ((packed)))
+
+#define SECTIONIZE(name) __attribute__ ((section (#name)))

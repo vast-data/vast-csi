@@ -11,30 +11,7 @@ static void test_dbuffer_sanity(void **state)
 {
     (void) state;
 
-    PDbuffer *buf = p_dbuffer_init(2, 128);
-    char data[] = "abcd";
-
-    p_dbuffer_write(buf, &data, 4);
-    p_dbuffer_write(buf, &data, 2);
-
-    PDbufferReader reader;
-
-    p_dbuffer_reader_init(&reader, buf);
-
-    char out[4] = {0};
-    P_DBUFFER_LENGTH_TYPE length;
-    assert_int_equal(p_dbuffer_read(&reader, out, &length, false), PDBUFFER_READ_NOTHING);
-    assert_int_equal(p_dbuffer_read(&reader, out, &length, true), PDBUFFER_READ_SUCCESS);
-    assert_int_equal(length, 4);
-    assert_false(memcmp(data, out, 4));
-
-    p_fill_zeroes(out, 4);
-    assert_int_equal(p_dbuffer_read(&reader, out, &length, true), PDBUFFER_READ_SUCCESS);
-    assert_int_equal(length, 2);
-    assert_false(memcmp(data, out, 2));
-
-    p_dbuffer_destroy(buf);
-}
+    }
 
 static void test_dbuffer_wraparound(void **state)
 {
