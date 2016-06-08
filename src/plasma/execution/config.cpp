@@ -52,7 +52,7 @@ const char *conf_setting_get_string(ConfigSetting *setting)
 
 int32_t conf_setting_length(ConfigSetting *setting)
 {
-    ASSERT_MSG(config_setting_type(setting) == CONFIG_TYPE_GROUP ||
+    ASSERT(config_setting_type(setting) == CONFIG_TYPE_GROUP ||
            config_setting_type(setting) == CONFIG_TYPE_LIST ||
            config_setting_type(setting) == CONFIG_TYPE_ARRAY, "config type should be of the type group, list or array");
     return config_setting_length(setting);

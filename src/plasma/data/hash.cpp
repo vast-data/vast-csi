@@ -10,7 +10,7 @@ namespace P {
 void Hash::init_custom(size_t n_buckets, P::Index n_values, PHashMatchFunc match, void *match_arg,
                         PHashKeyToBucket key_to_bucket)
 {
-    ASSERT_MSG(p_is_power_of_two(n_buckets), "n_buckets should be power of 2");
+    ASSERT(p_is_power_of_two(n_buckets), "n_buckets should be power of 2");
     _match = match;
     _match_arg = match_arg;
     _key_to_bucket = key_to_bucket;

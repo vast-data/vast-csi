@@ -21,7 +21,7 @@ void AtomicPool::alloc_multiple(PIndex idle_elements[] OUT, uint32_t element_cou
 
     LOOP_TYPE(uint32_t, element_count, element_index) {
         idle_elements[element_index] = _pool.alloc();
-        ASSERT_MSG(idle_elements[element_index] != P_INVALID_INDEX, "invalid element index");
+        ASSERT(idle_elements[element_index] != P_INVALID_INDEX, "invalid element index");
     }
 }
 

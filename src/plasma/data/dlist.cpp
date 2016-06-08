@@ -16,13 +16,13 @@ void DList::init(DList::Anchor *anchor, DList::Pool *list_pool)
 
 void DList::destroy()
 {
-    ASSERT_MSG(_anchor->is_empty(), "Destroying a non-empty dlist");
+    ASSERT(_anchor->is_empty(), "Destroying a non-empty dlist");
     _list_pool->destroy();
 }
 
 void DList::add_after(Index index, Index new_index)
 {
-    ASSERT_MSG(!is_empty(), "Adding after a dlist item though the list is empty");
+    ASSERT(!is_empty(), "Adding after a dlist item though the list is empty");
     _list_pool->_nodes[new_index].prev = index;
     _list_pool->_nodes[new_index].next = _list_pool->_nodes[index].next;
     _list_pool->_nodes[_list_pool->_nodes[new_index].next].prev = new_index;
@@ -31,7 +31,7 @@ void DList::add_after(Index index, Index new_index)
 
 void DList::add_before(Index index, Index new_index)
 {
-    ASSERT_MSG(!is_empty(), "Adding before a dlist item though the list is empty");
+    ASSERT(!is_empty(), "Adding before a dlist item though the list is empty");
     _list_pool->_nodes[new_index].next = index;
     _list_pool->_nodes[new_index].prev = _list_pool->_nodes[index].prev;
     _list_pool->_nodes[_list_pool->_nodes[new_index].prev].next = new_index;

@@ -30,7 +30,7 @@ ModuleId Fiber::get_module_id()
 void Fiber::context_switch()
 {
     Fiber *fiber = Fiber::get_current();
-    ASSERT_MSG(fiber->_state != State::RUNNING, "Cannot suspend a fiber that isn't running");
+    ASSERT(fiber->_state != State::RUNNING, "Cannot suspend a fiber that isn't running");
     if (likely(!debugging)) {
         // don't want to measure time while debugging
         ASSERT_OP(p_get_time_nano() - fiber->_switch_time, <, STARVATION_THRESHOLD_NS, "Fiber took longer than expected");
