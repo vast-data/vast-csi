@@ -3,8 +3,8 @@
 
 #include "../time.h"
 #include "../utils/macros.hpp"
+#include "../utils/time.hpp"
 #include "scheduler.hpp"
-
 
 namespace P {
 
@@ -27,10 +27,10 @@ void TimerQueues::destroy() {
 uint64_t TimerQueues::sleep(SleepInterval interval)
 {
     TimerQueues *timer_queues = &Scheduler::get()->_timer_queues;
-    uint64_t start_time = p_get_time_nano();
+    uint64_t start_time = P::get_time_nano();
     timer_queues->_wakeup_time = MIN(timer_queues->_wakeup_time, start_time + MICRO_TO_NANO(interval_to_micro[(byte) interval]));
     Fiber::suspend_and_queue(&timer_queues->_queues[(byte) interval]);
-    return (uint64_t) NANO_TO_MICRO(p_get_time_nano() - start_time);
+    return (uint64_t) NANO_TO_MICRO(P::get_time_nano() - start_time);
 }
 
 uint64_t TimerQueues::sleep_multi(SleepInterval interval, uint32_t count)
@@ -48,7 +48,7 @@ void TimerQueues::poll()
     Scheduler *scheduler = Scheduler::get();
     uint64_t time;
 
-    if (_wakeup_time == NO_PENDING_FIBERS || (time = p_get_time_nano()) < _wakeup_time)
+    if (_wakeup_time == NO_PENDING_FIBERS || (time = P::get_time_nano()) < _wakeup_time)
         return;
 
     _wakeup_time = NO_PENDING_FIBERS;
@@ -71,8 +71,8 @@ void TimerQueues::poll()
 
 uint64_t TimerQueues::fast_sleep(uint64_t usecs)
 {
-    uint64_t time, start_time = p_get_time_nano();
-    while ((time = p_get_time_nano()) < start_time + MICRO_TO_NANO(usecs)) {
+    uint64_t time, start_time = P::get_time_nano();
+    while ((time = P::get_time_nano()) < start_time + MICRO_TO_NANO(usecs)) {
         Fiber::yield();
     }
     return NANO_TO_MICRO(time - start_time);

@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 
 #include "plasma/fiber/scheduler.hpp"
+#include "plasma/utils/time.hpp"
 
 #include "plasma/sync/spin_lock.hpp"
 #include "plasma/sync/qlock.hpp"
@@ -414,9 +415,9 @@ TEST(TestSync, test_future)
 
     P::Fiber::init(FG_A, future_main_waiter, nullptr, false);
 
-    uint64_t start =  p_get_time_nano();
+    uint64_t start =  P::get_time_nano();
     P::Scheduler::run();
-    uint64_t duration = p_get_time_nano() - start;
+    uint64_t duration = P::get_time_nano() - start;
     uint64_t duration_in_milli = NANO_TO_MILLI(duration);
 
     ASSERT_GE(duration_in_milli, 99);

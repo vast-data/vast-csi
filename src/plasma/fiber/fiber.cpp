@@ -10,6 +10,7 @@
 #include "../../globals.hpp"
 #include "scheduler.hpp"
 #include "../utils/assert.hpp"
+#include "../utils/time.hpp"
 
 namespace P {
 
@@ -34,11 +35,11 @@ void Fiber::context_switch()
     ASSERT(fiber->_state != State::RUNNING, "Cannot suspend a fiber that isn't running");
     if (likely(!debugging)) {
         // don't want to measure time while debugging
-        ASSERT_OP(p_get_time_nano() - fiber->_switch_time, <, STARVATION_THRESHOLD_NS, "Fiber took longer than expected");
+        ASSERT_OP(P::get_time_nano() - fiber->_switch_time, <, STARVATION_THRESHOLD_NS, "Fiber took longer than expected");
     }
     ASSERT_EQUAL(*((intptr_t *) fiber->_stack), (intptr_t) STACK_OVERFLOW_MAGIC);
 
-    fiber->_switch_time = p_get_time_nano();
+    fiber->_switch_time = P::get_time_nano();
     if (!setjmp(fiber->_jmp_buf)) {
         Scheduler::schedule();
     }
@@ -196,7 +197,7 @@ void NO_RETURN Fiber::run()
     Scheduler *sched = Scheduler::get();
     sched->_current_fiber = this;
     _state = State::RUNNING;
-    _switch_time = p_get_time_nano();
+    _switch_time = P::get_time_nano();
     longjmp(_jmp_buf, true);
 }
 
