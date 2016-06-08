@@ -12,7 +12,8 @@
 #include "../memory/pool.hpp"
 #include "../data/dlist.hpp"
 #include "../sync/rwlock.hpp"
-#include "../../defs.h"
+#include "../../vdefs.hpp"
+#include "../../modules/module_interface.hpp"
 
 namespace P {
 

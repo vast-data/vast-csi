@@ -11,9 +11,10 @@
 
 #include <plasma/internal.h>
 #include <plasma/memory/p_alloc.h>
-#include <plasma/utils/macros.hpp>
+#include "plasma/utils.h"
+#include "plasma/utils/macros.hpp"
 #include "vdefs.hpp"
-#include "../fiber/p_fiber.h"
+#include "../fiber/fiber.hpp"
 #include "config.hpp"
 #include "env.hpp"
 #include "../../modules/module_interface.hpp"
@@ -29,10 +30,10 @@ void Silo::init(ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, co
     _affinity = affinity;
     _silo_id = silo_id;
 
-    _scheduler_config.group_count = (PIndex)FiberGroupId::COUNT;
+    _scheduler_config.group_count = (P::Index)FiberGroupId::COUNT;
     _scheduler_config.fiber_groups =
-        (PFiberGroupConfig *) p_safe_malloc(sizeof(PFiberGroupConfig) * _scheduler_config.group_count);
-    p_fill_zeroes(_scheduler_config.fiber_groups, sizeof(PFiberGroupConfig) * _scheduler_config.group_count);
+        (FiberGroupConfig *) p_safe_malloc(sizeof(FiberGroupConfig) * _scheduler_config.group_count);
+    p_fill_zeroes(_scheduler_config.fiber_groups, sizeof(FiberGroupConfig) * _scheduler_config.group_count);
 
     ConfigSetting *modules_setting = conf_setting_lookup_required(silo_config, "modules");
     LOOP(conf_setting_length(modules_setting), i) {
@@ -128,11 +129,11 @@ void *Silo::silo_main()
 
 //    PT_INFO("Silo started. Affinity set to: %d.", _affinity);
 
-    p_scheduler_init(&_scheduler_config);
-    p_fiber_init((PIndex)FiberGroupId::P, silo_start_in_fiber_func, this, false);
-    p_scheduler_run();
+    Scheduler::init(&_scheduler_config);
+    Fiber::init((P::Index)FiberGroupId::P, silo_start_in_fiber_func, this, false);
+    Scheduler::run();
     // we shouldn't regularly get here. it means all fiber have finished running.
-    p_scheduler_destroy();
+    Scheduler::destroy();
 
 //    PT_INFO("Silo finished.");
 
@@ -154,7 +155,7 @@ void Silo::join()
 
 /*static*/ Silo::Module *Silo::get_module()
 {
-    return &Silo::get()->_modules[(int)p_fiber_get_module_id()];
+    return &Silo::get()->_modules[(int)Fiber::get_module_id()];
 }
 
 void *Silo::get_module_state()

@@ -8,7 +8,8 @@
 
 #include <setjmp.h>
 
-#include "../../defs.h"
+#include "../../vdefs.hpp"
+#include "../../modules/module_interface.hpp"
 #include "../utils/types.hpp"
 #include "../utils/compiler.hpp"
 #include "../memory/pool.hpp"

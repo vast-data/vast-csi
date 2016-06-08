@@ -10,11 +10,11 @@
 #include <limits.h>
 #include <pthread.h>
 #include <modules/module_interface.hpp>
+#include <plasma/fiber/scheduler.hpp>
 
 //#include "../trace/emitter.h"
 //#include "../trace/dumper.h"
 #include "../vdefs.hpp"
-#include "../fiber/p_scheduler.h"
 #include "config.hpp"
 
 namespace P {
@@ -127,7 +127,7 @@ private:
 
 private:
     Module _modules[(int)ModuleId::COUNT];
-    PSchedulerConfig _scheduler_config;
+    SchedulerConfig _scheduler_config;
     char _trace_dir_path[PATH_MAX];
 //    PTraceEmitter *_trace_emitter;
 //    PTraceDumper *_trace_dumper;
