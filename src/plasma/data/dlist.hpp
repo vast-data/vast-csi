@@ -1,7 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 
 /*!
- * \file p_dlist.hpp
+ * \file dlist.hpp
  * \brief A circular doubly-linked list.
  *
  * This doubly-linked list is used to store indices. Usually indices of objects allocated by a memory pool.

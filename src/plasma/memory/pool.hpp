@@ -28,7 +28,6 @@ public:
     * \param block_size the size of each block in bytes (minimum of 4 bytes).
     * \param num_partitions the number of partitions
     * \param partitions array with the number of blocks per partition, isn't modified nor used after init is done
-    * \return a pointer to a pool.
     */
     void partitioned_init(size_t block_size, Index num_partitions, Index partitions[]);
 
@@ -38,7 +37,6 @@ public:
     *
     * \param blocks the number of blocks the pool is expected to hold.
     * \param block_size the size of each block in bytes (minimum of 4 bytes).
-    * \return a pointer to a pool.
     */
     void init(Index blocks, size_t block_size);
 

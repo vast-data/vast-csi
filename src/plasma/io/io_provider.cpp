@@ -39,6 +39,7 @@ void IOProvider::disable_polling(DevIO *device)
 void IOProvider::destroy()
 {
     _active_devices.destroy();
+    _active_devices_pool.destroy();
     LOOP_TYPE(PIndex, _device_count, index) {
         _devices[index].destroy();
     }

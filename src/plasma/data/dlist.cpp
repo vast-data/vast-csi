@@ -17,7 +17,6 @@ void DList::init(DList::Anchor *anchor, DList::Pool *list_pool)
 void DList::destroy()
 {
     ASSERT(_anchor->is_empty(), "Destroying a non-empty dlist");
-    _list_pool->destroy();
 }
 
 void DList::add_after(Index index, Index new_index)
