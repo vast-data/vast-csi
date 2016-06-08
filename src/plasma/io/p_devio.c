@@ -110,7 +110,7 @@ static void io_prep(PDevIO *devio, struct iocb *io OUT, IOVecs *buffers, Baddr d
 
 static void p_devio_handle_io_done(PDevIO *devio, struct iocb *iocb_done)
 {
-    PIO *io =  MEMBER2OBJECT(iocb_done, PIO, io);
+    PIO *io = MEMBER2OBJECT(iocb_done, PIO, io);
     P_DEBUG_ASSERT(io->io_future != NULL);
     P_ASSERT(io->io_future->io_count > 0);
 

@@ -2,7 +2,7 @@
 #include <signal.h>
 #include <pthread.h>
 #include <plasma/utils/assert.hpp>
-#include <plasma/utils.h>
+#include <plasma/utils/os.hpp>
 #include <plasma/memory/p_alloc.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -80,7 +80,7 @@ void Env::init(Config *config)
     const char *data_dir = conf_setting_get_string(data_dir_setting);
     ASSERT_OP(strlen(data_dir), <, PATH_MAX, "data dir is too long");
     strcpy(_data_dir, data_dir);
-    p_ensure_directory_exists(data_dir);
+    ensure_directory_exists(data_dir);
 
     ConfigSetting *silos_setting = conf_lookup(config, "silos");
     ASSERT_NOT_NULL(silos_setting);

@@ -12,6 +12,9 @@
 #include "module_interface.hpp"
 #include "plasma/execution/silo.hpp"
 #include "plasma/execution/config.hpp"
+#include "plasma/io/devio.hpp"
+#include "plasma/io/io_provider.hpp"
+#include "plasma/memory/atomic_pool.hpp"
 
 class PModule : public ModuleInterface {
 public:
@@ -19,5 +22,6 @@ public:
     virtual void start();
     static ModuleId get_id() { return ModuleId::P; }
     static const char *get_name() { return "P"; }
+    static void init_io_from_settings(P::Conf::ConfigSetting *io_module, P::DevIO **devices, P::AtomicPool *iopool, P::IOProvider *io_provider);
 };
 

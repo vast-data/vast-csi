@@ -1,7 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
-#include <plasma/utils.h>
 #include "plasma/third_party/murmur3/murmur3.h"
 #include "hash.hpp"
+#include "plasma/utils/math.hpp"
 
 #define SEED 123
 
@@ -10,7 +10,7 @@ namespace P {
 void Hash::init_custom(size_t n_buckets, P::Index n_values, PHashMatchFunc match, void *match_arg,
                         PHashKeyToBucket key_to_bucket)
 {
-    ASSERT(p_is_power_of_two(n_buckets), "n_buckets should be power of 2");
+    ASSERT(is_power_of_two(n_buckets), "n_buckets should be power of 2");
     _match = match;
     _match_arg = match_arg;
     _key_to_bucket = key_to_bucket;
@@ -65,7 +65,7 @@ P::Index Hash::get(void *key, size_t length)
             return i;
         }
     }
-    return P_INVALID_INDEX;
+    return P::INVALID_INDEX;
 }
 
 bool Hash::remove(void *key, size_t length)

@@ -11,8 +11,8 @@
 
 #include <plasma/internal.h>
 #include <plasma/memory/p_alloc.h>
-#include "plasma/utils.h"
 #include "plasma/utils/macros.hpp"
+#include "plasma/utils/os.hpp"
 #include "vdefs.hpp"
 #include "../fiber/fiber.hpp"
 #include "config.hpp"
@@ -65,7 +65,7 @@ void Silo::init(ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, co
     }
 
     snprintf(_trace_dir_path, PATH_MAX, "%s/traces", data_dir);
-    p_ensure_directory_exists(_trace_dir_path);
+    ensure_directory_exists(_trace_dir_path);
 
     ConfigSetting *trace_config = conf_setting_lookup_required(silo_config, "traces");
 //    _trace_emitter = p_trace_emitter_init(trace_config);

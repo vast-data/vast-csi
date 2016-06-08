@@ -12,13 +12,13 @@
 
 #pragma once
 
-#include <p.h>
-
 #include <limits.h>
 #include <libaio.h>
 #include <sys/uio.h>
 
 #include "../memory/atomic_pool.hpp"
+#include "../sync/future.hpp"
+#include "../sync/sem.hpp"
 #include "io_provider.hpp"
 
 namespace P {
@@ -46,19 +46,20 @@ class DevIO {
 public:
     static const size_t O_DIRECT_ALIGNMENT = 512;
 
-    enum ReturnCode {
+    enum class ReturnCode : byte {
         SUCCESS,
         ERROR,
         RETRY
     };
 
-    struct Future {
-        PFuture future;
+    class Future : public Sync::Future<> {
+    public:
         uint32_t io_count;
         ReturnCode res;
     };
 
-    struct IO {
+    class IO {
+    public:
         struct iocb io;
         Future *io_future;
     };
@@ -166,7 +167,7 @@ private:
 
     io_context_t _ctx;
     // Todo: should we have a different limitation for reads & writes?
-    PSem _available_ios;
+    Sync::Sem _available_ios;
     int _file_desc;
     char _dev_name[PATH_MAX];
     AtomicPool *_iopool;

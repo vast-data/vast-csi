@@ -38,6 +38,11 @@ public:
      */
     void dec(uint32_t count);
 
+    /*!
+     * Get the current semaphore value
+     */
+    uint32_t value() { return _value; }
+
     void destroy();
 
 private:

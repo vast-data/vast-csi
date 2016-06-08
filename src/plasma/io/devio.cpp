@@ -1,6 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 
 #include "devio.hpp"
+#include <plasma/utils/macros.hpp>
 #include <fcntl.h>
 #include <errno.h>
 #include <linux/fs.h>
@@ -15,29 +16,29 @@ bool DevIO::init(const char dev_name[], uint32_t iodepth, AtomicPool *iopool, si
 {
     _iodepth = iodepth;
     _iopool = iopool;
-    p_sem_init(&_available_ios, iodepth);
+    _available_ios.init(iodepth);
 
     _ctx = 0;
     int setup_ret = io_setup((int) iodepth, &_ctx);
     if (unlikely(setup_ret != 0)) {
-        P_PANIC(/* TODO: informative string with the value of setup_ret
+        PANIC(/* TODO: informative string with the value of setup_ret
                          (negated errno in this case - might use strerror(-setup_ret)) */);
     }
 
     _io_provider = NULL;
 
-    P_ASSERT(strnlen(dev_name, PATH_MAX) < PATH_MAX);
+    ASSERT(strnlen(dev_name, PATH_MAX) < PATH_MAX);
     strncpy(_dev_name, dev_name, PATH_MAX);
     int open_flags = O_RDWR | O_DIRECT;
     _file_desc = open(_dev_name, open_flags);
     if (unlikely(_file_desc == -1)) {
-        // P_TRACE_ERR(/* TODO: informative string with the value of errno - might use strerror() / perror()) */);
+        // TRACE_ERR(/* TODO: informative string with the value of errno - might use strerror() / perror()) */);
         return false;
     }
 
     if (device_size == 0) {
         int ret = ioctl(_file_desc, BLKGETSIZE64, &device_size);
-        P_ASSERT(ret != -1);
+        ASSERT(ret != -1);
     }
 
     _size = device_size;
@@ -47,7 +48,7 @@ bool DevIO::init(const char dev_name[], uint32_t iodepth, AtomicPool *iopool, si
 
 void DevIO::set_ioprovider(IOProvider *io_provider)
 {
-    P_ASSERT(_io_provider == NULL);
+    ASSERT(_io_provider == NULL);
     _io_provider = io_provider;
 }
 
@@ -61,7 +62,7 @@ size_t DevIO::io_byte_count(struct iocb *ios)
     case IO_CMD_PWRITEV:
         break;
     default:
-        P_PANIC();
+        PANIC();
     }
 
     size_t ret_size = 0;
@@ -75,9 +76,9 @@ size_t DevIO::io_byte_count(struct iocb *ios)
 
 void DevIO::allocate_ios(struct iocb *ios[], uint32_t count, DevIO::Future *io_future)
 {
-    bool was_idle = (_available_ios.value == _iodepth);
-    p_sem_dec(&_available_ios, count);
-    PIndex element_idices[count];
+    bool was_idle = (_available_ios.value() == _iodepth);
+    _available_ios.dec(count);
+    Index element_idices[count];
     _iopool->alloc_multiple(element_idices, count);
     LOOP(count, i) {
         IO *io = (IO*)_iopool->index_to_element(element_idices[i]);
@@ -86,7 +87,7 @@ void DevIO::allocate_ios(struct iocb *ios[], uint32_t count, DevIO::Future *io_f
     }
 
     if (was_idle) {
-        P_DEBUG_ASSERT(_io_provider != NULL);
+        DEBUG_ASSERT(_io_provider != NULL);
         _io_provider->enable_polling(this);
     }
 }
@@ -104,13 +105,13 @@ void DevIO::io_prep(struct iocb *io OUT, IOVecs *buffers, Baddr dev_offset, bool
 
 void DevIO::handle_io_done(struct iocb *iocb_done)
 {
-    PIO *io =  MEMBER2OBJECT(iocb_done, PIO, io);
-    P_DEBUG_ASSERT(io->io_future != NULL);
-    P_ASSERT(io->io_future->io_count > 0);
+    IO *io = container_of(iocb_done, IO, io);
+    DEBUG_ASSERT(io->io_future != NULL);
+    ASSERT(io->io_future->io_count > 0);
 
     io->io_future->io_count--;
     if (io->io_future->io_count == 0) {
-        p_future_set(&io->io_future->future);
+        io->io_future->set();
     }
 
     io->io_future = NULL;
@@ -122,8 +123,8 @@ void DevIO::validate_io_event(struct io_event *event)
     size_t io_size = io_byte_count(event->obj);
     if (event->res != io_size) {
         // TODO: get res and possibly res2- log all that we can here
-        IO *io =  MEMBER2OBJECT(event->obj, IO, io);
-        PIndex index = _iopool->element_to_index(io);
+        DevIO::IO *io =  container_of(event->obj, DevIO::IO, io);
+        Index index = _iopool->element_to_index(io);
         printf("IO error: index=%u, res=%ld, res2=%ld nbytes = %ld, opcode = %d\n",
                index, (long)event->res, (long)event->res2,
                (long)event->obj->u.c.nbytes, event->obj->aio_lio_opcode);
@@ -133,10 +134,10 @@ void DevIO::validate_io_event(struct io_event *event)
 
 void DevIO::poll_events()
 {
-    const long active_ios = _iodepth - _available_ios.value;
+    const long active_ios = _iodepth - _available_ios.value();
     struct io_event events[active_ios];
 
-    P_ASSERT(active_ios > 0);
+    ASSERT(active_ios > 0);
 
     int ios_done;
     RETRY_LOOP(io_poll_retry_params,
@@ -145,7 +146,7 @@ void DevIO::poll_events()
             break;
         }
         if (unlikely((ios_done < 0) && (ios_done != -EINTR))) {
-            P_PANIC();
+            PANIC();
         }
     )
 
@@ -159,9 +160,9 @@ void DevIO::poll_events()
        handle_io_done(events[event_index].obj);
     }
 
-    p_sem_inc(&_available_ios, (uint32_t)ios_done);
-    if (_iodepth == _available_ios.value) {
-        P_DEBUG_ASSERT(_io_provider != NULL);
+    _available_ios.inc((uint32_t)ios_done);
+    if (_iodepth == _available_ios.value()) {
+        DEBUG_ASSERT(_io_provider != NULL);
         // no more active ios
         _io_provider->disable_polling(this);
     }
@@ -175,12 +176,12 @@ void DevIO::submit_ios(struct iocb **ios_ptr, uint32_t io_count)
             break;
         } else {
             if (unlikely((submit_ret < 0) && (submit_ret != -EAGAIN))) {
-                P_PANIC();
+                PANIC();
             }
             if (submit_ret > 0) {
                 // several first IO's were submitted.
                 // retry the rest.
-                P_ASSERT(submit_ret < (int )io_count);
+                ASSERT(submit_ret < (int )io_count);
                 io_count -= (uint32_t) submit_ret;
                 ios_ptr += submit_ret;
             }
@@ -194,14 +195,14 @@ void DevIO::validate_io(IOVecs buffers[], Baddrs *dev_offsets)
         size_t io_size = 0;
         LOOP (buffers[baddr_idx].count, iovec_idx) {
             // O_DIRECT limitations
-            P_ASSERT(buffers[baddr_idx].iovecs[iovec_idx].iov_len % O_DIRECT_ALIGN == 0);
-            P_ASSERT((size_t)buffers[baddr_idx].iovecs[iovec_idx].iov_base % O_DIRECT_ALIGN == 0);
+            ASSERT(buffers[baddr_idx].iovecs[iovec_idx].iov_len % O_DIRECT_ALIGNMENT == 0);
+            ASSERT((size_t)buffers[baddr_idx].iovecs[iovec_idx].iov_base % O_DIRECT_ALIGNMENT == 0);
 
             io_size += buffers[baddr_idx].iovecs[iovec_idx].iov_len;
         }
 
         // make sure the io doesn't go beyond device boundaries.
-        P_ASSERT(dev_offsets->baddrs[baddr_idx] + io_size <= _size);
+        ASSERT(dev_offsets->baddrs[baddr_idx] + io_size <= _size);
     }
 }
 
@@ -221,7 +222,7 @@ DevIO::ReturnCode DevIO::perform_scattered_io(IOVecs buffers[], Baddrs *dev_offs
 
     io_future->io_count = io_count;
     io_future->res = ReturnCode::SUCCESS;
-    p_future_init(&io_future->future, NULL);
+    io_future->init(nullptr);
 
     allocate_ios(ios, io_count, io_future);
     LOOP(io_count, io_index) {
@@ -272,8 +273,8 @@ DevIO::ReturnCode DevIO::read(IOVec *buffer, Baddr source_baddr, DevIO::Future *
 
 DevIO::ReturnCode DevIO::wait(DevIO::Future *io_future)
 {
-    p_future_wait(&io_future->future);
-    P_ASSERT(io_future->io_count == 0);
+    io_future->wait();
+    ASSERT(io_future->io_count == 0);
 
     return io_future->res;
 }
@@ -281,7 +282,7 @@ DevIO::ReturnCode DevIO::wait(DevIO::Future *io_future)
 void DevIO::destroy()
 {
     // Todo: Should we perform a last polling operation for a graceful shutdown?
-    P_ASSERT(_available_ios.value == _iodepth);
+    ASSERT_EQUAL(_available_ios.value(), _iodepth);
     io_destroy(_ctx);
 }
 
@@ -296,17 +297,17 @@ void DevIO::destroy()
 //
 //    int ret = ioctl(_file_desc, /* IOCATADELETE / BLKDISCARD */, trim_ext);
 //    if (ret < 0) {
-//        P_PANIC();
+//        PANIC();
 //    }
 //
-//    return P_IODEV_SUCCESS;
+//    return ReturnCode::SUCCESS;
 //}
 
 //void DevIO::flush()
 //{
 //    int ret = ioctl(_file_desc, /* FDFLUSH / BLKFLSBUF, 0 */);
 //    if (ret < 0) {
-//        P_PANIC();
+//        PANIC();
 //    }
 //}
 }

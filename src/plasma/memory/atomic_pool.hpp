@@ -11,7 +11,7 @@
 #pragma once
 
 #include <stddef.h>
-#include "plasma/sync/p_sem_private.h"
+#include "plasma/sync/sem.hpp"
 #include "pool.hpp"
 
 namespace P {
@@ -23,27 +23,27 @@ public:
      * When finished with the PAtomicPool call destroy.
      * \param element_count is the maximum value of elements to be used concurrently.
      */
-    void init(PIndex element_count, size_t element_size);
+    void init(Index element_count, size_t element_size);
 
     /*!
      * Retrieve an identifier of the element in the pool (index)
      */
-    PIndex  element_to_index(void *element) { return _pool.address_to_index(element); }
+    Index  element_to_index(void *element) { return _pool.address_to_index(element); }
 
     /*!
      * Get an element address from it's pool identifier (index)
      */
-    void *index_to_element(PIndex index) { return _pool.index_to_address(index); }
+    void *index_to_element(Index index) { return _pool.index_to_address(index); }
 
     /*!
      * Allocate multiple elements.
      */
-    void alloc_multiple(PIndex idle_elements[] OUT, uint32_t element_count);
+    void alloc_multiple(Index idle_elements[] OUT, uint32_t element_count);
 
     /*!
      * Free multiple elements
      */
-    void free_multiple(PIndex returned_elements[], uint32_t element_count);
+    void free_multiple(Index returned_elements[], uint32_t element_count);
 
     /*!
      * Allocate a single element
@@ -61,7 +61,7 @@ public:
     void destroy();
 
 private:
-    PSem _idle_elements;
+    Sync::Sem _idle_elements;
     Pool _pool;
 };
 

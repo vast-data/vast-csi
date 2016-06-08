@@ -14,6 +14,14 @@
 
 #define NUM_ELEMENTS(array) (sizeof(array) / sizeof((array)[0]))
 
+
+// as defined in the linux kernel
+#define likely(x)      __builtin_expect(!!(x), 1)
+#define unlikely(x)    __builtin_expect(!!(x), 0)
+#define container_of(ptr, type, member) ({                      \
+        auto __mptr = (ptr);                                    \
+        (type *)( (byte *)__mptr - offsetof(type,member) );})
+
 #define CONCAT_IMPL( x, y ) x##y
 #define MACRO_CONCAT( x, y ) CONCAT_IMPL( x, y )
 
@@ -24,6 +32,9 @@
 #define LOOP_TYPE(type, until, i)               LOOP_FROM_TYPE(type, 0, until, i)
 #define LOOP_FROM(start, until, i)              LOOP_FROM_TYPE(size_t, start, until, i)
 #define LOOP(until, i)                          LOOP_FROM(0, until, i)
+
+// Todo: should we enforce same type here?
+#define PTR2IDX(ptr, base_ptr) ((Index)((ptr) - (base_ptr)))
 
 /*!
  * The macro_is_set was found here: http://stackoverflow.com/questions/5464170/using-definedmacro-inside-the-c-if-statement
@@ -100,3 +111,42 @@
  * Use the following macro to easily define multi-line strings.
  */
 #define QUOTE(...) #__VA_ARGS__
+
+
+
+struct RetryParams {
+    const uint32_t max_spinning_attempts;
+    const uint32_t attempts_per_yield;
+    const uint32_t max_attempts;
+};
+
+// Performs loop_body until it breaks.
+// Spins for max_spinning_attempts iterations, than performs yield every attempts_per_yield iterations
+// and eventually panics if we've reached max_attempts iterations.
+#define INNER_RETRY_LOOP(var_attempt_count, var_max_spinning_attempts, var_attempts_per_yield, var_max_attempts, max_spinning_attempts, attempts_per_yield, max_attempts, loop_body)  \
+    do { uint64_t var_attempt_count = 0;                                                \
+    static const uint32_t var_max_spinning_attempts = max_spinning_attempts;            \
+    static const uint32_t var_attempts_per_yield = attempts_per_yield;                  \
+    static const uint32_t var_max_attempts = max_attempts;                              \
+                                                                                        \
+    while (true) {                                                                      \
+        var_attempt_count++;                                                            \
+        if (var_attempt_count > var_max_spinning_attempts) {                            \
+            if (unlikely(var_attempt_count > var_max_attempts)) {                       \
+                PANIC("maximum retries reached: " << var_attempt_count << "attempts");  \
+            }                                                                           \
+            if (var_attempt_count % var_attempts_per_yield == 0) {                      \
+                P::Fiber::yield();                                                      \
+            }                                                                           \
+        }                                                                               \
+        loop_body                                                                       \
+    } } while (false);
+
+#define RETRY_LOOP_PARAMS(max_spinning_attempts, attempts_per_yield, max_attempts, loop_body)                           \
+        INNER_RETRY_LOOP(MACRO_CONCAT(attempt_count_, __COUNTER__) , MACRO_CONCAT(max_spinning_attempts_, __COUNTER__), \
+                         MACRO_CONCAT(attempts_per_yield_, __COUNTER__), MACRO_CONCAT(max_attempts_, __COUNTER__),      \
+                         max_spinning_attempts, attempts_per_yield, max_attempts, loop_body)
+
+#define RETRY_LOOP(retry_params, loop_body)                                             \
+        RETRY_LOOP_PARAMS(retry_params.max_spinning_attempts, retry_params.attempts_per_yield, retry_params.max_attempts, loop_body)                                  \
+
