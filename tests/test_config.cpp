@@ -1,7 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 
-#include <plasma/macro.h>
 #include <gtest/gtest.h>
+#include "plasma/utils/macros.hpp"
 #include "plasma/execution/config.hpp"
 #include "plasma/execution/config_internal.hpp"
 

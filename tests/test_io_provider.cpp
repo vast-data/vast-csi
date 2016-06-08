@@ -1,16 +1,14 @@
 /* Copyright (C) Vast Data Ltd. */
-#include <p.h>
-#include <setjmp.h>
 #include <gtest/gtest.h>
 
 #include "../src/plasma/execution/config_internal.hpp"
+#include "../src/plasma/fiber/scheduler.hpp"
 #include "../src/plasma/utils/macros.hpp"
 #include "../src/plasma/io/io_provider.hpp"
 #include "../src/plasma/execution/config.hpp"
 #include "../src/plasma/memory/atomic_pool.hpp"
 
 #include <fcntl.h>
-#include <unistd.h>
 
 static bool testing_io_provider = true;
 
@@ -19,11 +17,11 @@ using namespace P::Conf;
 #define DEVICE_FILE_SIZE (20<<10) // 20K
 
 #define PAGE_SIZE 4096
-static PFiberGroupConfig fiber_groups[] = {
+static P::FiberGroupConfig fiber_groups[] = {
     {0, 0},
     {PAGE_SIZE * 16, 40}
 };
-static PSchedulerConfig scheduler_config = {
+static P::SchedulerConfig scheduler_config = {
     fiber_groups, NUM_ELEMENTS(fiber_groups)
 };
 
@@ -276,12 +274,11 @@ void init_from_settings(ConfigSetting *io_module, P::DevIO **devices, P::AtomicP
     io_provider->init(*devices, device_count);
 }
 
-
-TEST(TestIOProvider, test) {
+TEST(TestIOProvider, test)
+{
     Config* config = conf_init();
 
     int32_t ret = conf_read_file(config, "tests/test_io_provider.config");
-
     ASSERT_NE(ret, CONFIG_FALSE);
 
     ConfigSetting *io_module = conf_lookup(config, "io_module");
@@ -294,17 +291,16 @@ TEST(TestIOProvider, test) {
 
     init_from_settings(io_module, &devices, &iopool, &io_provider);
 
-    p_scheduler_init(&scheduler_config);
+    P::Scheduler::init(&scheduler_config);
 
-    p_fiber_init(FG_A, io_poller, &io_provider, false);
+    P::Fiber::init(FG_A, io_poller, &io_provider, false);
+    P::Fiber::init(FG_A, io_submitter, &io_provider, false);
 
-    p_fiber_init(FG_A, io_submitter, &io_provider, false);
-
-    p_scheduler_run();
+    P::Scheduler::run();
 
     remove(dev_path);
 
-    p_scheduler_destroy();
+    P::Scheduler::destroy();
 
     io_provider.destroy();
     iopool.destroy();

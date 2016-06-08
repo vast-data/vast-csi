@@ -6,9 +6,10 @@
  */
 
 #include "fiber.hpp"
+
+#include "../../globals.hpp"
 #include "scheduler.hpp"
 #include "../utils/assert.hpp"
-#include "../../globals.h"
 
 namespace P {
 

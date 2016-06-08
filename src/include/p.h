@@ -14,7 +14,7 @@
 #include <string.h>
 
 #include "defs.h"
-#include "globals.h"
+#include "old_globals.h"
 #include "plasma/time.h"
 #include "plasma/macro.h"
 #include "plasma/units.h"
