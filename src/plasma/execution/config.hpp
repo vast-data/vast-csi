@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include <stdint.h>
+
 typedef struct config_setting_t config_setting_t;
 
 namespace P {

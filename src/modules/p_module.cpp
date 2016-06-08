@@ -1,9 +1,6 @@
 #include "p_module.hpp"
 #include "plasma/io/p_io_provider_private.h"
-#include "plasma/utils/macros.hpp"
 #include "plasma/io/p_io_provider.h"
-#include "plasma/fiber/p_fiber.h"
-#include "vdefs.hpp"
 #include "plasma/fiber/p_fiber.h"
 
 using namespace P::Conf;
@@ -17,7 +14,7 @@ struct PModuleState {
     char foo;
 };
 
-void *p_module_init(Silo *silo, ConfigSetting *module_setting)
+void *PModule::init(Silo *silo, ConfigSetting *module_setting)
 {
     PModuleState *state = new PModuleState;
 
@@ -38,9 +35,9 @@ static void NO_RETURN p_io_poll_fiber(void *)
     }
 }
 
-void p_module_start()
+void PModule::start()
 {
-    printf("p_module_start\n");
+    printf("PModule::start\n");
     PModuleState *module_state = (PModuleState *)Silo::get_module_state();
     ASSERT_EQUAL(module_state->foo, 'a');
     ASSERT_EQUAL(COMPONENT_GET_STATE(), module_state);

@@ -6,15 +6,32 @@
  */
 #pragma once
 
-#include "plasma/execution/silo.hpp"
+#include "../modules/module_interface.hpp"
 #include "plasma/execution/config.hpp"
-
-void *test_module_init(P::Silo *silo, P::Conf::ConfigSetting *setting);
-void test_module_start(void);
 
 typedef void (*TestFunc)(void *);
 
-bool test_module_is_init();
-bool test_module_is_started();
-void test_module_set_init_func(TestFunc func, void *ctx);
-void test_module_set_start_func(TestFunc func, void *ctx);
+namespace P {
+class Silo;
+}
+
+class TestModule : public ModuleInterface {
+public:
+    virtual void *init(P::Silo *silo, P::Conf::ConfigSetting *setting);
+    virtual void start();
+    static ModuleId get_id() { return ModuleId::TEST; }
+    static const char *get_name() { return "TEST"; }
+
+    static bool is_init();
+    static bool is_started();
+    static void set_init_func(TestFunc func, void *ctx);
+    static void set_start_func(TestFunc func, void *ctx);
+
+private:
+    static bool _init;
+    static bool _started;
+    static TestFunc _init_func;
+    static void *_init_func_ctx;
+    static TestFunc _start_func;
+    static void *_start_func_ctx;
+};

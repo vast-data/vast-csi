@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "i_module.hpp"
 
 using namespace P::Conf;
@@ -8,18 +9,18 @@ struct IModuleState {
     void *foo;
 };
 
-void *i_module_init(Silo *silo, ConfigSetting *setting)
+void *IModule::init(Silo *silo, ConfigSetting *setting)
 {
     (void) silo;
     (void) setting;
 
-    printf("i_module_init\n");
+    printf("IModule::init\n");
     IModuleState *state = new IModuleState;
 
     return state;
 }
 
-void i_module_start(void)
+void IModule::start(void)
 {
-    printf("i_module_start\n");
+    printf("IModule::start\n");
 }

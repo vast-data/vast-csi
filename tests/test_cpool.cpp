@@ -31,8 +31,8 @@ void test_cpool(void *ctx)
 TEST(TestCPool, test)
 {
     P::CPool pool;
-    test_module_set_init_func(init_cpool, &pool);
-    test_module_set_start_func(test_cpool, &pool);
+    TestModule::set_init_func(init_cpool, &pool);
+    TestModule::set_start_func(test_cpool, &pool);
     P::Env::get()->run("tests/env_test.config");
     pool.destroy();
 }

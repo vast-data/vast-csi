@@ -12,11 +12,11 @@
 #include <plasma/internal.h>
 #include <plasma/memory/p_alloc.h>
 #include <plasma/utils/macros.hpp>
-#include <cstdio>
 #include "vdefs.hpp"
 #include "../fiber/p_fiber.h"
 #include "config.hpp"
 #include "env.hpp"
+#include "../../modules/module_interface.hpp"
 
 namespace P {
 
@@ -39,11 +39,12 @@ void Silo::init(ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, co
         ConfigSetting *module_setting = conf_setting_get_element(modules_setting, (uint32_t) i);
         const char *module_name = conf_setting_name(module_setting);
 
-        ModuleId module_id = module_id_from_string(module_name);
+        ModuleId module_id;
+        ModuleInterface *module = Env::get()->create_module(module_name, &module_id);
         _modules[(int)module_id].defined = true;
-        // TODO fix modules init
-        _modules[(int)module_id].user_state = module_init_functions[(int)module_id](this, module_setting);
-        
+        _modules[(int)module_id].module = module;
+        _modules[(int)module_id].user_state = module->init(this, module_setting);
+
         ConfigSetting *fibers_setting = conf_setting_lookup_required(module_setting, "fibers");
         LOOP(conf_setting_length(fibers_setting), j) {
             ConfigSetting *fiber_group_setting = conf_setting_get_element(fibers_setting, (uint32_t) j);
@@ -94,7 +95,7 @@ void Silo::silo_start_in_fiber()
     LOOP(ModuleId::COUNT, i) {
         if (_modules[i].defined) {
 //            PT_INFO("Starting module: %s.", module_id_to_string((ModuleId) i));
-            module_start_functions[i]();
+            _modules[i].module->start();
         }
     }
 }

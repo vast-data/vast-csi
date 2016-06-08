@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <limits.h>
 #include <pthread.h>
+#include <modules/module_interface.hpp>
 
 //#include "../trace/emitter.h"
 //#include "../trace/dumper.h"
@@ -110,6 +111,7 @@ public:
 
 private:
     typedef struct Module {
+        ModuleInterface *module;
         void *user_state;
         void *components[(int)ComponentId::COUNT];
         bool defined;

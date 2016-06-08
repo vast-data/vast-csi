@@ -1,58 +1,53 @@
 #include "test_module.hpp"
-#include "plasma/fiber/p_sleep.h"
+#include "plasma/execution/env.hpp"
 #include <unistd.h>
 
 using namespace P::Conf;
 using P::Silo;
 
-static bool init = false;
-static bool started = false;
-static TestFunc init_func = NULL;
-static void *init_func_ctx = NULL;
-static TestFunc start_func = NULL;
-static void *start_func_ctx = NULL;
+/*static*/ bool TestModule::_init = false;
+/*static*/ bool TestModule::_started = false;
+/*static*/ TestFunc TestModule::_init_func = NULL;
+/*static*/ void *TestModule::_init_func_ctx = NULL;
+/*static*/ TestFunc TestModule::_start_func = NULL;
+/*static*/ void *TestModule::_start_func_ctx = NULL;
 
-typedef struct TestModuleState TestModuleState;
-struct TestModuleState {
-    void *bla;
-};
 
-void *test_module_init(Silo *silo, ConfigSetting *setting)
+bool TestModule::is_init()
 {
-    init = true;
-    TestModuleState *state = new TestModuleState;
-    if (init_func) {
-        init_func(init_func_ctx);
+    return _init;
+}
+
+bool TestModule::is_started()
+{
+    return _started;
+}
+
+void TestModule::set_init_func(TestFunc func, void *ctx)
+{
+    _init_func = func;
+    _init_func_ctx = ctx;
+}
+
+void TestModule::set_start_func(TestFunc func, void *ctx)
+{
+    _start_func = func;
+    _start_func_ctx = ctx;
+}
+
+void *TestModule::init(P::Silo *silo, P::Conf::ConfigSetting *setting)
+{
+    _init = true;
+    if (_init_func) {
+        _init_func(_init_func_ctx);
     }
-    return state;
+    return nullptr;
 }
 
-void test_module_start(void)
+void TestModule::start()
 {
-    started = true;
-    if (start_func) {
-        start_func(start_func_ctx);
+    _started = true;
+    if (_start_func) {
+        _start_func(_start_func_ctx);
     }
-}
-
-bool test_module_is_init()
-{
-    return init;
-}
-
-bool test_module_is_started()
-{
-    return started;
-}
-
-void test_module_set_init_func(TestFunc func, void *ctx)
-{
-    init_func = func;
-    init_func_ctx = ctx;
-}
-
-void test_module_set_start_func(TestFunc func, void *ctx)
-{
-    start_func = func;
-    start_func_ctx = ctx;
 }

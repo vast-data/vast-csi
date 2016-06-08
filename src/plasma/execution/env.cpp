@@ -50,8 +50,31 @@ error:
     exit(-1);
 }
 
+void Env::register_module(ModuleId id, ModuleFactory *factory)
+{
+    printf("register %d\n", id);
+    _module_factory[(int)id] = factory;
+}
+
+ModuleInterface *Env::create_module(const char *name, ModuleId *id)
+{
+    LOOP(ModuleId::COUNT, i) {
+        if (strcmp(_module_factory[i]->get_name(), name) == 0) {
+            *id = (ModuleId) i;
+            return _module_factory[i]->create();
+        }
+    }
+    PANIC("Unknown module name " << name <<);
+    return nullptr;
+}
+
 void Env::init(Config *config)
 {
+    LOOP(ModuleId::COUNT, i) {
+        _module_factory[i] = nullptr;
+    }
+    register_modules();
+
     ConfigSetting *data_dir_setting = conf_lookup(config, "data_dir");
     ASSERT_NOT_NULL(data_dir_setting);
     const char *data_dir = conf_setting_get_string(data_dir_setting);

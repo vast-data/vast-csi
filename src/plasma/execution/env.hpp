@@ -9,8 +9,10 @@
 #include <stdint.h>
 #include <limits.h>
 #include <pthread.h>
+#include <plasma/utils/compiler.hpp>
 #include "config.hpp"
 #include "config_internal.hpp"
+#include "modules/module_interface.hpp"
 
 namespace P {
 
@@ -55,6 +57,9 @@ public:
     void set_state(EnvState state) { _state = state; }
     uint32_t get_num_silos() const { return _num_silos; }
 
+    void register_module(ModuleId id, ModuleFactory *factory);
+    ModuleInterface *create_module(const char *name, ModuleId *id OUT);
+
 private:
 
     void init(Conf::Config *config);
@@ -63,6 +68,7 @@ private:
     void wait_for_silos();
 
 private:
+    ModuleFactory *_module_factory[(int)ModuleId::COUNT];
     uint32_t _num_silos;
     Silo **_silos;
     char _data_dir[PATH_MAX];

@@ -8,8 +8,16 @@
  */
 #pragma once
 
+#include <plasma/execution/env.hpp>
+#include "module_interface.hpp"
 #include "plasma/execution/silo.hpp"
 #include "plasma/execution/config.hpp"
 
-void *p_module_init(P::Silo *silo, P::Conf::ConfigSetting *setting);
-void p_module_start(void);
+class PModule : public ModuleInterface {
+public:
+    virtual void *init(P::Silo *silo, P::Conf::ConfigSetting *setting);
+    virtual void start();
+    static ModuleId get_id() { return ModuleId::P; }
+    static const char *get_name() { return "P"; }
+};
+
