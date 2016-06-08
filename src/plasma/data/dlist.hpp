@@ -32,7 +32,7 @@ private:
         Index next;
     };
 public:
-    // Todo: this seems redundant- we should use PPool<DList::Node> for this
+
     class Pool {
     public:
         /*!
