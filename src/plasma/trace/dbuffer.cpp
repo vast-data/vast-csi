@@ -29,7 +29,7 @@ inline bool Buffer::has_room(P_DBUFFER_LENGTH_TYPE length)
 
 void Buffer::write(byte data[], P_DBUFFER_LENGTH_TYPE length)
 {
-    DEBUG_ASSERT(has_room(buf, length));
+    DEBUG_ASSERT(has_room(length));
     memcpy(_mem + _write_index, &length, sizeof(length));
     memcpy(_mem + _write_index + sizeof(length), data, length);
     _write_index += length + sizeof(length);

@@ -513,10 +513,8 @@ static void inner()
     p_show_backtrace();
 }
 
-static void outer(void *arg)
+static void outer(void *arg UNUSED)
 {
-    (void) arg;
-
     inner();
 }
 

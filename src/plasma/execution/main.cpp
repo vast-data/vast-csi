@@ -2,7 +2,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <plasma/utils/assert.hpp>
-#include "../backtrace.h"
+#include <plasma/utils/backtrace.hpp>
 
 #include "env.hpp"
 
@@ -24,7 +24,7 @@ static void error_handler(int sig)
         PANIC();
     }
 
-    p_show_backtrace();
+    P::Backtracer::show_backtrace();
 
     Env::get()->error();
 

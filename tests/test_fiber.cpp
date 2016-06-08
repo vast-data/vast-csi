@@ -5,6 +5,7 @@
 #include "plasma/fiber/scheduler.hpp"
 #include "plasma/fiber/sleep.hpp"
 #include "plasma/utils/macros.hpp"
+#include "plasma/utils/backtrace.hpp"
 
 using namespace P;
 
@@ -150,6 +151,24 @@ TEST(TestSleep, test_fast_sleep)
     Scheduler::run();
     ASSERT_EQ(value, 1);
 
+    Scheduler::destroy();
+}
+
+static void inner()
+{
+    P::Backtracer::show_backtrace();
+}
+
+static void outer(void *arg UNUSED)
+{
+    inner();
+}
+
+TEST(TestBacktrace, test_backtrace)
+{
+    Scheduler::init(&scheduler_config);
+    Fiber::init(FG_A, outer, nullptr, false);
+    Scheduler::run();
     Scheduler::destroy();
 }
 
