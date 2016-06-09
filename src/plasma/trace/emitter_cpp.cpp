@@ -14,6 +14,11 @@ void Emitter::set()
     _emitter = this;
 }
 
+DBuffer *Emitter::get_dbuffer(ComponentId component)
+{
+    return _buffers[(byte) component];
+}
+
 const byte BUFFER_COUNT = 4;
 const byte DEFAULT_BUF_SIZE_MB = 8;
 

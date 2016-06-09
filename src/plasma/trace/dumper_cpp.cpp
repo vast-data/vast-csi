@@ -22,10 +22,10 @@ void Dumper::init(ConfigSetting *setting, Emitter *emitter, const char *dir)
     _running = false;
     _emitter = emitter;
 
-    LOOP((int)ComponentId::COUNT, i) {
-        _readers[(int)i] = nullptr;
-        _files[(int)i] = nullptr;
-        _times[(int)i] = 0;
+    LOOP((byte)ComponentId::COUNT, i) {
+        _readers[(byte)i] = nullptr;
+        _files[(byte)i] = nullptr;
+        _times[(byte)i] = 0;
     }
 
     LOOP(conf_setting_length(setting), i) {
@@ -33,8 +33,8 @@ void Dumper::init(ConfigSetting *setting, Emitter *emitter, const char *dir)
         const char *comp_name = conf_setting_name(comp_setting);
         ComponentId comp_id = component_id_from_string(comp_name);
 
-        _readers[(int)comp_id] = new DBufferReader();
-        _readers[(int)comp_id]->init(emitter->_buffers[(int)comp_id]);
+        _readers[(byte)comp_id] = new DBufferReader();
+        _readers[(byte)comp_id]->init(emitter->get_dbuffer(comp_id));
 
         ConfigSetting *persistent_setting = conf_setting_lookup_optional(comp_setting, "persistent");
         bool persistent = DEFAULT_PERSISTENT;
@@ -44,15 +44,15 @@ void Dumper::init(ConfigSetting *setting, Emitter *emitter, const char *dir)
         if (!persistent)
             continue;
 
-        _files[(int)comp_id] = new TraceFile();
-        _files[(int)comp_id]->init_from_setting(nullptr, dir, comp_setting);
+        _files[(byte)comp_id] = new TraceFile();
+        _files[(byte)comp_id]->init_from_setting(nullptr, dir, comp_setting);
     }
 }
 
 void Dumper::destroy()
 {
     ASSERT(!_running);
-    LOOP((int)ComponentId::COUNT, i) {
+    LOOP((byte)ComponentId::COUNT, i) {
         if (_readers[i] != nullptr) {
             delete _readers[i];
             if (_files[i] != nullptr) {
@@ -73,7 +73,7 @@ bool Dumper::iteration(bool force)
     TraceRecord record;
     P_DBUFFER_LENGTH_TYPE length;
     bool found = false;
-    LOOP((int)ComponentId::COUNT, i) {
+    LOOP((byte)ComponentId::COUNT, i) {
         if (_files[i] != nullptr) {
             auto read_result = _readers[i]->read((byte*) &record, &length, force);
             switch (read_result) {
@@ -131,7 +131,7 @@ void Dumper::start()
     ASSERT(!_running);
     _stop = false;
 
-    LOOP((int)ComponentId::COUNT, i) {
+    LOOP((byte)ComponentId::COUNT, i) {
         _running = true;
         const char *comp = component_id_to_string((ComponentId) i);
         snprintf(_file_prefixes[i], MAX_PREFIX_SIZE, "%s.%ld", comp, syscall(SYS_gettid));

@@ -35,11 +35,11 @@
 namespace P { namespace Trace {
 
 class Emitter {
-    friend class Dumper;
 public:
     void init(Conf::ConfigSetting *setting);
     void destroy();
     void set();
+    DBuffer *get_dbuffer(ComponentId component); // used only by the dumper
 
     static thread_local Emitter *_emitter;
 
