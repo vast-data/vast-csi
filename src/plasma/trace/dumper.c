@@ -19,7 +19,6 @@ struct PTraceDumper {
     uint64_t times[COMPONENT_COUNT];
     PTraceEmitter *emitter;
     pthread_t pthread;
-    uint32_t bytes_written;
     volatile bool stop;
     volatile bool running;
 };
@@ -31,7 +30,6 @@ PTraceDumper *p_trace_dumper_init(PConfigSetting *setting, PTraceEmitter *emitte
     PTraceDumper *dumper = p_safe_malloc(sizeof(PTraceDumper));
     dumper->stop = false;
     dumper->running = false;
-    dumper->bytes_written = 0;
     dumper->emitter = emitter;
 
     LOOP(COMPONENT_COUNT, i) {

@@ -1,3 +1,4 @@
+/* Copyright (C) Vast Data Ltd. */
 #include "file.hpp"
 
 #include <cstdio>

@@ -19,7 +19,7 @@
 
 #define P_TRACE(severity, component, fmt, ...) do {                                 \
         static P::Trace::TraceInfo SECTIONIZE(traces) info = {fmt, __FILE__, "<temp>", __LINE__, __func__}; \
-        P::Trace::validate_format(fmt, __VA_ARGS__);                                \
+        P::Trace::validate_format(fmt, ##__VA_ARGS__);                              \
         P::Trace::Emitter::trace(severity, component, &info, ##__VA_ARGS__);        \
 } while(0)
 
@@ -35,6 +35,7 @@
 namespace P { namespace Trace {
 
 class Emitter {
+    friend class Dumper;
 public:
     void init(Conf::ConfigSetting *setting);
     void destroy();

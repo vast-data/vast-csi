@@ -10,9 +10,11 @@
 
 #include "compiler.hpp"
 #include "macros.hpp"
+#include "backtrace.hpp"
 
 #define PANIC(message) {                                                \
         std::cerr << "PANIC: " message "\nat file: " __FILE__ " line: " MACRO_STRINGIFY(__LINE__) " func: " << __PRETTY_FUNCTION__ << "\n"; \
+        P::Backtracer::show_backtrace();                                \
         std::abort();                                                   \
     }
 

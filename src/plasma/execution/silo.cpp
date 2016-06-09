@@ -23,7 +23,7 @@ namespace P {
 
 using namespace P::Conf;
 
-static __thread Silo *current_silo = nullptr;
+static thread_local Silo *current_silo = nullptr;
 
 void Silo::init(ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, const char *data_dir)
 {

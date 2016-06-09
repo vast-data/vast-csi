@@ -4,6 +4,7 @@
 #include "plasma/trace/dbuffer.hpp"
 #include "plasma/trace/emitter.hpp"
 #include "plasma/trace/file.hpp"
+#include "plasma/trace/dumper.hpp"
 #include "plasma/utils/macros.hpp"
 #include "plasma/utils/units.hpp"
 #include "plasma/utils/os.hpp"
@@ -165,19 +166,58 @@ TEST(Trace, emitter)
     const char *str = "ABC";
     float f = 1.2f;
 
+    PT_INFO("Parameterless trace");
     PT_INFO("Int: %d. Long: %ld. Ptr: %p. Str: %s. Float: %f", i, l, ptr, str, f);
 
+    byte string[5000];
+    LOOP(4998, index)
+        string[index] = 'a';
+    string[4999] = '\0';
+
+    LOOP(10, _)
+        PT_INFO("Long trace: %s", (char*) string);
+
+    emitter.destroy();
+    conf_destroy(conf);
+}
+
+#define DATADIR "data"
+
+TEST(Trace, dumper)
+{
+    Config* conf = conf_init();
+
+    ASSERT_EQ(conf_read_string(conf, config_string), true);
+
+    ConfigSetting *setting = conf_lookup(conf, "traces");
+
+    Emitter emitter;
+    emitter.init(setting);
+
+    Dumper dumper;
+    dumper.init(setting, &emitter, DATADIR);
+
+    emitter.set();
+    dumper.start();
+
+    LOOP(10000000, _)
+        PT_INFO("Kawabanga");
+
+    dumper.stop();
+    dumper.wait();
+
+    dumper.destroy();
     emitter.destroy();
     conf_destroy(conf);
 }
 
 TEST(Trace, file)
 {
-    ensure_directory_exists("build/testdata");
+    ensure_directory_exists(DATADIR);
 
     TraceRecord record;
     TraceFile file;
-    file.init("test", "build/testdata", UNIT_MiB * 2, 3);
+    file.init("test", DATADIR, UNIT_MiB * 2, 3);
     LOOP(2000, _)
         file.emit(&record, sizeof(record) - 3);
     file.destroy();
