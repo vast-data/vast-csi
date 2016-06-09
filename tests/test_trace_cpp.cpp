@@ -171,7 +171,8 @@ TEST(Trace, emitter)
     double d = 1.4;
 
     PT_INFO("Parameterless trace");
-    PT_INFO("%ld %d %hd %c %p %s %f %lf %c", l, i, s, c, ptr, str, f, d, b);
+    LOOP(1000000, _)
+        PT_INFO("%ld %d %hd %c %p %s %f %lf %c", l, i, s, c, ptr, str, f, d, b);
 
     byte string[5000];
     LOOP(4998, index)
@@ -204,8 +205,8 @@ TEST(Trace, dumper)
     emitter.set();
     dumper.start();
 
-    LOOP(10000000, _)
-        PT_INFO("Kawabanga");
+    LOOP(1000000, i)
+        PT_INFO("Kawabanga: %ld!", i);
 
     dumper.stop();
     dumper.wait();

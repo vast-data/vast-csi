@@ -82,13 +82,13 @@ for int_specifier in 'di':
     specifier_map['t' + int_specifier] = ctypes.c_longlong # ptrdiff_t
 for unsigned_specifier in 'uoxX':
     specifier_map[unsigned_specifier] = ctypes.c_uint
-    specifier_map['hh' + int_specifier] = ctypes.c_ubyte
-    specifier_map['h' + int_specifier] = ctypes.c_ushort
-    specifier_map['l' + int_specifier] = ctypes.c_ulong
-    specifier_map['ll' + int_specifier] = ctypes.c_ulonglong
-    specifier_map['j' + int_specifier] = ctypes.c_ulonglong
-    specifier_map['z' + int_specifier] = ctypes.c_longlong # size_t
-    specifier_map['t' + int_specifier] = ctypes.c_longlong # ptrdiff_t
+    specifier_map['hh' + unsigned_specifier] = ctypes.c_ubyte
+    specifier_map['h' + unsigned_specifier] = ctypes.c_ushort
+    specifier_map['l' + unsigned_specifier] = ctypes.c_ulong
+    specifier_map['ll' + unsigned_specifier] = ctypes.c_ulonglong
+    specifier_map['j' + unsigned_specifier] = ctypes.c_ulonglong
+    specifier_map['z' + unsigned_specifier] = ctypes.c_longlong # size_t
+    specifier_map['t' + unsigned_specifier] = ctypes.c_longlong # ptrdiff_t
 for float_specifier in 'fFeEgGaA':
     for length_specifier, dtype in [('', ctypes.c_float), ('l', ctypes.c_double)]:
         specifier_map[length_specifier + float_specifier] = dtype
