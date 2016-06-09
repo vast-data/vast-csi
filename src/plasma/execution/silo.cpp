@@ -10,7 +10,7 @@
 #include <stdio.h>
 
 #include <plasma/internal.h>
-#include <plasma/memory/p_alloc.h>
+#include <plasma/memory/alloc.hpp>
 #include "plasma/utils/macros.hpp"
 #include "plasma/utils/os.hpp"
 #include "vdefs.hpp"

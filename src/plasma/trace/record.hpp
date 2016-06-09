@@ -10,13 +10,13 @@
 
 namespace P { namespace Trace {
 
-#define TRACE_SEVERITY_LIST(X)         \
-    X(DEV),                            \
-    X(DEBUG),                          \
-    X(INFO),                           \
-    X(WARN),                           \
-    X(ERROR),                          \
-    X(COUNT)                           \
+#define TRACE_SEVERITY_LIST(X)              \
+        X(SEVERITY_DEV),                    \
+        X(SEVERITY_DEBUG),                  \
+        X(SEVERITY_INFO),                   \
+        X(SEVERITY_WARN),                   \
+        X(SEVERITY_ERROR),                  \
+        X(SEVERITY_COUNT)                   \
 
 DEFINE_LOOKUP_PROTOTYPES_CPP(TRACE_SEVERITY_LIST,
                              Severity, // the name of the enum
@@ -60,6 +60,11 @@ static_assert(TRACE_INFO_SIZE == sizeof(TraceInfo), "TraceInfo size mismatch");
 static uint16_t get_trace_info_index(TraceInfo *info)
 {
     return (uint16_t) (((uintptr_t) info - (uintptr_t) &__start_traces) / sizeof(TraceInfo));
+}
+
+static size_t get_trace_section_size()
+{
+    return (uintptr_t) __stop_traces - (uintptr_t) __start_traces;
 }
 
 }}

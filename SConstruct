@@ -119,12 +119,11 @@ c_env.AlwaysBuild('docs')
 # ----- C++ Environment ----- #
 
 cpp_env = env.Clone()
-cpp_env.Append(LIBS=c_lib)
 cpp_env.Append(CXXFLAGS=['-std=c++11'])
 cpp_sources = [DEFAULT_BUILD_DIR + '/' + i for i in RGlob('src', '*.cpp', [], ['src/plasma/execution/main.cpp'])]
-cpp_sources = cpp_sources + [DEFAULT_BUILD_DIR + '/tests/test_module.cpp']
+cpp_sources = cpp_sources + [DEFAULT_BUILD_DIR + '/tests/test_module.cpp', murmur]
 cpp_lib = cpp_env.Library(target='dist/orion_cpp', source=cpp_sources)
-cpp_env.Append(LIBS=[cpp_lib, c_lib])
+cpp_env.Append(LIBS=[cpp_lib])
 cpp_env.Program(target='dist/env', source=[DEFAULT_BUILD_DIR + '/src/plasma/execution/main.cpp'])
 
 def AddCppTest(target, source, wrap=[]):

@@ -3,8 +3,11 @@
 
 #include "plasma/trace/dbuffer.hpp"
 #include "plasma/trace/emitter.hpp"
+#include "plasma/trace/file.hpp"
 #include "plasma/utils/macros.hpp"
-#include "plasma/memory/p_alloc.h"
+#include "plasma/utils/units.hpp"
+#include "plasma/utils/os.hpp"
+#include "plasma/memory/alloc.hpp"
 #include "plasma/execution/config.hpp"
 #include "plasma/execution/config_internal.hpp"
 
@@ -136,7 +139,7 @@ TEST(DBuffer, overflow_four_buffers)
 
 static char config_string[] = QUOTE(traces: {
     PLASMA: {
-        min_severity: "DEBUG",
+        min_severity: "SEVERITY_DEBUG",
         buffer_size_mb: 1,
         persistent: true,
         file_size_mb: 2,
@@ -166,6 +169,18 @@ TEST(Trace, emitter)
 
     emitter.destroy();
     conf_destroy(conf);
+}
+
+TEST(Trace, file)
+{
+    ensure_directory_exists("build/testdata");
+
+    TraceRecord record;
+    TraceFile file;
+    file.init("test", "build/testdata", UNIT_MiB * 2, 3);
+    LOOP(2000, _)
+        file.emit(&record, sizeof(record) - 3);
+    file.destroy();
 }
 
 int main(int argc, char **argv)

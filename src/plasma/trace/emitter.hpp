@@ -23,11 +23,11 @@
         P::Trace::Emitter::trace(severity, component, &info, ##__VA_ARGS__);        \
 } while(0)
 
-#define PT_DEV(...) P_TRACE(P::Trace::Severity::DEV, CURRENT_COMPONENT, __VA_ARGS__)
-#define PT_DEBUG(...) P_TRACE(P::Trace::Severity::DEBUG, CURRENT_COMPONENT, __VA_ARGS__)
-#define PT_INFO(...) P_TRACE(P::Trace::Severity::INFO, CURRENT_COMPONENT, __VA_ARGS__)
-#define PT_WARN(...) P_TRACE(P::Trace::Severity::WARN, CURRENT_COMPONENT, __VA_ARGS__)
-#define PT_ERROR(...) P_TRACE(P::Trace::Severity::ERROR, CURRENT_COMPONENT, __VA_ARGS__)
+#define PT_DEV(...) P_TRACE(P::Trace::Severity::SEVERITY_DEV, CURRENT_COMPONENT, __VA_ARGS__)
+#define PT_DEBUG(...) P_TRACE(P::Trace::Severity::SEVERITY_DEBUG, CURRENT_COMPONENT, __VA_ARGS__)
+#define PT_INFO(...) P_TRACE(P::Trace::Severity::SEVERITY_INFO, CURRENT_COMPONENT, __VA_ARGS__)
+#define PT_WARN(...) P_TRACE(P::Trace::Severity::SEVERITY_WARN, CURRENT_COMPONENT, __VA_ARGS__)
+#define PT_ERROR(...) P_TRACE(P::Trace::Severity::SEVERITY_ERROR, CURRENT_COMPONENT, __VA_ARGS__)
 
 #define P_TRACE_MAX_STR_LEN 4096
 #define P_TRACE_STR_LEN_TYPE uint16_t
@@ -45,7 +45,7 @@ public:
     template<typename... Args>
     static void trace(Severity severity, ComponentId component, TraceInfo *info, Args... args)
     {
-        if (!MACRO_IS_SET(DEBUG) && severity == Severity::DEV)
+        if (!MACRO_IS_SET(DEBUG) && severity == Severity::SEVERITY_DEV)
             return;
         if (unlikely(_emitter == nullptr || _emitter->_min_severity[(byte) component] > severity))
             return;

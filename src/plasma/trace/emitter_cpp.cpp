@@ -21,7 +21,7 @@ void Emitter::init(ConfigSetting *setting)
 {
     // start off with all components disabled (indicated by maximal severity).
     LOOP(ComponentId::COUNT, i) {
-        _min_severity[i] = Severity::COUNT;
+        _min_severity[i] = Severity::SEVERITY_COUNT;
         _buffers[i] = nullptr;
     }
 
@@ -41,7 +41,7 @@ void Emitter::init(ConfigSetting *setting)
         _buffers[comp_id]->init(BUFFER_COUNT, buf_size * UNIT_MiB);
 
         ConfigSetting *min_severity_setting = conf_setting_lookup_optional(comp_setting, "min_severity");
-        Severity min_severity = Severity::DEBUG;
+        Severity min_severity = Severity::SEVERITY_DEBUG;
         if (min_severity_setting != nullptr)
             min_severity = severity_from_string(conf_setting_get_string(min_severity_setting));
         _min_severity[comp_id] = min_severity;

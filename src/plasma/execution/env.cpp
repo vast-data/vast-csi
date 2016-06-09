@@ -3,7 +3,7 @@
 #include <pthread.h>
 #include <plasma/utils/assert.hpp>
 #include <plasma/utils/os.hpp>
-#include <plasma/memory/p_alloc.h>
+#include <plasma/memory/alloc.hpp>
 #include <unistd.h>
 #include <pthread.h>
 #include "config_internal.hpp"

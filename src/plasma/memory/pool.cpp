@@ -3,7 +3,7 @@
 
 #include "plasma/utils/assert.hpp"
 #include "plasma/utils/types.hpp"
-#include "plasma/memory/p_alloc.h"
+#include "plasma/memory/alloc.hpp"
 
 #define INDEX_TO_VALUE(index) (*((Index*) index_to_address(index)))
 
