@@ -9,15 +9,15 @@
 #include <pthread.h>
 #include <stdio.h>
 
-#include <plasma/internal.h>
-#include <plasma/memory/alloc.hpp>
-#include "plasma/utils/macros.hpp"
-#include "plasma/utils/os.hpp"
-#include "vdefs.hpp"
-#include "../fiber/fiber.hpp"
-#include "config.hpp"
-#include "env.hpp"
 #include "../../modules/module_interface.hpp"
+#include "../utils/macros.hpp"
+#include "../utils/os.hpp"
+#include "../memory/alloc.hpp"
+#include "../fiber/fiber.hpp"
+#include "../internal.hpp"
+#include "config.hpp"
+#include "vdefs.hpp"
+#include "env.hpp"
 
 namespace P {
 
@@ -66,8 +66,8 @@ void Silo::init(ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, co
     ensure_directory_exists(_trace_dir_path);
 
     ConfigSetting *trace_config = conf_setting_lookup_required(silo_config, "traces");
-//    _trace_emitter = p_trace_emitter_init(trace_config);
-//    _trace_dumper = p_trace_dumper_init(trace_config, _trace_emitter, _trace_dir_path);
+    _trace_emitter.init(trace_config);
+    _trace_dumper.init(trace_config, &_trace_emitter, _trace_dir_path);
 }
 
 static void pin_to_core(int32_t core_id)
@@ -93,7 +93,7 @@ void Silo::silo_start_in_fiber()
 
     LOOP(ModuleId::COUNT, i) {
         if (_modules[i].defined) {
-//            PT_INFO("Starting module: %s.", module_id_to_string((ModuleId) i));
+            PT_INFO("Starting module: %s.", get_module_name((ModuleId) i));
             _modules[i].module->start();
         }
     }
@@ -122,10 +122,10 @@ void *Silo::silo_main()
         pin_to_core(_affinity);
     current_silo = this;
 
-//    p_trace_emitter_set(_trace_emitter);
-//    p_trace_dumper_start(_trace_dumper);
+    _trace_emitter.set();
+    _trace_dumper.start();
 
-//    PT_INFO("Silo started. Affinity set to: %d.", _affinity);
+    PT_INFO("Silo started. Affinity set to: %d.", _affinity);
 
     Scheduler::init(&_scheduler_config);
     Fiber::init((P::Index)FiberGroupId::P, silo_start_in_fiber_func, this, false);
@@ -133,10 +133,10 @@ void *Silo::silo_main()
     // we shouldn't regularly get here. it means all fiber have finished running.
     Scheduler::destroy();
 
-//    PT_INFO("Silo finished.");
+    PT_INFO("Silo finished.");
 
-//    p_trace_dumper_stop(_trace_dumper);
-//    p_trace_dumper_wait(_trace_dumper);
+    _trace_dumper.stop();
+    _trace_dumper.wait();
 
     return nullptr;
 }
@@ -173,16 +173,16 @@ void *Silo::get_component_state(ComponentId component_id)
 
 void Silo::halt()
 {
-//    p_trace_dumper_stop(_trace_dumper);
-//    p_trace_dumper_wait(_trace_dumper);
+    _trace_dumper.stop();
+    _trace_dumper.wait();
 
     pthread_kill(_pthread, SIGSTOP);
 }
 
 void Silo::destroy()
 {
-//    p_trace_dumper_destroy(_trace_dumper);
-//    p_trace_emitter_destroy(_trace_emitter);
+    _trace_dumper.destroy();
+    _trace_emitter.destroy();
     delete[] _scheduler_config.fiber_groups;
 }
 

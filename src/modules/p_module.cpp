@@ -2,11 +2,10 @@
 #include "plasma/io/io_provider.hpp"
 #include "plasma/fiber/fiber.hpp"
 #include "plasma/utils/types.hpp"
+#include "plasma/internal.hpp"
 
 using namespace P::Conf;
 using P::Silo;
-
-#define CURRENT_COMPONENT ComponentId::PLASMA
 
 typedef struct PModuleState PModuleState;
 struct PModuleState {

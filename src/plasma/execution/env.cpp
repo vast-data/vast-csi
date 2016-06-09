@@ -1,3 +1,4 @@
+/* Copyright (C) Vast Data Ltd. */
 #include <plasma/utils/macros.hpp>
 #include <signal.h>
 #include <pthread.h>
@@ -52,7 +53,6 @@ error:
 
 void Env::register_module(ModuleId id, ModuleFactory *factory)
 {
-    printf("register %d\n", id);
     _module_factory[(int)id] = factory;
 }
 

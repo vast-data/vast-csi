@@ -6,6 +6,8 @@
  */
 #pragma once
 
+#include <atomic>
+
 #include "../utils/types.hpp"
 #include "../utils/compiler.hpp"
 
@@ -43,7 +45,7 @@ private:
     Buffer *current_buffer();
 
     Buffer *_buffers;
-    volatile uint32_t _generation;
+    std::atomic<uint32_t> _generation;
     uint8_t _buffer_count;
 };
 

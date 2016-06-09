@@ -37,3 +37,4 @@ public:
 };
 
 void register_modules();
+const char *get_module_name(ModuleId module_id);

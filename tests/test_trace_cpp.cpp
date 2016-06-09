@@ -162,12 +162,16 @@ TEST(Trace, emitter)
 
     long l = 1;
     int i = 2;
+    short s = 3;
+    char c = '4';
+    bool b = true;
     void *ptr = &l;
     const char *str = "ABC";
     float f = 1.2f;
+    double d = 1.4;
 
     PT_INFO("Parameterless trace");
-    PT_INFO("Int: %d. Long: %ld. Ptr: %p. Str: %s. Float: %f", i, l, ptr, str, f);
+    PT_INFO("%ld %d %hd %c %p %s %f %lf %c", l, i, s, c, ptr, str, f, d, b);
 
     byte string[5000];
     LOOP(4998, index)
@@ -181,7 +185,7 @@ TEST(Trace, emitter)
     conf_destroy(conf);
 }
 
-#define DATADIR "data"
+#define DATADIR "build/data"
 
 TEST(Trace, dumper)
 {

@@ -68,8 +68,8 @@ private:
     uint64_t _times[(int)ComponentId::COUNT];
     Emitter *_emitter;
     pthread_t _pthread;
-    volatile bool _stop;
-    volatile bool _running;
+    std::atomic<bool> _stop;
+    std::atomic<bool> _running;
 };
 
 }}

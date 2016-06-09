@@ -25,3 +25,10 @@ void register_modules()
     }
 }
 
+const char *get_module_name(ModuleId module_id)
+{
+    for (auto *factory : factories)
+        if (factory->get_id() == module_id)
+            return factory->get_name();
+    PANIC("ModuleId not found");
+}

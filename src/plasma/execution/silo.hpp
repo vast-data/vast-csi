@@ -12,8 +12,8 @@
 #include <modules/module_interface.hpp>
 #include <plasma/fiber/scheduler.hpp>
 
-//#include "../trace/emitter.h"
-//#include "../trace/dumper.h"
+#include "../trace/emitter.hpp"
+#include "../trace/dumper.hpp"
 #include "../vdefs.hpp"
 #include "config.hpp"
 
@@ -129,8 +129,8 @@ private:
     Module _modules[(int)ModuleId::COUNT];
     SchedulerConfig _scheduler_config;
     char _trace_dir_path[PATH_MAX];
-//    PTraceEmitter *_trace_emitter;
-//    PTraceDumper *_trace_dumper;
+    Trace::Emitter _trace_emitter;
+    Trace::Dumper _trace_dumper;
     pthread_t _pthread;
     int32_t _affinity;
     SiloId _silo_id;
