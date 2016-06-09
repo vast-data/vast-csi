@@ -11,16 +11,16 @@ using P::Silo;
 typedef struct PModuleState PModuleState;
 struct PModuleState {
     P::IOProvider io_provider;
-    P::AtomicPool iopool;
+    P::AtomicPool<P::DevIO::IO> iopool;
     P::DevIO *devices;
     char foo;
 };
 
-void PModule::init_io_from_settings(ConfigSetting *io_module, P::DevIO **devices, P::AtomicPool *iopool, P::IOProvider *io_provider)
+void PModule::init_io_from_settings(ConfigSetting *io_module, P::DevIO **devices, P::AtomicPool<P::DevIO::IO> *iopool, P::IOProvider *io_provider)
 {
     ConfigSetting* iopool_count_setting = conf_setting_lookup_required(io_module, "io_pool_count");
-    P::Index iopool_count = (P::Index) conf_setting_get_int32(iopool_count_setting);
-    iopool->init(iopool_count, sizeof(P::DevIO::IO));
+    size_t iopool_count = conf_setting_get_int32(iopool_count_setting);
+    iopool->init(iopool_count);
 
     ConfigSetting *io_provider_setting = conf_setting_lookup_required(io_module, "io_provider");
     ConfigSetting *devices_setting = conf_setting_lookup_required(io_provider_setting, "devices");

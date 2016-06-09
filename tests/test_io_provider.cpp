@@ -260,7 +260,8 @@ TEST(TestIOProvider, test)
     const char *dev_path = create_device_file(io_module);
 
     P::DevIO *devices;
-    P::AtomicPool iopool;
+    P::AtomicPool<P::DevIO::IO> iopool;
+
     P::IOProvider io_provider;
 
     PModule::init_io_from_settings(io_module, &devices, &iopool, &io_provider);

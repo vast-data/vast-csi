@@ -12,10 +12,11 @@
 
 #include <stddef.h>
 #include "plasma/sync/sem.hpp"
-#include "pool.hpp"
+#include "object_pool.hpp"
 
 namespace P {
 
+template<typename T>
 class AtomicPool {
 public:
     /*!
@@ -23,37 +24,27 @@ public:
      * When finished with the PAtomicPool call destroy.
      * \param element_count is the maximum value of elements to be used concurrently.
      */
-    void init(Index element_count, size_t element_size);
-
-    /*!
-     * Retrieve an identifier of the element in the pool (index)
-     */
-    Index  element_to_index(void *element) { return _pool.address_to_index(element); }
-
-    /*!
-     * Get an element address from it's pool identifier (index)
-     */
-    void *index_to_element(Index index) { return _pool.index_to_address(index); }
+    void init(size_t element_count);
 
     /*!
      * Allocate multiple elements.
      */
-    void alloc_multiple(Index idle_elements[] OUT, uint32_t element_count);
+    void alloc_multiple(T* idle_elements[] OUT, uint32_t element_count);
 
     /*!
      * Free multiple elements
      */
-    void free_multiple(Index returned_elements[], uint32_t element_count);
+    void free_multiple(T* returned_elements[], uint32_t element_count);
 
     /*!
      * Allocate a single element
      */
-    void *alloc();
+    T *alloc();
 
     /*!
      * Free a single element
      */
-    void free(void *element);
+    void free(T *element);
 
     /*!
      * Release PIOPool structure resources.
@@ -62,7 +53,56 @@ public:
 
 private:
     Sync::Sem _idle_elements;
-    Pool _pool;
+    ObjectPool<T> _pool;
 };
+
+template<typename T>
+void AtomicPool<T>::init(size_t element_count)
+{
+    _pool.init(element_count);
+    _idle_elements.init((uint32_t) element_count);
+}
+
+template<typename T>
+void AtomicPool<T>::alloc_multiple(T* idle_elements[] OUT, uint32_t element_count)
+{
+    _idle_elements.dec(element_count);
+
+    LOOP_TYPE(uint32_t, element_count, element_index) {
+        idle_elements[element_index] = _pool.alloc();
+        ASSERT_NOT_NULL(idle_elements[element_index]);
+    }
+}
+
+template<typename T>
+void AtomicPool<T>::free_multiple(T* returned_elements[], uint32_t element_count)
+{
+    LOOP_TYPE(uint32_t, element_count, element_index) {
+        _pool.free(returned_elements[element_index]);
+    }
+
+    _idle_elements.inc(element_count);
+}
+
+template<typename T>
+T *AtomicPool<T>::alloc()
+{
+    T* idle_element;
+    alloc_multiple(&idle_element, 1);
+    return idle_element;
+}
+
+template<typename T>
+void AtomicPool<T>::free(T *element)
+{
+    free_multiple(&element, 1);
+}
+
+template<typename T>
+void AtomicPool<T>::destroy()
+{
+    _idle_elements.destroy();
+    _pool.destroy();
+}
 
 }

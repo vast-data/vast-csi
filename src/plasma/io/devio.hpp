@@ -75,7 +75,7 @@ public:
      *  When 0 is passed device size is auto determined (block device only).
      */
     bool WARN_UNUSED init(const char dev_name[],
-                      uint32_t iodepth, AtomicPool *iopool, size_t device_size) WARN_UNUSED;
+                      uint32_t iodepth, AtomicPool<IO> *iopool, size_t device_size) WARN_UNUSED;
 
     /*!
      * Perform a scatter => scatter write operation
@@ -170,7 +170,7 @@ private:
     Sync::Sem _available_ios;
     int _file_desc;
     char _dev_name[PATH_MAX];
-    AtomicPool *_iopool;
+    AtomicPool<IO> *_iopool;
     IOProvider *_io_provider;
     size_t _size;    // in bytes.
     uint32_t _iodepth;

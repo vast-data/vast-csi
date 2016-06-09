@@ -12,7 +12,7 @@ namespace P {
 static const RetryParams io_submit_retry_params = { .max_spinning_attempts = 100, .attempts_per_yield = 5, .max_attempts = 1000 };
 static const RetryParams io_poll_retry_params = { .max_spinning_attempts = 100, .attempts_per_yield = 5, .max_attempts = 1000 };
 
-bool DevIO::init(const char dev_name[], uint32_t iodepth, AtomicPool *iopool, size_t device_size)
+bool DevIO::init(const char dev_name[], uint32_t iodepth, AtomicPool<DevIO::IO> *iopool, size_t device_size)
 {
     _iodepth = iodepth;
     _iopool = iopool;
@@ -78,12 +78,11 @@ void DevIO::allocate_ios(struct iocb *ios[], uint32_t count, DevIO::Future *io_f
 {
     bool was_idle = (_available_ios.value() == _iodepth);
     _available_ios.dec(count);
-    Index element_idices[count];
-    _iopool->alloc_multiple(element_idices, count);
+    IO* io_objects[count];
+    _iopool->alloc_multiple(io_objects, count);
     LOOP(count, i) {
-        IO *io = (IO*)_iopool->index_to_element(element_idices[i]);
-        io->io_future = io_future;
-        ios[i] = &io->io;
+        io_objects[i]->io_future = io_future;
+        ios[i] = &io_objects[i]->io;
     }
 
     if (was_idle) {
@@ -115,7 +114,7 @@ void DevIO::handle_io_done(struct iocb *iocb_done)
     }
 
     io->io_future = nullptr;
-    _iopool->free((void*)io);
+    _iopool->free(io);
 }
 
 void DevIO::validate_io_event(struct io_event *event)
@@ -124,9 +123,8 @@ void DevIO::validate_io_event(struct io_event *event)
     if (event->res != io_size) {
         // TODO: get res and possibly res2- log all that we can here
         DevIO::IO *io =  container_of(event->obj, DevIO::IO, io);
-        Index index = _iopool->element_to_index(io);
-        printf("IO error: index=%u, res=%ld, res2=%ld nbytes = %ld, opcode = %d\n",
-               index, (long)event->res, (long)event->res2,
+        printf("IO error: res=%ld, res2=%ld nbytes = %ld, opcode = %d\n",
+               (long)event->res, (long)event->res2,
                (long)event->obj->u.c.nbytes, event->obj->aio_lio_opcode);
         io->io_future->res = ReturnCode::ERROR;
     }
