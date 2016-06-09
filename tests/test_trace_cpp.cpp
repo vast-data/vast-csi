@@ -36,7 +36,7 @@ TEST(DBuffer, sanity)
     ASSERT_EQ(length, 4);
     ASSERT_FALSE(memcmp(data, out, 4));
 
-    p_fill_zeroes(out, 4);
+    P::fill_zeroes(out, 4);
     ASSERT_EQ(reader.read(out, &length, true), DBufferReader::ReadResult::SUCCESS);
     ASSERT_EQ(length, 2);
     ASSERT_FALSE(memcmp(data, out, 2));
@@ -63,7 +63,7 @@ TEST(DBuffer, wraparound)
     ASSERT_EQ(reader.read(out, &length, false), DBufferReader::ReadResult::SUCCESS);
     ASSERT_FALSE(memcmp(data, out, 8));
 
-    p_fill_zeroes(out, 8);
+    P::fill_zeroes(out, 8);
     ASSERT_EQ(reader.read(out, &length, false), DBufferReader::ReadResult::NEXT);
     ASSERT_EQ(reader.read(out, &length, true), DBufferReader::ReadResult::SUCCESS);
 
@@ -94,7 +94,7 @@ TEST(DBuffer, overflow_two_buffers)
     ASSERT_FALSE(memcmp(data, out, 8));
     ASSERT_EQ(length, 8);
 
-    p_fill_zeroes(out, 8);
+    P::fill_zeroes(out, 8);
     ASSERT_EQ(reader.read(out, &length, false), DBufferReader::ReadResult::NEXT);
     ASSERT_EQ(reader.read(out, &length, true), DBufferReader::ReadResult::SUCCESS);
 
@@ -127,7 +127,7 @@ TEST(DBuffer, overflow_four_buffers)
         ASSERT_EQ(reader.read(out, &length, false), DBufferReader::ReadResult::NEXT);
     }
 
-    p_fill_zeroes(out, 4);
+    P::fill_zeroes(out, 4);
     ASSERT_EQ(reader.read(out, &length, false), DBufferReader::ReadResult::NOTHING);
     ASSERT_EQ(reader.read(out, &length, true), DBufferReader::ReadResult::SUCCESS);
     ASSERT_FALSE(memcmp(data, out, 4));

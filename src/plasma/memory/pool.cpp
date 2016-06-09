@@ -14,7 +14,7 @@ void Pool::partitioned_init(size_t block_size, Index num_partitions, Index parti
     // validate block_size is larger than the index it will contain.
     ASSERT_OP(block_size, >=, sizeof(Index), "invalid block size");
 
-    _partitions = (Index *) p_safe_malloc((size_t) num_partitions * sizeof(Index));
+    _partitions = new Index[num_partitions];
     _block_size = block_size;
     _blocks = 0;
     LOOP((size_t) num_partitions, i) {
@@ -24,7 +24,7 @@ void Pool::partitioned_init(size_t block_size, Index num_partitions, Index parti
 
     size_t mem_size = (size_t) _blocks * block_size;
     // allocate a cache aligned buffer and expand it to the nearest cache line (required by aligned_alloc)
-    _mem = p_safe_cache_aligned_malloc(mem_size + mem_size % CACHE_LINE_BYTES);
+    _mem = cache_aligned_new_arr<byte>(mem_size);
     _free_head = 0;
     _num_partitions = num_partitions;
 
@@ -118,8 +118,8 @@ Index Pool::get_initial_n_blocks()
 
 void Pool::destroy()
 {
-    p_free(_partitions);
-    p_free(_mem);
+    delete[] _partitions;
+    aligned_delete(_mem);
 }
 
 }

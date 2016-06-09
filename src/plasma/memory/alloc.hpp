@@ -7,30 +7,44 @@
 
 #pragma once
 
-#include <cstdlib>
+#include "../utils/assert.hpp"
 
 namespace P {
 
-void *p_malloc(size_t size);
+template <typename T, typename... Args>
+inline T* aligned_new(size_t alignment, Args... args)
+{
+    void *ptr = aligned_alloc(alignment, sizeof(T));
+    ASSERT_NOT_NULL(ptr);
+    return new (ptr) T(args...);
+}
 
-/*!
- * p_cache_malloc calls p_malloc and panics if the result is nullptr.
- */
-void *p_safe_malloc(size_t size);
+template <typename T>
+inline T* aligned_new_arr(size_t alignment, size_t arr_len)
+{
+    void *ptr = aligned_alloc(alignment, arr_len * sizeof(T));
+    ASSERT_NOT_NULL(ptr);
+    return new (ptr) T[arr_len](); // elements are initialized
+}
 
-/*!
- * p_cache_aligned_alloc allocates a memory region aligned on a cache line.
- * \param size should be a multiple of a cache line (64 bytes on 64-bit systems).
- */
-void *p_cache_aligned_malloc(size_t size);
+template <typename T, typename... Args>
+inline T* cache_aligned_new(Args... args)
+{
+    return aligned_new<T>(CACHE_LINE_BYTES, args...);
+}
 
-/*!
- * p_safe_cache_aligned_alloc calls p_cache_aligned_alloc() and panics if the result is nullptr
- */
-void *p_safe_cache_aligned_malloc(size_t size);
+template <typename T>
+inline T* cache_aligned_new_arr(size_t arr_len)
+{
+    return aligned_new_arr<T>(CACHE_LINE_BYTES, arr_len);
+}
 
-void p_fill_zeroes(void *buffer, size_t size);
+void
+inline aligned_delete(void *ptr)
+{
+    free(ptr);
+}
 
-void p_free(void *buffer);
+void fill_zeroes(void *buffer, size_t size);
 
 }

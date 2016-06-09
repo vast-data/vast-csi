@@ -44,7 +44,7 @@ public:
          */
         void init(Index size)
         {
-            _nodes = (Node*) p_safe_malloc(sizeof(Node) * (size_t) size);
+            _nodes = new Node[size];
 
         #ifdef DEBUG
             _pool_size = size;
@@ -58,7 +58,7 @@ public:
 
         void destroy()
         {
-            p_free(_nodes);
+            delete[] _nodes;
         }
 
         Node *_nodes;

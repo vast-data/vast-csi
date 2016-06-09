@@ -114,7 +114,7 @@ public:
     void destroy();
 
 private:
-    void *_mem;
+    byte *_mem;
     size_t _block_size;
     Index _num_partitions;
     Index *_partitions;

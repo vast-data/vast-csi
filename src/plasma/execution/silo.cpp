@@ -31,9 +31,7 @@ void Silo::init(ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, co
     _silo_id = silo_id;
 
     _scheduler_config.group_count = (P::Index)FiberGroupId::COUNT;
-    _scheduler_config.fiber_groups =
-        (FiberGroupConfig *) p_safe_malloc(sizeof(FiberGroupConfig) * _scheduler_config.group_count);
-    p_fill_zeroes(_scheduler_config.fiber_groups, sizeof(FiberGroupConfig) * _scheduler_config.group_count);
+    _scheduler_config.fiber_groups = new FiberGroupConfig[_scheduler_config.group_count](); // () assures this is zeroed
 
     ConfigSetting *modules_setting = conf_setting_lookup_required(silo_config, "modules");
     LOOP(conf_setting_length(modules_setting), i) {
@@ -185,7 +183,7 @@ void Silo::destroy()
 {
 //    p_trace_dumper_destroy(_trace_dumper);
 //    p_trace_emitter_destroy(_trace_emitter);
-    p_free(_scheduler_config.fiber_groups);
+    delete[] _scheduler_config.fiber_groups;
 }
 
 }

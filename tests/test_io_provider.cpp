@@ -8,6 +8,7 @@
 #include "../src/plasma/io/io_provider.hpp"
 #include "../src/plasma/execution/config.hpp"
 #include "../src/plasma/memory/atomic_pool.hpp"
+#include "../src/plasma/memory/alloc.hpp"
 
 #include <fcntl.h>
 
@@ -35,7 +36,7 @@ static void generate_scatters(P::IOVec write_buffers[] OUT, size_t buffer_count,
                               const size_t buff_len, P::IOVecs* scatter_per_io[] OUT, uint32_t io_batches[], size_t io_submission_count)
 {
     LOOP(buffer_count, i) {
-        write_buffers[i].iov_base = aligned_alloc(P::DevIO::O_DIRECT_ALIGNMENT, buff_len);
+        write_buffers[i].iov_base = P::aligned_new_arr<P::byte>(P::DevIO::O_DIRECT_ALIGNMENT, buff_len);
         write_buffers[i].iov_len = buff_len;
     }
     // initialize scatters (pointing at the buffers)
@@ -162,8 +163,8 @@ static void multiple_async_rw(P::DevIO *device)
 
     LOOP(buffer_count, i) {
         ASSERT_EQ(0, memcmp(write_buffers[i].iov_base, read_buffers[i].iov_base, buff_len));
-        free(write_buffers[i].iov_base);
-        free(read_buffers[i].iov_base);
+        P::aligned_delete(write_buffers[i].iov_base);
+        P::aligned_delete(read_buffers[i].iov_base);
     }
 }
 
@@ -172,7 +173,8 @@ static void simple_rw(P::DevIO *device)
     char data[] = "Avi Nimni is the king";
 
     static const size_t buff_len = P::DevIO::O_DIRECT_ALIGNMENT;
-    char* write_buffer = (char*)aligned_alloc(P::DevIO::O_DIRECT_ALIGNMENT, buff_len);
+
+    char* write_buffer = P::aligned_new_arr<char>(P::DevIO::O_DIRECT_ALIGNMENT, buff_len);
 
     strncpy(write_buffer, data, sizeof(data));
 
@@ -183,7 +185,7 @@ static void simple_rw(P::DevIO *device)
     P::DevIO::ReturnCode io_ret = device->write(&io, 0, nullptr);
     ASSERT_EQ(io_ret, P::DevIO::ReturnCode::SUCCESS);
 
-    char* read_buffer = (char*)aligned_alloc(P::DevIO::O_DIRECT_ALIGNMENT, buff_len);
+    char* read_buffer = P::aligned_new_arr<char>(P::DevIO::O_DIRECT_ALIGNMENT, buff_len);
 
     io.iov_base = read_buffer;
     io.iov_len = buff_len;
@@ -199,8 +201,8 @@ static void simple_rw(P::DevIO *device)
     int ret = strncmp(write_buffer, read_buffer, buff_len);
     ASSERT_EQ(ret, 0);
 
-    free(write_buffer);
-    free(read_buffer);
+    P::aligned_delete(write_buffer);
+    P::aligned_delete(read_buffer);
 }
 
 static void io_submitter(void *arg)

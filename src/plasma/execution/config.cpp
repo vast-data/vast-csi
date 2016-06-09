@@ -70,7 +70,7 @@ const char *conf_setting_name(ConfigSetting *setting)
 
 Config *conf_init()
 {
-    Config *conf = (Config *) malloc(sizeof(Config));
+    Config *conf = new Config();
     config_init(conf);
     return conf;
 }
@@ -78,7 +78,7 @@ Config *conf_init()
 void conf_destroy(Config *config)
 {
     config_destroy(config);
-    free(config);
+    delete[] config;
 }
 
 int32_t conf_read_file(Config *config, const char *path)
