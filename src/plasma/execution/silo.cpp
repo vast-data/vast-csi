@@ -128,7 +128,7 @@ void *Silo::silo_main()
     PT_INFO("Silo started. Affinity set to: %d.", _affinity);
 
     Scheduler::init(&_scheduler_config);
-    Fiber::init((P::Index)FiberGroupId::P, silo_start_in_fiber_func, this, false);
+    ASSERT_NOT_NULL(Fiber::init((P::Index)FiberGroupId::P, silo_start_in_fiber_func, this, false));
     Scheduler::run();
     // we shouldn't regularly get here. it means all fiber have finished running.
     Scheduler::destroy();

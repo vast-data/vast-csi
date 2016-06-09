@@ -105,7 +105,7 @@
         for (P::byte i = 0; array[i] != nullptr; i++)                   \
             if (strcmp(array[i], string) == 0)                          \
                 return (name)i;                                         \
-        PANIC("invalid " #name);                                        \
+        PANIC("invalid " #name " "<< string << );                       \
     }
 
 /*!

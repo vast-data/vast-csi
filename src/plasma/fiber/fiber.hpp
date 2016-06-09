@@ -17,7 +17,6 @@
 
 namespace P {
 
-typedef struct PFiberGroup PFiberGroup;
 struct FiberGroup {
     size_t stack_size;
     FiberGroup *next_group;
