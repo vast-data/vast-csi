@@ -7,10 +7,10 @@ using P::Silo;
 
 /*static*/ bool TestModule::_init = false;
 /*static*/ bool TestModule::_started = false;
-/*static*/ TestFunc TestModule::_init_func = NULL;
-/*static*/ void *TestModule::_init_func_ctx = NULL;
-/*static*/ TestFunc TestModule::_start_func = NULL;
-/*static*/ void *TestModule::_start_func_ctx = NULL;
+/*static*/ TestFunc TestModule::_init_func = nullptr;
+/*static*/ void *TestModule::_init_func_ctx = nullptr;
+/*static*/ TestFunc TestModule::_start_func = nullptr;
+/*static*/ void *TestModule::_start_func_ctx = nullptr;
 
 
 bool TestModule::is_init()

@@ -23,7 +23,7 @@ namespace P {
 
 using namespace P::Conf;
 
-static __thread Silo *current_silo = NULL;
+static __thread Silo *current_silo = nullptr;
 
 void Silo::init(ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, const char *data_dir)
 {
@@ -109,7 +109,7 @@ Silo *Silo::get()
 SiloId Silo::get_current_silo_id(void)
 {
     Silo *silo = Silo::get();
-    return silo != NULL ? silo->get_id() : INVALID_SILO_ID;
+    return silo != nullptr ? silo->get_id() : INVALID_SILO_ID;
 }
 
 /*static*/ void *Silo::silo_main_func(void *silo_arg)
@@ -140,17 +140,17 @@ void *Silo::silo_main()
 //    p_trace_dumper_stop(_trace_dumper);
 //    p_trace_dumper_wait(_trace_dumper);
 
-    return NULL;
+    return nullptr;
 }
 
 void Silo::start()
 {
-    ASSERT_EQUAL(pthread_create(&_pthread, NULL, silo_main_func, this), 0);
+    ASSERT_EQUAL(pthread_create(&_pthread, nullptr, silo_main_func, this), 0);
 }
 
 void Silo::join()
 {
-    pthread_join(_pthread, NULL);
+    pthread_join(_pthread, nullptr);
 }
 
 /*static*/ Silo::Module *Silo::get_module()

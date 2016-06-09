@@ -31,7 +31,7 @@ TEST(TestAsserts, test_assert_not_null) {
     void *p1 = nullptr;
     ASSERT_DEATH(ASSERT_NOT_NULL(p1), "p1 is NULL");
 
-    void *p2 = NULL;
+    void *p2 = nullptr;
     ASSERT_DEATH(ASSERT_NOT_NULL(p2), "p2 is NULL");
 }
 

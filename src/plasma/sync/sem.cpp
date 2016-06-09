@@ -20,7 +20,7 @@ void Sem::inc(uint32_t count)
 
     do {
         auto fiber = Fiber::queue_peek(&_wait_anchor);
-        if (fiber == NULL) {
+        if (fiber == nullptr) {
             break;
         }
 

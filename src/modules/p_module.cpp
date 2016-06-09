@@ -72,5 +72,5 @@ void PModule::start()
     PModuleState *module_state = (PModuleState *)Silo::get_module_state();
     ASSERT_EQUAL(module_state->foo, 'a');
     ASSERT_EQUAL(COMPONENT_GET_STATE(), module_state);
-    P::Fiber::init((P::Index)FiberGroupId::P_IO_POLLING, p_io_poll_fiber, NULL, false);
+    P::Fiber::init((P::Index)FiberGroupId::P_IO_POLLING, p_io_poll_fiber, nullptr, false);
 }

@@ -51,7 +51,7 @@ void Event::release_all()
     Fiber *fiber;
     do {
         fiber = Fiber::pop_and_resume(&_wait_anchor);
-    } while(fiber != NULL);
+    } while(fiber != nullptr);
 }
 
 }

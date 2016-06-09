@@ -8,12 +8,12 @@ namespace Sync {
 void Qlock::init()
 {
     _anchor.init();
-    _owner = NULL;
+    _owner = nullptr;
 }
 
 bool Qlock::is_locked()
 {
-    return _owner != NULL;
+    return _owner != nullptr;
 }
 
 void Qlock::lock()
@@ -36,7 +36,7 @@ bool Qlock::trylock()
 void Qlock::unlock()
 {
     ASSERT(_owner == Fiber::get_current());
-    _owner = NULL;
+    _owner = nullptr;
     Fiber::pop_and_resume(&_anchor);
 }
 

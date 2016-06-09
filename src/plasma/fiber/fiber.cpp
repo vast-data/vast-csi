@@ -50,7 +50,7 @@ void NO_RETURN Fiber::main()
     Fiber *fiber = Fiber::get_current();
     fiber->_func(fiber->_arg);
 
-    if (fiber->_parent != NULL)
+    if (fiber->_parent != nullptr)
         if (--fiber->_parent->_join_count == 0)
             fiber->_parent->resume();
 

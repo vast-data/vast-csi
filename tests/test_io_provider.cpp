@@ -180,7 +180,7 @@ static void simple_rw(P::DevIO *device)
     io.iov_base = write_buffer;
     io.iov_len = buff_len;
 
-    P::DevIO::ReturnCode io_ret = device->write(&io, 0, NULL);
+    P::DevIO::ReturnCode io_ret = device->write(&io, 0, nullptr);
     ASSERT_EQ(io_ret, P::DevIO::ReturnCode::SUCCESS);
 
     char* read_buffer = (char*)aligned_alloc(P::DevIO::O_DIRECT_ALIGNMENT, buff_len);
@@ -188,7 +188,7 @@ static void simple_rw(P::DevIO *device)
     io.iov_base = read_buffer;
     io.iov_len = buff_len;
 
-    io_ret = device->read(&io, 0, NULL);
+    io_ret = device->read(&io, 0, nullptr);
     ASSERT_EQ(io_ret, P::DevIO::ReturnCode::SUCCESS);
 
     size_t len = strnlen(read_buffer, buff_len);

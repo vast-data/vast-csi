@@ -63,7 +63,7 @@ void *CPool::alloc() {
     {
         LockGuard<Sync::SpinLock> guard(&_lock);
         buffer = _shared_pool.alloc_address();
-        if (buffer != NULL) {
+        if (buffer != nullptr) {
             _shared_count--;
         }
     }

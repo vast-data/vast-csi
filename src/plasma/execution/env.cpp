@@ -95,7 +95,7 @@ void Env::init(Config *config)
         ConfigSetting *silo_type_name_setting = conf_setting_lookup_required(silo_setting, "type");
         ConfigSetting *silo_affinity_setting = conf_setting_lookup_optional(silo_setting, "affinity");
         int32_t affinity =
-            silo_affinity_setting == NULL ? Silo::NO_AFFINITY : conf_setting_get_int32(silo_affinity_setting);
+            silo_affinity_setting == nullptr ? Silo::NO_AFFINITY : conf_setting_get_int32(silo_affinity_setting);
         const char *silo_type_name = conf_setting_get_string(silo_type_name_setting);
         // SiloId is 8 bit
         ASSERT(i < Silo::INVALID_SILO_ID, "invalid silo id");
@@ -103,7 +103,7 @@ void Env::init(Config *config)
                         (SiloId) i, _data_dir);
     }
     // Initialize a barrier for all silos and the main thread, used for synchronizing state
-    ASSERT(pthread_barrier_init(&_state_barrier, NULL, _num_silos + 1) == 0, "failed to initalize barrier");
+    ASSERT(pthread_barrier_init(&_state_barrier, nullptr, _num_silos + 1) == 0, "failed to initalize barrier");
 }
 
 void Env::destroy()

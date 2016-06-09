@@ -8,7 +8,7 @@ namespace Sync {
 
 void RWlock::init()
 {
-    _writer = NULL;
+    _writer = nullptr;
     _wait_anchor.init();
     _read_count = 0;
     _state = Type::FREE;
@@ -16,7 +16,7 @@ void RWlock::init()
 
 void RWlock::destroy()
 {
-    ASSERT(_writer == NULL);
+    ASSERT(_writer == nullptr);
     ASSERT(_read_count == 0);
     ASSERT(_state == Type::FREE);
     ASSERT(_wait_anchor.is_empty());
@@ -30,7 +30,7 @@ void RWlock::lock_read()
     switch(_state) {
     case Type::FREE:
         ASSERT(_read_count == 0);
-        ASSERT(_writer == NULL);
+        ASSERT(_writer == nullptr);
         _state = Type::READ;
         _read_count++;
         break;
@@ -58,7 +58,7 @@ void RWlock::lock_write()
     switch(_state) {
     case Type::FREE:
         ASSERT(_read_count == 0);
-        ASSERT(_writer == NULL);
+        ASSERT(_writer == nullptr);
         _state = Type::WRITE;
         _writer = fiber;
         break;
@@ -88,7 +88,7 @@ void RWlock::unlock()
         break;
     case Type::WRITE:
         ASSERT(_writer == fiber);
-        _writer = NULL;
+        _writer = nullptr;
         _state = Type::FREE;
         break;
     }
@@ -97,7 +97,7 @@ void RWlock::unlock()
     if (_state == Type::FREE) {
         do {
             fiber = Fiber::queue_peek(&_wait_anchor);
-            if (fiber == NULL)
+            if (fiber == nullptr)
                 break;
             suspend_state = fiber->get_suspend_state();
             if (suspend_state->rw_lock_type == Type::WRITE) {

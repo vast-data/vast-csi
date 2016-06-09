@@ -25,7 +25,7 @@ bool DevIO::init(const char dev_name[], uint32_t iodepth, AtomicPool *iopool, si
                          (negated errno in this case - might use strerror(-setup_ret)) */);
     }
 
-    _io_provider = NULL;
+    _io_provider = nullptr;
 
     ASSERT(strnlen(dev_name, PATH_MAX) < PATH_MAX);
     strncpy(_dev_name, dev_name, PATH_MAX);
@@ -48,7 +48,7 @@ bool DevIO::init(const char dev_name[], uint32_t iodepth, AtomicPool *iopool, si
 
 void DevIO::set_ioprovider(IOProvider *io_provider)
 {
-    ASSERT(_io_provider == NULL);
+    ASSERT(_io_provider == nullptr);
     _io_provider = io_provider;
 }
 
@@ -87,7 +87,7 @@ void DevIO::allocate_ios(struct iocb *ios[], uint32_t count, DevIO::Future *io_f
     }
 
     if (was_idle) {
-        DEBUG_ASSERT(_io_provider != NULL);
+        DEBUG_ASSERT(_io_provider != nullptr);
         _io_provider->enable_polling(this);
     }
 }
@@ -106,7 +106,7 @@ void DevIO::io_prep(struct iocb *io OUT, IOVecs *buffers, Baddr dev_offset, bool
 void DevIO::handle_io_done(struct iocb *iocb_done)
 {
     IO *io = container_of(iocb_done, IO, io);
-    DEBUG_ASSERT(io->io_future != NULL);
+    DEBUG_ASSERT(io->io_future != nullptr);
     ASSERT(io->io_future->io_count > 0);
 
     io->io_future->io_count--;
@@ -114,7 +114,7 @@ void DevIO::handle_io_done(struct iocb *iocb_done)
         io->io_future->set();
     }
 
-    io->io_future = NULL;
+    io->io_future = nullptr;
     _iopool->free((void*)io);
 }
 
@@ -141,7 +141,7 @@ void DevIO::poll_events()
 
     int ios_done;
     RETRY_LOOP(io_poll_retry_params,
-        ios_done = io_getevents(_ctx, 0, active_ios, events, NULL);
+        ios_done = io_getevents(_ctx, 0, active_ios, events, nullptr);
         if (ios_done >= 0) {
             break;
         }
@@ -162,7 +162,7 @@ void DevIO::poll_events()
 
     _available_ios.inc((uint32_t)ios_done);
     if (_iodepth == _available_ios.value()) {
-        DEBUG_ASSERT(_io_provider != NULL);
+        DEBUG_ASSERT(_io_provider != nullptr);
         // no more active ios
         _io_provider->disable_polling(this);
     }
@@ -215,7 +215,7 @@ DevIO::ReturnCode DevIO::perform_scattered_io(IOVecs buffers[], Baddrs *dev_offs
     struct iocb *ios[io_count];
 
     bool blocking = false;
-    if (io_future == NULL) {
+    if (io_future == nullptr) {
         blocking = true;
         io_future = (DevIO::Future*)alloca(sizeof(*io_future));
     }

@@ -82,7 +82,7 @@ public:
      * \param buffers an array of scatter_gather buffers containing data to be written.
      * \param target_baddrs a structure holding the collection of target device physical addresses to write to.
      *        target_baddrs->count is the length of buffers array.
-     * \param io_future the token to wait on for async execution. for sync operation set as NULL.
+     * \param io_future the token to wait on for async execution. for sync operation set as nullptr.
      */
     ReturnCode WARN_UNUSED write_scatter(IOVecs buffers[], Baddrs *target_baddrs, Future *io_future);
 
@@ -91,7 +91,7 @@ public:
      * \param buffers an array of scatter_gather buffers to be filled by the read operation.
      * \param source_baddrs a structure holding the collection of source device physical addresses from which the read is performed.
      *        source_baddrs->count is the length of buffers array.
-     * \param io_future the token to wait on for async execution. for sync operation set as NULL.
+     * \param io_future the token to wait on for async execution. for sync operation set as nullptr.
      */
     ReturnCode WARN_UNUSED read_scatter(IOVecs buffers[], Baddrs *source_baddrs, Future *io_future);
 
@@ -99,7 +99,7 @@ public:
      * Perform a single buffer to a single address write operation
      * \param buffer scatter_gather buffers containing data to be written.
      * \param target_baddr target device physical addresses to write to.
-     * \param io_future the token to wait on for async execution. for sync operation set as NULL.
+     * \param io_future the token to wait on for async execution. for sync operation set as nullptr.
      */
     ReturnCode WARN_UNUSED write(IOVec *buffer, Baddr target_baddr, Future *io_future);
 
@@ -107,7 +107,7 @@ public:
      * Perform a single address to single buffer read operation
      * \param buffer scatter_gather buffers to be filled by the read operation.
      * \param source_baddr source device physical addresses from which the read is performed.
-     * \param io_future the token to wait on for async execution. for sync operation set as NULL.
+     * \param io_future the token to wait on for async execution. for sync operation set as nullptr.
      */
     ReturnCode WARN_UNUSED read(IOVec *buffer, Baddr source_baddr, Future *io_future);
 

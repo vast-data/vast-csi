@@ -70,7 +70,7 @@ void *Pool::alloc_address()
 {
     Index index = alloc();
     if (index == INVALID_INDEX) {
-        return NULL;
+        return nullptr;
     }
 
     return index_to_address(index);

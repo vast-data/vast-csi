@@ -21,7 +21,7 @@ namespace Conf {
 typedef config_setting_t ConfigSetting;
 
 /*!
- * Return the child setting located at given path or NULL if it is not found.
+ * Return the child setting located at given path or nullptr if it is not found.
  */
 ConfigSetting *conf_setting_lookup_optional(ConfigSetting *setting, const char *path);
 
@@ -62,7 +62,7 @@ int32_t conf_setting_length(ConfigSetting *setting);
 
 /*!
  * This function fetches the element at the given index index in the setting setting, which must be an array, list, or group.
- * It returns the requested setting on success, or NULL if index is out of range or if setting is not an array, list, or group.
+ * It returns the requested setting on success, or nullptr if index is out of range or if setting is not an array, list, or group.
  */
 ConfigSetting *conf_setting_get_element(ConfigSetting *setting, uint32_t index);
 

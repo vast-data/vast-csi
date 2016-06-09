@@ -77,7 +77,7 @@ public:
         {
             index = ANCHOR_INIT;
         #ifdef DEBUG
-            node = NULL;
+            node = nullptr;
         #endif
         }
 

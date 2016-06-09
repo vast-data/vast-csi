@@ -33,7 +33,7 @@ public:
     /*!
      * Allocate an object from the queue which can later be pushed into it.
      *
-     * \return an object from the queue internal pool or null in case no object is available
+     * \return an object from the queue internal pool or nullptr in case no object is available
      */
     T* alloc();
 
