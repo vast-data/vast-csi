@@ -29,8 +29,6 @@ struct FiberGroup {
 
 class Fiber {
 
-    friend class TimerQueues;
-
     enum class State: byte {
         READY,
         RUNNING,
@@ -69,6 +67,11 @@ public:
      * Get the module id of the current running fiber (determined by its fiber group)
      */
     static ModuleId get_module_id();
+
+    /*!
+     * Get the time the fiber started/finished execution.
+     */
+    static uint64_t get_switch_time();
 
     /*!
      * Return the currently running fiber.

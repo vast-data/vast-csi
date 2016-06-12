@@ -38,7 +38,6 @@ struct SchedulerConfig {
 class Scheduler {
 
     friend class Fiber;
-    friend class TimerQueues;
 
 public:
     /*!
@@ -49,12 +48,14 @@ public:
     static void destroy();
     static void run();
 
-    // the following functions are the internal interface used by the fibers
+    // the following functions are the internal interface used by the fiber framework
     static Scheduler *get() {
         return _sched;
     }
+    static TimerQueues *get_timer_queues() {
+        return &(get()->_timer_queues);
+    }
     static void NO_RETURN schedule();
-
 
 private:
     Pool *find_or_allocate_stacks(SchedulerConfig *config, Index group_index, Index *partition OUT);

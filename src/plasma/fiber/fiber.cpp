@@ -29,6 +29,11 @@ ModuleId Fiber::get_module_id()
     return get_current()->_group->module_id;
 }
 
+uint64_t Fiber::get_switch_time()
+{
+    return get_current()->_switch_time;
+}
+
 void Fiber::context_switch()
 {
     Fiber *fiber = Fiber::get_current();
