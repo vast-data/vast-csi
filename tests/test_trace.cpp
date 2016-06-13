@@ -158,7 +158,7 @@ TEST(Trace, emitter)
 
     Emitter emitter;
     emitter.init(setting, false);
-    emitter.set();
+    emitter.set_local();
 
     long l = 1;
     int i = 2;
@@ -202,7 +202,7 @@ TEST(Trace, dumper)
     Dumper dumper;
     dumper.init(setting, &emitter, DATADIR);
 
-    emitter.set();
+    emitter.set_local();
     dumper.start();
 
     LOOP(1000000, i)

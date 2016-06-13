@@ -21,8 +21,6 @@ public:
      \code
      {
          PLASMA: {
-             min_severity: "SEVERITY_DEBUG",
-             buffer_size_mb: 8,
              persistent: true,
              file_size_mb: 512,
              file_count: 20

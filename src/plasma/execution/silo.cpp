@@ -25,12 +25,12 @@ using namespace P::Conf;
 
 static thread_local Silo *current_silo = nullptr;
 
-void Silo::init(ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, const char *data_dir)
+void Silo::init(ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, const char *data_dir, const char *trace_dir)
 {
     _affinity = affinity;
     _silo_id = silo_id;
 
-    _scheduler_config.group_count = (P::Index)FiberGroupId::COUNT;
+    _scheduler_config.group_count = (Index)FiberGroupId::COUNT;
     _scheduler_config.fiber_groups = new FiberGroupConfig[_scheduler_config.group_count](); // () assures this is zeroed
 
     ConfigSetting *modules_setting = conf_setting_lookup_required(silo_config, "modules");
@@ -62,12 +62,9 @@ void Silo::init(ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, co
         }
     }
 
-    snprintf(_trace_dir_path, PATH_MAX, "%s/traces", data_dir);
-    ensure_directory_exists(_trace_dir_path);
-
-    ConfigSetting *trace_config = conf_setting_lookup_required(silo_config, "traces");
-    _trace_emitter.init(trace_config, false);
-    _trace_dumper.init(trace_config, &_trace_emitter, _trace_dir_path);
+    ConfigSetting *trace_setting = conf_setting_lookup_required(silo_config, "traces");
+    _trace_emitter.init(trace_setting, false);
+    _trace_dumper.init(trace_setting, &_trace_emitter, trace_dir);
 }
 
 static void pin_to_core(int32_t core_id)
@@ -122,7 +119,7 @@ void *Silo::silo_main()
         pin_to_core(_affinity);
     current_silo = this;
 
-    _trace_emitter.set();
+    _trace_emitter.set_local();
     _trace_dumper.start();
 
     PT_INFO("Silo started. Affinity set to: %d.", _affinity);

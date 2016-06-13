@@ -37,27 +37,56 @@ namespace P { namespace Trace {
 
 class Emitter {
 public:
-    void init(Conf::ConfigSetting *setting, bool shared);
-    void destroy();
-    void set();
-    DBuffer *get_dbuffer(ComponentId component); // used only by the dumper
 
-    static thread_local Emitter *_emitter;
+    /*!
+     * Initialize a trace emitter using a configuration object. An example configuration looks like this:
+     \code
+     {
+         PLASMA: {
+             min_severity: "SEVERITY_DEBUG",
+             buffer_size_mb: 8
+         }
+     }
+     \endcode
+     * The values depicted in the example are the default values.
+     *
+     * \param setting a ConfigSetting as displayed above.
+     * \param shared indicate whether trace calls should be protected with a lock in case the same emitter is used by several threads.
+     */
+    void init(Conf::ConfigSetting *setting, bool shared);
+
+    void destroy();
+
+    /*!
+     * Set this emitter to be used by default by trace calls made from the current pthread.
+     */
+    void set_local();
+
+    /*!
+     * Set this emitter to be used by default if no local emitter was defined.
+     */
+    void set_global();
+
+    DBuffer *get_dbuffer(ComponentId component); // used only by the dumper
 
     template<typename... Args>
     static void trace(Severity severity, ComponentId component, TraceInfo *info, Args... args)
     {
         if (!MACRO_IS_SET(DEBUG) && severity == Severity::SEVERITY_DEV)
             return;
-        if (unlikely(_emitter == nullptr || _emitter->_min_severity[(byte) component] > severity))
+
+        Emitter *emitter = _local_emitter != nullptr ? _local_emitter : _global_emitter;
+        if (unlikely(emitter == nullptr || emitter->_min_severity[(byte) component] > severity))
             return;
-        if (unlikely(_emitter->_lock))
-            _emitter->_lock->lock();
-        _emitter->record_start(info, severity);
-        _emitter->trace_emit(args...);
-        _emitter->record_finish(component);
-        if (unlikely(_emitter->_lock))
-            _emitter->_lock->unlock();
+
+        // the global emitter is shared between pthreads and has a _lock where the local emitter doesn't need one
+        if (unlikely(emitter->_lock))
+            emitter->_lock->lock();
+        emitter->record_start(info, severity);
+        emitter->trace_emit(args...);
+        emitter->record_finish(component);
+        if (unlikely(emitter->_lock))
+            emitter->_lock->unlock();
     }
 
 private:
@@ -66,6 +95,9 @@ private:
     TraceRecord _record;
     P_DBUFFER_LENGTH_TYPE _write_index;
     Sync::SpinLock *_lock;
+
+    static thread_local Emitter *_local_emitter;
+    static Emitter *_global_emitter;
 
     void record_start(TraceInfo *info, Severity severity)
     {

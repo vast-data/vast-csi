@@ -1,12 +1,13 @@
 /* Copyright (C) Vast Data Ltd. */
-#include <plasma/utils/macros.hpp>
+#include <unistd.h>
 #include <signal.h>
 #include <pthread.h>
-#include <plasma/utils/assert.hpp>
-#include <plasma/utils/os.hpp>
-#include <plasma/memory/alloc.hpp>
-#include <unistd.h>
-#include <pthread.h>
+#include "plasma/trace/emitter.hpp"
+#include "plasma/memory/alloc.hpp"
+#include "plasma/utils/macros.hpp"
+#include "plasma/utils/assert.hpp"
+#include "plasma/utils/os.hpp"
+#include "plasma/internal.hpp"
 #include "config_internal.hpp"
 #include "config.hpp"
 #include "silo.hpp"
@@ -82,6 +83,12 @@ void Env::init(Config *config)
     strcpy(_data_dir, data_dir);
     ensure_directory_exists(data_dir);
 
+    snprintf(_trace_dir, PATH_MAX, "%s/traces", data_dir);
+    ensure_directory_exists(_trace_dir);
+    ConfigSetting *traces_setting = conf_lookup(config, "global_traces");
+    _emitter.init(traces_setting, true);
+    _dumper.init(traces_setting, &_emitter, _trace_dir);
+
     ConfigSetting *silos_setting = conf_lookup(config, "silos");
     ASSERT_NOT_NULL(silos_setting);
     ConfigSetting *silo_types_setting = conf_lookup(config, "silo_types");
@@ -99,8 +106,8 @@ void Env::init(Config *config)
         const char *silo_type_name = conf_setting_get_string(silo_type_name_setting);
         // SiloId is 8 bit
         ASSERT(i < Silo::INVALID_SILO_ID, "invalid silo id");
-        _silos[i]->init(conf_setting_lookup_required(silo_types_setting, silo_type_name), affinity,
-                        (SiloId) i, _data_dir);
+        _silos[i]->init(conf_setting_lookup_required(silo_types_setting, silo_type_name),
+                        affinity, (SiloId) i, _data_dir, _trace_dir);
     }
     // Initialize a barrier for all silos and the main thread, used for synchronizing state
     ASSERT(pthread_barrier_init(&_state_barrier, nullptr, _num_silos + 1) == 0, "failed to initalize barrier");
@@ -108,12 +115,21 @@ void Env::init(Config *config)
 
 void Env::destroy()
 {
+    PT_INFO("Env stopping!");
+    _dumper.stop();
+    _dumper.wait();
+
     delete[] _silos;
     pthread_barrier_destroy(&_state_barrier);
 }
 
-void Env::start_silos()
+void Env::start()
 {
+    _emitter.set_global();
+    _dumper.start();
+
+    PT_INFO("Env started!");
+
     LOOP(_num_silos, i)
     {
         _silos[i]->start();
@@ -144,7 +160,7 @@ void Env::run(const char *config_path)
     conf_destroy(config);
 
     set_state(EnvState::START);
-    start_silos();
+    start();
     wait_for_run_state();
 
     set_state(EnvState::RUN);

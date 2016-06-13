@@ -9,10 +9,13 @@
 #include <stdint.h>
 #include <limits.h>
 #include <pthread.h>
-#include <plasma/utils/compiler.hpp>
-#include "config.hpp"
-#include "config_internal.hpp"
+
+#include "plasma/utils/compiler.hpp"
+#include "plasma/trace/emitter.hpp"
+#include "plasma/trace/dumper.hpp"
 #include "modules/module_interface.hpp"
+#include "config_internal.hpp"
+#include "config.hpp"
 
 namespace P {
 
@@ -52,7 +55,6 @@ public:
     */
     void error(void);
 
-
     EnvState get_state() const { return _state; }
     void set_state(EnvState state) { _state = state; }
     uint32_t get_num_silos() const { return _num_silos; }
@@ -64,16 +66,18 @@ private:
 
     void init(Conf::Config *config);
     void destroy();
-    void start_silos();
+    void start();
     void wait_for_silos();
 
-private:
     ModuleFactory *_module_factory[(int)ModuleId::COUNT];
-    uint32_t _num_silos;
-    Silo **_silos;
     char _data_dir[PATH_MAX];
+    char _trace_dir[PATH_MAX];
+    Silo **_silos;
+    uint32_t _num_silos;
     EnvState _state;
     pthread_barrier_t _state_barrier;
+    Trace::Emitter _emitter;
+    Trace::Dumper _dumper;
 };
 
 }

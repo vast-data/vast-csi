@@ -55,7 +55,7 @@ public:
     static const int32_t NO_AFFINITY = -1;
     static const SiloId  INVALID_SILO_ID = 255;
 
-    void init(P::Conf::ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, const char *data_dir);
+    void init(P::Conf::ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, const char *data_dir, const char *trace_dir);
 
     /*!
      * Launch a silo (starts a pthread) and return immediately.
@@ -127,7 +127,6 @@ private:
 private:
     Module _modules[(int)ModuleId::COUNT];
     SchedulerConfig _scheduler_config;
-    char _trace_dir_path[PATH_MAX];
     Trace::Emitter _trace_emitter;
     Trace::Dumper _trace_dumper;
     pthread_t _pthread;

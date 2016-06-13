@@ -7,11 +7,17 @@ using namespace P::Conf;
 
 namespace P { namespace Trace {
 
-thread_local Emitter *Emitter::_emitter = nullptr;
+thread_local Emitter *Emitter::_local_emitter = nullptr;
+Emitter *Emitter::_global_emitter = nullptr;
 
-void Emitter::set()
+void Emitter::set_local()
 {
-    _emitter = this;
+    _local_emitter = this;
+}
+
+void Emitter::set_global()
+{
+    _global_emitter = this;
 }
 
 DBuffer *Emitter::get_dbuffer(ComponentId component)
