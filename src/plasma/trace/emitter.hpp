@@ -11,7 +11,7 @@
 #include <cstring>
 #include "record.hpp"
 #include "dbuffer.hpp"
-#include "vdefs.hpp"
+#include "defs.hpp"
 #include "../execution/config.hpp"
 #include "../utils/macros.hpp"
 #include "../fiber/fiber.hpp"

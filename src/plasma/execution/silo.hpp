@@ -14,7 +14,7 @@
 #include "../trace/emitter.hpp"
 #include "../trace/dumper.hpp"
 #include "config.hpp"
-#include "vdefs.hpp"
+#include "defs.hpp"
 
 namespace P {
 

@@ -16,7 +16,7 @@
 #include "../fiber/fiber.hpp"
 #include "../internal.hpp"
 #include "config.hpp"
-#include "vdefs.hpp"
+#include "defs.hpp"
 #include "env.hpp"
 
 namespace P {

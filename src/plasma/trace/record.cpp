@@ -4,11 +4,11 @@
 
 namespace P { namespace Trace {
 
-DEFINE_LOOKUP_IMPLEMENTATION_CPP(TRACE_SEVERITY_LIST,
-                                 Severity,
-                                 severity_strings,
-                                 severity_to_string,
-                                 severity_from_string)
+DEFINE_LOOKUP_IMPLEMENTATION(TRACE_SEVERITY_LIST,
+                             Severity,
+                             severity_strings,
+                             severity_to_string,
+                             severity_from_string)
 
 /*!
  * This function initializes the TraceInfo structs by setting the value in .func_ptr to .func.

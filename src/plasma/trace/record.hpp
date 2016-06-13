@@ -18,10 +18,10 @@ namespace P { namespace Trace {
         X(SEVERITY_ERROR),                  \
         X(SEVERITY_COUNT)                   \
 
-DEFINE_LOOKUP_PROTOTYPES_CPP(TRACE_SEVERITY_LIST,
-                             Severity, // the name of the enum
-                             severity_to_string, // the function that converts an enum value to string
-                             severity_from_string) // the function that converts a string to an enum value
+DEFINE_LOOKUP_PROTOTYPES(TRACE_SEVERITY_LIST,
+                         Severity, // the name of the enum
+                         severity_to_string, // the function that converts an enum value to string
+                         severity_from_string) // the function that converts a string to an enum value
 
 // The potential maximum record size could be bigger but we pre allocate a trace
 // record per silo per component. There's no real reason to allocate more.

@@ -81,19 +81,18 @@
  * Along with helper functions that convert between enum values and strings.
  */
 
-// TODO get rid of the  "_CPP" once the c code is gone
-#define DEFINE_LOOKUP_ID_CPP(x) x
-#define DEFINE_LOOKUP_PROTOTYPES_CPP(list, name, id_to_string, string_to_id) \
-    enum class name : P::byte {                                              \
-        list(DEFINE_LOOKUP_ID_CPP)                                           \
-    };                                                                       \
-    const char *id_to_string(name id);                                       \
+#define DEFINE_LOOKUP_ID(x) x
+#define DEFINE_LOOKUP_PROTOTYPES(list, name, id_to_string, string_to_id) \
+    enum class name : P::byte {                                         \
+        list(DEFINE_LOOKUP_ID)                                          \
+    };                                                                  \
+    const char *id_to_string(name id);                                  \
     name string_to_id(const char *string);
 
-#define DEFINE_LOOKUP_STRING_CPP(x) #x
-#define DEFINE_LOOKUP_IMPLEMENTATION_CPP(list, name, array, id_to_string, string_to_id) \
+#define DEFINE_LOOKUP_STRING(x) #x
+#define DEFINE_LOOKUP_IMPLEMENTATION(list, name, array, id_to_string, string_to_id) \
     static const char *array[] = {                                      \
-        list(DEFINE_LOOKUP_STRING_CPP),                                 \
+        list(DEFINE_LOOKUP_STRING),                                     \
         nullptr                                                         \
     };                                                                  \
     const char *id_to_string(name id)                                   \
@@ -150,4 +149,3 @@ struct RetryParams {
 
 #define RETRY_LOOP(retry_params, loop_body)                                             \
         RETRY_LOOP_PARAMS(retry_params.max_spinning_attempts, retry_params.attempts_per_yield, retry_params.max_attempts, loop_body)                                  \
-
