@@ -108,6 +108,16 @@ public:
     Index get_initial_n_blocks();
 
     /*!
+    * Returns a pointer to the start of the pool memory
+    */
+    void *get_mem_ptr() { return _mem; }
+
+    /*!
+    * Returns the amount of memory used by the pool
+    */
+    size_t get_mem_size() { return (size_t) _blocks * _block_size; }
+
+    /*!
     * Destroy a pool in order to free its resources.
     * The PPool object will be released along with the underlying memory region.
     */

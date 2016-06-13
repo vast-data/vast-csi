@@ -2,64 +2,61 @@
 #include "cpool.hpp"
 
 #include <stdint.h>
-#include <plasma/execution/env.hpp>
 #include "../utils/assert.hpp"
 #include "../sync/lock_guard.hpp"
-#include "../execution/silo.hpp"
 
 namespace P {
 
-void CPool::init(uint32_t max_buffers_per_silo, uint32_t n_buffers, uint32_t buffer_size) {
+void CPool::init(uint32_t num_caches, uint32_t max_buffers_per_cache, uint32_t n_buffers, uint32_t buffer_size)
+{
     ASSERT_OP(buffer_size, >=, sizeof(Index), "invalid buffer_size");
 
     _shared_pool.init(n_buffers, buffer_size);
     _lock.init();
 
-    _n_silos = P::Env::get()->get_num_silos();
-    ASSERT_OP(_n_silos, >, 0, "there has to be at least 1 silo configured in the Env");
+    _n_caches = num_caches;
+    _max_buffers_per_cache = max_buffers_per_cache;
+    _cache_heads = new Index[_n_caches];
+    ASSERT_NOT_NULL(_cache_heads);
+    _cache_counts = new uint32_t[_n_caches];
+    ASSERT_NOT_NULL(_cache_counts);
 
-    _max_buffers_per_silo = max_buffers_per_silo;
-    ASSERT_OP(n_buffers, >, max_buffers_per_silo * _n_silos, "the number of buffers must be larger than the silo caches");
-
-    // TODO add p_new and p_delete
-    _silo_heads = new Index[_n_silos];
-    ASSERT_OP(_silo_heads, !=, nullptr, "allocation failed");
-    _silo_counts = new uint32_t[_n_silos];
-    ASSERT_OP(_silo_counts, !=, nullptr, "allocation failed");
-
-    for (uint32_t j = 0; j < _n_silos; ++j) {
-        _silo_heads[j] = INVALID_INDEX;
-        _silo_counts[j] = 0;
+    for (uint32_t j = 0; j < _n_caches; ++j) {
+        _cache_heads[j] = INVALID_INDEX;
+        _cache_counts[j] = 0;
     }
     _shared_count = n_buffers;
 }
 
-void CPool::destroy() {
+void CPool::destroy(bool leak_check) {
     // verify that there are no leaks
-    Index pool_buffers = _shared_count;
-    for (uint32_t i = 0; i < _n_silos; ++i) {
-        pool_buffers += _silo_counts[i];
+    if (leak_check) {
+        Index pool_buffers = _shared_count;
+        for (uint32_t i = 0; i < _n_caches; ++i) {
+            pool_buffers += _cache_counts[i];
+        }
+        ASSERT_OP(pool_buffers, ==, _shared_pool.get_initial_n_blocks(), "leak detected");
     }
-    ASSERT_OP(pool_buffers, ==, _shared_pool.get_initial_n_blocks(), "leak detected");
 
-    delete[] _silo_heads;
-    delete[] _silo_counts;
+    delete[] _cache_heads;
+    delete[] _cache_counts;
     _shared_pool.destroy();
     _lock.destroy();
 }
 
-void *CPool::alloc() {
+void *CPool::alloc(Index cache_index)
+{
     void *buffer = nullptr;
-    SiloId silo_id = Silo::get_current_silo_id();
-    // check if there is a buffer available in the silo pool
-    if (silo_id != Silo::INVALID_SILO_ID && _silo_heads[silo_id] != INVALID_INDEX) {
-        DEBUG_ASSERT_OP(_silo_counts[silo_id], >, 0, "free list isn't empty though count equals 0");
-        buffer = _shared_pool.index_to_address(_silo_heads[silo_id]);
-        _silo_heads[silo_id] = *(Index *) buffer;
-        _silo_counts[silo_id]--;
+    // check if there is a buffer available in the cache
+    ASSERT(cache_index < _n_caches, "invalid cache index " << cache_index <<);
+    if (cache_index != INVALID_INDEX && _cache_heads[cache_index] != INVALID_INDEX) {
+        DEBUG_ASSERT_OP(_cache_counts[cache_index], >, 0, "free list isn't empty though count equals 0");
+        buffer = _shared_pool.index_to_address(_cache_heads[cache_index]);
+        _cache_heads[cache_index] = *(Index *) buffer;
+        _cache_counts[cache_index]--;
         return buffer;
     }
-    // no buffer available in the silo pool, go to the shared pool
+    // no buffer available in the cache, go to the shared pool
     {
         LockGuard<Sync::SpinLock> guard(&_lock);
         buffer = _shared_pool.alloc_address();
@@ -70,14 +67,14 @@ void *CPool::alloc() {
     return buffer;
 }
 
-void CPool::free(void *buffer) {
-    SiloId silo_id = Silo::get_current_silo_id();
-    if (silo_id != Silo::INVALID_SILO_ID && _silo_counts[silo_id] < _max_buffers_per_silo) {
-        DEBUG_ASSERT_OP(silo_id, <=, _n_silos, "invalid silo id from p_silo_get_id()");
-        // return the buffer to the silo pool
-        *(Index *) buffer = _silo_heads[silo_id];
-        _silo_heads[silo_id] = _shared_pool.address_to_index(buffer);
-        _silo_counts[silo_id]++;
+void CPool::free(Index cache_index, void *buffer)
+{
+    if (cache_index != INVALID_INDEX && _cache_counts[cache_index] < _max_buffers_per_cache) {
+        DEBUG_ASSERT_OP(cache_index, <=, _n_caches, "invalid cache id)");
+        // return the buffer to the cache
+        *(Index *) buffer = _cache_heads[cache_index];
+        _cache_heads[cache_index] = _shared_pool.address_to_index(buffer);
+        _cache_counts[cache_index]++;
         return;
     }
     // return the buffer to the shared pool
@@ -88,11 +85,19 @@ void CPool::free(void *buffer) {
     }
 }
 
-void CPool::print_counters() {
+void CPool::print_counters()
+{
+    LockGuard<Sync::SpinLock> guard(&_lock);
     std::cout << "shared_count=" << _shared_count << std::endl;
-    for (uint32_t j = 0; j < _n_silos; ++j) {
-        std::cout << "silo[" << j << "]=" << _silo_counts[j] << std::endl;
+    for (uint32_t j = 0; j < _n_caches; ++j) {
+        std::cout << "cache[" << j << "]=" << _cache_counts[j] << std::endl;
     }
 }
+
+uint32_t CPool::get_shared_count() const
+{
+    return __sync_fetch_and_add(&_shared_count, 0);
+}
+
 
 }

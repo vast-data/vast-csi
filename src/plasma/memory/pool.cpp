@@ -22,7 +22,7 @@ void Pool::partitioned_init(size_t block_size, Index num_partitions, Index parti
         _blocks += partitions[i];
     }
 
-    size_t mem_size = (size_t) _blocks * block_size;
+    size_t mem_size = get_mem_size();
     // allocate a cache aligned buffer and expand it to the nearest cache line (required by aligned_alloc)
     _mem = cache_aligned_new_arr<byte>(mem_size);
     _free_head = 0;
