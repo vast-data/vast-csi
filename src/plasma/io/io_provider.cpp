@@ -19,7 +19,7 @@ void IOProvider::init(DevIO devices[], size_t device_count)
 
 void IOProvider::poll()
 {
-    DLIST_SAFE_EACH(&_active_devices, index,
+    ITER_SAFE_EACH(&_active_devices, index,
         _devices[index].poll_events();
     )
 }

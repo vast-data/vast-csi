@@ -22,10 +22,11 @@
 #include "../utils/types.hpp"
 #include "../utils/macros.hpp"
 #include "../memory/alloc.hpp"
+#include "iterable.hpp"
 
 namespace P {
 
-class DList  {
+class DList : public Iterable {
 private:
     struct Node {
         Index prev;
@@ -166,26 +167,4 @@ private:
 #endif
 };
 
-/*!
- * Iterate over list elements. It's forbidden to remove elements during iteration.
- * Example usage:
- *
-\code{.c}
-P_DLIST_EACH(list, anchor, i) {
-   printf("%d", i);
 }
-\endcode
- */
-#define DLIST_EACH(list, element) for (P::Index element = (list)->get_first(); \
-                                       element != P::INVALID_INDEX;            \
-                                       element = (list)->is_last(element) ? P::INVALID_INDEX : (list)->next(element))
-
-// This allows current item to be removed from the list in the body of the iteration
-#define DLIST_SAFE_EACH(list, element, body)                                                         \
-    for (P::Index element = (list)->get_first(); element != P::INVALID_INDEX;) {                     \
-        P::Index next_element = (list)->is_last(element) ? P::INVALID_INDEX : (list)->next(element); \
-        {body}                                                                                       \
-        element = next_element;                                                                      \
-  }
-
-};

@@ -100,7 +100,7 @@ TEST(TestDList, test_each) {
     list.add_after(1, 2);
 
     int j = 0;
-    DLIST_EACH(&list, i) {
+    ITER_EACH(&list, i) {
         ASSERT_EQ(i, j++);
     }
     ASSERT_EQ(j, 3);

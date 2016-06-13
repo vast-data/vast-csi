@@ -39,7 +39,7 @@ bool Hash::set(void *key, size_t length, P::Index value)
     size_t bucket_index = _key_to_bucket(this, key, length);
     DList list;
     list.init(&_buckets[bucket_index], &_values);
-    DLIST_EACH(&list, i)
+    ITER_EACH(&list, i)
     {
         if (_match(_match_arg, i, key, length)) {
             if (i == value) {
@@ -59,7 +59,7 @@ P::Index Hash::get(void *key, size_t length)
     DList::Anchor *bucket = &_buckets[_key_to_bucket(this, key, length)];
     DList list;
     list.init(bucket, &_values);
-    DLIST_EACH(&list, i)
+    ITER_EACH(&list, i)
     {
         if (_match(_match_arg, i, key, length)) {
             return i;
@@ -74,7 +74,7 @@ bool Hash::remove(void *key, size_t length)
     DList::Anchor *bucket = &_buckets[bucket_index];
     DList list;
     list.init(bucket, &_values);
-    DLIST_EACH(&list, i)
+    ITER_EACH(&list, i)
     {
         if (_match(_match_arg, i, key, length)) {
             list.remove(i);

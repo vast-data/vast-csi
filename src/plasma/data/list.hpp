@@ -7,7 +7,6 @@
  * This list is used to store indices. Usually indices of objects allocated by a memory pool.
  * Therefore, the linked should be initialized with the size of the memory pool.
  *
- *
  * More information is available here: https://vastdata.atlassian.net/wiki/display/DEV/Data+Structures
  *
  * Future considerations:
@@ -20,28 +19,37 @@
 #include "../utils/types.hpp"
 #include "../utils/macros.hpp"
 #include "../memory/alloc.hpp"
+#include "iterable.hpp"
 
 namespace P {
 
-class List  {
+class List : public Iterable {
 private:
     struct Node {
         Index next = INVALID_INDEX;
     };
+
 public:
 
     class Pool {
     public:
         /*!
-         * Initialize a listpool.
-         * In order to destroy the listpool and release resources call destroy().
+         * Initialize a list pool.
+         * In order to destroy the list pool and release resources call destroy().
          *
-         * \param size maximum number of nodes in the dlistpool.
+         * \param size maximum number of nodes in the list pool.
          */
         void init(Index size)
         {
             _nodes = new Node[size];
+    #ifdef DEBUG
+        _pool_size = size;
+    #endif
         }
+
+    #ifdef DEBUG
+        Index get_size() { return _pool_size; }
+    #endif
 
         void destroy()
         {
@@ -49,6 +57,7 @@ public:
         }
 
         Node *_nodes;
+    private:
     #ifdef DEBUG
         Index _pool_size;
     #endif
@@ -73,14 +82,14 @@ public:
     };
 
     /*!
-     * Initialize a dlist.
+     * Initialize a list.
       * \param list out structure to initialize according to anchor and listpool. params are kept by reference,
      */
     void init(Anchor *anchor, Pool *list_pool);
 
     /*!
      * destroys a dlist structure.
-     * NOTE: Assumes no other lists use this listpool!!!
+     * NOTE: Assumes no other lists use this list pool!!!
      */
     void destroy();
 
@@ -90,16 +99,13 @@ public:
     bool is_empty() { return _anchor->is_empty(); }
 
     /*!
-     * Insert a new element at the beginning of the list.
-     * The anchor is passed through a pointer because its value would be modified.
-     */
-    void insert(Index index);
-
-    /*!
      * Insert a new element after a given element.
      */
     void add_after(Index index, Index new_index);
 
+    /*!
+     * Insert a new element at the beginning of the list.
+     */
     void push(Index index);
 
     /*!
@@ -153,26 +159,4 @@ private:
 
 };
 
-/*!
- * Iterate over list elements. It's forbidden to remove elements during iteration.
- * Example usage:
- *
-\code{.c}
-LIST_EACH(list, i) {
-   printf("%d", i);
 }
-\endcode
- */
-#define LIST_EACH(list, element) for (P::Index element = (list)->get_first(); \
-                                       element != P::INVALID_INDEX;            \
-                                       element = (list)->is_last(element) ? P::INVALID_INDEX : (list)->next(element))
-
-// This allows current item to be removed from the list in the body of the iteration
-#define LIST_SAFE_EACH(list, element, body)                                                         \
-    for (P::Index element = (list)->get_first(); element != P::INVALID_INDEX;) {                     \
-        P::Index next_element = (list)->is_last(element) ? P::INVALID_INDEX : (list)->next(element); \
-        {body}                                                                                       \
-        element = next_element;                                                                      \
-  }
-
-};

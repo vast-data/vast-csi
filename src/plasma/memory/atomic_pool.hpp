@@ -2,7 +2,7 @@
 
 /*!
  * \file atomic_pool.hpp
- * \brief Extension of p_pool for atomic operations
+ * \brief Extension of pool for atomic operations
  *
  * Allows retrieval of several objects atomically in a blocking fashion.
  *
@@ -20,8 +20,8 @@ template<typename T>
 class AtomicPool {
 public:
     /*!
-     * Initialize a PAtomicPool structure.
-     * When finished with the PAtomicPool call destroy.
+     * Initialize a AtomicPool structure.
+     * When finished with the AtomicPool call destroy.
      * \param element_count is the maximum value of elements to be used concurrently.
      */
     void init(size_t element_count);
@@ -47,7 +47,7 @@ public:
     void free(T *element);
 
     /*!
-     * Release PIOPool structure resources.
+     * Release AtomicPool resources.
      */
     void destroy();
 

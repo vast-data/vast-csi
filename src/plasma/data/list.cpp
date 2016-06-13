@@ -22,6 +22,7 @@ void List::destroy()
 void List::add_after(Index index, Index new_index)
 {
     ASSERT(!is_empty(), "Adding after a list item though the list is empty");
+    DEBUG_ASSERT_OP(new_index, <=, _list_pool->get_size());
     idx2node(new_index)->next = next(index);
     idx2node(index)->next = new_index;
 
@@ -32,6 +33,7 @@ void List::add_after(Index index, Index new_index)
 
 void List::push(Index index)
 {
+    DEBUG_ASSERT_OP(index, <=, _list_pool->get_size());
     idx2node(index)->next = _anchor->head;
     _anchor->head = index;
     if (_anchor->tail == INVALID_INDEX) {
@@ -50,6 +52,7 @@ void List::append(Index index)
 
 Index List::remove_next(Index index)
 {
+    DEBUG_ASSERT_OP(index, <=, _list_pool->get_size());
     Index next_idx = next(index);
     if (next_idx != INVALID_INDEX) {
         idx2node(index)->next = next(next_idx);

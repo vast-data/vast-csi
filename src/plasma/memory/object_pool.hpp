@@ -2,11 +2,10 @@
 
 /*!
 * \file object_pool.hpp
+* \brief A pool of Typed objects.
 */
 
 #pragma once
-
-//#include <stddef.h>
 
 #include <plasma/utils/types.hpp>
 #include <plasma/utils/macros.hpp>
@@ -19,7 +18,7 @@ class ObjectPool {
 public:
 
     /*!
-    * Initialize a pool.
+    * Initialize an object pool.
     * In order to destroy the pool and release resources call destroy().
     *
     * \param objects the number of objects the pool is expected to hold.
@@ -40,7 +39,7 @@ public:
 
     /*!
     * Destroy a pool in order to free its resources.
-    * The PPool object will be released along with the underlying memory region.
+    * The ObjectPool object will be released along with the underlying memory region.
     */
     void destroy();
 
