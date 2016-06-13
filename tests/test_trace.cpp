@@ -157,7 +157,7 @@ TEST(Trace, emitter)
     ConfigSetting *setting = conf_lookup(conf, "traces");
 
     Emitter emitter;
-    emitter.init(setting);
+    emitter.init(setting, false);
     emitter.set();
 
     long l = 1;
@@ -197,7 +197,7 @@ TEST(Trace, dumper)
     ConfigSetting *setting = conf_lookup(conf, "traces");
 
     Emitter emitter;
-    emitter.init(setting);
+    emitter.init(setting, true);
 
     Dumper dumper;
     dumper.init(setting, &emitter, DATADIR);

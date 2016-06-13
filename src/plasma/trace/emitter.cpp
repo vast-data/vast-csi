@@ -22,12 +22,19 @@ DBuffer *Emitter::get_dbuffer(ComponentId component)
 const byte BUFFER_COUNT = 4;
 const byte DEFAULT_BUF_SIZE_MB = 8;
 
-void Emitter::init(ConfigSetting *setting)
+void Emitter::init(ConfigSetting *setting, bool shared)
 {
     // start off with all components disabled (indicated by maximal severity).
     LOOP(ComponentId::COUNT, i) {
         _min_severity[i] = Severity::SEVERITY_COUNT;
         _buffers[i] = nullptr;
+    }
+
+    if (shared) {
+        _lock = new Sync::SpinLock();
+        _lock->init();
+    } else {
+        _lock = nullptr;
     }
 
     if (setting == nullptr)
@@ -61,6 +68,8 @@ void Emitter::destroy()
             delete _buffers[i];
         }
     }
+    _lock->destroy();
+    delete _lock;
 }
 
 }}

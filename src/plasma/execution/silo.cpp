@@ -66,7 +66,7 @@ void Silo::init(ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, co
     ensure_directory_exists(_trace_dir_path);
 
     ConfigSetting *trace_config = conf_setting_lookup_required(silo_config, "traces");
-    _trace_emitter.init(trace_config);
+    _trace_emitter.init(trace_config, false);
     _trace_dumper.init(trace_config, &_trace_emitter, _trace_dir_path);
 }
 

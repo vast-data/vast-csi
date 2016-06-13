@@ -13,6 +13,7 @@
 #include "dbuffer.hpp"
 #include "defs.hpp"
 #include "../execution/config.hpp"
+#include "../sync/spin_lock.hpp"
 #include "../utils/macros.hpp"
 #include "../fiber/fiber.hpp"
 #include "../utils/time.hpp"
@@ -36,7 +37,7 @@ namespace P { namespace Trace {
 
 class Emitter {
 public:
-    void init(Conf::ConfigSetting *setting);
+    void init(Conf::ConfigSetting *setting, bool shared);
     void destroy();
     void set();
     DBuffer *get_dbuffer(ComponentId component); // used only by the dumper
@@ -50,9 +51,13 @@ public:
             return;
         if (unlikely(_emitter == nullptr || _emitter->_min_severity[(byte) component] > severity))
             return;
+        if (unlikely(_emitter->_lock))
+            _emitter->_lock->lock();
         _emitter->record_start(info, severity);
         _emitter->trace_emit(args...);
         _emitter->record_finish(component);
+        if (unlikely(_emitter->_lock))
+            _emitter->_lock->unlock();
     }
 
 private:
@@ -60,6 +65,7 @@ private:
     Severity _min_severity[(byte) ComponentId::COUNT];
     TraceRecord _record;
     P_DBUFFER_LENGTH_TYPE _write_index;
+    Sync::SpinLock *_lock;
 
     void record_start(TraceInfo *info, Severity severity)
     {
