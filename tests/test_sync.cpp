@@ -11,25 +11,9 @@
 #include "plasma/sync/event.hpp"
 #include "plasma/sync/future.hpp"
 
+#include "test_common_scheduler.hpp"
+
 using namespace P::Sync;
-
-#define PAGE_SIZE 4096
-static P::FiberGroupConfig fiber_groups[] = {
-    {0, 0},
-    {PAGE_SIZE * 16, 40},
-    {PAGE_SIZE * 8, 30},
-    {PAGE_SIZE * 8, 20}
-};
-static P::SchedulerConfig scheduler_config = {
-    fiber_groups, NUM_ELEMENTS(fiber_groups)
-};
-
-enum test_fiber_group {
-    FG_EMPTY,
-    FG_A,
-    FG_B,
-    FG_C
-};
 
 TEST(TestSync, test_spin)
 {

@@ -34,6 +34,7 @@ void List::add_after(Index index, Index new_index)
 void List::push(Index index)
 {
     DEBUG_ASSERT_OP(index, <=, _list_pool->get_size());
+    DEBUG_ASSERT(next(index) == INVALID_INDEX);
     idx2node(index)->next = _anchor->head;
     _anchor->head = index;
     if (_anchor->tail == INVALID_INDEX) {
@@ -43,6 +44,7 @@ void List::push(Index index)
 
 void List::append(Index index)
 {
+    DEBUG_ASSERT(next(index) == INVALID_INDEX);
     if (_anchor->head == Anchor::ANCHOR_INIT)
         push(index);
     else {

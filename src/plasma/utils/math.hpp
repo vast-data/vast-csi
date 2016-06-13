@@ -1,7 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 
 /*!
- * \file math.cpp
+ * \file math.hpp
  * \brief A collection of useful math utilities
  */
 #pragma once

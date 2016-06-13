@@ -101,9 +101,12 @@ def AddCppTest(target, source, wrap=[]):
 
 AddCppTest(target='dist/tests/test_assert', source=[DEFAULT_BUILD_DIR + '/tests/test_assert.cpp'])
 AddCppTest(target='dist/tests/test_pool', source=[DEFAULT_BUILD_DIR + '/tests/test_pool.cpp'])
+AddCppTest(target='dist/tests/test_object_pool', source=[DEFAULT_BUILD_DIR + '/tests/test_object_pool.cpp'])
+AddCppTest(target='dist/tests/test_atomic_pool', source=[DEFAULT_BUILD_DIR + '/tests/test_atomic_pool.cpp'])
 AddCppTest(target='dist/tests/test_cpool', source=[DEFAULT_BUILD_DIR + '/tests/test_cpool.cpp'], wrap=['p_silo_get_id'])
 AddCppTest(target='dist/tests/test_config', source=[DEFAULT_BUILD_DIR + '/tests/test_config.cpp'])
 AddCppTest(target='dist/tests/test_dlist', source=[DEFAULT_BUILD_DIR + '/tests/test_dlist.cpp'])
+AddCppTest(target='dist/tests/test_list', source=[DEFAULT_BUILD_DIR + '/tests/test_list.cpp'])
 AddCppTest(target='dist/tests/test_io_provider', source=[DEFAULT_BUILD_DIR + '/tests/test_io_provider.cpp'])
 AddCppTest(target='dist/tests/test_fiber', source=[DEFAULT_BUILD_DIR + '/tests/test_fiber.cpp'])
 AddCppTest(target='dist/tests/test_env', source=[DEFAULT_BUILD_DIR + '/tests/test_env.cpp'])

@@ -26,7 +26,12 @@
 
 namespace P {
 
-class DList : public Iterable {
+class DList
+// avoiding virtual functions - yet conforming to Iterable interface
+#ifdef DEBUG
+        : public Iterable
+#endif
+{
 private:
     struct Node {
         Index prev;

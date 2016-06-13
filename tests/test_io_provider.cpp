@@ -10,6 +10,8 @@
 #include "../src/plasma/memory/atomic_pool.hpp"
 #include "../src/plasma/memory/alloc.hpp"
 
+#include "test_common_scheduler.hpp"
+
 #include <fcntl.h>
 
 static bool testing_io_provider = true;
@@ -17,20 +19,6 @@ static bool testing_io_provider = true;
 using namespace P::Conf;
 
 #define DEVICE_FILE_SIZE (20<<10) // 20K
-
-#define PAGE_SIZE 4096
-static P::FiberGroupConfig fiber_groups[] = {
-    {0, 0},
-    {PAGE_SIZE * 16, 40}
-};
-static P::SchedulerConfig scheduler_config = {
-    fiber_groups, NUM_ELEMENTS(fiber_groups)
-};
-
-enum test_fiber_group {
-    FG_EMPTY,
-    FG_A
-};
 
 static void generate_scatters(P::IOVec write_buffers[] OUT, size_t buffer_count, P::IOVecs scatter[] OUT, uint32_t scatter_sizes[], size_t scatter_count,
                               const size_t buff_len, P::IOVecs* scatter_per_io[] OUT, uint32_t io_batches[], size_t io_submission_count)

@@ -23,7 +23,12 @@
 
 namespace P {
 
-class List : public Iterable {
+class List
+// avoiding virtual functions - yet conforming to Iterable interface
+#ifdef DEBUG
+        : public Iterable
+#endif
+{
 private:
     struct Node {
         Index next = INVALID_INDEX;
@@ -138,11 +143,6 @@ private:
     Pool *_list_pool;
 
     Node* idx2node(Index idx) { return &_list_pool->_nodes[idx]; }
-
-    // TODO: perform boundary tests according to size upon insert/remove.
-#ifdef DEBUG
-    size_t pool_size;
-#endif
 };
 
 class SingleList {

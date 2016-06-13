@@ -105,6 +105,13 @@ TEST(TestDList, test_each) {
     }
     ASSERT_EQ(j, 3);
 
+    j = 0;
+    ITER_SAFE_EACH(&list, i,
+        ASSERT_EQ(i, j++);
+        list.remove(i);
+    );
+    ASSERT_EQ(j, 3);
+
     list_pool.destroy();
 }
 
