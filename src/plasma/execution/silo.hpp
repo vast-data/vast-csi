@@ -9,13 +9,12 @@
 #include <stdint.h>
 #include <limits.h>
 #include <pthread.h>
-#include <modules/module_interface.hpp>
-#include <plasma/fiber/scheduler.hpp>
-
+#include "modules/module_interface.hpp"
+#include "../fiber/scheduler.hpp"
 #include "../trace/emitter.hpp"
 #include "../trace/dumper.hpp"
-#include "../vdefs.hpp"
 #include "config.hpp"
+#include "vdefs.hpp"
 
 namespace P {
 

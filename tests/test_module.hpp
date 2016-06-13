@@ -6,7 +6,7 @@
  */
 #pragma once
 
-#include "../modules/module_interface.hpp"
+#include "modules/module_interface.hpp"
 #include "plasma/execution/config.hpp"
 
 typedef void (*TestFunc)(void *);

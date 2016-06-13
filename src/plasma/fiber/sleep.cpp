@@ -1,7 +1,6 @@
 /* Copyright (C) Vast Data Ltd. */
 #include "sleep.hpp"
 
-#include "../time.h"
 #include "../utils/macros.hpp"
 #include "../utils/time.hpp"
 #include "scheduler.hpp"

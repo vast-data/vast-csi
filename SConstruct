@@ -74,47 +74,12 @@ env.Append(CPPPATH=['src', 'src/include'])
 env.Append(LINKFLAGS=['-pthread'])
 env.Append(LIBS=['unwind', 'config', 'libaio'])
 
-# ----- C Environment ----- #
-
-c_env = env.Clone()
-c_env.Append(CFLAGS='-std=gnu11')
-
-csources = [DEFAULT_BUILD_DIR + '/' + i for i in RGlob('src', '*.c', ['src/plasma/third_party/murmur3', 'src/modules'])]
-
-murmur_env = c_env.Clone()
+murmur_env = env.Clone()
 murmur_env.Append(CFLAGS=['-Wno-cast-align',
                           '-Wno-sign-conversion',
                           '-Wno-shorten-64-to-32',
                           '-Wno-incompatible-pointer-types-discards-qualifiers'])
 murmur = murmur_env.Object(DEFAULT_BUILD_DIR + '/src/plasma/third_party/murmur3/murmur3.c')
-
-csources.append(murmur)
-
-c_lib = c_env.Library(target='dist/orion', source=csources)
-c_env.Append(LIBS=c_lib)
-murmur_env.Append(LIBS=c_lib)
-
-def AddTest(target, source, env=c_env, wrap=[]):
-    test_env = env.Clone()
-    test_env.Append(LIBS=['cmocka'])
-    for func in wrap:
-        test_env.Append(LINKFLAGS='-Wl,-wrap,' + func)
-    test = test_env.Program(target=target, source=source)
-    test_env.Alias('test', test, test[0].abspath)
-
-AddTest(target='dist/tests/test_p_pool', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_p_pool.c'])
-AddTest(target='dist/tests/test_p_dlist', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_p_dlist.c'])
-AddTest(target='dist/tests/test_p_hash', env=murmur_env,
-        source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_p_hash.c',
-                DEFAULT_BUILD_DIR + '/src/plasma/third_party/murmur3/test.c'])
-AddTest(target='dist/tests/test_p_fiber', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_p_fiber.c'])
-AddTest(target='dist/tests/test_p_time', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_p_time.c'])
-AddTest(target='dist/tests/test_p_io_provider', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_p_io_provider.c'])
-AddTest(target='dist/tests/test_p_trace', source=[c_lib, DEFAULT_BUILD_DIR + '/tests/test_trace.c'])
-c_env.AlwaysBuild('test')
-
-c_env.Alias('docs', c_lib, 'doxygen')
-c_env.AlwaysBuild('docs')
 
 # ----- C++ Environment ----- #
 
@@ -133,7 +98,6 @@ def AddCppTest(target, source, wrap=[]):
         cpp_test_env.Append(LINKFLAGS='-Wl,-wrap,' + func)
     test = cpp_test_env.Program(target=target, source=source)
     cpp_test_env.Alias('test', test, test[0].abspath)
-    cpp_test_env.Alias('cpptest', test, test[0].abspath)
 
 AddCppTest(target='dist/tests/test_assert', source=[DEFAULT_BUILD_DIR + '/tests/test_assert.cpp'])
 AddCppTest(target='dist/tests/test_pool', source=[DEFAULT_BUILD_DIR + '/tests/test_pool.cpp'])
