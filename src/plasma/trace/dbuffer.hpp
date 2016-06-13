@@ -23,8 +23,8 @@ public:
     void init(uint32_t size);
     void destroy();
     bool has_room(P_DBUFFER_LENGTH_TYPE length);
-    void write(byte data[], P_DBUFFER_LENGTH_TYPE length);
-    void read(uint32_t offset, byte data[] OUT, P_DBUFFER_LENGTH_TYPE length);
+    void write(void *data, P_DBUFFER_LENGTH_TYPE length);
+    void read(uint32_t offset, void *data OUT, P_DBUFFER_LENGTH_TYPE length);
     void reset();
 
 private:
@@ -39,7 +39,7 @@ class DBuffer {
 public:
     void init(uint8_t buffer_count, uint32_t size);
     void destroy();
-    void write(byte data[], P_DBUFFER_LENGTH_TYPE length);
+    void write(void *data, P_DBUFFER_LENGTH_TYPE length);
 
 private:
     Buffer *current_buffer();
@@ -68,7 +68,7 @@ public:
      * \param force allow the reader to read from the writer's current buffer. This is usually passed during teardown, only after the writer has stopped writing, otherwise we could lose traces.
      * \return SUCCESS means a record has been written, NOTHING means there's no data to read and the user should try again later, NEXT means we moved to the next buffer and should retry.
      */
-    ReadResult read(byte data[], P_DBUFFER_LENGTH_TYPE *length, bool force);
+    ReadResult read(void *data, P_DBUFFER_LENGTH_TYPE *length, bool force);
 
 private:
     void reset(P_DBUFFER_LENGTH_TYPE *buffers_lost OUT);

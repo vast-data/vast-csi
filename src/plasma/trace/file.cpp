@@ -62,8 +62,8 @@ void TraceFile::emit(TraceRecord *record, P_DBUFFER_LENGTH_TYPE length)
         create_file();
     rotate_chunk_if_needed(length + P_DBUFFER_LENGTH_BYTES);
     rotate_file_if_needed(length + P_DBUFFER_LENGTH_BYTES);
-    write_file((byte*) &length, P_DBUFFER_LENGTH_BYTES);
-    write_file((byte*) record, length);
+    write_file(&length, P_DBUFFER_LENGTH_BYTES);
+    write_file(record, length);
     _bytes_left_in_chunk -= (length + P_DBUFFER_LENGTH_BYTES);
 }
 
@@ -105,14 +105,14 @@ void TraceFile::close_file()
 void TraceFile::write_header()
 {
     uint16_t version = VERSION;
-    write_file((byte*) &version, sizeof(version));
+    write_file(&version, sizeof(version));
     size_t section_size = get_trace_section_size();
     uint16_t num_records = (uint16_t) (section_size / sizeof(TraceInfo));
-    write_file((byte*) &num_records, sizeof(num_records));
-    write_file((byte*) __start_traces, section_size);
+    write_file(&num_records, sizeof(num_records));
+    write_file(__start_traces, section_size);
 }
 
-void TraceFile::write_file(byte data[], size_t length)
+void TraceFile::write_file(void *data, size_t length)
 {
     ASSERT_EQUAL(fwrite_unlocked(data, length, 1, _file), 1);
     _file_offset += length;

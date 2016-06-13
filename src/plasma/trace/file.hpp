@@ -33,7 +33,7 @@ private:
     void create_file();
     void close_file();
     void write_header();
-    void write_file(byte data[], size_t length);
+    void write_file(void *data, size_t length);
     void rotate_chunk_if_needed(P_DBUFFER_LENGTH_TYPE length);
     void rotate_file_if_needed(P_DBUFFER_LENGTH_TYPE length);
     void delete_files_if_needed();

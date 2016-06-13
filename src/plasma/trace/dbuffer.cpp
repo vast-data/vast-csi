@@ -27,7 +27,7 @@ inline bool Buffer::has_room(P_DBUFFER_LENGTH_TYPE length)
     return _write_index + length <= _size;
 }
 
-void Buffer::write(byte data[], P_DBUFFER_LENGTH_TYPE length)
+void Buffer::write(void *data, P_DBUFFER_LENGTH_TYPE length)
 {
     DEBUG_ASSERT(has_room(length));
     memcpy(_mem + _write_index, &length, sizeof(length));
@@ -37,7 +37,7 @@ void Buffer::write(byte data[], P_DBUFFER_LENGTH_TYPE length)
     memcpy(_mem + _write_index, &length, sizeof(length)); // mark next record as empty
 }
 
-void Buffer::read(uint32_t offset, byte data[] OUT, P_DBUFFER_LENGTH_TYPE length)
+void Buffer::read(uint32_t offset, void *data OUT, P_DBUFFER_LENGTH_TYPE length)
 {
     DEBUG_ASSERT(length > 0);
     memcpy(data, _mem + offset, length);
@@ -70,7 +70,7 @@ void DBuffer::destroy()
     delete[] _buffers;
 }
 
-void DBuffer::write(byte data[], P_DBUFFER_LENGTH_TYPE length)
+void DBuffer::write(void *data, P_DBUFFER_LENGTH_TYPE length)
 {
     ASSERT_OP(length, <=, P_DBUFFER_MAX_RECORD, "record size bigger than max");
     Buffer *buf = current_buffer();
@@ -106,7 +106,7 @@ bool DBufferReader::overflow()
     return _dbuf->_generation - _generation >= _dbuf->_buffer_count;
 }
 
-DBufferReader::ReadResult DBufferReader::read(byte data[] OUT, P_DBUFFER_LENGTH_TYPE *length OUT, bool force)
+DBufferReader::ReadResult DBufferReader::read(void *data OUT, P_DBUFFER_LENGTH_TYPE *length OUT, bool force)
 {
     // when force==true we are allowed to read from the writer's buffer.
     if (!force && _generation == _dbuf->_generation)
@@ -115,7 +115,7 @@ DBufferReader::ReadResult DBufferReader::read(byte data[] OUT, P_DBUFFER_LENGTH_
     if (overflow())
         goto overflow;
 
-    _dbuf->current_buffer()->read(_read_index, (byte*) length, P_DBUFFER_LENGTH_BYTES);
+    _dbuf->current_buffer()->read(_read_index, length, P_DBUFFER_LENGTH_BYTES);
 
     if (overflow())
         goto overflow;

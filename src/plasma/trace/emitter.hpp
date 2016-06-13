@@ -76,10 +76,10 @@ private:
 
     void record_finish(ComponentId comp)
     {
-        _buffers[(byte) comp]->write((byte*) &_record, offsetof(TraceRecord, params) + _write_index);
+        _buffers[(byte) comp]->write(&_record, offsetof(TraceRecord, params) + _write_index);
     }
 
-    void emit_param(const byte data[], P_DBUFFER_LENGTH_TYPE length)
+    void emit_param(const void *data, P_DBUFFER_LENGTH_TYPE length)
     {
         DEBUG_ASSERT_OP(TRACE_RECORD_MAX_SIZE - (_write_index + offsetof(TraceRecord, params)), >, length);
         memcpy(&_record.params[_write_index], data, length);
@@ -92,20 +92,20 @@ private:
         P_TRACE_STR_LEN_TYPE short_length = (P_TRACE_STR_LEN_TYPE) length;
         if (length == P_TRACE_MAX_STR_LEN) { // string too big
             short_length = P_TRACE_MAX_STR_LEN;
-            emit_param((byte*) &short_length, sizeof(short_length));
-            emit_param((byte*) value, short_length - 1);
+            emit_param(&short_length, sizeof(short_length));
+            emit_param(value, short_length - 1);
             char null = '\0';
-            emit_param((byte*) &null, 1);
+            emit_param(&null, 1);
         } else {
-            emit_param((byte*) &short_length, sizeof(short_length));
-            emit_param((byte*) value, short_length);
+            emit_param(&short_length, sizeof(short_length));
+            emit_param(value, short_length);
         }
     }
 
     template<typename T>
     void trace_emit_param(T arg)
     {
-        emit_param((byte*) &arg, sizeof(T));
+        emit_param(&arg, sizeof(T));
     }
 
     void trace_emit()
