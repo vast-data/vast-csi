@@ -37,7 +37,6 @@ TEST(TestHash, test_set) {
     strcpy(p2->name, "bar");
     strcpy(p3->name, "bar");
 
-    
     ASSERT_TRUE(hash.set(p1->name, 3, p1i));
     ASSERT_TRUE(hash.set(p2->name, 3, p2i));
     // existing key with same value
@@ -52,7 +51,7 @@ TEST(TestHash, test_set) {
     pool.destroy();
 }
 
-TEST(TestHash, test_remove) 
+TEST(TestHash, test_remove)
 {
     Pool pool;
     pool.init(2, sizeof(person));
