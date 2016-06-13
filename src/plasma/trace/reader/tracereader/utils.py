@@ -18,21 +18,22 @@ def merge_sort(iters, key=lambda x: x):
             i = iter(i)
         try:
             tie_breaker += 1
-            head_and_iter = (next(i), tie_breaker, i)
+            obj = next(i)
+            value = key(obj)
+            head_and_iter = (value, tie_breaker, obj, i)
         except StopIteration:
             pass
         else:
             bisect.insort(heads_and_iters, head_and_iter)
-
     while heads_and_iters:
         try:
-            value, tie_breaker, i = heads_and_iters.pop(0)
+            value, tie_breaker, obj, i = heads_and_iters.pop(0)
         except IndexError:
             break
-        yield value
+        yield obj
         try:
-            value = next(i)
+            obj = next(i)
         except StopIteration:
             pass
         else:
-            bisect.insort(heads_and_iters, (value, tie_breaker, i))
+            bisect.insort(heads_and_iters, (key(obj), tie_breaker, obj, i))

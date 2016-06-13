@@ -97,7 +97,7 @@ def AddCppTest(target, source, wrap=[]):
     for func in wrap:
         cpp_test_env.Append(LINKFLAGS='-Wl,-wrap,' + func)
     test = cpp_test_env.Program(target=target, source=source)
-    cpp_test_env.Alias('test', test, test[0].abspath)
+    cpp_test_env.Alias('cpptest', test, test[0].abspath)
 
 AddCppTest(target='dist/tests/test_assert', source=[DEFAULT_BUILD_DIR + '/tests/test_assert.cpp'])
 AddCppTest(target='dist/tests/test_pool', source=[DEFAULT_BUILD_DIR + '/tests/test_pool.cpp'])
@@ -116,7 +116,6 @@ AddCppTest(target='dist/tests/test_queue', source=[DEFAULT_BUILD_DIR + '/tests/t
 AddCppTest(target='dist/tests/test_trace', source=[DEFAULT_BUILD_DIR + '/tests/test_trace.cpp'])
 AddCppTest(target='dist/tests/time', source=[DEFAULT_BUILD_DIR + '/tests/test_time.cpp'])
 AddCppTest(target='dist/tests/perf', source=[DEFAULT_BUILD_DIR + '/tests/test_perf.cpp'])
-cpp_env.AlwaysBuild('test')
 cpp_env.AlwaysBuild('cpptest')
 
 # ----- Python Environment ----- #
@@ -130,5 +129,10 @@ venv = env.Command(target='venv/requirements.txt',
                    'pip install -r $SOURCE && '
                    'cd src/plasma/trace/reader && '
                    'python setup.py develop')
-trace_tests = env.Alias('test', [], './venv/bin/py.test src/plasma/trace/reader/tests')
+trace_tests = env.Alias('pytest', [], './venv/bin/py.test src/plasma/trace/reader/tests')
 Depends(trace_tests, venv)
+cpp_env.AlwaysBuild('pytest')
+
+cpp_env.AlwaysBuild('test')
+Depends('test', 'cpptest')
+Depends('test', 'pytest')
