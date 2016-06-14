@@ -129,6 +129,8 @@ static void multiple_async_rw(P::DevIO *device)
     LOOP(io_submission_count, i) {
         io_ret = device->wait(&write_futures[i]);
         ASSERT_EQ(io_ret, P::DevIO::ReturnCode::SUCCESS);
+        ASSERT_EQ(write_futures[i].res, P::DevIO::ReturnCode::SUCCESS);
+
 
 //        printf("sumitting read to %u addresses:\n", io_submission_baddrs[i].count);
 //        LOOP(io_submission_baddrs[i].count, j) {
@@ -143,6 +145,7 @@ static void multiple_async_rw(P::DevIO *device)
     LOOP(io_submission_count, i) {
         io_ret = device->wait(&read_futures[i]);
         ASSERT_EQ(io_ret, P::DevIO::ReturnCode::SUCCESS);
+        ASSERT_EQ(read_futures[i].res, P::DevIO::ReturnCode::SUCCESS);
     }
 
     // once this is operational- uncomment

@@ -330,13 +330,13 @@ TEST(TestSync, test_event_all)
 
 static void future_fast_setter(void *arg)
 {
-    Future<> *future = (Future<>*)arg;
+    Future *future = (Future*)arg;
     future->set();
 }
 
 static void future_slow_setter(void *arg)
 {
-    Future<> *future = (Future<>*)arg;
+    Future *future = (Future*)arg;
 
     P::TimerQueues::sleep(P::SleepInterval::SLEEP_100_MILLI);
     future->set();
@@ -344,12 +344,12 @@ static void future_slow_setter(void *arg)
 
 static void future_main_setter(void *arg)
 {
-    Future<> *future = (Future<>*)arg;
+    Future *future = (Future*)arg;
     enum {
         child_future_wait_subset = 7,
         child_future_count = 10
     };
-    Future<> child_futures[child_future_count];
+    Future child_futures[child_future_count];
     LOOP(child_future_count, i) {
         child_futures[i].init();
     }
@@ -359,12 +359,12 @@ static void future_main_setter(void *arg)
         P::Fiber::init(FG_C, future_fast_setter, &child_futures[i], false);
     }
 
-    Future<>::wait_any(child_futures, child_future_count);
+    Future::wait_any(child_futures, child_future_count);
 
     P::Fiber::init(FG_C, future_slow_setter, &child_futures[child_future_count - 1], false);
 
     // wait for subset
-    Future<>::wait_subset(child_futures, child_future_count, child_future_wait_subset);
+    Future::wait_subset(child_futures, child_future_count, child_future_wait_subset);
 
     // launch setters for completions
     LOOP_FROM(child_future_wait_subset - 1, child_future_count - 1, i) {
@@ -372,7 +372,7 @@ static void future_main_setter(void *arg)
         P::Fiber::init(FG_C, future_fast_setter, &child_futures[i], false);
     }
 
-    Future<>::wait_all(child_futures, child_future_count);
+    Future::wait_all(child_futures, child_future_count);
 
     LOOP(child_future_count, i) {
         EXPECT_TRUE(child_futures[i].is_set());
@@ -384,7 +384,7 @@ static void future_main_setter(void *arg)
 
 static void future_main_waiter(void *arg UNUSED)
 {
-    Future<> future;
+    Future future;
     future.init();
 
     P::Fiber::init(FG_B, future_main_setter, &future, false);

@@ -17,7 +17,7 @@
 #include <sys/uio.h>
 
 #include "../memory/atomic_pool.hpp"
-#include "../sync/future.hpp"
+#include "../sync/future_res.hpp"
 #include "../sync/sem.hpp"
 #include "io_provider.hpp"
 
@@ -52,10 +52,9 @@ public:
         RETRY
     };
 
-    class Future : public Sync::Future<> {
+    class Future : public Sync::FutureRes<ReturnCode> {
     public:
         uint32_t io_count;
-        ReturnCode res;
     };
 
     class IO {

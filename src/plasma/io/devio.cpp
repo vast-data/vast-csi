@@ -218,9 +218,9 @@ DevIO::ReturnCode DevIO::perform_scattered_io(IOVecs buffers[], Baddrs *dev_offs
         io_future = (DevIO::Future*)alloca(sizeof(*io_future));
     }
 
-    io_future->io_count = io_count;
+    io_future->init();
     io_future->res = ReturnCode::SUCCESS;
-    io_future->init(nullptr);
+    io_future->io_count = io_count;
 
     allocate_ios(ios, io_count, io_future);
     LOOP(io_count, io_index) {
