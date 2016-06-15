@@ -30,8 +30,10 @@ Targets
 -------
 Available targets:
 1. <none> - when running scons with no targets all executables are built.
-2. test - builds all test executables and invokes them.
-3. docs - builds the documentation. The result is located at docs/html/index.html.
+2. test - builds and invoke all tests.
+3. cpptest - builds and invoke C++ tests.
+4. pytest - run python tests.
+5. docs - builds the documentation. The result is located at docs/html/index.html.
 
 Parameters
 ----------
@@ -98,6 +100,7 @@ def AddCppTest(target, source, wrap=[]):
         cpp_test_env.Append(LINKFLAGS='-Wl,-wrap,' + func)
     test = cpp_test_env.Program(target=target, source=source)
     cpp_test_env.Alias('cpptest', test, test[0].abspath)
+cpp_env.AlwaysBuild('cpptest')
 
 AddCppTest(target='dist/tests/test_assert', source=[DEFAULT_BUILD_DIR + '/tests/test_assert.cpp'])
 AddCppTest(target='dist/tests/test_pool', source=[DEFAULT_BUILD_DIR + '/tests/test_pool.cpp'])
@@ -133,6 +136,5 @@ trace_tests = env.Alias('pytest', [], './venv/bin/py.test src/plasma/trace/reade
 Depends(trace_tests, venv)
 cpp_env.AlwaysBuild('pytest')
 
-cpp_env.AlwaysBuild('test')
-Depends('test', 'cpptest')
-Depends('test', 'pytest')
+cpp_env.Alias('test', 'cpptest')
+cpp_env.Alias('test', 'pytest')
