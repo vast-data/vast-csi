@@ -117,6 +117,7 @@ AddCppTest(target='dist/tests/test_sync', source=[DEFAULT_BUILD_DIR + '/tests/te
 AddCppTest(target='dist/tests/test_hash', source=[DEFAULT_BUILD_DIR + '/tests/test_hash.cpp'])
 AddCppTest(target='dist/tests/test_queue', source=[DEFAULT_BUILD_DIR + '/tests/test_queue.cpp'])
 AddCppTest(target='dist/tests/test_trace', source=[DEFAULT_BUILD_DIR + '/tests/test_trace.cpp'])
+AddCppTest(target='dist/tests/test_spsc_queue', source=[DEFAULT_BUILD_DIR + '/tests/test_spsc_queue.cpp'])
 AddCppTest(target='dist/tests/time', source=[DEFAULT_BUILD_DIR + '/tests/test_time.cpp'])
 AddCppTest(target='dist/tests/perf', source=[DEFAULT_BUILD_DIR + '/tests/test_perf.cpp'])
 cpp_env.AlwaysBuild('cpptest')
