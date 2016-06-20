@@ -11,7 +11,7 @@
 #pragma once
 
 #include <stddef.h>
-#include "plasma/sync/sem.hpp"
+#include "plasma/fiber/sync/sem.hpp"
 #include "object_pool.hpp"
 
 namespace P {
@@ -52,7 +52,7 @@ public:
     void destroy();
 
 private:
-    Sync::Sem _idle_elements;
+    FiberSync::Sem _idle_elements;
     ObjectPool<T> _pool;
 };
 

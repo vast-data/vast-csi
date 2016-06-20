@@ -1,6 +1,6 @@
 /* Copyright (C) Vast Data Ltd. */
 
-#include <plasma/data/list.hpp>
+#include "plasma/data/list.hpp"
 #include <gtest/gtest.h>
 
 using P::List;

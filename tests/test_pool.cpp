@@ -1,6 +1,6 @@
 /* Copyright (C) Vast Data Ltd. */
 
-#include <plasma/memory/pool.hpp>
+#include "plasma/memory/pool.hpp"
 #include <gtest/gtest.h>
 
 using P::Pool;

@@ -11,7 +11,7 @@
 #include "../utils/compiler.hpp"
 #include "../memory/pool.hpp"
 #include "../data/dlist.hpp"
-#include "../sync/rwlock.hpp"
+#include "sync/rwlock.hpp"
 #include "../../defs.hpp"
 #include "../../modules/module_interface.hpp"
 
@@ -39,7 +39,7 @@ class Fiber {
     typedef union {
         uint32_t sem_count;
         uint32_t waited_future_count;
-        Sync::RWlock::Type rw_lock_type;
+        FiberSync::RWlock::Type rw_lock_type;
     } SuspendState;
 
 public:
@@ -57,6 +57,16 @@ public:
      * A fiber should call this function to yield the CPU. Should be used in CPU-intensive code.
      */
     static void yield();
+
+    /*!
+     * Performs fiber yield for calling fibers and pthread_yield for other threads.
+     */
+    static void thread_or_fiber_yield();
+
+    /*!
+     * Determine if the calling thread is performed under the fiber context (running a scheduler run).
+     */
+    static bool is_fiber();
 
     /*!
      * Block until all children finished.

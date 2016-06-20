@@ -1,7 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 
 #include <gtest/gtest.h>
-#include <plasma/memory/pool.hpp>
+#include "plasma/memory/pool.hpp"
 #include "plasma/data/hash.hpp"
 #include "plasma/utils/types.hpp"
 

@@ -1,8 +1,8 @@
 /* Copyright (C) Vast Data Ltd. */
-#include <plasma/memory/cpool.hpp>
+#include "plasma/memory/cpool.hpp"
 #include <gtest/gtest.h>
-#include <plasma/execution/silo.hpp>
-#include <plasma/execution/env.hpp>
+#include "plasma/execution/silo.hpp"
+#include "plasma/execution/env.hpp"
 #include "test_module.hpp"
 
 #define N_BUFFERS_PER_SILO 100

@@ -17,8 +17,8 @@
 #include <sys/uio.h>
 
 #include "../memory/atomic_pool.hpp"
-#include "../sync/future_res.hpp"
-#include "../sync/sem.hpp"
+#include "plasma/fiber/sync/future_res.hpp"
+#include "plasma/fiber/sync/sem.hpp"
 #include "io_provider.hpp"
 
 namespace P {
@@ -52,7 +52,7 @@ public:
         RETRY
     };
 
-    class Future : public Sync::FutureRes<ReturnCode> {
+    class Future : public FiberSync::FutureRes<ReturnCode> {
     public:
         uint32_t io_count;
     };
@@ -166,7 +166,7 @@ private:
 
     io_context_t _ctx;
     // Todo: should we have a different limitation for reads & writes?
-    Sync::Sem _available_ios;
+    FiberSync::Sem _available_ios;
     int _file_desc;
     char _dev_name[PATH_MAX];
     AtomicPool<IO> *_iopool;

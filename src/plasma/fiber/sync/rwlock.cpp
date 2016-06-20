@@ -1,10 +1,10 @@
 #include "rwlock.hpp"
-#include "../utils/assert.hpp"
-#include "../fiber/fiber.hpp"
+#include "plasma/utils/assert.hpp"
+#include "plasma/fiber/fiber.hpp"
 
 namespace P {
 
-namespace Sync {
+namespace FiberSync {
 
 void RWlock::init()
 {

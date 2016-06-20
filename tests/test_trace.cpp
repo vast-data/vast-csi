@@ -219,7 +219,7 @@ TEST(Trace, dumper)
 
 void trace_func()
 {
-    LOOP(10000000, i)
+    LOOP(1000000, i)
         PT_INFO("Kawabanga: %ld!", i);
 }
 

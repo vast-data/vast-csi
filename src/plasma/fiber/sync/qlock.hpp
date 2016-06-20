@@ -6,12 +6,12 @@
  */
 #pragma once
 
-#include "../fiber/fiber.hpp"
-#include "../data/dlist.hpp"
+#include "plasma/fiber/fiber.hpp"
+#include "plasma/data/dlist.hpp"
 
 namespace P {
 
-namespace Sync {
+namespace FiberSync {
 
 class Qlock {
 public:

@@ -1,7 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 
 #include "devio.hpp"
-#include <plasma/utils/macros.hpp>
+#include "plasma/utils/macros.hpp"
 #include <fcntl.h>
 #include <errno.h>
 #include <linux/fs.h>
@@ -138,7 +138,7 @@ void DevIO::poll_events()
     ASSERT(active_ios > 0);
 
     int ios_done;
-    RETRY_LOOP(io_poll_retry_params,
+    RETRY_LOOP(io_poll_retry_params, P::Fiber::yield,
         ios_done = io_getevents(_ctx, 0, active_ios, events, nullptr);
         if (ios_done >= 0) {
             break;
@@ -168,7 +168,7 @@ void DevIO::poll_events()
 
 void DevIO::submit_ios(struct iocb **ios_ptr, uint32_t io_count)
 {
-    RETRY_LOOP(io_submit_retry_params,
+    RETRY_LOOP(io_submit_retry_params, P::Fiber::yield,
         int submit_ret = io_submit(_ctx, io_count, ios_ptr);
         if (submit_ret == (int) io_count) {
             break;

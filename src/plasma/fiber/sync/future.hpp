@@ -6,11 +6,11 @@
  */
 #pragma once
 
-#include "../fiber/fiber.hpp"
+#include "plasma/fiber/fiber.hpp"
 
 namespace P {
 
-namespace Sync {
+namespace FiberSync {
 
 class Future {
 public:

@@ -1,9 +1,9 @@
 #include "qlock.hpp"
-#include "../utils/assert.hpp"
+#include "plasma/utils/assert.hpp"
 
 namespace P {
 
-namespace Sync {
+namespace FiberSync {
 
 void Qlock::init()
 {

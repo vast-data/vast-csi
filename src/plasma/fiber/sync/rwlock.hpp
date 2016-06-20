@@ -9,13 +9,13 @@
  */
 #pragma once
 
-#include "../data/dlist.hpp"
+#include "plasma/data/dlist.hpp"
 
 namespace P {
 
 class Fiber;
 
-namespace Sync {
+namespace FiberSync {
 
 class RWlock {
 public:

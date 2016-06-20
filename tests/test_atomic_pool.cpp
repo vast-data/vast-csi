@@ -1,6 +1,6 @@
 /* Copyright (C) Vast Data Ltd. */
 
-#include <plasma/memory/atomic_pool.hpp>
+#include "plasma/memory/atomic_pool.hpp"
 #include <gtest/gtest.h>
 #include "test_common_scheduler.hpp"
 

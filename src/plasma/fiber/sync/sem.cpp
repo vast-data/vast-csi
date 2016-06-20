@@ -1,12 +1,12 @@
 //#include "../fiber/p_scheduler_internal.h"
 
 #include "sem.hpp"
-#include "../fiber/fiber.hpp"
-#include "../utils/assert.hpp"
+#include "plasma/fiber/fiber.hpp"
+#include "plasma/utils/assert.hpp"
 
 namespace P {
 
-namespace Sync {
+namespace FiberSync {
 
 void Sem::init(uint32_t value)
 {

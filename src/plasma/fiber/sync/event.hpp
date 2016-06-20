@@ -6,12 +6,12 @@
  */
 #pragma once
 
-#include "../utils/types.hpp"
-#include "../data/dlist.hpp"
+#include "plasma/utils/types.hpp"
+#include "plasma/data/dlist.hpp"
 
 namespace P {
 
-namespace Sync {
+namespace FiberSync {
 
 class Event {
 public:

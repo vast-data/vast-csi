@@ -6,6 +6,10 @@
  */
 #pragma once
 
+namespace P {
+
+namespace Sync {
+
 template <typename T>
 class LockGuard {
 public:
@@ -21,3 +25,6 @@ public:
 private:
     T *_lock;
 };
+
+}
+}

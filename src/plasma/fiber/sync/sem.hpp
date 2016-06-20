@@ -6,11 +6,11 @@
  */
 #pragma once
 
-#include "../data/dlist.hpp"
+#include "plasma/data/dlist.hpp"
 
 namespace P {
 
-namespace Sync {
+namespace FiberSync {
 
 class Sem {
 public:

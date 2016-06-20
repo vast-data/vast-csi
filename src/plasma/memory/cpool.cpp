@@ -58,7 +58,7 @@ void *CPool::alloc(Index cache_index)
     }
     // no buffer available in the cache, go to the shared pool
     {
-        LockGuard<Sync::SpinLock> guard(&_lock);
+        Sync::LockGuard<Sync::SpinLock> guard(&_lock);
         buffer = _shared_pool.alloc_address();
         if (buffer != nullptr) {
             _shared_count--;
@@ -79,7 +79,7 @@ void CPool::free(Index cache_index, void *buffer)
     }
     // return the buffer to the shared pool
     {
-        LockGuard<Sync::SpinLock> guard(&_lock);
+        Sync::LockGuard<Sync::SpinLock> guard(&_lock);
         _shared_count++;
         _shared_pool.free_address(buffer);
     }
@@ -87,7 +87,7 @@ void CPool::free(Index cache_index, void *buffer)
 
 void CPool::print_counters()
 {
-    LockGuard<Sync::SpinLock> guard(&_lock);
+    Sync::LockGuard<Sync::SpinLock> guard(&_lock);
     std::cout << "shared_count=" << _shared_count << std::endl;
     for (uint32_t j = 0; j < _n_caches; ++j) {
         std::cout << "cache[" << j << "]=" << _cache_counts[j] << std::endl;
@@ -98,6 +98,5 @@ uint32_t CPool::get_shared_count() const
 {
     return __sync_fetch_and_add(&_shared_count, 0);
 }
-
 
 }

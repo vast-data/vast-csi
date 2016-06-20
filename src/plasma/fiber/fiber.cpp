@@ -147,6 +147,21 @@ void Fiber::yield()
     context_switch();
 }
 
+void Fiber::thread_or_fiber_yield()
+{
+    if (is_fiber()) {
+        yield();
+    } else {
+        int ret = sched_yield();
+        ASSERT_EQUAL(ret, 0);
+    }
+}
+
+bool Fiber::is_fiber()
+{
+    return Scheduler::get() != nullptr;
+}
+
 void Fiber::suspend()
 {
     Fiber *fiber = get_current();

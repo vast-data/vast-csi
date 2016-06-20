@@ -10,7 +10,7 @@
 
 namespace P {
 
-namespace Sync {
+namespace FiberSync {
 
 template < typename T >
 class FutureRes : public Future {
