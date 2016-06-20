@@ -1,5 +1,6 @@
 /* Copyright (C) Vast Data Ltd. */
 #include <gtest/gtest.h>
+#include <thread>
 
 #include "plasma/trace/dbuffer.hpp"
 #include "plasma/trace/emitter.hpp"
@@ -186,9 +187,43 @@ TEST(Trace, emitter)
     conf_destroy(conf);
 }
 
-#define DATADIR "build/data"
+#define DATADIR "data"
 
 TEST(Trace, dumper)
+{
+    Config* conf = conf_init();
+
+    ASSERT_EQ(conf_read_string(conf, config_string), true);
+
+    ConfigSetting *setting = conf_lookup(conf, "traces");
+
+    Emitter emitter;
+    emitter.init(setting, false);
+
+    Dumper dumper;
+    dumper.init(setting, &emitter, DATADIR);
+
+    emitter.set_local();
+    dumper.start();
+
+    LOOP(1000000, i)
+        PT_INFO("Kawabanga: %ld!", i);
+
+    dumper.stop();
+    dumper.wait();
+
+    dumper.destroy();
+    emitter.destroy();
+    conf_destroy(conf);
+}
+
+void trace_func()
+{
+    LOOP(10000000, i)
+        PT_INFO("Kawabanga: %ld!", i);
+}
+
+TEST(Trace, concurrent_dumper)
 {
     Config* conf = conf_init();
 
@@ -202,11 +237,14 @@ TEST(Trace, dumper)
     Dumper dumper;
     dumper.init(setting, &emitter, DATADIR);
 
-    emitter.set_local();
+    emitter.set_global();
     dumper.start();
 
-    LOOP(1000000, i)
-        PT_INFO("Kawabanga: %ld!", i);
+    std::thread t1(trace_func);
+    std::thread t2(trace_func);
+
+    t1.join();
+    t2.join();
 
     dumper.stop();
     dumper.wait();
