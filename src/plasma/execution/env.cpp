@@ -28,6 +28,9 @@ void Env::error()
             _silos[i]->halt();
     }
 
+    _dumper.stop();
+    _dumper.wait();
+
     pthread_kill(pthread_self(), SIGSTOP);
 }
 

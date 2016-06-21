@@ -51,7 +51,7 @@ def get_traces_header_and_data(stream):
             if (bytes_left_in_chunk < 0):
                 assert bytes_left_in_chunk >= 0, 'Overflow from chunk size {} with length {}'.format(bytes_left_in_chunk, length)
 
-                # we need to extract the length and type of each specifier
+# we need to extract the length and type of each specifier
 printf_format_re = re.compile('''\
 %                                  # literal %
 (?:[-+0 #]{0,5})                   # optional flags

@@ -54,6 +54,7 @@ def handle_path(path):
     assert os.path.exists(path), 'File does not exist: {}'.format(path)
     match = file_re.search(path)
     assert match is not None, 'Not a trace file: {}'.format(path)
+    assert os.stat(path).st_size > 0, 'Trace file is empty: {}'.format(path)
     component, tid = match.groups()
     with open(path, 'rb') as f:
         for info, header, params in get_traces(f, get_trace_info(f)):
