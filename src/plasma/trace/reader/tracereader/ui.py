@@ -32,8 +32,8 @@ severities = {0: term.red + 'DEV' + term.normal,
               4: term.red + 'ERR' + term.normal}
 
 TIME_FORMAT = '%y/%m/%d %H:%M:%S.%f'
-LOCATION_FORMAT = '[{file}:{func}:{line}] '
-TRACE_FORMAT = '{time} ({tid:5d}|{job_id:08x}) [{component:.4}] {location}{severity}: {message}'
+LOCATION_FORMAT = ' [{file}:{func}:{line}]'
+TRACE_FORMAT = '{time} ({tid:5d}|{job_id:08x}) [{component:.4}] {severity}{location}: {message}'
 file_re = re.compile(r'(\w+)\.(\d+)')
 def print_trace(trace, verbose):
     time = datetime.datetime.fromtimestamp(trace.header.time / 1000000000.).strftime(TIME_FORMAT)
