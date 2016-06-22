@@ -43,6 +43,8 @@
   #define DEBUG_ASSERT_OP(left, operator, right, ...)
 #endif
 
+#define ASSERT_NO_VTABLE(cls) static_assert(!std::is_polymorphic<cls>::value, #cls " has a virtual table")
+
 // make nullptr_t printable (can be passed into ASSERT_OP)
 template<class C, class T>
 std::basic_ostream<C, T>& operator<<(std::basic_ostream<C, T>& os, std::nullptr_t)

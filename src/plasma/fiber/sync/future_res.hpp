@@ -8,6 +8,10 @@
 
 #include "future.hpp"
 
+#include <type_traits>
+
+#include "plasma/utils/assert.hpp"
+
 namespace P {
 
 namespace FiberSync {
@@ -20,6 +24,8 @@ public:
     // This is far from safe but allows maximum flexibility and minimum copies.
     T res;
 };
+
+ASSERT_NO_VTABLE(FutureRes<byte>);
 
 }
 }
