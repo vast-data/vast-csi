@@ -49,6 +49,9 @@ def print_trace(trace, verbose):
                               job_id=trace.header.job_id,
                               severity=severities[trace.header.severity]))
 
+def print_error(msg):
+    print(term.red + 'READER ERROR: ' + msg + term.normal)
+
 Trace = collections.namedtuple('Trace', ['info', 'header', 'params', 'component', 'tid'])
 def handle_path(path):
     assert os.path.exists(path), 'File does not exist: {}'.format(path)
@@ -60,8 +63,18 @@ def handle_path(path):
         for info, header, params in get_traces(f, get_trace_info(f)):
             yield Trace(info=info, header=header, params=params, component=component, tid=tid)
 
+def safe_handle_path(path):
+    try:
+        yield from handle_path(path)
+    except Exception as e:
+        # an assertion is fatal. otherwise, hide the error for other files to continue parsing
+        if isinstance(e, AssertionError):
+            print_error(str(e))
+            sys.exit(1)
+        print_error('Failed parsing trace file:' + path)
+
 def run(paths, verbose):
-    for trace in merge_sort(map(handle_path, paths), lambda trace: trace.header.time):
+    for trace in merge_sort(map(safe_handle_path, paths), lambda trace: trace.header.time):
         print_trace(trace, verbose)
 
 @click.command()
