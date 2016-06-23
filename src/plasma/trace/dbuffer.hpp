@@ -42,7 +42,7 @@ public:
     void write(void *data, P_DBUFFER_LENGTH_TYPE length);
 
 private:
-    Buffer *current_buffer();
+    Buffer *get_buffer(uint64_t generation);
 
     Buffer *_buffers;
     std::atomic<uint32_t> _generation;

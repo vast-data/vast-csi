@@ -48,9 +48,9 @@ void Buffer::reset()
     _write_index = 0;
 }
 
-Buffer *DBuffer::current_buffer()
+Buffer *DBuffer::get_buffer(uint64_t generation)
 {
-    return &_buffers[_generation % _buffer_count];
+    return &_buffers[generation % _buffer_count];
 }
 
 void DBuffer::init(uint8_t buffer_count, uint32_t size)
@@ -73,10 +73,10 @@ void DBuffer::destroy()
 void DBuffer::write(void *data, P_DBUFFER_LENGTH_TYPE length)
 {
     ASSERT_OP(length, <=, P_DBUFFER_MAX_RECORD, "record size bigger than max");
-    Buffer *buf = current_buffer();
+    Buffer *buf = get_buffer(_generation);
     if (!buf->has_room(length)) {
         _generation++;
-        buf = current_buffer();
+        buf = get_buffer(_generation);
         buf->reset();
     }
     buf->write(data, length);
@@ -115,7 +115,7 @@ DBufferReader::ReadResult DBufferReader::read(void *data OUT, P_DBUFFER_LENGTH_T
     if (overflow())
         goto overflow;
 
-    _dbuf->current_buffer()->read(_read_index, length, P_DBUFFER_LENGTH_BYTES);
+    _dbuf->get_buffer(_generation)->read(_read_index, length, P_DBUFFER_LENGTH_BYTES);
 
     if (overflow())
         goto overflow;
@@ -131,7 +131,7 @@ DBufferReader::ReadResult DBufferReader::read(void *data OUT, P_DBUFFER_LENGTH_T
         return result;
     }
 
-    _dbuf->current_buffer()->read(_read_index + P_DBUFFER_LENGTH_BYTES, data, *length);
+    _dbuf->get_buffer(_generation)->read(_read_index + P_DBUFFER_LENGTH_BYTES, data, *length);
     if (overflow())
         goto overflow;
 

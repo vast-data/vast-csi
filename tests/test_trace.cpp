@@ -51,10 +51,11 @@ TEST(DBuffer, wraparound)
     DBuffer buf;
     buf.init(2, 32);
 
-    byte data[] = "abcdefgh";
+    byte data1[] = "abcdefgh";
+    byte data2[] = "klmnopqr";
 
-    buf.write(data, 8);
-    buf.write(data, 8);
+    buf.write(data1, 8);
+    buf.write(data2, 8);
 
     DBufferReader reader;
     reader.init(&buf);
@@ -63,13 +64,13 @@ TEST(DBuffer, wraparound)
     P_DBUFFER_LENGTH_TYPE length;
 
     ASSERT_EQ(reader.read(out, &length, false), DBufferReader::ReadResult::SUCCESS);
-    ASSERT_FALSE(memcmp(data, out, 8));
+    ASSERT_FALSE(memcmp(data1, out, 8));
 
     P::fill_zeroes(out, 8);
     ASSERT_EQ(reader.read(out, &length, false), DBufferReader::ReadResult::NEXT);
     ASSERT_EQ(reader.read(out, &length, true), DBufferReader::ReadResult::SUCCESS);
 
-    ASSERT_FALSE(memcmp(data, out, 8));
+    ASSERT_FALSE(memcmp(data2, out, 8));
 
     buf.destroy();
 }
