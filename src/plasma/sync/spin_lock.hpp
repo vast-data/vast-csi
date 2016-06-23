@@ -7,7 +7,6 @@
 #pragma once
 
 #include <atomic>
-#include "../utils/assert.hpp"
 
 namespace P {
 

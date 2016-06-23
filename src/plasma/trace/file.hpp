@@ -6,6 +6,7 @@
  */
 #pragma once
 
+#include <cstdio>
 #include "../execution/config.hpp"
 #include "dbuffer.hpp"
 #include "record.hpp"

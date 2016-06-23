@@ -2,6 +2,7 @@
 
 #include "devio.hpp"
 #include "plasma/utils/macros.hpp"
+#include "plasma/utils/assert.hpp"
 #include <fcntl.h>
 #include <errno.h>
 #include <linux/fs.h>

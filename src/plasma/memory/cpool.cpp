@@ -48,7 +48,7 @@ void *CPool::alloc(Index cache_index)
 {
     void *buffer = nullptr;
     // check if there is a buffer available in the cache
-    ASSERT(cache_index < _n_caches, "invalid cache index " << cache_index <<);
+    ASSERT(cache_index < _n_caches, "invalid cache index " << cache_index);
     if (cache_index != INVALID_INDEX && _cache_heads[cache_index] != INVALID_INDEX) {
         DEBUG_ASSERT_OP(_cache_counts[cache_index], >, 0, "free list isn't empty though count equals 0");
         buffer = _shared_pool.index_to_address(_cache_heads[cache_index]);

@@ -7,16 +7,21 @@
 #pragma once
 
 #include <iostream>
+#include <sstream>
 
 #include "compiler.hpp"
 #include "macros.hpp"
 #include "backtrace.hpp"
+#include "plasma/trace/emitter.hpp"
 
-#define PANIC(message) {                                                \
-        std::cerr << "PANIC: " message "\nat file: " __FILE__ " line: " MACRO_STRINGIFY(__LINE__) " func: " << __PRETTY_FUNCTION__ << "\n"; \
+#define PANIC(message) do { \
+        std::ostringstream msg_string;                                  \
+        msg_string << "" message;                                       \
+        P_TRACE(P::Trace::Severity::SEVERITY_ERROR, ComponentId::PLASMA, "PANIC: %s", msg_string.str().c_str()); \
+        std::cerr << "PANIC: " << msg_string.str() << "\nat file: " __FILE__ " line: " MACRO_STRINGIFY(__LINE__) " func: " << __PRETTY_FUNCTION__ << "\n"; \
         P::Backtracer::show_backtrace();                                \
         std::abort();                                                   \
-    }
+    } while(0)
 
 // NOTE: the assert macros all accept '...' as a way to pass an optional message.
 #define ASSERT(expr, ...) {                                             \

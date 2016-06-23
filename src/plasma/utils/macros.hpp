@@ -7,7 +7,6 @@
 #pragma once
 
 #include <string.h>
-#include "assert.hpp"
 #include "types.hpp"
 
 #define MIN(a, b) ((a) > (b) ? (b) : (a))
@@ -104,7 +103,7 @@
         for (P::byte i = 0; array[i] != nullptr; i++)                   \
             if (strcmp(array[i], string) == 0)                          \
                 return (name)i;                                         \
-        PANIC("invalid " #name " "<< string << );                       \
+        PANIC("invalid " #name " "<< string);                           \
     }
 
 /*!
@@ -123,7 +122,7 @@ struct RetryParams {
 // Performs loop_body until it breaks.
 // Spins for max_spinning_attempts iterations, than performs yield every attempts_per_yield iterations
 // and eventually panics if we've reached max_attempts iterations.
-#define INNER_RETRY_LOOP(var_attempt_count, var_max_spinning_attempts, var_attempts_per_yield, var_max_attempts, max_spinning_attempts, attempts_per_yield, max_attempts, yield_fcn, loop_body)  \
+#define INNER_RETRY_LOOP(var_attempt_count, var_max_spinning_attempts, var_attempts_per_yield, var_max_attempts, max_spinning_attempts, attempts_per_yield, max_attempts, yield_fcn, ...)  \
     do { uint64_t var_attempt_count = 0;                                                \
     static const uint32_t var_max_spinning_attempts = max_spinning_attempts;            \
     static const uint32_t var_attempts_per_yield = attempts_per_yield;                  \
@@ -139,13 +138,13 @@ struct RetryParams {
                 yield_fcn();                                                            \
             }                                                                           \
         }                                                                               \
-        loop_body                                                                       \
+        __VA_ARGS__                                                                     \
     } } while (false);
 
-#define RETRY_LOOP_PARAMS(max_spinning_attempts, attempts_per_yield, max_attempts, yield_fcn, loop_body)                 \
+#define RETRY_LOOP_PARAMS(max_spinning_attempts, attempts_per_yield, max_attempts, yield_fcn, ...)                      \
         INNER_RETRY_LOOP(MACRO_CONCAT(attempt_count_, __COUNTER__) , MACRO_CONCAT(max_spinning_attempts_, __COUNTER__), \
                          MACRO_CONCAT(attempts_per_yield_, __COUNTER__), MACRO_CONCAT(max_attempts_, __COUNTER__),      \
-                         max_spinning_attempts, attempts_per_yield, max_attempts, yield_fcn, loop_body)
+                         max_spinning_attempts, attempts_per_yield, max_attempts, yield_fcn, __VA_ARGS__)
 
-#define RETRY_LOOP(retry_params, yield_fcn, loop_body)                                  \
-        RETRY_LOOP_PARAMS(retry_params.max_spinning_attempts, retry_params.attempts_per_yield, retry_params.max_attempts, yield_fcn, loop_body)
+#define RETRY_LOOP(retry_params, yield_fcn, ...)                        \
+        RETRY_LOOP_PARAMS(retry_params.max_spinning_attempts, retry_params.attempts_per_yield, retry_params.max_attempts, yield_fcn, __VA_ARGS__)

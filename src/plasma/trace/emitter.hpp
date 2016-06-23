@@ -14,8 +14,8 @@
 #include "defs.hpp"
 #include "../execution/config.hpp"
 #include "../sync/spin_lock.hpp"
+#include "../utils/compiler.hpp"
 #include "../utils/macros.hpp"
-#include "../fiber/fiber.hpp"
 #include "../utils/time.hpp"
 
 #define P_TRACE(severity, component, fmt, ...) do {                                 \
@@ -99,13 +99,11 @@ private:
     static thread_local Emitter *_local_emitter;
     static Emitter *_global_emitter;
 
+    uint64_t get_fiber_id();
+
     void record_start(TraceInfo *info, Severity severity)
     {
-        Fiber *fiber = Fiber::get_current();
-        if (fiber != nullptr)
-            _record.job_id = fiber->get_job_id();
-        else
-            _record.job_id = 0; // trace records emitted before running within a scheduler
+        _record.job_id = get_fiber_id();
         _record.time = get_time_nano();
         _record.info_index = get_trace_info_index(info);
         _record.severity = severity;
@@ -119,7 +117,7 @@ private:
 
     void emit_param(const void *data, P_DBUFFER_LENGTH_TYPE length)
     {
-        DEBUG_ASSERT_OP(TRACE_RECORD_MAX_SIZE - (_write_index + offsetof(TraceRecord, params)), >, length);
+        //DEBUG_ASSERT_OP(TRACE_RECORD_MAX_SIZE - (_write_index + offsetof(TraceRecord, params)), >, length);
         memcpy(&_record.params[_write_index], data, length);
         _write_index += length;
     }

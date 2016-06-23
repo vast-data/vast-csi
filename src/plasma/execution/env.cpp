@@ -68,7 +68,7 @@ ModuleInterface *Env::create_module(const char *name, ModuleId *id)
             return _module_factory[i]->create();
         }
     }
-    PANIC("Unknown module name " << name <<);
+    PANIC("Unknown module name " << name);
     return nullptr;
 }
 

@@ -1,4 +1,5 @@
 #include "defs.hpp"
+#include "plasma/utils/assert.hpp"
 
 DEFINE_LOOKUP_IMPLEMENTATION(COMPONENT_LIST, ComponentId, component_id_strings,
                              component_id_to_string, component_id_from_string)

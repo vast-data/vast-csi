@@ -1,6 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 
 #include "record.hpp"
+#include "plasma/utils/assert.hpp"
 
 namespace P { namespace Trace {
 

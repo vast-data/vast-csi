@@ -2,6 +2,7 @@
 #include "emitter.hpp"
 #include "../execution/config.hpp"
 #include "../utils/units.hpp"
+#include "../fiber/fiber.hpp"
 
 using namespace P::Conf;
 
@@ -23,6 +24,15 @@ void Emitter::set_global()
 DBuffer *Emitter::get_dbuffer(ComponentId component)
 {
     return _buffers[(byte) component];
+}
+
+uint64_t Emitter::get_fiber_id()
+{
+    Fiber *fiber = Fiber::get_current();
+    if (fiber != nullptr)
+        return fiber->get_job_id();
+    else
+        return 0; // trace records emitted before running within a scheduler
 }
 
 const byte BUFFER_COUNT = 4;

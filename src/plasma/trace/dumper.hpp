@@ -7,6 +7,7 @@
  */
 #pragma once
 
+#include <pthread.h>
 #include "emitter.hpp"
 #include "file.hpp"
 

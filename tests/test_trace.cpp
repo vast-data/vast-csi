@@ -187,7 +187,7 @@ TEST(Trace, emitter)
     conf_destroy(conf);
 }
 
-#define DATADIR "data"
+#define DATADIR "data/traces"
 
 TEST(Trace, dumper)
 {
