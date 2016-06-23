@@ -34,14 +34,13 @@ typedef struct IOVecs {
     IOVec *iovecs;
 } IOVecs;
 
-#define PBADDRS_SIZE(baddr_count) (sizeof(Baddrs) + (baddr_count) * sizeof(Baddr)) UNUSED
+#define IO_BADDRS_MAX_COUNT 64
 
 typedef struct Baddrs {
-    uint32_t count;
+    uint32_t count; // We allow a maximum of IO_BADDRS_MAX_COUNT target baddrs for a single IO. Limiting stack allocated structures.
     Baddr *baddrs;
 } Baddrs;
 
-// Todo: do we need to enforce certain block size? (512 bytes for instance for O_DIRECT)
 class DevIO {
 public:
     static const size_t O_DIRECT_ALIGNMENT = 512;

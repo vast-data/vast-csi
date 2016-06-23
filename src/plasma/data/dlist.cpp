@@ -22,6 +22,9 @@ void DList::destroy()
 void DList::add_after(Index index, Index new_index)
 {
     ASSERT(!is_empty(), "Adding after a dlist item though the list is empty");
+    DEBUG_ASSERT_OP(index, <, _list_pool->_pool_size);
+    DEBUG_ASSERT_OP(new_index, <, _list_pool->_pool_size);
+
     _list_pool->_nodes[new_index].prev = index;
     _list_pool->_nodes[new_index].next = _list_pool->_nodes[index].next;
     _list_pool->_nodes[_list_pool->_nodes[new_index].next].prev = new_index;
@@ -30,6 +33,8 @@ void DList::add_after(Index index, Index new_index)
 
 void DList::add_before(Index index, Index new_index)
 {
+    DEBUG_ASSERT_OP(index, <, _list_pool->_pool_size);
+    DEBUG_ASSERT_OP(new_index, <, _list_pool->_pool_size);
     ASSERT(!is_empty(), "Adding before a dlist item though the list is empty");
     _list_pool->_nodes[new_index].next = index;
     _list_pool->_nodes[new_index].prev = _list_pool->_nodes[index].prev;
@@ -46,6 +51,7 @@ void DList::insert(Index index)
     if (_anchor->index != Anchor::ANCHOR_INIT) {
         add_before(_anchor->index, index);
     } else {
+        DEBUG_ASSERT_OP(index, <, _list_pool->_pool_size);
         _list_pool->_nodes[index].prev = index;
         _list_pool->_nodes[index].next = index;
         _anchor->index = index;
@@ -54,6 +60,10 @@ void DList::insert(Index index)
 
 void DList::remove(Index index)
 {
+    DEBUG_ASSERT_OP(index, <, _list_pool->_pool_size);
+    DEBUG_ASSERT(_list_pool->_nodes[index].prev != INVALID_INDEX);
+    DEBUG_ASSERT(_list_pool->_nodes[index].next != INVALID_INDEX);
+
     Index prev = _list_pool->_nodes[index].prev;
     Index next = _list_pool->_nodes[index].next;
     _list_pool->_nodes[prev].next = next;
@@ -94,6 +104,7 @@ void DList::append(Index index)
     if (_anchor->index == Anchor::ANCHOR_INIT)
         insert(index);
     else {
+        DEBUG_ASSERT_OP(index, <, _list_pool->_pool_size);
         Index last = _list_pool->_nodes[_anchor->index].prev;
         add_after(last, index);
     }

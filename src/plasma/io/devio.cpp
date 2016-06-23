@@ -3,6 +3,7 @@
 #include "devio.hpp"
 #include "plasma/utils/macros.hpp"
 #include "plasma/utils/assert.hpp"
+#include "plasma/internal.hpp"
 #include <fcntl.h>
 #include <errno.h>
 #include <linux/fs.h>
@@ -22,8 +23,7 @@ bool DevIO::init(const char dev_name[], uint32_t iodepth, AtomicPool<DevIO::IO> 
     _ctx = 0;
     int setup_ret = io_setup((int) iodepth, &_ctx);
     if (unlikely(setup_ret != 0)) {
-        PANIC(/* TODO: informative string with the value of setup_ret
-                         (negated errno in this case - might use strerror(-setup_ret)) */);
+        PANIC("Failed to initialize aio for io depth of " << iodepth << ". Errno is " << errno << ": " << std::strerror(-setup_ret));
     }
 
     _io_provider = nullptr;
@@ -33,7 +33,7 @@ bool DevIO::init(const char dev_name[], uint32_t iodepth, AtomicPool<DevIO::IO> 
     int open_flags = O_RDWR | O_DIRECT;
     _file_desc = open(_dev_name, open_flags);
     if (unlikely(_file_desc == -1)) {
-        // TRACE_ERR(/* TODO: informative string with the value of errno - might use strerror() / perror()) */);
+        PT_ERROR("Failed to open device path %s with errno %s", _dev_name, std::strerror(errno));
         return false;
     }
 
@@ -49,7 +49,7 @@ bool DevIO::init(const char dev_name[], uint32_t iodepth, AtomicPool<DevIO::IO> 
 
 void DevIO::set_ioprovider(IOProvider *io_provider)
 {
-    ASSERT(_io_provider == nullptr);
+    ASSERT_EQUAL(_io_provider, nullptr);
     _io_provider = io_provider;
 }
 
@@ -63,7 +63,7 @@ size_t DevIO::io_byte_count(struct iocb *ios)
     case IO_CMD_PWRITEV:
         break;
     default:
-        PANIC();
+        PANIC("unexpected IO command (" << ios->aio_lio_opcode << ")?! ");
     }
 
     size_t ret_size = 0;
@@ -122,9 +122,8 @@ void DevIO::validate_io_event(struct io_event *event)
 {
     size_t io_size = io_byte_count(event->obj);
     if (event->res != io_size) {
-        // TODO: get res and possibly res2- log all that we can here
         DevIO::IO *io =  container_of(event->obj, DevIO::IO, io);
-        printf("IO error: res=%ld, res2=%ld nbytes = %ld, opcode = %d\n",
+        PT_ERROR("IO error: res=%ld, res2=%ld nbytes = %ld, opcode = %d\n",
                (long)event->res, (long)event->res2,
                (long)event->obj->u.c.nbytes, event->obj->aio_lio_opcode);
         io->io_future->res = ReturnCode::ERROR;
@@ -210,8 +209,8 @@ DevIO::ReturnCode DevIO::perform_scattered_io(IOVecs buffers[], Baddrs *dev_offs
     validate_io(buffers, dev_offsets);
 
     const uint32_t io_count = dev_offsets->count;
-    // Todo: is this a proper size on the stack? - should set a maximum defined size here
-    struct iocb *ios[io_count];
+    ASSERT_OP(io_count, <, IO_BADDRS_MAX_COUNT);
+    struct iocb *ios[IO_BADDRS_MAX_COUNT];
 
     bool blocking = false;
     if (io_future == nullptr) {

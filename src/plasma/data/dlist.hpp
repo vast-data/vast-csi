@@ -165,11 +165,6 @@ private:
 
     Anchor *_anchor;
     Pool *_list_pool;
-
-    // TODO: perform boundary tests according to size upon insert/remove.
-#ifdef DEBUG
-    size_t pool_size;
-#endif
 };
 
 }
