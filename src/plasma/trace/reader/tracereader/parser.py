@@ -127,9 +127,10 @@ def parse_params(format, buffer):
         else:
             dtype = specifier_map[specifier]
             dtype_size = ctypes.sizeof(dtype)
+            promoted_dtype_size = max(4, dtype_size) # workaround for ORION-35
             part = buffer[pos:pos + dtype_size]
             assert len(part) == dtype_size, 'Format string expects more data ({}) than received ({}): {}'.format(dtype_size, len(part), format)
             params.append(struct.unpack(dtype_to_field[dtype], part)[0])
-            pos += dtype_size
+            pos += promoted_dtype_size
     assert len(buffer) == pos, 'Format string "{}" did not consume all params. Expected {} bytes and got {} instead.'.format(format, pos, len(buffer))
     return params

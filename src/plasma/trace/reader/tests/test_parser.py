@@ -21,5 +21,5 @@ def test_get_header_and_data():
 
 def test_parse_params():
     format = 'foo %d bla %s spam %hd'
-    test_data = b'\x01\x00\x00\x00\x03\x00ABC\x02\x00'
+    test_data = b'\x01\x00\x00\x00\x03\x00ABC\x02\x00\x00\x00'
     assert parse_params(format, test_data) == [1, 'ABC', 2]

@@ -117,6 +117,7 @@ private:
 
     void emit_param(const void *data, P_DBUFFER_LENGTH_TYPE length)
     {
+        // we can't use asserts from this header as the asserts rely on it..
         //DEBUG_ASSERT_OP(TRACE_RECORD_MAX_SIZE - (_write_index + offsetof(TraceRecord, params)), >, length);
         memcpy(&_record.params[_write_index], data, length);
         _write_index += length;
@@ -141,7 +142,8 @@ private:
     template<typename T>
     void trace_emit_param(T arg)
     {
-        emit_param(&arg, sizeof(T));
+        // temporaty workaround for ORION-35
+        emit_param(&arg, MAX(4, sizeof(T)));
     }
 
     void trace_emit()
