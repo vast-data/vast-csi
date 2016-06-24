@@ -142,7 +142,7 @@ private:
     template<typename T>
     void trace_emit_param(T arg)
     {
-        // temporaty workaround for ORION-35
+        // temporary workaround for ORION-35
         emit_param(&arg, MAX(4, sizeof(T)));
     }
 

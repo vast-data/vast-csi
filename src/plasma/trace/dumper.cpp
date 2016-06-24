@@ -95,7 +95,7 @@ bool Dumper::iteration(bool force)
                 record.job_id = 0; // no fiber
                 record.severity = Severity::SEVERITY_ERROR;
                 record.info_index = overflow_index;
-                memcpy(record.params, &length, sizeof(length));
+                memcpy(record.params, &length, MAX(sizeof(length), 4)); // temporary workaround for ORION-35
                 _files[i]->emit(&record, offsetof(TraceRecord, params) + sizeof(length));
                 break;
             }
