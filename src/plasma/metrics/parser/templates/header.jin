@@ -1,0 +1,91 @@
+/* Copyright (C) Vast Data Ltd. */
+/* Auto generated code - DO NOT EDIT */
+
+#pragma once
+
+#include "plasma/metrics/object.hpp"
+#include "plasma/metrics/agent.hpp"
+
+{% for cls, cls_attrs in defs.items() %}
+
+{% for ns in cls_attrs.namespaces %}
+namespace {{ ns }} {
+{% endfor %}
+
+struct {{ cls }}Clone {
+    uint16_t size;
+    char name[{{ cls_attrs.name_size }}];
+    P::Metrics::TypeId type_id;
+    P::Metrics::Object *parent;
+    void *address;
+{% for metric in cls_attrs.metrics %}
+    {{ metric.type }} {{ metric.name }};
+{% endfor %}
+};
+
+class {{ cls }}: public P::Metrics::Object {
+public:
+    void init(P::Metrics::Agent *agent, Object *parent, const char *name)
+    {
+        P::Metrics::Object::init(agent, parent);
+        ASSERT_OP(strlen(name), <, {{ cls_attrs.name_size }});
+        strncpy(_name, name, {{ cls_attrs.name_size }});
+    }
+
+{% for metric in cls_attrs.metrics %}
+    void set_{{ metric.name }}({{ metric.type }} value=1)
+    {
+        _{{ metric.name }} = value;
+        _generation = _agent->next_generation();
+    }
+{% if metric.kind == 'counter' %}
+    void inc_{{ metric.name }}({{ metric.type }} value=1)
+    {
+        set_{{ metric.name }}(_{{ metric.name }} + value);
+    }
+
+    void dec_{{ metric.name }}({{ metric.type }} value=1)
+    {
+        set_{{ metric.name }}(_{{ metric.name }} - value);
+    }
+{% endif %}
+{% if metric.kind == 'flag' %}
+    void clear_{{ metric.name }}()
+    {
+        set_{{ metric.name }}(0);
+    }
+{% endif %}
+{% endfor %}
+
+    size_t get_clone_size()
+    {
+        return sizeof({{ cls }}Clone);
+    }
+
+    size_t clone(void *buffer)
+    {
+        {{ cls }}Clone *obj = ({{ cls }}Clone*) buffer;
+        // the size of the object without the size itself
+        obj->size = sizeof({{ cls }}Clone) - sizeof(uint16_t);
+        strncpy(obj->name, _name, {{ cls_attrs.name_size }});
+        obj->type_id = P::Metrics::TypeId::{{ cls }};
+        obj->parent = _parent;
+        obj->address = this;
+        {% for metric in cls_attrs.metrics %}
+        obj->{{ metric.name }} = _{{ metric.name }};
+        {% endfor %}
+        return sizeof({{ cls }}Clone);
+    }
+
+private:
+    char _name[{{ cls_attrs.name_size }}];
+{% for metric in cls_attrs.metrics %}
+    {{ metric.type }} _{{ metric.name }};
+{% endfor %}
+};
+
+{% for ns in cls_attrs.namespaces %}
+}
+{% endfor %}
+
+{% endfor %}

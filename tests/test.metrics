@@ -1,0 +1,18 @@
+TestDriveMetrics:
+    namespaces: ["NS1", "NS2"]
+    name_size: 8
+    metrics:
+        - name: reads
+          kind: counter
+          type: uint64_t
+        - name: writes
+          kind: counter
+          type: uint64_t
+        - name: status
+          kind: value
+          type: uint32_t
+          push: true
+        - name: online
+          kind: flag
+          type: bool
+          push: true

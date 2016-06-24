@@ -100,6 +100,7 @@ def develop_package(target, dir):
     return package
 
 rpc_gen = develop_package(target='venv/rpc_installed.txt', dir='src/plasma/vmsg/rpc_gen')
+metrics_gen = develop_package('venv/metrics_installed.txt', 'src/plasma/metrics/parser')
 hubble = develop_package('venv/trace_installed.txt', 'src/plasma/trace/reader')
 trace_tests = env.Alias('pytest', [], './venv/bin/py.test src/plasma/trace/reader/tests')
 env.Depends(trace_tests, hubble)
@@ -128,8 +129,21 @@ for rpc_file in RGlob('src', '*.rpc'):
     rpc_sources.extend(FilterPaths(env.Rpc(rpc_file), '*.cpp'))
 test_rpc_sources = FilterPaths(env.Rpc(DEFAULT_BUILD_DIR + '/tests/test_module.rpc'), '*.cpp')
 
+# ----- Metrics ----- #
+def metrics_emitter(target, source, env):
+    source.extend([metrics_gen,
+                   'src/plasma/metrics/parser/main.py',
+                   'src/plasma/metrics/parser/templates/header.jin'])
+    return target, source
+env.Append(BUILDERS = {'Metrics': Builder(action='./venv/bin/gen-metrics $SOURCE $TARGETS', emitter=metrics_emitter)})
+
+for metric_file in RGlob('src', '*.metrics') + ['tests/test.metrics']:
+    metric_file = DEFAULT_BUILD_DIR + '/' + metric_file
+    env.Metrics(metric_file + '.hpp', metric_file)
+
 # ----- C++ Environment ----- #
 LINKER_SCRIPT = 'linkerscript.lds'
+
 cpp_env = env.Clone()
 cpp_env.Append(CXXFLAGS=['-std=c++11'])
 if compiler == 'gcc':
@@ -174,7 +188,9 @@ AddCppTest(target='dist/tests/trace', source=[DEFAULT_BUILD_DIR + '/tests/test_t
 AddCppTest(target='dist/tests/spsc_queue', source=[DEFAULT_BUILD_DIR + '/tests/test_spsc_queue.cpp'])
 AddCppTest(target='dist/tests/time', source=[DEFAULT_BUILD_DIR + '/tests/test_time.cpp'])
 AddCppTest(target='dist/tests/perf', source=[DEFAULT_BUILD_DIR + '/tests/test_perf.cpp'])
+AddCppTest(target='dist/tests/metrics', source=[DEFAULT_BUILD_DIR + '/tests/test_metrics.cpp'])
 AddCppTest(target='dist/tests/rdma_transport', source=[DEFAULT_BUILD_DIR + '/tests/test_rdma_transport.cpp'])
 AddCppTest(target='dist/tests/vmsg', source=[DEFAULT_BUILD_DIR + '/tests/vmsg_test.cpp', test_rpc_sources])
+
 cpp_env.AlwaysBuild('cpptest')
 env.Alias('test', 'cpptest')
