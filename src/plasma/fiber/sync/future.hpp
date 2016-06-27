@@ -40,17 +40,17 @@ public:
     /*!
      * Wait for subset_count futures to be set. If this amount futures (or more) are already set, return immediately. Otherwise, block.
      */
-    static void wait_subset(Future futures[], uint32_t total_count, uint32_t subset_count);
+    static void wait_subset(Future *futures[], uint32_t total_count, uint32_t subset_count);
 
     /*!
      * Wait for all futures to be set. If the futures are already set, return immediately. Otherwise, block.
      */
-    static void wait_all(Future futures[], uint32_t count);
+    static void wait_all(Future *futures[], uint32_t count);
 
     /*!
      * Wait for any of the futures to be set. If even one of the futures is already set, return immediately. Otherwise, block.
      */
-    static void wait_any(Future futures[], uint32_t count);
+    static void wait_any(Future *futures[], uint32_t count);
 
     /*!
      * Wait for the future to be set. If the future is already set, return immediately. Otherwise, block.

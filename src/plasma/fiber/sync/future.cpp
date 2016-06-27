@@ -41,21 +41,21 @@ bool Future::is_set()
     return _state == State::SET;
 }
 
-void Future::wait_subset(Future futures[], uint32_t total_count, uint32_t subset_count)
+void Future::wait_subset(Future *futures[], uint32_t total_count, uint32_t subset_count)
 {
     uint32_t set_count = 0;
     auto this_fiber = Fiber::get_current();
 
     LOOP(total_count, i) {
-        ASSERT(futures[i]._owner == this_fiber);
-        if (futures[i].is_set()) {
+        ASSERT(futures[i]->_owner == this_fiber);
+        if (futures[i]->is_set()) {
             set_count++;
         }
     }
 
     if(set_count < subset_count) {
         LOOP(total_count, i) {
-            futures[i].try_mark_waiting();
+            futures[i]->try_mark_waiting();
         }
 
         auto suspend_state = this_fiber->get_suspend_state();
@@ -65,7 +65,7 @@ void Future::wait_subset(Future futures[], uint32_t total_count, uint32_t subset
 
         uint32_t set_count_after_suspend = 0;
         LOOP(total_count, i) {
-            if(!futures[i].try_unmark_waiting()) {
+            if(!futures[i]->try_unmark_waiting()) {
                 set_count_after_suspend++;
             }
         }
@@ -74,19 +74,21 @@ void Future::wait_subset(Future futures[], uint32_t total_count, uint32_t subset
     }
 }
 
-void Future::wait_any(Future futures[], uint32_t count)
+void Future::wait_any(Future *futures[], uint32_t count)
 {
     wait_subset(futures, count, 1);
 }
 
-void Future::wait_all(Future futures[], uint32_t count)
+void Future::wait_all(Future *futures[], uint32_t count)
 {
     wait_subset(futures, count, count);
 }
 
 void Future::wait()
 {
-    wait_any(this, 1);
+    Future *futures[1];
+    futures[0] = this;
+    wait_any(futures, 1);
 }
 
 void Future::set()

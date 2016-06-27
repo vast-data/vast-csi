@@ -337,34 +337,36 @@ static void future_main_setter(void *arg)
         child_future_wait_subset = 7,
         child_future_count = 10
     };
-    Future child_futures[child_future_count];
+    Future *child_futures[child_future_count];
     LOOP(child_future_count, i) {
-        child_futures[i].init();
+        child_futures[i] = new Future();
+        child_futures[i]->init();
     }
 
     // launch setters for subset
     LOOP(child_future_wait_subset - 1, i) {
-        P::Fiber::init(FG_C, future_fast_setter, &child_futures[i], false);
+        P::Fiber::init(FG_C, future_fast_setter, child_futures[i], false);
     }
 
     Future::wait_any(child_futures, child_future_count);
 
-    P::Fiber::init(FG_C, future_slow_setter, &child_futures[child_future_count - 1], false);
+    P::Fiber::init(FG_C, future_slow_setter, child_futures[child_future_count - 1], false);
 
     // wait for subset
     Future::wait_subset(child_futures, child_future_count, child_future_wait_subset);
 
     // launch setters for completions
     LOOP_FROM(child_future_wait_subset - 1, child_future_count - 1, i) {
-        EXPECT_FALSE(child_futures[i].is_set());
-        P::Fiber::init(FG_C, future_fast_setter, &child_futures[i], false);
+        EXPECT_FALSE(child_futures[i]->is_set());
+        P::Fiber::init(FG_C, future_fast_setter, child_futures[i], false);
     }
 
     Future::wait_all(child_futures, child_future_count);
 
     LOOP(child_future_count, i) {
-        EXPECT_TRUE(child_futures[i].is_set());
-        child_futures[i].destroy();
+        EXPECT_TRUE(child_futures[i]->is_set());
+        child_futures[i]->destroy();
+        delete child_futures[i];
     }
 
     future->set();
