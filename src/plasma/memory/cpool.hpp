@@ -52,7 +52,17 @@ public:
      *   It is expected that 2 different threads will not use the same index.
      * \param buffer the buffer to return to the pool
      */
-    void free(Index cache_index, void *buffer);
+    void free_address(Index cache_index, void *buffer);
+
+    /*!
+     * Return a buffer to the pool.
+     *
+     * \param cache_index index to the thread cache to use, must be lower than num_caches passed at init time.
+     *   Or P::INVALID_INDEX of the current thread does not have a cache.
+     *   It is expected that 2 different threads will not use the same index.
+     * \param buffer_index the index of the buffer to return to the pool
+     */
+    void free(Index cache_index, Index buffer_index);
 
     /*!
      * Print the pool internal counters to stdout (used for debugging)

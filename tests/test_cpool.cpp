@@ -26,7 +26,7 @@ void test_cpool(void *ctx)
         ASSERT_NE(buff[i], nullptr);
     }
     LOOP(N_BUFFERS_PER_SILO, i) {
-        pool->free(P::Silo::get_current_silo_id(), buff[i]);
+        pool->free_address(P::Silo::get_current_silo_id(), buff[i]);
     }
 }
 
