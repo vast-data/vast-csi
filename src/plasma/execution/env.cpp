@@ -31,7 +31,6 @@ void Env::error()
     _dumper.stop();
     _dumper.wait();
 
-    pthread_kill(pthread_self(), SIGSTOP);
 }
 
 static Config *parse_config(const char *path)
@@ -63,7 +62,7 @@ void Env::register_module(ModuleId id, ModuleFactory *factory)
 ModuleInterface *Env::create_module(const char *name, ModuleId *id)
 {
     LOOP(ModuleId::COUNT, i) {
-        if (strcmp(_module_factory[i]->get_name(), name) == 0) {
+        if (_module_factory[i] != nullptr && strcmp(_module_factory[i]->get_name(), name) == 0) {
             *id = (ModuleId) i;
             return _module_factory[i]->create();
         }
@@ -154,8 +153,48 @@ void Env::wait_for_run_state()
     pthread_barrier_wait(&_state_barrier);
 }
 
+static void error_handler(int sig)
+{
+    int exit_code = 0;
+    switch(sig) {
+    case SIGSEGV:
+        exit_code = 1;
+        printf("===SEGFAULT===\n");
+        break;
+    case SIGABRT:
+        exit_code = 2;
+        printf("===PANIC===\n");
+        break;
+    case SIGTERM:
+        exit_code = 0;
+        printf("===TERMINATED===\n");
+        break;
+    default:
+        PANIC();
+    }
+
+    P::Backtracer::show_backtrace();
+
+    P::Env::get()->error();
+
+    printf("===FINISH===\n");
+    exit(exit_code);
+}
+
+/*!
+ * This function registers a signal handler for SIGSEGV: when the program generates a segmentation fault,
+ * print the backtrace of the current running fiber or thread.
+ */
+static void register_signals()
+{
+    signal(SIGSEGV, error_handler);
+    signal(SIGABRT, error_handler);
+    signal(SIGTERM, error_handler);
+}
+
 void Env::run(const char *config_path)
 {
+    register_signals();
     Config *config = parse_config(config_path);
 
     set_state(EnvState::INIT);
