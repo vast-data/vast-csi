@@ -14,9 +14,14 @@ void List::init(List::Anchor *anchor, List::Pool *list_pool)
     _list_pool = list_pool;
 }
 
-void List::destroy()
+void List::destroy(bool leak_check)
 {
-    ASSERT(_anchor->is_empty(), "Destroying a non-empty dlist");
+    if (leak_check) {
+        ASSERT(_anchor->is_empty(), "Destroying a non-empty list");
+    } else {
+        _anchor->head = INVALID_INDEX;
+        _anchor->tail = INVALID_INDEX;
+    }
 }
 
 void List::add_after(Index index, Index new_index)

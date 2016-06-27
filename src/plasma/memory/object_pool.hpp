@@ -86,7 +86,7 @@ void ObjectPool<T>::free(T *address)
 template<typename T>
 void ObjectPool<T>::destroy()
 {
-    _free_list.destroy();
+    _free_list.destroy(false);
     aligned_delete(_mem);
 }
 

@@ -21,7 +21,7 @@ TEST(TestList, test_push)
     list->push(2);
     EXPECT_EQ(2, list->get_first());
 
-    single_list.destroy();
+    single_list.destroy(false);
 }
 
 TEST(TestList, test_add_after)
@@ -40,7 +40,7 @@ TEST(TestList, test_add_after)
     ASSERT_EQ(list->next(2), P::INVALID_INDEX);
     ASSERT_TRUE(list->is_last(2));
 
-    single_list.destroy();
+    single_list.destroy(false);
 }
 
 TEST(TestList, test_remove_next)
@@ -65,7 +65,7 @@ TEST(TestList, test_remove_next)
     ASSERT_EQ(list->next(0), 2);
     ASSERT_TRUE(list->is_last(2));
 
-    single_list.destroy();
+    single_list.destroy(false);
 }
 
 TEST(TestList, test_each)
@@ -111,7 +111,7 @@ TEST(TestList, test_append)
     ASSERT_EQ(list->next(1), 2);
     ASSERT_TRUE(list->is_last(2));
 
-    single_list.destroy();
+    single_list.destroy(false);
 }
 
 TEST(TestList, test_pop)
@@ -121,23 +121,16 @@ TEST(TestList, test_pop)
 
     List* list = single_list.list();
 
-    list->append(0);
-    list->append(1);
-    list->append(2);
+    LOOP(5, i) {
+        list->append(0);
+        list->append(1);
+        list->append(2);
 
-    ASSERT_EQ(list->pop(), 0);
-    ASSERT_EQ(list->pop(), 1);
-    ASSERT_EQ(list->pop(), 2);
-    ASSERT_EQ(list->pop(), P::INVALID_INDEX);
-
-    list->append(0);
-    list->append(1);
-    list->append(2);
-
-    ASSERT_EQ(list->pop(), 0);
-    ASSERT_EQ(list->pop(), 1);
-    ASSERT_EQ(list->pop(), 2);
-    ASSERT_EQ(list->pop(), P::INVALID_INDEX);
+        ASSERT_EQ(list->pop(), 0);
+        ASSERT_EQ(list->pop(), 1);
+        ASSERT_EQ(list->pop(), 2);
+        ASSERT_EQ(list->pop(), P::INVALID_INDEX);
+    }
 
     single_list.destroy();
 }

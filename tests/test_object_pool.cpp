@@ -29,7 +29,7 @@ TEST(TestObjectPool, test_alloc_free)
 
     for (uint i = 0; i < 6; ++i) {
         int *b = pool.alloc();
-        ASSERT_TRUE(a != nullptr);
+        ASSERT_TRUE(b != nullptr);
         pool.free(b);
     }
 

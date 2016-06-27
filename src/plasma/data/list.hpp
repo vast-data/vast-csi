@@ -105,7 +105,7 @@ public:
      * destroys a dlist structure.
      * NOTE: Assumes no other lists use this list pool!!!
      */
-    void destroy();
+    void destroy(bool leak_check = true);
 
     /*!
      * Returns whether a list is empty.
@@ -157,7 +157,7 @@ private:
 class SingleList {
 public:
     void init(Index size) { _list_pool.init(size); _anchor.init(); _list.init(&_anchor, &_list_pool); }
-    void destroy() { _list_pool.destroy(); }
+    void destroy(bool leak_check = true) { _list.destroy(leak_check);  _anchor.destroy(); _list_pool.destroy(); }
 
     List* list() { return &_list; }
 
