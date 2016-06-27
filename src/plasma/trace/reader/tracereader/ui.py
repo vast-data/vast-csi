@@ -16,9 +16,9 @@ def c_format_to_python_format(format):
     Python doesn't support %p (pointer) and %hhd (single byte integer).
     We replace %c with %d because booleans aren't supported in C's printf and are passed as %c.
     """
-    return format.replace('%p', '0x%x').replace('%hhd', '%d').replace('%c', '%d')
+    return format.replace('%p', '0x%x').replace('%hh', '%').replace('%c', '%d').replace('%z', '%d')
 
-term = blessings.Terminal()
+term = blessings.Terminal(force_styling=True)
 
 def underline_variables(format):
     def on_match(match):
@@ -80,8 +80,15 @@ def run(paths, verbose):
 @click.command()
 @click.argument('paths', nargs=-1)
 @click.option('-v', '--verbose', is_flag=True)
-def main(paths, verbose):
-    run(paths, verbose)
+@click.option('-d', '--debug', is_flag=True)
+def main(paths, verbose, debug):
+    try:
+        run(paths, verbose)
+    except:
+        if debug:
+            import pdb
+            pdb.post_mortem()
+        raise
 
 if __name__ == '__main__':
     main()

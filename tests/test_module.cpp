@@ -44,10 +44,23 @@ void *TestModule::init(P::Silo *silo, P::Conf::ConfigSetting *setting)
     return nullptr;
 }
 
+void TestModule::run_start_func()
+{
+    _start_func(_start_func_ctx);
+}
+
+static void start_func_fiber(void *ctx)
+{
+    printf("test module fiber start\n");
+    TestModule::run_start_func();
+    printf("test module fiber done\n");
+
+}
+
 void TestModule::start()
 {
     _started = true;
     if (_start_func) {
-        _start_func(_start_func_ctx);
+        P::Fiber::init((P::Index)FiberGroupId::TEST, start_func_fiber, nullptr, false);
     }
 }

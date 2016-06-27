@@ -26,6 +26,7 @@ public:
     static bool is_started();
     static void set_init_func(TestFunc func, void *ctx);
     static void set_start_func(TestFunc func, void *ctx);
+    static void run_start_func();
 
 private:
     static bool _init;

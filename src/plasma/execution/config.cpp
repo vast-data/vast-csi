@@ -78,7 +78,7 @@ Config *conf_init()
 void conf_destroy(Config *config)
 {
     config_destroy(config);
-    delete[] config;
+    delete config;
 }
 
 int32_t conf_read_file(Config *config, const char *path)

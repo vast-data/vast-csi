@@ -20,6 +20,7 @@ DEFINE_LOOKUP_PROTOTYPES(COMPONENT_LIST,
 #define FIBER_GROUP_LIST(X)                  \
     X(P),                                    \
     X(P_IO_POLLING),                         \
+    X(P_VMSG_POLLING),                       \
     X(TEST),                                 \
     X(I_TEST),                               \
     X(COUNT)

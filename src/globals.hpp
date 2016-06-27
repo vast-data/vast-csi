@@ -7,3 +7,4 @@
 #pragma once
 
 extern bool debugging;
+extern bool env_stop;
