@@ -8,8 +8,8 @@
 #pragma once
 
 #include <stdint.h>
-#include "../memory/pool.hpp"
-#include "dlist.hpp"
+#include "plasma/memory/pool.hpp"
+#include "list.hpp"
 
 namespace P {
 
@@ -55,10 +55,7 @@ public:
     void free(T *element);
 
 private:
-    // TODO move to use an slist once we have one
-    P::DList _list;
-    P::DList::Pool _list_pool;
-    P::DList::Anchor _anchor;
+    P::SingleList _list;
     P::Pool _pool;
 };
 
@@ -66,16 +63,13 @@ template <typename T>
 void Queue<T>::init(uint32_t n_elements)
 {
     _pool.init(n_elements, sizeof(T));
-    _list_pool.init(n_elements);
-    _anchor.init();
-    _list.init(&_anchor, &_list_pool);
+    _list.init(n_elements);
 }
 
 template <class T>
 void Queue<T>::destroy()
 {
     _list.destroy();
-    _list_pool.destroy();
     _pool.destroy();
 }
 
@@ -89,13 +83,13 @@ template <class T>
 void Queue<T>::push(T *element)
 {
     P::Index index = _pool.address_to_index(element);
-    _list.append(index);
+    _list.list()->append(index);
 }
 
 template <class T>
 T *Queue<T>::pop()
 {
-    P::Index index = _list.pop();
+    P::Index index = _list.list()->pop();
     if (index == P::INVALID_INDEX) {
         return nullptr;
     }
