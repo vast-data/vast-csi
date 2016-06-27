@@ -8,17 +8,18 @@
 
 #include <string.h>
 #include "types.hpp"
+#include "types.hpp"
 
 #define MIN(a, b) ((a) > (b) ? (b) : (a))
 #define MAX(a, b) ((a) < (b) ? (b) : (a))
 
 #define NUM_ELEMENTS(array) (sizeof(array) / sizeof((array)[0]))
-
+#define SAFE_DESTROY(X, FUNC) if (X) FUNC(X)
 
 // as defined in the linux kernel
 #define likely(x)      __builtin_expect(!!(x), 1)
 #define unlikely(x)    __builtin_expect(!!(x), 0)
-#define container_of(ptr, type, member) ({                      \
+#define p_container_of(ptr, type, member) ({                      \
         auto __mptr = (ptr);                                    \
         (type *)( (byte *)__mptr - offsetof(type,member) );})
 

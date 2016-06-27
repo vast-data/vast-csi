@@ -105,7 +105,7 @@ void DevIO::io_prep(struct iocb *io OUT, IOVecs *buffers, Baddr dev_offset, bool
 
 void DevIO::handle_io_done(struct iocb *iocb_done)
 {
-    IO *io = container_of(iocb_done, IO, io);
+    IO *io = p_container_of(iocb_done, IO, io);
     DEBUG_ASSERT(io->io_future != nullptr);
     ASSERT(io->io_future->io_count > 0);
 
@@ -122,7 +122,7 @@ void DevIO::validate_io_event(struct io_event *event)
 {
     size_t io_size = io_byte_count(event->obj);
     if (event->res != io_size) {
-        DevIO::IO *io =  container_of(event->obj, DevIO::IO, io);
+        DevIO::IO *io =  p_container_of(event->obj, DevIO::IO, io);
         PT_ERROR("IO error: res=%ld, res2=%ld nbytes = %ld, opcode = %d\n",
                (long)event->res, (long)event->res2,
                (long)event->obj->u.c.nbytes, event->obj->aio_lio_opcode);
