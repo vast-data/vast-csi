@@ -169,6 +169,7 @@ TEST(Trace, emitter)
     bool b = true;
     void *ptr = &l;
     const char *str = "ABC";
+
     float f = 1.2f;
     double d = 1.4;
 
@@ -259,11 +260,18 @@ TEST(Trace, file)
 {
     ensure_directory_exists(DATADIR);
 
+    static TraceInfo SECTIONIZE(traces) trace_info = {
+        "Test trace file.", __FILE__, "<temp>", __LINE__, __func__
+    };
+    uint16_t info_index = get_trace_info_index(&trace_info);
+
     TraceRecord record;
+    record.info_index = info_index;
+
     TraceFile file;
     file.init("test", DATADIR, UNIT_MiB * 2, 3);
     LOOP(2000, _)
-        file.emit(&record, sizeof(record) - 3);
+        file.emit(&record, offsetof(TraceRecord, params));
     file.destroy();
 }
 

@@ -67,14 +67,20 @@ def safe_handle_path(path):
     try:
         yield from handle_path(path)
     except Exception as e:
-        # an assertion is fatal. otherwise, hide the error for other files to continue parsing
-        if isinstance(e, AssertionError):
-            print_error(str(e))
-            sys.exit(1)
-        print_error('Failed parsing trace file:' + path)
+        print_error('Failed parsing trace file: {}. Error: {}'.format(path, e))
+
+def paths_to_files(paths):
+    for path in paths:
+        if os.path.isdir(path):
+            for root, dirs, files in os.walk(path):
+                for f in files:
+                    yield os.path.join(root, f)
+        else:
+            yield path
 
 def run(paths, verbose):
-    for trace in merge_sort(map(safe_handle_path, paths), lambda trace: trace.header.time):
+    for trace in merge_sort(map(safe_handle_path, paths_to_files(paths)),
+                            lambda trace: trace.header.time):
         print_trace(trace, verbose)
 
 @click.command()
