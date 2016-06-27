@@ -70,6 +70,15 @@ public:
 
     class Anchor {
     public:
+
+        void init() {
+            head = ANCHOR_INIT;
+            tail = ANCHOR_INIT;
+        }
+
+        void destroy() {
+            DEBUG_ASSERT(is_empty());
+        }
         /*!
          * Returns whether a list with this anchor is empty.
          */
@@ -82,8 +91,8 @@ public:
         // Since a list anchor is the index of the first element,
         // an empty list is simply an invalid index.
         static const Index ANCHOR_INIT = INVALID_INDEX;
-        Index head = ANCHOR_INIT;
-        Index tail = ANCHOR_INIT;
+        Index head;
+        Index tail;
     };
 
     /*!
@@ -147,7 +156,7 @@ private:
 
 class SingleList {
 public:
-    void init(Index size) { _list_pool.init(size); _list.init(&_anchor, &_list_pool); }
+    void init(Index size) { _list_pool.init(size); _anchor.init(); _list.init(&_anchor, &_list_pool); }
     void destroy() { _list_pool.destroy(); }
 
     List* list() { return &_list; }

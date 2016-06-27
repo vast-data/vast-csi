@@ -74,6 +74,9 @@ Index List::pop()
         _anchor->head = next(_anchor->head);
         idx2node(ret)->next = INVALID_INDEX;
     }
+    if (_anchor->head == INVALID_INDEX) {
+        _anchor->tail = INVALID_INDEX;
+    }
 
     return ret;
 }

@@ -130,6 +130,15 @@ TEST(TestList, test_pop)
     ASSERT_EQ(list->pop(), 2);
     ASSERT_EQ(list->pop(), P::INVALID_INDEX);
 
+    list->append(0);
+    list->append(1);
+    list->append(2);
+
+    ASSERT_EQ(list->pop(), 0);
+    ASSERT_EQ(list->pop(), 1);
+    ASSERT_EQ(list->pop(), 2);
+    ASSERT_EQ(list->pop(), P::INVALID_INDEX);
+
     single_list.destroy();
 }
 
