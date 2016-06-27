@@ -1,6 +1,6 @@
 #include "test_module.hpp"
 #include "plasma/execution/env.hpp"
-#include <unistd.h>
+#include "plasma/fiber/fiber.hpp"
 
 using namespace P::Conf;
 using P::Silo;
