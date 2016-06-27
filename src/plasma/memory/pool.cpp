@@ -81,6 +81,7 @@ void Pool::partitioned_free(Index index, Index partition)
     ASSERT_OP(partition, <, _num_partitions, "invalid partition");
     ASSERT_OP(index, <, _blocks, "invalid index");
     _partitions[partition]++;
+    DEBUG_ASSERT(_partitions[partition] <= _blocks);
     INDEX_TO_VALUE(index) = _free_head;
     _free_head = index;
 }

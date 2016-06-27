@@ -136,6 +136,10 @@ Fiber *Fiber::init(Index group_index, void (*func)(void *arg), void *arg, bool p
         fiber->_parent->_join_count++;
     }
 
+#ifdef DEBUG
+    fiber-> _owner_sched = sched;
+#endif
+
     fiber->resume();
     sched->_running_fiber_count++;
     return fiber;
@@ -181,6 +185,7 @@ void Fiber::suspend_and_queue(DList::Anchor *anchor)
 void Fiber::resume()
 {
     Scheduler *sched = Scheduler::get();
+    DEBUG_ASSERT(_owner_sched == sched);
     _state = State::READY;
     DList queue;
     queue.init(&_group->ready_queue, &sched->_fiber_queues);

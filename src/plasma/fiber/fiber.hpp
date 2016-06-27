@@ -17,6 +17,8 @@
 
 namespace P {
 
+class Scheduler;
+
 struct FiberGroup {
     size_t stack_size;
     FiberGroup *next_group;
@@ -153,6 +155,10 @@ private:
     SuspendState _sus_state;
     uint32_t _join_count;
     State _state; // currently used for debug purposes
+
+#ifdef DEBUG
+    Scheduler *_owner_sched;
+#endif
 };
 
 }
