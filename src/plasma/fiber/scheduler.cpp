@@ -110,6 +110,7 @@ void NO_RETURN Scheduler::schedule() {
 
     while (_sched->_running_fiber_count > 0) {
         do {
+            _sched->_timer_queues.poll();
             group = group->next_group;
             DList queue;
             queue.init(&group->ready_queue, &_sched->_fiber_queues);
@@ -121,8 +122,6 @@ void NO_RETURN Scheduler::schedule() {
                 // this will never execute
             }
         } while (group != _sched->_last_group);
-
-        _sched->_timer_queues.poll();
     }
     longjmp(_sched->_caller, true);
 }

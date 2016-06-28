@@ -31,7 +31,7 @@ ModuleId Fiber::get_module_id()
 
 uint64_t Fiber::get_switch_time()
 {
-    return get_current()->_switch_time;
+    return _switch_time;
 }
 
 void Fiber::context_switch()

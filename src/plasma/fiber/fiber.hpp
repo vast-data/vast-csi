@@ -81,14 +81,14 @@ public:
     static ModuleId get_module_id();
 
     /*!
-     * Get the time the fiber started/finished execution.
-     */
-    static uint64_t get_switch_time();
-
-    /*!
      * Return the currently running fiber.
      */
     static Fiber *get_current();
+
+    /*!
+     * Get the time the fiber started/finished execution.
+     */
+    uint64_t get_switch_time();
 
     /*!
      * Get the current/last job id performed by this fiber

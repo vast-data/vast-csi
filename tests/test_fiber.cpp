@@ -102,13 +102,22 @@ static void second_sleeper(void *arg)
     *value = 2;
 }
 
+static void worker(void *arg)
+{
+    int *value = (int*) arg;
+    while (*value != 3) {
+        Fiber::yield();
+    }
+}
+
 TEST(TestSleep, test_sleep)
 {
     int value = 0;
 
     Scheduler::init(&scheduler_config);
     Fiber::init(FG_A, first_sleeper, &value, false);
-    Fiber::init(FG_A, second_sleeper, &value, false);
+    Fiber::init(FG_B, second_sleeper, &value, false);
+    Fiber::init(FG_C, worker, &value, false);
 
     Scheduler::run();
     ASSERT_EQ(value, 3);
