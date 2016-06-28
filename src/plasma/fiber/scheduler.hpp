@@ -64,6 +64,7 @@ private:
     DList::Pool _fiber_queues;
     TimerQueues _timer_queues;
     Fiber *_current_fiber;
+    FiberGroup *_first_group;
     FiberGroup *_last_group;
     FiberGroup *_groups;
     Index _group_count;

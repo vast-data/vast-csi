@@ -44,7 +44,6 @@ uint64_t TimerQueues::sleep_multi(SleepInterval interval, uint32_t count)
 
 void TimerQueues::poll()
 {
-    Scheduler *scheduler = Scheduler::get();
     uint64_t time;
 
     if (_wakeup_time == NO_PENDING_FIBERS || (time = get_time_nano()) < _wakeup_time)

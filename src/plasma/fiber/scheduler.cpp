@@ -49,7 +49,8 @@ void Scheduler::init(SchedulerConfig *config) {
     _sched->_groups = new FiberGroup[_sched->_group_count];
 
     FiberGroupConfig *fiber_config;
-    FiberGroup *group, *last_group = nullptr, *first_group = nullptr;
+    FiberGroup *group, *last_group = nullptr;
+    _sched->_first_group = nullptr;
     Index partitions[config->group_count];
     Index fibers = 0;
 
@@ -65,7 +66,7 @@ void Scheduler::init(SchedulerConfig *config) {
         if (fiber_config->fiber_count > 0) {
             group->stacks = _sched->find_or_allocate_stacks(config, i, &group->stacks_partition);
             if (last_group == nullptr)
-                first_group = group;
+                _sched->_first_group = group;
             else
                 last_group->next_group = group;
             last_group = group;
@@ -73,7 +74,7 @@ void Scheduler::init(SchedulerConfig *config) {
             group->stacks = nullptr;
         }
     }
-    last_group->next_group = first_group;
+    last_group->next_group = _sched->_first_group;
     _sched->_last_group = last_group;
     _sched->_fiber_pool.partitioned_init(sizeof(Fiber), config->group_count, partitions);
     _sched->_fiber_queues.init(fibers);
@@ -109,19 +110,19 @@ void NO_RETURN Scheduler::schedule() {
     Fiber *fiber;
 
     while (_sched->_running_fiber_count > 0) {
-        do {
+        group = group->next_group;
+        if (group == _sched->_first_group) {
             _sched->_timer_queues.poll();
-            group = group->next_group;
-            DList queue;
-            queue.init(&group->ready_queue, &_sched->_fiber_queues);
-            fiber_index = queue.pop();
-            if (fiber_index != INVALID_INDEX) {
-                _sched->_last_group = group;
-                fiber = (Fiber*) _sched->_fiber_pool.index_to_address(fiber_index);
-                fiber->run();
-                // this will never execute
-            }
-        } while (group != _sched->_last_group);
+        }
+        DList queue;
+        queue.init(&group->ready_queue, &_sched->_fiber_queues);
+        fiber_index = queue.pop();
+        if (fiber_index != INVALID_INDEX) {
+            _sched->_last_group = group;
+            fiber = (Fiber*) _sched->_fiber_pool.index_to_address(fiber_index);
+            fiber->run();
+            // this will never execute
+        }
     }
     longjmp(_sched->_caller, true);
 }
