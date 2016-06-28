@@ -5,6 +5,7 @@ DEFAULT_COMPILER = 'clang'
 DEFAULT_OPTIMIZATION_LEVEL = '2'
 DEFAULT_BUILD_DIR = 'build'
 
+
 def RGlob(path, pattern, ignore_dirs=[], ignore_files=[]):
    matches = []
    for root, dirnames, filenames in os.walk(path):
@@ -16,6 +17,12 @@ def RGlob(path, pattern, ignore_dirs=[], ignore_files=[]):
             matches.append(filename)
    return matches
 
+
+def generate_rpc(src, outout):
+    os.system('./venv/bin/python ./src/plasma/vmsg/vmsg_rpc_gen/vmsg_rpc_gen.py {} {}'.format(src, outout))
+
+generate_rpc('./tests/test_module.yaml', 'tests/test_module')
+
 VariantDir(DEFAULT_BUILD_DIR + '/src', 'src')
 VariantDir(DEFAULT_BUILD_DIR + '/tests', 'tests')
 
@@ -23,6 +30,7 @@ vars = Variables(None, ARGUMENTS)
 vars.Add(BoolVariable('debug', 'Set debug to 1 to compile a debug version (defines the DEBUG macro)', False))
 vars.Add(EnumVariable('cc', 'A c compiler', DEFAULT_COMPILER, allowed_values=('clang', 'gcc')))
 vars.Add('O', 'Optimization level', DEFAULT_OPTIMIZATION_LEVEL)
+
 
 env = Environment(variables=vars)
 help_text = """
@@ -55,15 +63,15 @@ if debug is not None:
 
 compiler = ARGUMENTS.get('cc', 'clang')
 if compiler == 'clang':
-    env.Replace(CC=compiler, CXX=compiler + '++')
-    env.Append(CFLAGS=['-Weverything',
-                       '-Wno-disabled-macro-expansion',
-                       '-Wno-gnu-zero-variadic-macro-arguments'])
+   env.Replace(CC=compiler, CXX=compiler + '++')
+   env.Append(CFLAGS=['-Weverything',
+                      '-Wno-disabled-macro-expansion',
+                      '-Wno-gnu-zero-variadic-macro-arguments'])
 else:
-    assert compiler == 'gcc'
-    env.Replace(CC='/opt/rh/devtoolset-3/root/usr/bin/gcc',
-                CXX='g++')
-    env.Append(CFLAGS=['-Wall'])
+   assert compiler == 'gcc'
+   env.Replace(CC='/opt/rh/devtoolset-3/root/usr/bin/gcc',
+               CXX='g++')
+   env.Append(CFLAGS=['-Wall'])
 
 env.Append(CPPFLAGS=['-g',
                      '-O' + optimizations,
@@ -89,22 +97,30 @@ cpp_env = env.Clone()
 cpp_env.Append(CXXFLAGS=['-std=c++11'])
 if compiler == 'gcc':
    cpp_env.Append(LINKFLAGS=['-T' + LINKER_SCRIPT])
+pre = ARGUMENTS.get('pre')
+if pre is not None:
+   cpp_env.Append(CCFLAGS=['-E'])
 cpp_sources = [DEFAULT_BUILD_DIR + '/' + i for i in RGlob('src', '*.cpp', [], ['src/plasma/execution/main.cpp'])]
 cpp_sources = cpp_sources + [DEFAULT_BUILD_DIR + '/tests/test_module.cpp', murmur]
 cpp_lib = cpp_env.Library(target='dist/orion_cpp', source=cpp_sources)
 cpp_env.Depends(cpp_lib, LINKER_SCRIPT)
-cpp_env.Append(LIBS=[cpp_lib])
+cpp_env.Append(LIBS=['rdmacm', 'ibverbs', cpp_lib])
 cpp_env.Program(target='dist/env', source=[DEFAULT_BUILD_DIR + '/src/plasma/execution/main.cpp'])
 
 def AddCppTest(target, source, wrap=[]):
     cpp_test_env = cpp_env.Clone()
-    cpp_test_env.Append(LIBS=['gtest'])
+    cpp_test_env.Append(LIBS=['gtest', 'rt'])
     for func in wrap:
         cpp_test_env.Append(LINKFLAGS='-Wl,-wrap,' + func)
     test = cpp_test_env.Program(target=target, source=source)
     cpp_test_env.Alias('cpptest', test, test[0].abspath)
 cpp_env.AlwaysBuild('cpptest')
 
+AddCppTest(target='dist/tests/test_rdma_transport', source=[DEFAULT_BUILD_DIR + '/tests/test_rdma_transport.cpp'])
+AddCppTest(target='dist/tests/test_vmsg', source=[DEFAULT_BUILD_DIR + '/tests/test_vmsg.cpp',
+                                                  DEFAULT_BUILD_DIR + '/tests/vmsg_test.cpp',
+                                                  DEFAULT_BUILD_DIR + '/tests/test_module_server.cpp',
+                                                  DEFAULT_BUILD_DIR + '/tests/test_module_client.cpp'])
 AddCppTest(target='dist/tests/test_assert', source=[DEFAULT_BUILD_DIR + '/tests/test_assert.cpp'])
 AddCppTest(target='dist/tests/test_pool', source=[DEFAULT_BUILD_DIR + '/tests/test_pool.cpp'])
 AddCppTest(target='dist/tests/test_object_pool', source=[DEFAULT_BUILD_DIR + '/tests/test_object_pool.cpp'])

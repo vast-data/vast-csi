@@ -1,8 +1,8 @@
 #include "module_interface.hpp"
 #include "p_module.hpp"
 #include "i_module.hpp"
-#include "../../tests/test_module.hpp"
-#include "../plasma/execution/env.hpp"
+#include "../tests/test_module.hpp"
+#include "plasma/execution/env.hpp"
 
 template <class T>
 class ModuleFactoryImpl : public ModuleFactory {
@@ -30,5 +30,16 @@ const char *get_module_name(ModuleId module_id)
     for (auto *factory : factories)
         if (factory->get_id() == module_id)
             return factory->get_name();
-    PANIC("ModuleId not found");
+    PANIC("ModuleId " << (int)module_id << " not found");
 }
+
+ModuleId get_module_id(const char *module_name)
+{
+    for (auto *factory : factories) {
+        if (strcmp(factory->get_name(), module_name) == 0) {
+            return factory->get_id();
+        }
+    }
+    PANIC("Module " << module_name << " not found");
+}
+

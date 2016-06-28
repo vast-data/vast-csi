@@ -45,3 +45,4 @@ public:
 
 void register_modules();
 const char *get_module_name(ModuleId module_id);
+ModuleId get_module_id(const char *module_name);

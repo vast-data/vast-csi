@@ -1,8 +1,8 @@
 data_dir: "data"
 vmsg: {
-    env_id: 0
+    env_id: {ENV_ID}
     local_address: "127.0.0.1"
-    port: 4000
+    port: {PORT}
     module_resources = (
       {
         name : "P"
@@ -24,10 +24,11 @@ global_traces: {
 silo_types: {
   data_silo: {
     modules: {
-      P: {
-        io: {
+      P : {
+        io_module : {
           io_pool_count : 100
-          io_provider : {
+
+            io_provider : {
             devices = (
               {
                 dev_path : "/tmp/lala"
@@ -49,25 +50,13 @@ silo_types: {
           },
           {
             count: 1
-            stack_size: 8092
+            stack_size: 32368
             group_id: "P_IO_POLLING"
-          }
+          },
           {
             count: 1
-            stack_size: 8092
+            stack_size: 32368
             group_id: "P_VMSG_POLLING"
-          }
-        )
-      }
-      I : {
-        components: {
-
-        }
-        fibers: (
-          {
-            count: 50
-            stack_size: 8092
-            group_id: "I_TEST"
           }
         )
       }
@@ -77,8 +66,8 @@ silo_types: {
           }
           fibers: (
             {
-              count: 10
-              stack_size: 8092
+              count: 128
+              stack_size: 32368
               group_id: "TEST"
             }
           )
@@ -96,6 +85,5 @@ silos: (
   },
   {
     type: "data_silo"
-    affinity: 0
   }
 )

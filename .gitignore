@@ -9,3 +9,11 @@
 /data
 /venv
 /testdata
+/.idea
+/tests/vmsg_test_client.config
+/tests/vmsg_test_server.config
+/tests/test_module_server.cpp
+/tests/test_module_server.hpp
+/tests/test_module_client.cpp
+/tests/test_module_client.hpp
+__pycache__

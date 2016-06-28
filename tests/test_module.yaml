@@ -1,0 +1,16 @@
+module: TestModule
+include: test_module_defs.hpp
+module_id: TEST
+api_version: 1
+#namespace: Test
+methods:
+- method: add
+  op_id: 1
+  fiber_group: TEST
+  arg: AddArgs
+  res: AddRes
+- method: multiply
+  op_id: 2
+  fiber_group: TEST
+  arg: MultiplyArgs
+  res: MultiplyRes

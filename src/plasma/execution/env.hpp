@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <limits.h>
 #include <pthread.h>
+#include "plasma/vmsg/vmsg.hpp"
 
 #include "plasma/utils/compiler.hpp"
 #include "plasma/trace/emitter.hpp"
@@ -21,6 +22,9 @@ namespace P {
 
 // forward declarations
 class Silo;
+namespace VMsg {
+class VMsg;
+}
 
 enum class EnvState {
     INIT,
@@ -58,6 +62,7 @@ public:
     EnvState get_state() const { return _state; }
     void set_state(EnvState state) { _state = state; }
     uint32_t get_num_silos() const { return _num_silos; }
+    VMsg::VMsg *get_vmsg() const { return _vmsg; }
 
     void register_module(ModuleId id, ModuleFactory *factory);
     ModuleInterface *create_module(const char *name, ModuleId *id OUT);
@@ -68,6 +73,7 @@ private:
     void destroy();
     void start();
     void wait_for_silos();
+    void init_vmsg(Conf::Config *config);
 
     ModuleFactory *_module_factory[(int)ModuleId::COUNT];
     char _data_dir[PATH_MAX];
@@ -78,6 +84,7 @@ private:
     pthread_barrier_t _state_barrier;
     Trace::Emitter _emitter;
     Trace::Dumper _dumper;
+    VMsg::VMsg *_vmsg;
 };
 
 }

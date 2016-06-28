@@ -3,9 +3,11 @@
 #include "plasma/fiber/fiber.hpp"
 #include "plasma/utils/types.hpp"
 #include "plasma/internal.hpp"
+#include "globals.hpp"
 
 using namespace P::Conf;
 using P::Silo;
+using P::VMsg::VMsg;
 
 typedef struct PModuleState PModuleState;
 struct PModuleState {
@@ -47,16 +49,32 @@ void PModule::init(Silo *silo, ConfigSetting *module_setting)
     init_io_from_settings(io_setting, &devices, &iopool, &io_provider);
 }
 
-static void NO_RETURN p_io_poll_fiber(void *module)
+static void io_poll_fiber(void *module)
 {
     PModule *p_module = (PModule *) module;
     while (true) {
         p_module->io_provider.poll();
         P::Fiber::yield();
+        if (unlikely(env_stop)) {
+            break;
+        }
+    }
+}
+
+static void vmsg_poll_fiber(void *module)
+{
+    VMsg *vmsg = P::Env::get()->get_vmsg();
+    while (true) {
+        vmsg->poll();
+        P::Fiber::yield();
+        if (unlikely(env_stop)) {
+            break;
+        }
     }
 }
 
 void PModule::start()
 {
-    P::Fiber::init((P::Index)FiberGroupId::P_IO_POLLING, p_io_poll_fiber, this, false);
+    P::Fiber::init((P::Index)FiberGroupId::P_IO_POLLING, io_poll_fiber, this, false);
+    P::Fiber::init((P::Index)FiberGroupId::P_VMSG_POLLING, vmsg_poll_fiber, this, false);
 }

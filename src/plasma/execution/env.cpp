@@ -14,6 +14,7 @@
 #include "env.hpp"
 
 using namespace P::Conf;
+using namespace P::VMsg;
 
 namespace P {
 
@@ -71,6 +72,42 @@ ModuleInterface *Env::create_module(const char *name, ModuleId *id)
     return nullptr;
 }
 
+void Env::init_vmsg(Config *config)
+{
+    _vmsg = new VMsg::VMsg();
+    ConfigSetting *env_id_setting = conf_lookup(config, "vmsg.env_id");
+    ASSERT_NOT_NULL(env_id_setting);
+    EnvId env_id = (EnvId)conf_setting_get_int32(env_id_setting);
+
+    VMsgConfiguration vmsg_configuration;
+    memset(&vmsg_configuration, 0, sizeof(vmsg_configuration));
+    vmsg_configuration.local_env_id = env_id;
+    ConfigSetting *module_resources_settings = conf_lookup(config, "vmsg.module_resources");
+    const size_t module_count = (size_t)conf_setting_length(module_resources_settings);
+    LOOP(module_count, i) {
+        ConfigSetting *module_setting = conf_setting_get_element(module_resources_settings, (uint32_t)i);
+        ConfigSetting *name = conf_setting_lookup_required(module_setting, "name");
+        ConfigSetting *send_buffers = conf_setting_lookup_required(module_setting, "num_send_buffers");
+        ConfigSetting *recv_buffers = conf_setting_lookup_required(module_setting, "num_recv_buffers");
+        byte module_id = (byte)get_module_id(conf_setting_get_string(name));
+        ModuleResources *module_resources = &vmsg_configuration.modules[module_id];
+        module_resources->num_send_buffers = conf_setting_get_int32(send_buffers);
+        module_resources->num_recv_buffers = conf_setting_get_int32(recv_buffers);
+    }
+
+    _vmsg->init(&vmsg_configuration);
+
+    ConfigSetting *local_address_setting = conf_lookup(config, "vmsg.local_address");
+    ASSERT_NOT_NULL(local_address_setting);
+    ConfigSetting *port_setting = conf_lookup(config, "vmsg.port");
+    ASSERT_NOT_NULL(port_setting);
+    EnvAddresses addresses;
+    strcpy(addresses.addresses[0].host, conf_setting_get_string(local_address_setting));
+    addresses.addresses[0].port = (uint16_t)conf_setting_get_int32(port_setting);
+    addresses.n_addr = 1;
+    _vmsg->set_env_addresses(env_id, &addresses);
+}
+
 void Env::init(Config *config)
 {
     LOOP(ModuleId::COUNT, i) {
@@ -96,6 +133,10 @@ void Env::init(Config *config)
     ConfigSetting *silo_types_setting = conf_lookup(config, "silo_types");
     ASSERT_NOT_NULL(silo_types_setting);
     _num_silos = (uint32_t) conf_setting_length(silos_setting);
+    // vmsg needs _num_silos to be set
+    init_vmsg(config);
+
+
     _silos = new Silo*[_num_silos];
     LOOP(_num_silos, i)
     {
@@ -118,6 +159,10 @@ void Env::init(Config *config)
 void Env::destroy()
 {
     PT_INFO("Env stopping!");
+    _vmsg->stop();
+    _vmsg->destroy();
+    delete _vmsg;
+
     _dumper.stop();
     _dumper.wait();
 
@@ -129,6 +174,7 @@ void Env::start()
 {
     _emitter.set_global();
     _dumper.start();
+    _vmsg->start();
 
     PT_INFO("Env started!");
 
