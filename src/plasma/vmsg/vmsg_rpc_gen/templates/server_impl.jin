@@ -1,0 +1,47 @@
+/* Copyright (C) Vast Data Ltd. */
+/* Auto generated code - DO NOT EDIT */
+
+#include "{{ module.name_snake_case }}_server.hpp"
+#include "plasma/execution/env.hpp"
+
+{% if module.namespace -%}
+namespace {{ module.namespace }} {
+{% endif %}
+
+void {{ module.name }}Server::register_server()
+{
+    P::Env::get()->get_vmsg()->register_server(this);
+}
+
+ModuleId {{ module.name }}Server::get_module_id()
+{
+    return ModuleId::{{ module.module_id }};
+}
+
+FiberGroupId {{ module.name }}Server::get_op_fiber_group(uint16_t op_id)
+{
+    switch ((ops)op_id) {
+        {% for method in module.methods -%}
+            case {{ method.name.upper() }}: return FiberGroupId::{{ method.fiber_group }};
+        {% endfor -%}
+        default:
+            PANIC("invalid op id " << op_id);
+    }
+}
+
+void {{ module.name }}Server::run_op(uint16_t op_id, void *request, uint16_t request_len, void *reply, uint16_t *reply_len)
+{
+    switch ((ops)op_id) {
+        {% for method in module.methods -%}
+        case {{ method.name.upper() }}:
+            {{ method.name }}(({{ method.arg }} *)request, request_len, ({{ method.res }} *)reply, reply_len);
+            break;
+        {% endfor -%}
+        default:
+            PANIC("invalid op id " << op_id);
+    }
+}
+
+{% if module.namespace -%}
+}
+{% endif %}

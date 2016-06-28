@@ -1,0 +1,52 @@
+/* Copyright (C) Vast Data Ltd. */
+/* Auto generated code - DO NOT EDIT */
+
+#include "{{ module.name_snake_case }}_client.hpp"
+#include "plasma/vmsg/vmsg.hpp"
+
+using P::VMsg::VMsg;
+using P::VMsg::VMsgRes;
+using P::VMsg::VMsgFuture;
+using P::VMsg::ResFuture;
+using P::VMsg::ModuleGUID;
+
+{% if module.namespace -%}
+namespace {{ module.namespace }} {
+{% endif %}
+
+void {{ module.name }}Client::init(VMsg *vmsg)
+{
+    _vmsg = vmsg;
+}
+
+{% for method in module.methods %}
+static_assert(sizeof({{ method.arg }}) <= P::VMsg::RPC_BUFFER_SIZE, "method argument cannot be contained within RPC BUFFER");
+static_assert(!std::is_polymorphic<{{ method.arg }}>::value, "method argument must not have a vtable");
+static_assert(sizeof({{ method.res }}) <= P::VMsg::RPC_BUFFER_SIZE, "method result cannot be contained within RPC BUFFER");
+static_assert(!std::is_polymorphic<{{ method.res }}>::value, "method result must not have a vtable");
+{{ method.arg }} * {{ module.name }}Client::alloc_{{ method.arg_snake_case }}()
+{
+    return ({{ method.arg }} *)_vmsg->alloc(ModuleId::{{ module.module_id }});
+}
+
+VMsgRes {{ module.name }}Client::{{ method.name }}_sync(ModuleGUID dest, {{ method.arg }} *args, {{ method.res }} **reply, uint64_t timeout_usec, uint16_t request_len, uint32_t *reply_len)
+{
+    return _vmsg->send_sync(ModuleId::{{ module.module_id }}, dest, {{ method.op_id }}, timeout_usec, args, request_len, (void **)reply, reply_len);
+}
+
+VMsgRes {{ module.name }}Client::{{ method.name }}_async(ModuleGUID dest, {{ method.arg }} *args, ResFuture<{{ method.res }}> **future, uint64_t timeout_usec, uint16_t request_len)
+{
+    return _vmsg->send_async(ModuleId::{{ module.module_id }}, dest, {{ method.op_id }}, timeout_usec, args, request_len, (VMsgFuture **)future);
+}
+
+void {{ module.name }}Client::free_{{ method.res_snake_case }}({{ method.res }} *res)
+{
+   _vmsg->free_reply((void *)res);
+}
+
+{% endfor -%}
+
+
+{% if module.namespace -%}
+}
+{% endif %}
