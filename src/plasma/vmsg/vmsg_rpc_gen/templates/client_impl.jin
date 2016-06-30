@@ -7,7 +7,7 @@
 using P::VMsg::VMsg;
 using P::VMsg::VMsgRes;
 using P::VMsg::VMsgFuture;
-using P::VMsg::ResFuture;
+using P::VMsg::VMsgFutureRes;
 using P::VMsg::ModuleGUID;
 
 {% if module.namespace -%}
@@ -34,7 +34,7 @@ VMsgRes {{ module.name }}Client::{{ method.name }}_sync(ModuleGUID dest, {{ meth
     return _vmsg->send_sync(ModuleId::{{ module.module_id }}, dest, {{ method.op_id }}, timeout_usec, args, request_len, (void **)reply, reply_len);
 }
 
-VMsgRes {{ module.name }}Client::{{ method.name }}_async(ModuleGUID dest, {{ method.arg }} *args, ResFuture<{{ method.res }}> **future, uint64_t timeout_usec, uint16_t request_len)
+VMsgRes {{ module.name }}Client::{{ method.name }}_async(ModuleGUID dest, {{ method.arg }} *args, VMsgFutureRes<{{ method.res }}> **future, uint64_t timeout_usec, uint16_t request_len)
 {
     return _vmsg->send_async(ModuleId::{{ module.module_id }}, dest, {{ method.op_id }}, timeout_usec, args, request_len, (VMsgFuture **)future);
 }

@@ -23,7 +23,7 @@ public:
 {% for method in module.methods %}
     {{ method.arg }} *alloc_{{ method.arg_snake_case }}();
     P::VMsg::VMsgRes {{ method.name }}_sync(P::VMsg::ModuleGUID dest, {{ method.arg }} *args, {{ method.res }} **reply, uint64_t timeout_usec = P::VMsg::DEFUALT_MSG_TIMEOUT_USEC, uint16_t request_len = sizeof({{ method.arg }}), uint32_t *reply_len = nullptr);
-    P::VMsg::VMsgRes {{ method.name }}_async(P::VMsg::ModuleGUID dest, {{ method.arg }} *args, P::VMsg::ResFuture<{{ method.res }}> **future, uint64_t timeout_usec = P::VMsg::DEFUALT_MSG_TIMEOUT_USEC, uint16_t request_len = sizeof({{ method.arg }}));
+    P::VMsg::VMsgRes {{ method.name }}_async(P::VMsg::ModuleGUID dest, {{ method.arg }} *args, P::VMsg::VMsgFutureRes<{{ method.res }}> **future, uint64_t timeout_usec = P::VMsg::DEFUALT_MSG_TIMEOUT_USEC, uint16_t request_len = sizeof({{ method.arg }}));
     void free_{{ method.res_snake_case }}({{ method.res }} *res);
 {% endfor %}
 private:

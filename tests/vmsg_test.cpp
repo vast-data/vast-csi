@@ -156,7 +156,7 @@ static void sync_call(TestModuleClient *client, uint64_t i, uint32_t n_silos, En
 static void async_call(TestModuleClient *client, uint64_t i, uint32_t n_silos, EnvId dest_env)
 {
     static const uint64_t ASYNC_REQUESTS_PER_LOOP = 16;
-    ResFuture<MultiplyRes> *futures[ASYNC_REQUESTS_PER_LOOP];
+    VMsgFutureRes<MultiplyRes> *futures[ASYNC_REQUESTS_PER_LOOP];
 
     ModuleGUID dest = {
         .env_id = dest_env,

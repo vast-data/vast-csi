@@ -307,7 +307,7 @@ VMsgRes VMsg::send_async(ModuleId src_module_id, ModuleGUID dest_guid, uint16_t 
     header->seq_num = _silos_context[silo_id].seq_num++;
     add_piggyback_acks(header, silo_id);
 
-    TRACE_HEADER("send header", header);
+    TRACE_VMSG_HEADER("send header", header);
     VMsgRes res = send_request(header, timeout_usec);
     if (res != VMsgRes::OK) {
         free_msg(silo_id, header->sender_msg_id);
@@ -407,7 +407,7 @@ void VMsg::on_msg_recv(TransportEvent *event)
     // queue the message on the relevant silo queue
     ASSERT(event->len >= sizeof(VMsgHeader));
     VMsgHeader *header = (VMsgHeader *)buffer;
-    TRACE_HEADER("msg rcv header", header);
+    TRACE_VMSG_HEADER("msg rcv header", header);
     QueuedEvent *queued_event = VMsgPool::msg_header_to_queued_event(header);
     queued_event->id = id;
     SiloId silo_id = header->dest.silo_id;
@@ -461,7 +461,7 @@ void VMsg::free_msg(SiloId silo_id, MsgId id)
 void VMsg::execute_incoming_request(VMsgHeader *request_header)
 {
     const SiloId current_silo_id = Silo::get_current_silo_id();
-    TRACE_HEADER("incoming request", request_header);
+    TRACE_VMSG_HEADER("incoming request", request_header);
 
     VMsgHeader *response = (VMsgHeader *)_vmsg_pool.alloc(BufferType::RESPONSE,
                                                           request_header->dest.module_id,
@@ -527,7 +527,7 @@ void VMsg::handle_incoming_msg(VMsgHeader *request_header)
 void VMsg::handle_reply(VMsgHeader *header, SiloId silo_id)
 {
     PT_DEBUG("handling reply for silo_id=%hhu seq_num=%hu ", header->dest.silo_id, header->seq_num);
-    TRACE_HEADER("reply header", header);
+    TRACE_VMSG_HEADER("reply header", header);
     VMsgHeader *pending_header = (VMsgHeader *)_vmsg_pool.msg_id_to_address(header->sender_msg_id);
     PendingMsg *pending_msg = VMsgPool::msg_header_to_pending_msg(pending_header);
     pending_msg->future.buffer = VMsgPool::msg_header_to_payload(header);
