@@ -209,7 +209,7 @@ TEST(Trace, dumper)
     dumper.start();
 
     LOOP(1000000, i)
-        PT_INFO("Kawabanga: %ld!", i);
+        PT_INFO("Kawabanga: %ld!.", i);
 
     dumper.stop();
     dumper.wait();
@@ -221,8 +221,10 @@ TEST(Trace, dumper)
 
 void trace_func()
 {
+    auto s1 = "abcdefghijklmnopqrstuvwxyz";
+    auto s2 = "abcdefghijklmnopqrstuvwxyz123456789";
     LOOP(1000000, i)
-        PT_INFO("Kawabanga: %ld!", i);
+        PT_INFO("Kawabanga: %ld %s!", i, i % 2 ? s1 : s2);
 }
 
 TEST(Trace, concurrent_dumper)
