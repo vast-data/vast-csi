@@ -9,6 +9,7 @@
 #pragma once
 
 #include <cstring>
+#include <cstddef>
 #include "record.hpp"
 #include "dbuffer.hpp"
 #include "defs.hpp"
@@ -18,8 +19,11 @@
 #include "../utils/macros.hpp"
 #include "../utils/time.hpp"
 
+#define EVAL(x) x
+#define _TRACE_SECTION(file, line) SECTIONIZE("traces." file line)
+#define TRACE_SECTION _TRACE_SECTION(__FILE__, MACRO_STRINGIFY(__LINE__))
 #define P_TRACE(severity, component, fmt, ...) do {                                 \
-        static P::Trace::TraceInfo SECTIONIZE(traces) info = {fmt, __FILE__, "<temp>", __LINE__, __func__}; \
+        static P::Trace::TraceInfo TRACE_SECTION info = {fmt, __FILE__, "<temp>", __LINE__, __func__}; \
         P::Trace::validate_format(fmt, ##__VA_ARGS__);                              \
         P::Trace::Emitter::trace(severity, component, &info, ##__VA_ARGS__);        \
 } while(0)

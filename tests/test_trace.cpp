@@ -262,7 +262,7 @@ TEST(Trace, file)
 {
     ensure_directory_exists(DATADIR);
 
-    static TraceInfo SECTIONIZE(traces) trace_info = {
+    static TraceInfo TRACE_SECTION trace_info = {
         "Test trace file.", __FILE__, "<temp>", __LINE__, __func__
     };
     uint16_t info_index = get_trace_info_index(&trace_info);

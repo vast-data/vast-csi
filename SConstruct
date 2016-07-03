@@ -87,6 +87,8 @@ murmur = murmur_env.Object(DEFAULT_BUILD_DIR + '/src/plasma/third_party/murmur3/
 
 cpp_env = env.Clone()
 cpp_env.Append(CXXFLAGS=['-std=c++11'])
+if compiler == 'gcc':
+   cpp_env.Append(LINKFLAGS=['-Tlinkerscript.lds'])
 cpp_sources = [DEFAULT_BUILD_DIR + '/' + i for i in RGlob('src', '*.cpp', [], ['src/plasma/execution/main.cpp'])]
 cpp_sources = cpp_sources + [DEFAULT_BUILD_DIR + '/tests/test_module.cpp', murmur]
 cpp_lib = cpp_env.Library(target='dist/orion_cpp', source=cpp_sources)

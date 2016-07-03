@@ -100,7 +100,7 @@ void CPool::print_counters()
     }
 }
 
-uint32_t CPool::get_shared_count() const
+uint32_t CPool::get_shared_count()
 {
     return __sync_fetch_and_add(&_shared_count, 0);
 }

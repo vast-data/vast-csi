@@ -82,7 +82,7 @@ public:
     /*!
      * Returns the number of buffers currently residing in the shared pool
      */
-    uint32_t get_shared_count() const;
+    uint32_t get_shared_count();
 
     /*!
     * Returns a pointer to the start of the pool memory
@@ -101,7 +101,7 @@ private:
 
     Index *_cache_heads;
     uint32_t *_cache_counts;
-    uint32_t _shared_count;
+    volatile uint32_t _shared_count;
     Pool _shared_pool;
 };
 
