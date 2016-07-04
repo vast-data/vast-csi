@@ -29,7 +29,7 @@ static_assert(MODULES_COUNT <= 16, "the max number of supported modules is 16");
 
 class ModuleInterface {
 public:
-    virtual void *init(P::Silo *silo, P::Conf::ConfigSetting *setting) = 0;
+    virtual void init(P::Silo *silo, P::Conf::ConfigSetting *setting) = 0;
     virtual void start() = 0;
 };
 

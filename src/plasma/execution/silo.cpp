@@ -40,9 +40,9 @@ void Silo::init(ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, co
 
         ModuleId module_id;
         ModuleInterface *module = Env::get()->create_module(module_name, &module_id);
-        _modules[(int)module_id].defined = true;
-        _modules[(int)module_id].module = module;
-        _modules[(int)module_id].user_state = module->init(this, module_setting);
+        _module_descriptors[(int)module_id].defined = true;
+        _module_descriptors[(int)module_id].module = module;
+        module->init(this, module_setting);
 
         ConfigSetting *fibers_setting = conf_setting_lookup_required(module_setting, "fibers");
         LOOP(conf_setting_length(fibers_setting), j) {
@@ -89,9 +89,9 @@ void Silo::silo_start_in_fiber()
     Env::get()->wait_for_run_state();
 
     LOOP(ModuleId::COUNT, i) {
-        if (_modules[i].defined) {
+        if (_module_descriptors[i].defined) {
             PT_INFO("Starting module: %s.", get_module_name((ModuleId) i));
-            _modules[i].module->start();
+            _module_descriptors[i].module->start();
         }
     }
 }
@@ -148,24 +148,24 @@ void Silo::join()
     pthread_join(_pthread, nullptr);
 }
 
-/*static*/ Silo::Module *Silo::get_module()
+Silo::ModuleDescriptor *Silo::get_module_descriptor()
 {
-    return &Silo::get()->_modules[(int)Fiber::get_module_id()];
+    return &Silo::get()->_module_descriptors[(int)Fiber::get_module_id()];
 }
 
-void *Silo::get_module_state()
+ModuleInterface *Silo::get_module()
 {
-    return get_module()->user_state;
+    return get_module_descriptor()->module;
 }
 
 void Silo::set_component_state(ModuleId module_id, ComponentId component_id, void *component)
 {
-    _modules[(int)module_id].components[(int)component_id] = component;
+    get_module_descriptor()->components[(int)component_id] = component;
 }
 
 void *Silo::get_component_state(ComponentId component_id)
 {
-    return get_module()->components[(int)component_id];
+    return get_module_descriptor()->components[(int)component_id];
 }
 
 void Silo::halt()

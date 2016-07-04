@@ -18,10 +18,15 @@
 
 class PModule : public ModuleInterface {
 public:
-    virtual void *init(P::Silo *silo, P::Conf::ConfigSetting *setting);
+    virtual void init(P::Silo *silo, P::Conf::ConfigSetting *setting);
     virtual void start();
     static ModuleId get_id() { return ModuleId::P; }
     static const char *get_name() { return "P"; }
-    static void init_io_from_settings(P::Conf::ConfigSetting *io_module, P::DevIO **devices, P::AtomicPool<P::DevIO::IO> *iopool, P::IOProvider *io_provider);
-};
 
+    static void init_io_from_settings(P::Conf::ConfigSetting *io_module, P::DevIO **devices, P::AtomicPool<P::DevIO::IO> *iopool, P::IOProvider *io_provider);
+
+    P::IOProvider io_provider;
+private:
+    P::AtomicPool<P::DevIO::IO> iopool;
+    P::DevIO *devices;
+};

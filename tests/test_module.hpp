@@ -17,7 +17,7 @@ class Silo;
 
 class TestModule : public ModuleInterface {
 public:
-    virtual void *init(P::Silo *silo, P::Conf::ConfigSetting *setting);
+    virtual void init(P::Silo *silo, P::Conf::ConfigSetting *setting);
     virtual void start();
     static ModuleId get_id() { return ModuleId::TEST; }
     static const char *get_name() { return "TEST"; }

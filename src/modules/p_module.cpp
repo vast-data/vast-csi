@@ -9,19 +9,16 @@ using P::Silo;
 
 typedef struct PModuleState PModuleState;
 struct PModuleState {
-    P::IOProvider io_provider;
-    P::AtomicPool<P::DevIO::IO> iopool;
-    P::DevIO *devices;
     char foo;
 };
 
-void PModule::init_io_from_settings(ConfigSetting *io_module, P::DevIO **devices, P::AtomicPool<P::DevIO::IO> *iopool, P::IOProvider *io_provider)
+void PModule::init_io_from_settings(ConfigSetting *io_setting, P::DevIO **devices, P::AtomicPool<P::DevIO::IO> *iopool, P::IOProvider *io_provider)
 {
-    ConfigSetting* iopool_count_setting = conf_setting_lookup_required(io_module, "io_pool_count");
+    ConfigSetting* iopool_count_setting = conf_setting_lookup_required(io_setting, "io_pool_count");
     size_t iopool_count = conf_setting_get_int32(iopool_count_setting);
     iopool->init(iopool_count);
 
-    ConfigSetting *io_provider_setting = conf_setting_lookup_required(io_module, "io_provider");
+    ConfigSetting *io_provider_setting = conf_setting_lookup_required(io_setting, "io_provider");
     ConfigSetting *devices_setting = conf_setting_lookup_required(io_provider_setting, "devices");
     const size_t device_count = (size_t)conf_setting_length(devices_setting);
     *devices = new P::DevIO[device_count];
@@ -36,7 +33,7 @@ void PModule::init_io_from_settings(ConfigSetting *io_module, P::DevIO **devices
         if (unlikely(!(*devices)[i].init(conf_setting_get_string(dev_path_setting),
                                       (uint32_t)conf_setting_get_int32(io_depth_setting), iopool,
                                       (size_t)conf_setting_get_int32(device_size_setting)))) {
-            // Todo: this should be replaces with a notification to control and then possibly skip/retry/panic?
+            // TODO: this should be replaces with a notification to control and then possibly skip/retry/panic?
             PANIC();
         }
     }
@@ -44,32 +41,22 @@ void PModule::init_io_from_settings(ConfigSetting *io_module, P::DevIO **devices
     io_provider->init(*devices, device_count);
 }
 
-void *PModule::init(Silo *silo, ConfigSetting *module_setting)
+void PModule::init(Silo *silo, ConfigSetting *module_setting)
 {
-    PModuleState *state = new PModuleState;
-
-    ConfigSetting *io_module_setting = conf_setting_lookup_required(module_setting, "io_module");
-    init_io_from_settings(io_module_setting, &state->devices, &state->iopool, &state->io_provider);
-
-    state->foo = 'a';
-    silo->set_component_state(ModuleId::P, CURRENT_COMPONENT, state);
-    return state;
+    ConfigSetting *io_setting = conf_setting_lookup_required(module_setting, "io");
+    init_io_from_settings(io_setting, &devices, &iopool, &io_provider);
 }
 
-static void NO_RETURN p_io_poll_fiber(void *)
+static void NO_RETURN p_io_poll_fiber(void *module)
 {
-    PModuleState *module_state = (PModuleState *)Silo::get_module_state();
+    PModule *p_module = (PModule *) module;
     while (true) {
-        module_state->io_provider.poll();
+        p_module->io_provider.poll();
         P::Fiber::yield();
     }
 }
 
 void PModule::start()
 {
-    printf("PModule::start\n");
-    PModuleState *module_state = (PModuleState *)Silo::get_module_state();
-    ASSERT_EQUAL(module_state->foo, 'a');
-    ASSERT_EQUAL(COMPONENT_GET_STATE(), module_state);
-    P::Fiber::init((P::Index)FiberGroupId::P_IO_POLLING, p_io_poll_fiber, nullptr, false);
+    P::Fiber::init((P::Index)FiberGroupId::P_IO_POLLING, p_io_poll_fiber, this, false);
 }

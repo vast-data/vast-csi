@@ -12,7 +12,7 @@
 
 class IModule : public ModuleInterface {
 public:
-    virtual void *init(P::Silo *silo, P::Conf::ConfigSetting *setting);
+    virtual void init(P::Silo *silo, P::Conf::ConfigSetting *setting);
     virtual void start();
     static ModuleId get_id() { return ModuleId::I; }
     static const char *get_name() { return "I"; }

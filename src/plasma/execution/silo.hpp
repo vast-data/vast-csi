@@ -73,13 +73,12 @@ public:
      */
     static SiloId get_current_silo_id();
 
-
     SiloId get_id() { return _silo_id; }
 
     /*!
-     * Return the current module state. Each module sets the state with the return value of %_module_init. The current module is determined by the fiber group of the currently runnning fiber (each fiber group belongs to a module).
+     * Return a pointer to the current module. Determined by the current fiber's group.
      */
-    static void *get_module_state();
+    ModuleInterface *get_module();
 
     /*!
      * Save a pointer to a component's state, retrievable afterwards using get_component_state(). This function should be called from %_module_init.
@@ -109,14 +108,13 @@ public:
     void destroy();
 
 private:
-    typedef struct Module {
+    typedef struct {
         ModuleInterface *module;
-        void *user_state;
         void *components[(int)ComponentId::COUNT];
         bool defined;
-    } Module;
+    } ModuleDescriptor;
 
-    static Module *get_module();
+    ModuleDescriptor *get_module_descriptor();
 
     static void silo_start_in_fiber_func(void *silo_arg);
     void silo_start_in_fiber();
@@ -125,7 +123,7 @@ private:
     void *silo_main();
 
 private:
-    Module _modules[(int)ModuleId::COUNT];
+    ModuleDescriptor _module_descriptors[(int)ModuleId::COUNT];
     SchedulerConfig _scheduler_config;
     Trace::Emitter _trace_emitter;
     Trace::Dumper _trace_dumper;

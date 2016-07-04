@@ -35,13 +35,12 @@ void TestModule::set_start_func(TestFunc func, void *ctx)
     _start_func_ctx = ctx;
 }
 
-void *TestModule::init(P::Silo *silo, P::Conf::ConfigSetting *setting)
+void TestModule::init(P::Silo *silo, P::Conf::ConfigSetting *setting)
 {
     _init = true;
     if (_init_func) {
         _init_func(_init_func_ctx);
     }
-    return nullptr;
 }
 
 void TestModule::run_start_func()
