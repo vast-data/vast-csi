@@ -78,7 +78,7 @@ public:
     /*!
      * Return a pointer to the current module. Determined by the current fiber's group.
      */
-    ModuleInterface *get_module();
+    static ModuleInterface *get_module();
 
     /*!
      * Save a pointer to a component's state, retrievable afterwards using get_component_state(). This function should be called from %_module_init.

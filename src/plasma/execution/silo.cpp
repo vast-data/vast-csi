@@ -150,12 +150,12 @@ void Silo::join()
 
 Silo::ModuleDescriptor *Silo::get_module_descriptor()
 {
-    return &Silo::get()->_module_descriptors[(int)Fiber::get_module_id()];
+    return &_module_descriptors[(int)Fiber::get_module_id()];
 }
 
 ModuleInterface *Silo::get_module()
 {
-    return get_module_descriptor()->module;
+    return Silo::get()->get_module_descriptor()->module;
 }
 
 void Silo::set_component_state(ModuleId module_id, ComponentId component_id, void *component)
