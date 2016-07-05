@@ -72,7 +72,7 @@ ModuleInterface *Env::create_module(const char *name, ModuleId *id)
     return nullptr;
 }
 
-void Env::init_vmsg(Config *config)
+void Env::init_vmsg(Config *config, uint32_t n_silos)
 {
     _vmsg = new VMsg::VMsg();
     ConfigSetting *env_id_setting = conf_lookup(config, "vmsg.env_id");
@@ -82,6 +82,7 @@ void Env::init_vmsg(Config *config)
     VMsgConfiguration vmsg_configuration;
     memset(&vmsg_configuration, 0, sizeof(vmsg_configuration));
     vmsg_configuration.local_env_id = env_id;
+    vmsg_configuration.n_silos = n_silos;
     ConfigSetting *module_resources_settings = conf_lookup(config, "vmsg.module_resources");
     const size_t module_count = (size_t)conf_setting_length(module_resources_settings);
     LOOP(module_count, i) {
@@ -133,8 +134,7 @@ void Env::init(Config *config)
     ConfigSetting *silo_types_setting = conf_lookup(config, "silo_types");
     ASSERT_NOT_NULL(silo_types_setting);
     _num_silos = (uint32_t) conf_setting_length(silos_setting);
-    // vmsg needs _num_silos to be set
-    init_vmsg(config);
+    init_vmsg(config, _num_silos);
 
 
     _silos = new Silo*[_num_silos];

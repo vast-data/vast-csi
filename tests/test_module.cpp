@@ -50,9 +50,7 @@ void TestModule::run_start_func()
 
 static void start_func_fiber(void *ctx)
 {
-    printf("test module fiber start\n");
     TestModule::run_start_func();
-    printf("test module fiber done\n");
 
 }
 

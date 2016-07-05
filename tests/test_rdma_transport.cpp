@@ -30,6 +30,7 @@ TEST(TestRDMATransport, test)
 
     VMsgConfiguration configuration;
     configuration.local_env_id = 0;
+    configuration.n_silos = 1;
     configuration.modules[(int)ModuleId::TEST].num_recv_buffers = 1024;
     configuration.modules[(int)ModuleId::TEST].num_send_buffers = 1024;
     transport->init(&configuration, &addr_table);

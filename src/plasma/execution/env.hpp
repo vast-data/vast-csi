@@ -73,7 +73,7 @@ private:
     void destroy();
     void start();
     void wait_for_silos();
-    void init_vmsg(Conf::Config *config);
+    void init_vmsg(Conf::Config *config, uint32_t n_silos);
 
     ModuleFactory *_module_factory[(int)ModuleId::COUNT];
     char _data_dir[PATH_MAX];

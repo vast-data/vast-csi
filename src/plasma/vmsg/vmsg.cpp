@@ -9,9 +9,9 @@ namespace VMsg {
 
 void VMsg::init(VMsgConfiguration *vmsg_configuration)
 {
-    _n_silos = Env::get()->get_num_silos();
     _vmsg_configuration = *vmsg_configuration;
-    PT_INFO("initializing VMsg local_env_id=%hu n_silos=%u", vmsg_configuration->local_env_id, _n_silos);
+    PT_INFO("initializing VMsg local_env_id=%hu n_silos=%u", vmsg_configuration->local_env_id,
+            vmsg_configuration->n_silos);
     _started = false;
     LOOP(ModuleId::COUNT, i) {
         LOOP(ModuleId::COUNT, j) {
@@ -33,8 +33,8 @@ void VMsg::init(VMsgConfiguration *vmsg_configuration)
         n_acks += _vmsg_configuration.modules[i].num_send_buffers;
     }
 
-    _silos_context = new SiloContext[_n_silos];
-    LOOP(_n_silos, i) {
+    _silos_context = new SiloContext[_vmsg_configuration.n_silos];
+    LOOP(_vmsg_configuration.n_silos, i) {
         SiloContext *ctx = &_silos_context[i];
         ctx->events_queue.init();
         ctx->seq_num = 0;
@@ -50,7 +50,7 @@ void VMsg::init(VMsgConfiguration *vmsg_configuration)
 
 void VMsg::destroy()
 {
-    LOOP(_n_silos, i) {
+    LOOP(_vmsg_configuration.n_silos, i) {
         SiloContext *ctx = &_silos_context[i];
         // not calling destroy since it is legit to go down with pending acks
         LOOP(MAX_ENVS, i) {
@@ -411,7 +411,7 @@ void VMsg::on_msg_recv(TransportEvent *event)
     QueuedEvent *queued_event = VMsgPool::msg_header_to_queued_event(header);
     queued_event->id = id;
     SiloId silo_id = header->dest.silo_id;
-    ASSERT(silo_id < _n_silos);
+    ASSERT(silo_id < _vmsg_configuration.n_silos);
     Index idx;
     memcpy(&idx, &id, sizeof(MsgId));
     _silos_context[silo_id].events_queue.push(&queued_event->node, idx);

@@ -112,7 +112,6 @@ private:
         Pool acks_pool;
     } SiloContext;
 
-    uint32_t _n_silos;
     SiloContext *_silos_context;
 
     bool _started;

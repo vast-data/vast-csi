@@ -39,6 +39,7 @@ struct ModuleResources {
 struct VMsgConfiguration {
     ModuleResources modules[MODULES_COUNT];
     EnvId local_env_id;
+    uint16_t n_silos;
 };
 
 enum class VMsgRes : uint32_t {
