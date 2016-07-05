@@ -2,12 +2,15 @@
 
 import os
 import re
-import click
 import yaml
-from jinja2 import Environment, PackageLoader
+import click
+from jinja2 import Environment, PackageLoader, StrictUndefined
 
 
-env = Environment(loader=PackageLoader('vmsg_rpc_gen', 'templates'))
+env = Environment(loader=PackageLoader(__name__, 'templates'),
+                  undefined=StrictUndefined,
+                  lstrip_blocks=True,
+                  trim_blocks=True)
 
 
 def camel_case_to_snake_case(name):
@@ -44,13 +47,12 @@ class Module(object):
         with open(output_file, 'w') as f:
             for line in template.generate(module=self):
                 f.write(line)
-        os.chmod(output_file, 0o444)
 
     def generate(self, output_file_prefix):
-        args = [('server_header.jin', output_file_prefix + '_server.hpp'),
-                ('server_impl.jin', output_file_prefix + '_server.cpp'),
-                ('client_header.jin', output_file_prefix + '_client.hpp'),
-                ('client_impl.jin', output_file_prefix + '_client.cpp')]
+        args = [('server_header.jin', output_file_prefix + '.server.hpp'),
+                ('server_impl.jin', output_file_prefix + '.server.cpp'),
+                ('client_header.jin', output_file_prefix + '.client.hpp'),
+                ('client_impl.jin', output_file_prefix + '.client.cpp')]
         for template, output in args:
             self.generate_file(template, output)
 

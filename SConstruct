@@ -5,23 +5,19 @@ DEFAULT_COMPILER = 'clang'
 DEFAULT_OPTIMIZATION_LEVEL = '2'
 DEFAULT_BUILD_DIR = 'build'
 
+def FilterPaths(paths, pattern):
+   return fnmatch.filter(map(str, paths), pattern)
 
 def RGlob(path, pattern, ignore_dirs=[], ignore_files=[]):
-   matches = []
-   for root, dirnames, filenames in os.walk(path):
-      if root in ignore_dirs:
-         continue
-      for filename in fnmatch.filter(filenames, pattern):
-         filename = os.path.join(root, filename)
-         if filename not in ignore_files:
-            matches.append(filename)
-   return matches
-
-
-def generate_rpc(src, outout):
-    os.system('./venv/bin/python ./src/plasma/vmsg/vmsg_rpc_gen/vmsg_rpc_gen.py {} {}'.format(src, outout))
-
-generate_rpc('./tests/test_module.yaml', 'tests/test_module')
+    matches = []
+    for root, dirnames, filenames in os.walk(path):
+        if root in ignore_dirs:
+            continue
+        for filename in fnmatch.filter(filenames, pattern):
+            filename = os.path.join(root, filename)
+            if filename not in ignore_files:
+                matches.append(filename)
+    return matches
 
 VariantDir(DEFAULT_BUILD_DIR + '/src', 'src')
 VariantDir(DEFAULT_BUILD_DIR + '/tests', 'tests')
@@ -30,7 +26,6 @@ vars = Variables(None, ARGUMENTS)
 vars.Add(BoolVariable('debug', 'Set debug to 1 to compile a debug version (defines the DEBUG macro)', False))
 vars.Add(EnumVariable('cc', 'A c compiler', DEFAULT_COMPILER, allowed_values=('clang', 'gcc')))
 vars.Add('O', 'Optimization level', DEFAULT_OPTIMIZATION_LEVEL)
-
 
 env = Environment(variables=vars)
 help_text = """
@@ -63,15 +58,15 @@ if debug is not None:
 
 compiler = ARGUMENTS.get('cc', 'clang')
 if compiler == 'clang':
-   env.Replace(CC=compiler, CXX=compiler + '++')
-   env.Append(CFLAGS=['-Weverything',
-                      '-Wno-disabled-macro-expansion',
-                      '-Wno-gnu-zero-variadic-macro-arguments'])
+    env.Replace(CC=compiler, CXX=compiler + '++')
+    env.Append(CFLAGS=['-Weverything',
+                       '-Wno-disabled-macro-expansion',
+                       '-Wno-gnu-zero-variadic-macro-arguments'])
 else:
-   assert compiler == 'gcc'
-   env.Replace(CC='/opt/rh/devtoolset-3/root/usr/bin/gcc',
-               CXX='g++')
-   env.Append(CFLAGS=['-Wall'])
+    assert compiler == 'gcc'
+    env.Replace(CC='/opt/rh/devtoolset-3/root/usr/bin/gcc',
+                CXX='g++')
+    env.Append(CFLAGS=['-Wall'])
 
 env.Append(CPPFLAGS=['-g',
                      '-O' + optimizations,
@@ -80,7 +75,7 @@ env.Append(CPPFLAGS=['-g',
                      '-Wno-vla',
                      '-Wno-padded',
                      '-Wno-cast-align'])
-env.Append(CPPPATH=['src', 'src/include'])
+env.Append(CPPPATH=['build/src'])
 env.Append(LINKFLAGS=['-pthread'])
 env.Append(LIBS=['unwind', 'config', 'libaio'])
 
@@ -90,6 +85,48 @@ murmur_env.Append(CFLAGS=['-Wno-cast-align',
                           '-Wno-shorten-64-to-32',
                           '-Wno-incompatible-pointer-types-discards-qualifiers'])
 murmur = murmur_env.Object(DEFAULT_BUILD_DIR + '/src/plasma/third_party/murmur3/murmur3.c')
+
+# ----- Python Environment ----- #
+venv = env.Command(target='venv/requirements.txt',
+                   source=['python_requirements.txt'],
+                   action='virtualenv venv && '
+                   '. venv/bin/activate && '
+                   'cp $SOURCE $TARGET && '
+                   'pip install -r $SOURCE')
+
+def develop_package(target, dir):
+    package = env.Command(target, [dir + '/setup.py'], action='. venv/bin/activate && pushd `dirname $SOURCE` && python3 setup.py develop && popd && cp ' + dir + '/setup.py $TARGET')
+    env.Depends(package, venv)
+    return package
+
+rpc_gen = develop_package(target='venv/rpc_installed.txt', dir='src/plasma/vmsg/rpc_gen')
+hubble = develop_package('venv/trace_installed.txt', 'src/plasma/trace/reader')
+trace_tests = env.Alias('pytest', [], './venv/bin/py.test src/plasma/trace/reader/tests')
+env.Depends(trace_tests, hubble)
+
+env.AlwaysBuild('pytest')
+env.Alias('test', 'pytest')
+
+# ----- RPC ----- #
+rpc_sources = []
+
+def rpc_emitter(target, source, env):
+    assert len(source) == 1
+    # regenerate template if the package dependencies change or any of its file
+    source.extend([rpc_gen,
+                   'src/plasma/vmsg/rpc_gen/main.py',
+                   'src/plasma/vmsg/rpc_gen/templates/client_header.jin',
+                   'src/plasma/vmsg/rpc_gen/templates/client_impl.jin',
+                   'src/plasma/vmsg/rpc_gen/templates/server_header.jin',
+                   'src/plasma/vmsg/rpc_gen/templates/client_impl.jin'])
+    targets = [str(source[0]) + suffix for suffix in '.server.cpp', '.server.hpp', '.client.cpp', '.client.hpp']
+    return targets, source
+env.Append(BUILDERS = {'Rpc': Builder(action='./venv/bin/gen-rpc $SOURCE $SOURCE', emitter=rpc_emitter)})
+
+for rpc_file in RGlob('src', '*.rpc'):
+    rpc_file = DEFAULT_BUILD_DIR + '/' + rpc_file
+    rpc_sources.extend(FilterPaths(env.Rpc(rpc_file), '*.cpp'))
+test_rpc_sources = FilterPaths(env.Rpc(DEFAULT_BUILD_DIR + '/tests/test_module.rpc'), '*.cpp')
 
 # ----- C++ Environment ----- #
 LINKER_SCRIPT = 'linkerscript.lds'
@@ -101,7 +138,9 @@ pre = ARGUMENTS.get('pre')
 if pre is not None:
    cpp_env.Append(CCFLAGS=['-E'])
 cpp_sources = [DEFAULT_BUILD_DIR + '/' + i for i in RGlob('src', '*.cpp', [], ['src/plasma/execution/main.cpp'])]
-cpp_sources = cpp_sources + [DEFAULT_BUILD_DIR + '/tests/test_module.cpp', murmur]
+cpp_sources.extend(rpc_sources)
+cpp_sources.append(DEFAULT_BUILD_DIR + '/tests/test_module.cpp')
+cpp_sources.append(murmur)
 cpp_lib = cpp_env.Library(target='dist/orion_cpp', source=cpp_sources)
 cpp_env.Depends(cpp_lib, LINKER_SCRIPT)
 cpp_env.Append(LIBS=['rdmacm', 'ibverbs', cpp_lib])
@@ -114,48 +153,29 @@ def AddCppTest(target, source, wrap=[]):
         cpp_test_env.Append(LINKFLAGS='-Wl,-wrap,' + func)
     test = cpp_test_env.Program(target=target, source=source)
     cpp_test_env.Alias('cpptest', test, test[0].abspath)
-cpp_env.AlwaysBuild('cpptest')
 
-AddCppTest(target='dist/tests/test_rdma_transport', source=[DEFAULT_BUILD_DIR + '/tests/test_rdma_transport.cpp'])
-AddCppTest(target='dist/tests/test_vmsg', source=[DEFAULT_BUILD_DIR + '/tests/test_vmsg.cpp',
-                                                  DEFAULT_BUILD_DIR + '/tests/vmsg_test.cpp',
-                                                  DEFAULT_BUILD_DIR + '/tests/test_module_server.cpp',
-                                                  DEFAULT_BUILD_DIR + '/tests/test_module_client.cpp'])
-AddCppTest(target='dist/tests/test_assert', source=[DEFAULT_BUILD_DIR + '/tests/test_assert.cpp'])
-AddCppTest(target='dist/tests/test_pool', source=[DEFAULT_BUILD_DIR + '/tests/test_pool.cpp'])
-AddCppTest(target='dist/tests/test_object_pool', source=[DEFAULT_BUILD_DIR + '/tests/test_object_pool.cpp'])
-AddCppTest(target='dist/tests/test_atomic_pool', source=[DEFAULT_BUILD_DIR + '/tests/test_atomic_pool.cpp'])
-AddCppTest(target='dist/tests/test_cpool', source=[DEFAULT_BUILD_DIR + '/tests/test_cpool.cpp'], wrap=['p_silo_get_id'])
-AddCppTest(target='dist/tests/test_config', source=[DEFAULT_BUILD_DIR + '/tests/test_config.cpp'])
-AddCppTest(target='dist/tests/test_dlist', source=[DEFAULT_BUILD_DIR + '/tests/test_dlist.cpp'])
-AddCppTest(target='dist/tests/test_list', source=[DEFAULT_BUILD_DIR + '/tests/test_list.cpp'])
-AddCppTest(target='dist/tests/test_io_provider', source=[DEFAULT_BUILD_DIR + '/tests/test_io_provider.cpp'])
-AddCppTest(target='dist/tests/test_fiber', source=[DEFAULT_BUILD_DIR + '/tests/test_fiber.cpp'])
-AddCppTest(target='dist/tests/test_env', source=[DEFAULT_BUILD_DIR + '/tests/test_env.cpp'])
-AddCppTest(target='dist/tests/test_sync', source=[DEFAULT_BUILD_DIR + '/tests/test_sync.cpp'])
-AddCppTest(target='dist/tests/test_fiber_sync', source=[DEFAULT_BUILD_DIR + '/tests/test_fiber_sync.cpp'])
-AddCppTest(target='dist/tests/test_hash', source=[DEFAULT_BUILD_DIR + '/tests/test_hash.cpp'])
-AddCppTest(target='dist/tests/test_queue', source=[DEFAULT_BUILD_DIR + '/tests/test_queue.cpp'])
-AddCppTest(target='dist/tests/test_trace', source=[DEFAULT_BUILD_DIR + '/tests/test_trace.cpp'])
-AddCppTest(target='dist/tests/test_spsc_queue', source=[DEFAULT_BUILD_DIR + '/tests/test_spsc_queue.cpp'])
+AddCppTest(target='dist/tests/assert', source=[DEFAULT_BUILD_DIR + '/tests/test_assert.cpp'])
+AddCppTest(target='dist/tests/pool', source=[DEFAULT_BUILD_DIR + '/tests/test_pool.cpp'])
+AddCppTest(target='dist/tests/object_pool', source=[DEFAULT_BUILD_DIR + '/tests/test_object_pool.cpp'])
+AddCppTest(target='dist/tests/atomic_pool', source=[DEFAULT_BUILD_DIR + '/tests/test_atomic_pool.cpp'])
+AddCppTest(target='dist/tests/cpool', source=[DEFAULT_BUILD_DIR + '/tests/test_cpool.cpp'], wrap=['p_silo_get_id'])
+AddCppTest(target='dist/tests/config', source=[DEFAULT_BUILD_DIR + '/tests/test_config.cpp'])
+AddCppTest(target='dist/tests/dlist', source=[DEFAULT_BUILD_DIR + '/tests/test_dlist.cpp'])
+AddCppTest(target='dist/tests/list', source=[DEFAULT_BUILD_DIR + '/tests/test_list.cpp'])
+AddCppTest(target='dist/tests/io_provider', source=[DEFAULT_BUILD_DIR + '/tests/test_io_provider.cpp'])
+AddCppTest(target='dist/tests/fiber', source=[DEFAULT_BUILD_DIR + '/tests/test_fiber.cpp'])
+AddCppTest(target='dist/tests/env', source=[DEFAULT_BUILD_DIR + '/tests/test_env.cpp'])
+AddCppTest(target='dist/tests/sync', source=[DEFAULT_BUILD_DIR + '/tests/test_sync.cpp'])
+AddCppTest(target='dist/tests/fiber_sync', source=[DEFAULT_BUILD_DIR + '/tests/test_fiber_sync.cpp'])
+AddCppTest(target='dist/tests/hash', source=[DEFAULT_BUILD_DIR + '/tests/test_hash.cpp'])
+AddCppTest(target='dist/tests/queue', source=[DEFAULT_BUILD_DIR + '/tests/test_queue.cpp'])
+AddCppTest(target='dist/tests/trace', source=[DEFAULT_BUILD_DIR + '/tests/test_trace.cpp'])
+AddCppTest(target='dist/tests/spsc_queue', source=[DEFAULT_BUILD_DIR + '/tests/test_spsc_queue.cpp'])
 AddCppTest(target='dist/tests/time', source=[DEFAULT_BUILD_DIR + '/tests/test_time.cpp'])
 AddCppTest(target='dist/tests/perf', source=[DEFAULT_BUILD_DIR + '/tests/test_perf.cpp'])
+AddCppTest(target='dist/tests/rdma_transport', source=[DEFAULT_BUILD_DIR + '/tests/test_rdma_transport.cpp'])
+AddCppTest(target='dist/tests/vmsg', source=[DEFAULT_BUILD_DIR + '/tests/test_vmsg.cpp',
+                                             DEFAULT_BUILD_DIR + '/tests/vmsg_test.cpp',
+                                             test_rpc_sources])
 cpp_env.AlwaysBuild('cpptest')
-
-# ----- Python Environment ----- #
-
-venv = env.Command(target='venv/requirements.txt',
-                   source=['src/plasma/trace/reader/dev_requirements.txt',
-                           'src/plasma/trace/reader/setup.py'],
-                   action='virtualenv venv && '
-                   '. venv/bin/activate && '
-                   'cp $SOURCE $TARGET && '
-                   'pip install -r $SOURCE && '
-                   'cd src/plasma/trace/reader && '
-                   'python setup.py develop')
-trace_tests = env.Alias('pytest', [], './venv/bin/py.test src/plasma/trace/reader/tests')
-Depends(trace_tests, venv)
-cpp_env.AlwaysBuild('pytest')
-
-cpp_env.Alias('test', 'cpptest')
-cpp_env.Alias('test', 'pytest')
+env.Alias('test', 'cpptest')

@@ -7,8 +7,8 @@
 #include "plasma/execution/env.hpp"
 #include "test_module.hpp"
 #include "globals.hpp"
-#include "test_module_server.hpp"
-#include "test_module_client.hpp"
+#include "test_module.rpc.server.hpp"
+#include "test_module.rpc.client.hpp"
 
 using namespace P::VMsg;
 using P::FiberSync::Future;

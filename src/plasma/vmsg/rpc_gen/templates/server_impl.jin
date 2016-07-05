@@ -1,7 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 /* Auto generated code - DO NOT EDIT */
 
-#include "{{ module.name_snake_case }}_server.hpp"
+#include "{{ module.name_snake_case }}.rpc.server.hpp"
 #include "plasma/execution/env.hpp"
 
 {% if module.namespace -%}
