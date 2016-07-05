@@ -153,6 +153,7 @@ def AddCppTest(target, source, wrap=[]):
         cpp_test_env.Append(LINKFLAGS='-Wl,-wrap,' + func)
     test = cpp_test_env.Program(target=target, source=source)
     cpp_test_env.Alias('cpptest', test, test[0].abspath)
+env.Alias('cpptest', env.Command('<phony>', [], 'sudo modprobe siw'))
 
 AddCppTest(target='dist/tests/assert', source=[DEFAULT_BUILD_DIR + '/tests/test_assert.cpp'])
 AddCppTest(target='dist/tests/pool', source=[DEFAULT_BUILD_DIR + '/tests/test_pool.cpp'])
