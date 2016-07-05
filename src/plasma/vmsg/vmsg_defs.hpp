@@ -53,7 +53,7 @@ struct ModuleGUID {
     EnvId env_id;
     uint8_t reserved : 4;
     // only the first 4 bits are in use for module ids
-    ModuleId module_id : 4;
+    uint8_t module_id : 4;
     SiloId silo_id;
 };
 static_assert(sizeof(ModuleGUID) == 4, "ModuleGUID size should be 4 bytes");

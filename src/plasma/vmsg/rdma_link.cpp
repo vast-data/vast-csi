@@ -143,10 +143,11 @@ VMsgRes RDMALink::establish_connection(EnvId local_env_id, struct ibv_cq *cq, st
     struct rdma_conn_param cm_params;
     memset(&cm_params, 0, sizeof(cm_params));
     Handshake handshake = {
+        .vmsg_ver = VMSG_VERSION,
+        .module_ver = 0,
         .env_id = local_env_id,
         .module_id = _module_id,
-        .module_ver = 0,
-        .vmsg_ver = VMSG_VERSION
+        .padding = {},
     };
     cm_params.private_data = &handshake;
     cm_params.private_data_len = sizeof(Handshake);
