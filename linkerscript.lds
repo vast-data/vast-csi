@@ -8,6 +8,7 @@ SECTIONS
 {
   /* Read-only sections, merged into text segment: */
   PROVIDE (__executable_start = SEGMENT_START("text-segment", 0x400000)); . = SEGMENT_START("text-segment", 0x400000) + SIZEOF_HEADERS;
+  /* VAST: The following 3 lines are the only ones that differ from the default */
   PROVIDE (__start_traces = .);
   traces          : { *(traces.*) }
   PROVIDE (__stop_traces = .);

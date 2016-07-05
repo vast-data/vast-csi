@@ -84,14 +84,15 @@ murmur_env.Append(CFLAGS=['-Wno-cast-align',
 murmur = murmur_env.Object(DEFAULT_BUILD_DIR + '/src/plasma/third_party/murmur3/murmur3.c')
 
 # ----- C++ Environment ----- #
-
+LINKER_SCRIPT = 'linkerscript.lds'
 cpp_env = env.Clone()
 cpp_env.Append(CXXFLAGS=['-std=c++11'])
 if compiler == 'gcc':
-   cpp_env.Append(LINKFLAGS=['-Tlinkerscript.lds'])
+   cpp_env.Append(LINKFLAGS=['-T' + LINKER_SCRIPT])
 cpp_sources = [DEFAULT_BUILD_DIR + '/' + i for i in RGlob('src', '*.cpp', [], ['src/plasma/execution/main.cpp'])]
 cpp_sources = cpp_sources + [DEFAULT_BUILD_DIR + '/tests/test_module.cpp', murmur]
 cpp_lib = cpp_env.Library(target='dist/orion_cpp', source=cpp_sources)
+cpp_env.Depends(cpp_lib, LINKER_SCRIPT)
 cpp_env.Append(LIBS=[cpp_lib])
 cpp_env.Program(target='dist/env', source=[DEFAULT_BUILD_DIR + '/src/plasma/execution/main.cpp'])
 
