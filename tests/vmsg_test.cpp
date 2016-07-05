@@ -141,7 +141,7 @@ static void sync_call(TestModuleClient *client, uint64_t i, uint32_t n_silos, En
 
     ModuleGUID dest = {
         .env_id = dest_env,
-        .module_id = ModuleId::TEST,
+        .module_id = (uint8_t) ModuleId::TEST,
         .reserved = 0,
         .silo_id = (SiloId)(i % n_silos),
     };
@@ -160,7 +160,7 @@ static void async_call(TestModuleClient *client, uint64_t i, uint32_t n_silos, E
 
     ModuleGUID dest = {
         .env_id = dest_env,
-        .module_id = ModuleId::TEST,
+        .module_id = (uint8_t) ModuleId::TEST,
         .reserved = 0,
         .silo_id = (P::SiloId)(i % n_silos),
     };

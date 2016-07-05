@@ -24,13 +24,11 @@ global_traces: {
 silo_types: {
   data_silo: {
     modules: {
-      P : {
-        io_module : {
+      P: {
+        io: {
           io_pool_count : 100
-
-            io_provider : {
-            devices = (
-            )
+          io_provider : {
+            devices = ()
           }
         }
 

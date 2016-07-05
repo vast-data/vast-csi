@@ -37,7 +37,7 @@ TEST(TestRDMATransport, test)
     VMsgRes res = transport->start();
     ASSERT(res == VMsgRes::OK);
 
-    ModuleGUID guid = {0, 0, ModuleId::TEST, 0};
+    ModuleGUID guid = {0, 0, (uint8_t) ModuleId::TEST, 0};
     transport->request_connection(guid.env_id, ModuleId::TEST);
     while (!transport->is_client_connected(guid.env_id, ModuleId::TEST)) {
         usleep(1);
@@ -54,7 +54,7 @@ TEST(TestRDMATransport, test)
     int loops = MAX_CONCURRENT_RPC_REQUESTS;
     LOOP_TYPE(uint16_t, loops, i) {
         MsgId rcv_msg_id = {i, 0, 0};
-        VMsgRes res = transport->recv_request(guid.module_id, recv_mr, rcv_msg_id,
+        VMsgRes res = transport->recv_request((ModuleId) guid.module_id, recv_mr, rcv_msg_id,
                                               recv_buff + (i * sizeof(TestMsg)), sizeof(TestMsg));
         ASSERT(res == VMsgRes::OK);
     }

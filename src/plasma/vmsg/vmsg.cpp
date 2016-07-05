@@ -187,7 +187,7 @@ void *VMsg::alloc(ModuleId module_id)
     }
     VMsgHeader *header = (VMsgHeader *)buffer;
     memset(header, 0, sizeof(*header));
-    header->sender.module_id = module_id;
+    header->sender.module_id = (uint8_t) module_id;
 
     return VMsgPool::msg_header_to_payload(header);
 }
@@ -253,7 +253,7 @@ void VMsg::handle_piggyback_data(VMsgHeader *header, SiloId silo_id)
 VMsgRes VMsg::send_request(VMsgHeader *header, uint64_t timeout_usec)
 {
     const ModuleGUID dest = header->dest;
-    MemRegion *region = _vmsg_pool.get_region(BufferType::REQUEST, dest.module_id);
+    MemRegion *region = _vmsg_pool.get_region(BufferType::REQUEST, (ModuleId) dest.module_id);
     VMsgRes res = _rdma_transport.send_request(dest, region, header->sender_msg_id, header, msg_len(header));
     if (res == VMsgRes::NOT_CONNECTED && timeout_usec > 0) {
         PT_INFO("no connection to destination env_id=%hu module_id=%hhu retrying send", dest.env_id, dest.module_id);
@@ -285,9 +285,9 @@ VMsgRes VMsg::send_async(ModuleId src_module_id, ModuleGUID dest_guid, uint16_t 
     pending_msg->timeout_usec = timeout_usec;
     // verify that the buffer was allocated with the correct module id
     const SiloId silo_id = Silo::get_current_silo_id();
-    DEBUG_ASSERT(header->sender.module_id == src_module_id);
+    DEBUG_ASSERT((ModuleId) header->sender.module_id == src_module_id);
     header->sender = {
-        .module_id = src_module_id,
+        .module_id = (uint8_t) src_module_id,
         .env_id = _vmsg_configuration.local_env_id,
         .silo_id = silo_id,
         .reserved = 0,
@@ -295,7 +295,7 @@ VMsgRes VMsg::send_async(ModuleId src_module_id, ModuleGUID dest_guid, uint16_t 
     DEBUG_ASSERT(header->sender.silo_id != Silo::INVALID_SILO_ID);
     header->dest = dest_guid;
     header->sender_msg_id = {
-        .buffer_index = (uint16_t)_vmsg_pool.address_to_index(BufferType::REQUEST, src_module_id, header),
+        .buffer_index = (uint16_t)_vmsg_pool.address_to_index(BufferType::REQUEST, (ModuleId) src_module_id, header),
         .module_id = (uint8_t)src_module_id,
         .buffer_type = (uint8_t)BufferType::REQUEST,
     };
@@ -464,7 +464,7 @@ void VMsg::execute_incoming_request(VMsgHeader *request_header)
     TRACE_VMSG_HEADER("incoming request", request_header);
 
     VMsgHeader *response = (VMsgHeader *)_vmsg_pool.alloc(BufferType::RESPONSE,
-                                                          request_header->dest.module_id,
+                                                          (ModuleId) request_header->dest.module_id,
                                                           current_silo_id);
     ASSERT(response != nullptr);
 
@@ -479,12 +479,12 @@ void VMsg::execute_incoming_request(VMsgHeader *request_header)
     pending_response->timeout_usec = RESPONSE_TIMEOUT_USEC;
     MsgId response_msg_id = {
         .buffer_index = (uint16_t)_vmsg_pool.address_to_index(BufferType::RESPONSE,
-                                                              request_header->dest.module_id, response),
+                                                              (ModuleId) request_header->dest.module_id, response),
         .module_id = (uint8_t)request_header->dest.module_id,
         .buffer_type = (uint8_t)BufferType::RESPONSE,
     };
 
-    MemRegion *region = _vmsg_pool.get_region(BufferType::RESPONSE, request_header->dest.module_id);
+    MemRegion *region = _vmsg_pool.get_region(BufferType::RESPONSE, (ModuleId) request_header->dest.module_id);
 
     response->sender = request_header->dest;
     response->dest = request_header->sender;
@@ -500,7 +500,7 @@ void VMsg::execute_incoming_request(VMsgHeader *request_header)
     if (res != VMsgRes::OK) {
         PT_ERROR("failed to send response res=%d", res);
         _vmsg_pool.free_address(BufferType::RESPONSE,
-                                request_header->dest.module_id,
+                                (ModuleId) request_header->dest.module_id,
                                 current_silo_id, response);
     }
 
@@ -554,7 +554,7 @@ void VMsg::free_reply(void *reply_buffer)
     free_msg(current_silo_id, sender_msg_id);
     // return the reply buffer to the recv queue
     MsgId reply_id = {
-        .buffer_index = (uint16_t)_vmsg_pool.address_to_index(BufferType::REPLY, header->dest.module_id, header),
+        .buffer_index = (uint16_t)_vmsg_pool.address_to_index(BufferType::REPLY, (ModuleId) header->dest.module_id, header),
         .module_id = (uint8_t)header->dest.module_id,
         .buffer_type = (uint8_t)BufferType::REPLY,
     };
