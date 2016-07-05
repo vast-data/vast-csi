@@ -287,10 +287,10 @@ VMsgRes VMsg::send_async(ModuleId src_module_id, ModuleGUID dest_guid, uint16_t 
     const SiloId silo_id = Silo::get_current_silo_id();
     DEBUG_ASSERT((ModuleId) header->sender.module_id == src_module_id);
     header->sender = {
-        .module_id = (uint8_t) src_module_id,
-        .env_id = _vmsg_configuration.local_env_id,
-        .silo_id = silo_id,
-        .reserved = 0,
+        _vmsg_configuration.local_env_id,
+        0, //reserved
+        (uint8_t) src_module_id,
+        silo_id,
     };
     DEBUG_ASSERT(header->sender.silo_id != Silo::INVALID_SILO_ID);
     header->dest = dest_guid;
