@@ -19,9 +19,13 @@
 #include "../utils/macros.hpp"
 #include "../utils/time.hpp"
 
-#define EVAL(x) x
-#define _TRACE_SECTION(file, line) SECTIONIZE("traces." file line)
-#define TRACE_SECTION _TRACE_SECTION(__FILE__, MACRO_STRINGIFY(__LINE__))
+#ifdef __clang__
+  #define TRACE_SECTION SECTIONIZE("traces")
+#else
+  #define _TRACE_SECTION(file, line) SECTIONIZE("traces." file line)
+  #define TRACE_SECTION _TRACE_SECTION(__FILE__, MACRO_STRINGIFY(__LINE__))
+#endif
+
 #define P_TRACE(severity, component, fmt, ...) do {                                 \
         static P::Trace::TraceInfo TRACE_SECTION info = {fmt, __FILE__, "<temp>", __LINE__, __func__}; \
         P::Trace::validate_format(fmt, ##__VA_ARGS__);                              \
