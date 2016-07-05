@@ -10,9 +10,9 @@ using P::VMsg::VMsgFuture;
 using P::VMsg::VMsgFutureRes;
 using P::VMsg::ModuleGUID;
 
-{% if module.namespace -%}
-namespace {{ module.namespace }} {
-{% endif %}
+{% for namespace in module.namespaces -%}
+namespace {{ namespace }} {
+{% endfor %}
 
 void {{ module.name }}Client::init(VMsg *vmsg)
 {
@@ -46,7 +46,6 @@ void {{ module.name }}Client::free_{{ method.res_snake_case }}({{ method.res }} 
 
 {% endfor -%}
 
-
-{% if module.namespace -%}
+{% for namespace in module.namespaces -%}
 }
-{% endif %}
+{% endfor %}

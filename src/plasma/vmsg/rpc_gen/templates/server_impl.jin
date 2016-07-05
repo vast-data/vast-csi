@@ -4,9 +4,9 @@
 #include "{{ module.name_snake_case }}.rpc.server.hpp"
 #include "plasma/execution/env.hpp"
 
-{% if module.namespace -%}
-namespace {{ module.namespace }} {
-{% endif %}
+{% for namespace in module.namespaces -%}
+namespace {{ namespace }} {
+{% endfor %}
 
 void {{ module.name }}Server::register_server()
 {
@@ -42,6 +42,6 @@ void {{ module.name }}Server::run_op(uint16_t op_id, void *request, uint16_t req
     }
 }
 
-{% if module.namespace -%}
+{% for namespace in module.namespaces -%}
 }
-{% endif %}
+{% endfor %}

@@ -8,9 +8,10 @@
 #include "modules/module_interface.hpp"
 #include "plasma/vmsg/module_server.hpp"
 
-{% if module.namespace -%}
-namespace {{ module.namespace }} {
-{% endif %}
+{% for namespace in module.namespaces -%}
+namespace {{ namespace }} {
+{% endfor %}
+
 class {{ module.name }}Server : public P::VMsg::ModuleServer {
 public:
     enum ops {
@@ -29,6 +30,6 @@ public:
 {% endfor %}
 };
 
-{% if module.namespace -%}
+{% for namespace in module.namespaces -%}
 }
-{% endif %}
+{% endfor %}

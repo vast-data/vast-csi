@@ -35,7 +35,7 @@ class Module(object):
         self.include = module_dict.get('include', None)
         self.module_id = module_dict['module_id']
         self.api_version = module_dict['api_version']
-        self.namespace = module_dict.get('namespace', None)
+        self.namespaces = module_dict.get('namespaces', [])
         self.methods = [Method(method) for method in module_dict['methods']]
         self.name_snake_case = camel_case_to_snake_case(self.name)
 

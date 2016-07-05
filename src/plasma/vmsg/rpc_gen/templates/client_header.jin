@@ -14,9 +14,10 @@ class VMsg;
 }
 }
 
-{% if module.namespace -%}
-namespace {{ module.namespace }} {
-{% endif %}
+{% for namespace in module.namespaces -%}
+namespace {{ namespace }} {
+{% endfor %}
+
 class {{ module.name }}Client {
 public:
     void init(P::VMsg::VMsg *vmsg);
@@ -30,6 +31,6 @@ private:
     P::VMsg::VMsg *_vmsg;
 };
 
-{% if module.namespace -%}
+{% for namespace in module.namespaces -%}
 }
-{% endif %}
+{% endfor %}
