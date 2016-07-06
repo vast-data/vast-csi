@@ -135,7 +135,7 @@ static void finish()
 
 static void sync_call(TestModuleClient *client, uint64_t i, uint32_t n_silos, EnvId dest_env)
 {
-    AddArgs *args  = client->alloc_add_add_args();
+    AddArgs *args  = client->alloc_add();
     ASSERT_NOT_NULL(args);
     args->a = i;
     args->b = i;
@@ -151,7 +151,7 @@ static void sync_call(TestModuleClient *client, uint64_t i, uint32_t n_silos, En
     VMsgRes res = client->add_sync(dest, args, &add_res);
     ASSERT(res == VMsgRes::OK);
     ASSERT_EQUAL(args->a + args->b, add_res->sum);
-    client->free_add_add_res(add_res);
+    client->free_add(add_res);
 }
 
 static void async_call(TestModuleClient *client, uint64_t i, uint32_t n_silos, EnvId dest_env)
@@ -167,7 +167,7 @@ static void async_call(TestModuleClient *client, uint64_t i, uint32_t n_silos, E
     };
 
     LOOP(ASYNC_REQUESTS_PER_LOOP, j) {
-        MultiplyArgs *margs  = client->alloc_multiply_multiply_args();
+        MultiplyArgs *margs  = client->alloc_multiply();
         ASSERT_NOT_NULL(margs);
         margs->a = i + j;
         margs->b = i - j;
@@ -182,7 +182,7 @@ static void async_call(TestModuleClient *client, uint64_t i, uint32_t n_silos, E
         ASSERT(futures[j]->is_set());
         MultiplyRes *mul_res = futures[j]->get();
         ASSERT_EQUAL((i + j) * (i - j) * i, mul_res->sum);
-        client->free_multiply_multiply_res(mul_res);
+        client->free_multiply(mul_res);
     }
 }
 

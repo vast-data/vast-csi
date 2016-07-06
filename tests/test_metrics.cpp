@@ -181,26 +181,30 @@ TEST(TestMetricsAgent, test_get_modified)
     agent.get_generations(&gen_params, &gen_result);
     params.from_generation = gen_result.update_generation;
 
-    // test fetching the first batch
+    // test fetching many objects
     NS1::NS2::TestDriveMetrics drives[100];
+    int sum = 0;
     LOOP(100, i) {
         drives[i].init(&agent, nullptr, "drive");
         drives[i].set_reads(i);
+        sum += i;
     }
 
-    int drives_per_msg = 8;
-    agent.get_modified(&params, result, &res_len);
-    ASSERT_EQ(result->success, true);
-    ASSERT_EQ(result->count, drives_per_msg);
-    ASSERT_EQ(result->next_object, &drives[drives_per_msg]);
+    int drives_per_msg = (P::VMsg::RPC_BUFFER_SIZE - offsetof(Agent::GetModifiedResult, data)) / sizeof(NS1::NS2::TestDriveMetricsClone);
+    NS1::NS2::TestDriveMetricsClone* driveXclone;
 
-    params.from_object = &drives[drives_per_msg];
-    agent.get_modified(&params, result, &res_len);
-    ASSERT_EQ(result->success, true);
-    ASSERT_EQ(result->count, drives_per_msg);
-    ASSERT_EQ(result->next_object, &drives[drives_per_msg * 2]);
-    NS1::NS2::TestDriveMetricsClone* driveXclone = (NS1::NS2::TestDriveMetricsClone*) result->data;
-    ASSERT_EQ(driveXclone->reads, drives_per_msg);
+    do {
+        agent.get_modified(&params, result, &res_len);
+        if (result->next_object != nullptr)
+            ASSERT_EQ(result->count, drives_per_msg);
+        ASSERT_EQ(result->success, true);
+        LOOP(result->count, i) {
+            driveXclone = (NS1::NS2::TestDriveMetricsClone*) (result->data + sizeof(NS1::NS2::TestDriveMetricsClone) * i);
+            sum -= driveXclone->reads;
+        }
+        params.from_object = result->next_object;
+    } while(result->next_object != nullptr);
+    ASSERT_EQ(sum, 0);
 
     drive1.destroy();
     drive2.destroy();

@@ -24,7 +24,7 @@ static_assert(sizeof({{ method.arg }}) <= P::VMsg::RPC_BUFFER_SIZE, "method argu
 static_assert(!std::is_polymorphic<{{ method.arg }}>::value, "method argument must not have a vtable");
 static_assert(sizeof({{ method.res }}) <= P::VMsg::RPC_BUFFER_SIZE, "method result cannot be contained within RPC BUFFER");
 static_assert(!std::is_polymorphic<{{ method.res }}>::value, "method result must not have a vtable");
-{{ method.arg }} * {{ module.name }}Client::alloc_{{ method.name }}_{{ method.arg_snake_case }}()
+{{ method.arg }} * {{ module.name }}Client::alloc_{{ method.name }}()
 {
     return ({{ method.arg }} *)_vmsg->alloc(ModuleId::{{ module.module_id }});
 }
@@ -39,7 +39,7 @@ VMsgRes {{ module.name }}Client::{{ method.name }}_async(ModuleGUID dest, {{ met
     return _vmsg->send_async(ModuleId::{{ module.module_id }}, dest, {{ method.op_id }}, timeout_usec, args, request_len, (VMsgFuture **)future);
 }
 
-void {{ module.name }}Client::free_{{ method.name }}_{{ method.res_snake_case }}({{ method.res }} *res)
+void {{ module.name }}Client::free_{{ method.name }}({{ method.res }} *res)
 {
    _vmsg->free_reply((void *)res);
 }

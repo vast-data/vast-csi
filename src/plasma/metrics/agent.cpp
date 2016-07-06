@@ -88,6 +88,7 @@ void Agent::get_modified(GetModifiedParams *params, GetModifiedResult *result, u
 
     byte *write_ptr = result->data;
     size_t size_left = VMsg::RPC_BUFFER_SIZE - sizeof(GetModifiedResult);
+    size_t cloned_size;
     while (obj != nullptr) {
         auto object_size = obj->get_clone_size();
         ASSERT_OP(object_size, <=, VMsg::RPC_BUFFER_SIZE - sizeof(GetModifiedResult));
@@ -96,7 +97,8 @@ void Agent::get_modified(GetModifiedParams *params, GetModifiedResult *result, u
             break;
         }
         if (obj->get_generation() >= params->from_generation) { // object modified!
-            ASSERT_EQUAL(obj->clone(write_ptr), object_size);
+            cloned_size = obj->clone(write_ptr);
+            ASSERT_EQUAL(cloned_size, object_size);
             size_left -= object_size;
             write_ptr += object_size;
             result->count++;
