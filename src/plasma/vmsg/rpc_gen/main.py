@@ -31,7 +31,7 @@ class Method(object):
 
 class Module(object):
     def __init__(self, module_dict):
-        self.name = module_dict['module']
+        self.name = module_dict['class']
         self.include = module_dict.get('include', None)
         self.module_id = module_dict['module_id']
         self.api_version = module_dict['api_version']

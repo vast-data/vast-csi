@@ -1,4 +1,4 @@
-module: TestModule
+class: TestModule
 include: test_module_defs.hpp
 module_id: TEST
 api_version: 1
