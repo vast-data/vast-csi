@@ -3,8 +3,6 @@
 
 #include "{{ header }}"
 
-#include "plasma/execution/silo.hpp"
-
 {% for cls, cls_attrs in defs.items() %}
 
 {% for ns in cls_attrs.namespaces %}
@@ -20,7 +18,7 @@ void {{ cls }}::init(P::Metrics::Agent *agent, Object *parent, const char *name)
 
 void {{ cls }}::init(Object *parent, const char *name)
 {
-    P::Metrics::Object::init(P::Silo::get_module()->metrics_agent, parent);
+    P::Metrics::Object::init(P::Metrics::Agent::get_current(), parent);
     ASSERT_OP(strlen(name), <, {{ cls_attrs.name_size }});
     strncpy(_name, name, {{ cls_attrs.name_size }});
 }

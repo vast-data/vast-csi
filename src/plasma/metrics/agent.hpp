@@ -65,6 +65,8 @@ public:
     };
     void get_deletions(GetDeletionsParams *params, GetDeletionsResult *result, uint16_t *res_len);
 
+    static Agent *get_current();
+
 private:
     uint64_t _update_generation; // updated on every metric change or addition of an object.
     uint64_t _delete_generation; // updated on object deletion (addition is safe during iteration).

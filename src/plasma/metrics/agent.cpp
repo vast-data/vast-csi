@@ -5,6 +5,7 @@
 #include "plasma/internal.hpp"
 #include "plasma/trace/emitter.hpp"
 #include "plasma/vmsg/vmsg_defs.hpp"
+#include "plasma/execution/silo.hpp"
 
 namespace P { namespace Metrics {
 
@@ -127,6 +128,11 @@ void Agent::get_deletions(GetDeletionsParams *params, GetDeletionsResult *result
     result->has_more = start_generation < _delete_generation;
     PT_INFO("Returned %hd objects. Has more: %c", result->count, result->has_more);
     *res_len = sizeof(GetDeletionsResult) + sizeof(Object*) * i;
+}
+
+Agent *Agent::get_current()
+{
+    return &Silo::get_module()->control_agent.metrics_agent;
 }
 
 }}

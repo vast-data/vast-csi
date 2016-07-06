@@ -42,6 +42,7 @@ void Silo::init(ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, co
         ModuleInterface *module = Env::get()->create_module(module_name, &module_id);
         _module_descriptors[(int)module_id].defined = true;
         _module_descriptors[(int)module_id].module = module;
+        module->control_agent.init();
         module->init(this, module_setting);
 
         ConfigSetting *fibers_setting = conf_setting_lookup_required(module_setting, "fibers");
