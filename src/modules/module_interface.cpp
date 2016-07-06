@@ -24,22 +24,3 @@ void register_modules()
         env->register_module(factory->get_id(), factory);
     }
 }
-
-const char *get_module_name(ModuleId module_id)
-{
-    for (auto *factory : factories)
-        if (factory->get_id() == module_id)
-            return factory->get_name();
-    PANIC("ModuleId " << (int)module_id << " not found");
-}
-
-ModuleId get_module_id(const char *module_name)
-{
-    for (auto *factory : factories) {
-        if (strcmp(factory->get_name(), module_name) == 0) {
-            return factory->get_id();
-        }
-    }
-    PANIC("Module " << module_name << " not found");
-}
-

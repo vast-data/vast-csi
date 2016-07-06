@@ -90,7 +90,7 @@ void Env::init_vmsg(Config *config, uint32_t n_silos)
         ConfigSetting *name = conf_setting_lookup_required(module_setting, "name");
         ConfigSetting *send_buffers = conf_setting_lookup_required(module_setting, "num_send_buffers");
         ConfigSetting *recv_buffers = conf_setting_lookup_required(module_setting, "num_recv_buffers");
-        byte module_id = (byte)get_module_id(conf_setting_get_string(name));
+        byte module_id = (byte)module_id_from_string(conf_setting_get_string(name));
         ModuleResources *module_resources = &vmsg_configuration.modules[module_id];
         module_resources->num_send_buffers = conf_setting_get_int32(send_buffers);
         module_resources->num_recv_buffers = conf_setting_get_int32(recv_buffers);

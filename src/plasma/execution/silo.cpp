@@ -90,7 +90,7 @@ void Silo::silo_start_in_fiber()
 
     LOOP(ModuleId::COUNT, i) {
         if (_module_descriptors[i].defined) {
-            PT_INFO("Starting module: %s.", get_module_name((ModuleId) i));
+            PT_INFO("Starting module: %s.", module_id_to_string((ModuleId) i));
             _module_descriptors[i].module->start();
         }
     }

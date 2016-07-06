@@ -8,7 +8,6 @@
 
 #include <string.h>
 #include "types.hpp"
-#include "types.hpp"
 
 #define MIN(a, b) ((a) > (b) ? (b) : (a))
 #define MAX(a, b) ((a) < (b) ? (b) : (a))

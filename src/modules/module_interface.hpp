@@ -7,25 +7,13 @@
 
 #pragma once
 
+#include "defs.hpp"
 #include "plasma/utils/types.hpp"
 #include "plasma/execution/config.hpp"
 
 namespace P {
 class Silo;
 }
-
-// new modules must be added to end since these IDs are passed over the network
-enum class ModuleId : P::byte {
-    P = 0,
-    I,
-    TEST,
-
-    // must be last
-    COUNT
-};
-static const uint8_t MODULES_COUNT = (uint8_t)ModuleId::COUNT;
-// messaging uses only 4 bits for module id, if we need more than 16 modules the messaging code must be updated
-static_assert(MODULES_COUNT <= 16, "the max number of supported modules is 16");
 
 class ModuleInterface {
 public:
@@ -44,5 +32,3 @@ public:
 };
 
 void register_modules();
-const char *get_module_name(ModuleId module_id);
-ModuleId get_module_id(const char *module_name);
