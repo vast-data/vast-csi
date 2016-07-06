@@ -1,5 +1,6 @@
 #include "vmsg_test.hpp"
 
+#include <gtest/gtest.h>
 #include <unistd.h>
 #include <sys/file.h>
 #include <sys/mman.h>
@@ -281,4 +282,17 @@ void VMsgTest::create_config_files()
     ASSERT(system(cmd) == 0);
     sprintf(cmd, "sed -i 's/{PORT}/%u/g' " SERVER_CONFIG_FILE, SERVER_PORT);
     ASSERT(system(cmd) == 0);
+}
+
+TEST(TestVMsg, test)
+{
+VMsgTest test;
+test.init();
+test.run_test();
+test.destroy();
+}
+
+int main(int argc, char **argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
 }

@@ -175,8 +175,6 @@ AddCppTest(target='dist/tests/spsc_queue', source=[DEFAULT_BUILD_DIR + '/tests/t
 AddCppTest(target='dist/tests/time', source=[DEFAULT_BUILD_DIR + '/tests/test_time.cpp'])
 AddCppTest(target='dist/tests/perf', source=[DEFAULT_BUILD_DIR + '/tests/test_perf.cpp'])
 AddCppTest(target='dist/tests/rdma_transport', source=[DEFAULT_BUILD_DIR + '/tests/test_rdma_transport.cpp'])
-AddCppTest(target='dist/tests/vmsg', source=[DEFAULT_BUILD_DIR + '/tests/test_vmsg.cpp',
-                                             DEFAULT_BUILD_DIR + '/tests/vmsg_test.cpp',
-                                             test_rpc_sources])
+AddCppTest(target='dist/tests/vmsg', source=[DEFAULT_BUILD_DIR + '/tests/vmsg_test.cpp', test_rpc_sources])
 cpp_env.AlwaysBuild('cpptest')
 env.Alias('test', 'cpptest')
