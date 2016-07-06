@@ -25,12 +25,8 @@ struct {{ cls }}Clone {
 
 class {{ cls }}: public P::Metrics::Object {
 public:
-    void init(P::Metrics::Agent *agent, Object *parent, const char *name)
-    {
-        P::Metrics::Object::init(agent, parent);
-        ASSERT_OP(strlen(name), <, {{ cls_attrs.name_size }});
-        strncpy(_name, name, {{ cls_attrs.name_size }});
-    }
+    void init(P::Metrics::Agent *agent, Object *parent, const char *name);
+    void init(Object *parent, const char *name);
 
 {% for metric in cls_attrs.metrics %}
     void set_{{ metric.name }}({{ metric.type }} value=1)
@@ -62,20 +58,7 @@ public:
         return sizeof({{ cls }}Clone);
     }
 
-    size_t clone(void *buffer)
-    {
-        {{ cls }}Clone *obj = ({{ cls }}Clone*) buffer;
-        // the size of the object without the size itself
-        obj->size = sizeof({{ cls }}Clone) - sizeof(uint16_t);
-        strncpy(obj->name, _name, {{ cls_attrs.name_size }});
-        obj->type_id = P::Metrics::TypeId::{{ cls }};
-        obj->parent = _parent;
-        obj->address = this;
-        {% for metric in cls_attrs.metrics %}
-        obj->{{ metric.name }} = _{{ metric.name }};
-        {% endfor %}
-        return sizeof({{ cls }}Clone);
-    }
+    size_t clone(void *buffer);
 
 private:
     char _name[{{ cls_attrs.name_size }}];

@@ -12,13 +12,18 @@
 #include "plasma/execution/config.hpp"
 
 namespace P {
-class Silo;
+    namespace Metrics {
+        class Agent;
+    }
+    class Silo;
 }
 
 class ModuleInterface {
 public:
     virtual void init(P::Silo *silo, P::Conf::ConfigSetting *setting) = 0;
     virtual void start() = 0;
+
+    P::Metrics::Agent *metrics_agent;
 };
 
 /*!

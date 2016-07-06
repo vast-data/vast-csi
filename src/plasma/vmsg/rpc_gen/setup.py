@@ -7,6 +7,6 @@ setup(name='rpc',
       author='Asaf Levy',
       author_email='asaf@vastdata.com',
       license='Copyright (C) Vast Data Ltd.',
-      py_modules=['main'],
-      entry_points={'console_scripts': ['gen-rpc=main:main']},
+      py_modules=['rpc_gen'],
+      entry_points={'console_scripts': ['gen-rpc=rpc_gen:main']},
       install_requires=['click', 'jinja2', 'pyyaml'])

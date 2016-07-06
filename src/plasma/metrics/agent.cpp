@@ -62,6 +62,11 @@ void Agent::get_generations(GetGenerationsParams *params, GetGenerationsResult *
     result->delete_generation = _delete_generation;
 }
 
+/*!
+ * This function returns all modified objects up to a given message size.
+ * If all objects don't fit in a single RPC call, consecutive calls should be made.
+ * The first call can pass a from_generation of 0 in order to get all objects.
+ */
 void Agent::get_modified(GetModifiedParams *params, GetModifiedResult *result, uint16_t *res_len)
 {
     PT_INFO("Getting objects modified from generation=%ld", params->from_generation);
@@ -74,7 +79,7 @@ void Agent::get_modified(GetModifiedParams *params, GetModifiedResult *result, u
     }
     result->success = true;
     result->count = 0;
-    result->next_object = nullptr;
+    result->next_object = nullptr; // assume no additional calls are needed
 
     Object *obj = params->from_object;
     if (obj == nullptr)
@@ -85,11 +90,11 @@ void Agent::get_modified(GetModifiedParams *params, GetModifiedResult *result, u
     while (obj != nullptr) {
         auto object_size = obj->get_clone_size();
         ASSERT_OP(object_size, <=, VMsg::RPC_BUFFER_SIZE - sizeof(GetModifiedResult));
-        if (object_size > size_left) {
+        if (object_size > size_left) { // additional calls are needed!
             result->next_object = obj;
             break;
         }
-        if (obj->get_generation() >= params->from_generation) {
+        if (obj->get_generation() >= params->from_generation) { // object modified!
             ASSERT_EQUAL(obj->clone(write_ptr), object_size);
             size_left -= object_size;
             write_ptr += object_size;

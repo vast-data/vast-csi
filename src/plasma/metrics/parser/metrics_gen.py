@@ -4,7 +4,7 @@ import click
 from jinja2 import Environment, PackageLoader, StrictUndefined
 
 print(__name__)
-env = Environment(loader=PackageLoader('metrics', 'templates'),
+env = Environment(loader=PackageLoader(__name__, 'templates'),
                   undefined=StrictUndefined,
                   lstrip_blocks=True,
                   trim_blocks=True)

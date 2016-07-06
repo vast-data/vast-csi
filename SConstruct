@@ -77,7 +77,6 @@ env.Append(CPPFLAGS=['-g',
                      '-Wno-cast-align'])
 env.Append(CPPPATH=['build/src'])
 env.Append(LINKFLAGS=['-pthread'])
-env.Append(LIBS=['unwind', 'config', 'libaio'])
 
 murmur_env = env.Clone()
 murmur_env.Append(CFLAGS=['-Wno-cast-align',
@@ -97,9 +96,10 @@ venv = env.Command(target='venv/requirements.txt',
 def develop_package(target, dir):
     package = env.Command(target, [dir + '/setup.py'], action='. venv/bin/activate && pushd `dirname $SOURCE` && python3 setup.py develop && popd && cp ' + dir + '/setup.py $TARGET')
     env.Depends(package, venv)
+    env.SideEffect('venv/lib/python3.4/site-packages/easy-install.pth', package)
     return package
 
-rpc_gen = develop_package(target='venv/rpc_installed.txt', dir='src/plasma/vmsg/rpc_gen')
+rpc_gen = develop_package('venv/rpc_installed.txt', 'src/plasma/vmsg/rpc_gen')
 metrics_gen = develop_package('venv/metrics_installed.txt', 'src/plasma/metrics/parser')
 hubble = develop_package('venv/trace_installed.txt', 'src/plasma/trace/reader')
 trace_tests = env.Alias('pytest', [], './venv/bin/py.test src/plasma/trace/reader/tests')
@@ -109,21 +109,20 @@ env.AlwaysBuild('pytest')
 env.Alias('test', 'pytest')
 
 # ----- RPC ----- #
-rpc_sources = []
-
 def rpc_emitter(target, source, env):
     assert len(source) == 1
     # regenerate template if the package dependencies change or any of its file
     source.extend([rpc_gen,
-                   'src/plasma/vmsg/rpc_gen/main.py',
+                   'src/plasma/vmsg/rpc_gen/rpc_gen.py',
                    'src/plasma/vmsg/rpc_gen/templates/client_header.jin',
                    'src/plasma/vmsg/rpc_gen/templates/client_impl.jin',
                    'src/plasma/vmsg/rpc_gen/templates/server_header.jin',
                    'src/plasma/vmsg/rpc_gen/templates/client_impl.jin'])
-    targets = [str(source[0]) + suffix for suffix in '.server.cpp', '.server.hpp', '.client.cpp', '.client.hpp']
+    targets = [str(source[0]) + suffix for suffix in ('.server.cpp', '.server.hpp', '.client.cpp', '.client.hpp')]
     return targets, source
 env.Append(BUILDERS = {'Rpc': Builder(action='./venv/bin/gen-rpc $SOURCE $SOURCE', emitter=rpc_emitter)})
 
+rpc_sources = []
 for rpc_file in RGlob('src', '*.rpc'):
     rpc_file = DEFAULT_BUILD_DIR + '/' + rpc_file
     rpc_sources.extend(FilterPaths(env.Rpc(rpc_file), '*.cpp'))
@@ -132,14 +131,18 @@ test_rpc_sources = FilterPaths(env.Rpc(DEFAULT_BUILD_DIR + '/tests/test_module.r
 # ----- Metrics ----- #
 def metrics_emitter(target, source, env):
     source.extend([metrics_gen,
-                   'src/plasma/metrics/parser/main.py',
-                   'src/plasma/metrics/parser/templates/header.jin'])
-    return target, source
-env.Append(BUILDERS = {'Metrics': Builder(action='./venv/bin/gen-metrics $SOURCE $TARGETS', emitter=metrics_emitter)})
+                   'src/plasma/metrics/parser/metrics_gen.py',
+                   'src/plasma/metrics/parser/templates/header.jin',
+                   'src/plasma/metrics/parser/templates/source.jin'])
+    targets = [str(source[0]) + suffix for suffix in ('.hpp', '.cpp')]
+    return targets, source
+env.Append(BUILDERS = {'Metrics': Builder(action='./venv/bin/gen-metrics $SOURCE $SOURCE', emitter=metrics_emitter)})
 
-for metric_file in RGlob('src', '*.metrics') + ['tests/test.metrics']:
+metric_sources = []
+for metric_file in RGlob('src', '*.metrics'):
     metric_file = DEFAULT_BUILD_DIR + '/' + metric_file
-    env.Metrics(metric_file + '.hpp', metric_file)
+    metric_sources.extend(FilterPaths(env.Metrics(metric_file), '*.cpp'))
+test_metric_sources = FilterPaths(env.Metrics(DEFAULT_BUILD_DIR + '/tests/test.metrics'), '*.cpp')
 
 # ----- C++ Environment ----- #
 LINKER_SCRIPT = 'linkerscript.lds'
@@ -157,7 +160,7 @@ cpp_sources.append(DEFAULT_BUILD_DIR + '/tests/test_module.cpp')
 cpp_sources.append(murmur)
 cpp_lib = cpp_env.Library(target='dist/orion_cpp', source=cpp_sources)
 cpp_env.Depends(cpp_lib, LINKER_SCRIPT)
-cpp_env.Append(LIBS=['rdmacm', 'ibverbs', cpp_lib])
+cpp_env.Append(LIBS=[cpp_lib, 'unwind', 'config', 'libaio', 'rdmacm', 'ibverbs'])
 cpp_env.Program(target='dist/env', source=[DEFAULT_BUILD_DIR + '/src/plasma/execution/main.cpp'])
 
 def AddCppTest(target, source, wrap=[]):
@@ -188,7 +191,7 @@ AddCppTest(target='dist/tests/trace', source=[DEFAULT_BUILD_DIR + '/tests/test_t
 AddCppTest(target='dist/tests/spsc_queue', source=[DEFAULT_BUILD_DIR + '/tests/test_spsc_queue.cpp'])
 AddCppTest(target='dist/tests/time', source=[DEFAULT_BUILD_DIR + '/tests/test_time.cpp'])
 AddCppTest(target='dist/tests/perf', source=[DEFAULT_BUILD_DIR + '/tests/test_perf.cpp'])
-AddCppTest(target='dist/tests/metrics', source=[DEFAULT_BUILD_DIR + '/tests/test_metrics.cpp'])
+AddCppTest(target='dist/tests/metrics', source=[DEFAULT_BUILD_DIR + '/tests/test_metrics.cpp', test_metric_sources])
 AddCppTest(target='dist/tests/rdma_transport', source=[DEFAULT_BUILD_DIR + '/tests/test_rdma_transport.cpp'])
 AddCppTest(target='dist/tests/vmsg', source=[DEFAULT_BUILD_DIR + '/tests/vmsg_test.cpp', test_rpc_sources])
 

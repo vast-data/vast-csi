@@ -1,0 +1,47 @@
+/* Copyright (C) Vast Data Ltd. */
+/* Auto generated code - DO NOT EDIT */
+
+#include "{{ header }}"
+
+#include "plasma/execution/silo.hpp"
+
+{% for cls, cls_attrs in defs.items() %}
+
+{% for ns in cls_attrs.namespaces %}
+namespace {{ ns }} {
+{% endfor %}
+
+void {{ cls }}::init(P::Metrics::Agent *agent, Object *parent, const char *name)
+{
+    P::Metrics::Object::init(agent, parent);
+    ASSERT_OP(strlen(name), <, {{ cls_attrs.name_size }});
+    strncpy(_name, name, {{ cls_attrs.name_size }});
+}
+
+void {{ cls }}::init(Object *parent, const char *name)
+{
+    P::Metrics::Object::init(P::Silo::get_module()->metrics_agent, parent);
+    ASSERT_OP(strlen(name), <, {{ cls_attrs.name_size }});
+    strncpy(_name, name, {{ cls_attrs.name_size }});
+}
+
+size_t {{ cls }}::clone(void *buffer)
+{
+    {{ cls }}Clone *obj = ({{ cls }}Clone*) buffer;
+    // the size of the object without the size itself
+    obj->size = sizeof({{ cls }}Clone) - sizeof(uint16_t);
+    strncpy(obj->name, _name, {{ cls_attrs.name_size }});
+    obj->type_id = P::Metrics::TypeId::{{ cls }};
+    obj->parent = _parent;
+    obj->address = this;
+    {% for metric in cls_attrs.metrics %}
+    obj->{{ metric.name }} = _{{ metric.name }};
+    {% endfor %}
+    return sizeof({{ cls }}Clone);
+}
+
+{% for ns in cls_attrs.namespaces %}
+}
+{% endfor %}
+
+{% endfor %}

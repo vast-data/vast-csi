@@ -9,11 +9,6 @@ using namespace P::Conf;
 using P::Silo;
 using P::VMsg::VMsg;
 
-typedef struct PModuleState PModuleState;
-struct PModuleState {
-    char foo;
-};
-
 void PModule::init_io_from_settings(ConfigSetting *io_setting, P::DevIO **devices, P::AtomicPool<P::DevIO::IO> *iopool, P::IOProvider *io_provider)
 {
     ConfigSetting* iopool_count_setting = conf_setting_lookup_required(io_setting, "io_pool_count");
