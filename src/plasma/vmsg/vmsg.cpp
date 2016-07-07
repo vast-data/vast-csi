@@ -179,8 +179,9 @@ static uint32_t msg_len(VMsgHeader *header)
     return len;
 }
 
-void *VMsg::alloc(ModuleId module_id)
+void *VMsg::alloc()
 {
+    ModuleId module_id = Fiber::get_module_id();
     void *buffer = _vmsg_pool.alloc(BufferType::REQUEST, module_id, Silo::get_current_silo_id());
     if (buffer == nullptr) {
         return nullptr;
@@ -274,7 +275,7 @@ VMsgRes VMsg::send_request(VMsgHeader *header, uint64_t timeout_usec)
     return VMsgRes::OK;
 }
 
-VMsgRes VMsg::send_async(ModuleId src_module_id, ModuleGUID dest_guid, uint16_t op, uint64_t timeout_usec, void *buffer,
+VMsgRes VMsg::send_async(ModuleGUID dest_guid, uint16_t op, uint64_t timeout_usec, void *buffer,
                          uint16_t len, VMsgFuture **future)
 {
     ASSERT(len <= RPC_BUFFER_SIZE);
@@ -285,18 +286,13 @@ VMsgRes VMsg::send_async(ModuleId src_module_id, ModuleGUID dest_guid, uint16_t 
     pending_msg->timeout_usec = timeout_usec;
     // verify that the buffer was allocated with the correct module id
     const SiloId silo_id = Silo::get_current_silo_id();
-    DEBUG_ASSERT((ModuleId) header->sender.module_id == src_module_id);
-    header->sender = {
-        _vmsg_configuration.local_env_id,
-        0, //reserved
-        (uint8_t) src_module_id,
-        silo_id,
-    };
+    header->sender.env_id = _vmsg_configuration.local_env_id;
+    header->sender.silo_id = silo_id;
     DEBUG_ASSERT(header->sender.silo_id != Silo::INVALID_SILO_ID);
     header->dest = dest_guid;
     header->sender_msg_id = {
-        .buffer_index = (uint16_t)_vmsg_pool.address_to_index(BufferType::REQUEST, (ModuleId) src_module_id, header),
-        .module_id = (uint8_t)src_module_id,
+        .buffer_index = (uint16_t)_vmsg_pool.address_to_index(BufferType::REQUEST, (ModuleId) header->sender.module_id, header),
+        .module_id = (uint8_t)header->sender.module_id,
         .buffer_type = (uint8_t)BufferType::REQUEST,
     };
     header->response_msg_id = {0};
@@ -319,11 +315,11 @@ VMsgRes VMsg::send_async(ModuleId src_module_id, ModuleGUID dest_guid, uint16_t 
     return VMsgRes::OK;
 }
 
-VMsgRes VMsg::send_sync(ModuleId src_module_id, ModuleGUID dest_guid, uint16_t op, uint64_t timeout_usec, void *buffer,
+VMsgRes VMsg::send_sync(ModuleGUID dest_guid, uint16_t op, uint64_t timeout_usec, void *buffer,
                         uint16_t len, void **reply, uint32_t *reply_len)
 {
     VMsgFuture *future;
-    VMsgRes res = send_async(src_module_id, dest_guid, op, timeout_usec, buffer, len, &future);
+    VMsgRes res = send_async(dest_guid, op, timeout_usec, buffer, len, &future);
     if (res != VMsgRes::OK) {
         return res;
     }

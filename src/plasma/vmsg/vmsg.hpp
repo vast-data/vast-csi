@@ -46,20 +46,20 @@ public:
      *
       * \return a buffer address or nullptr if no buffers are available
      */
-    void *alloc(ModuleId module_id);
+    void *alloc();
 
     /*!
      * Low level API for sending a sync RPC request.
      * In the common case this API should only be used by auto generated code.
      */
-    VMsgRes send_sync(ModuleId src_module_id, ModuleGUID dest_guid, uint16_t op, uint64_t timeout_usec,
+    VMsgRes send_sync(ModuleGUID dest_guid, uint16_t op, uint64_t timeout_usec,
                       void *buffer, uint16_t len, void **reply, uint32_t *reply_len);
 
     /*!
      * Low level API for sending an async RPC request.
      * In the common case this API should only be used by auto generated code.
      */
-    VMsgRes send_async(ModuleId src_module_id, ModuleGUID dest_guid, uint16_t op, uint64_t timeout_usec,
+    VMsgRes send_async(ModuleGUID dest_guid, uint16_t op, uint64_t timeout_usec,
                        void *buffer, uint16_t len, VMsgFuture **future);
 
     /*!
