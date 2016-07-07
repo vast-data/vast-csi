@@ -15,9 +15,9 @@ class Object {
 public:
     void init(P::Metrics::Agent *agent, Object *parent)
     {
+        list_node.init();
         _agent = agent;
         _parent = parent;
-        _next = nullptr;
         _generation = _agent->next_generation();
         _agent->on_object_init(this);
     }
@@ -25,16 +25,6 @@ public:
     void destroy()
     {
         _agent->on_object_destroy(this);
-    }
-
-    void set_next(Object *next)
-    {
-        _next = next;
-    }
-
-    Object *get_next()
-    {
-        return _next;
     }
 
     uint64_t get_generation()
@@ -45,9 +35,10 @@ public:
     virtual size_t get_clone_size() = 0;
     virtual size_t clone(void *buffer) = 0;
 
+    IListNode list_node;
+
 protected:
     Agent *_agent;
-    Object *_next;
     Object *_parent;
     uint64_t _generation;
 };

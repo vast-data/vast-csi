@@ -58,11 +58,11 @@ ITER_SAFE_EACH(iterable, i,
 )
 \endcode
 */
-#define ITER_SAFE_EACH(iterable, element, body)                                                               \
-    for (P::Index element = (iterable)->get_first(); element != P::INVALID_INDEX;) {                          \
-        P::Index next_element = (iterable)->is_last(element) ? P::INVALID_INDEX : (iterable)->next(element);\
-        {body}                                                                                                  \
-        element = next_element;                                                                                 \
+#define ITER_SAFE_EACH(iterable, element, body)                         \
+    for (P::Index element = (iterable)->get_first(); element != P::INVALID_INDEX;) { \
+        P::Index next_element = (iterable)->is_last(element) ? P::INVALID_INDEX : (iterable)->next(element); \
+        {body}                                                          \
+        element = next_element;                                         \
   }
 
 };

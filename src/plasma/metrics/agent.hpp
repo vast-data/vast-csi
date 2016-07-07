@@ -8,6 +8,7 @@
 
 #include "plasma/utils/compiler.hpp"
 #include "plasma/utils/assert.hpp"
+#include "plasma/data/ilist.hpp"
 
 namespace P { namespace Metrics {
 
@@ -26,10 +27,7 @@ public:
     {
         return _update_generation++;
     }
-    Object *get_first_object()
-    {
-        return _head;
-    }
+    IList *get_list();
 
     //---RPC-functions---
     struct GetGenerationsParams {
@@ -44,12 +42,12 @@ public:
     struct GetModifiedParams {
         uint64_t delete_generation;
         uint64_t from_generation;
-        Object *from_object;
+        void *cookie;
     };
     struct GetModifiedResult {
         bool success; // fails if a deletion happened during sync. requires a re-sync.
         uint16_t count;
-        Object *next_object; // null value indicates end of list.
+        void *cookie; // null value indicates end of list.
         byte data[];
     };
     void get_modified(GetModifiedParams *params, GetModifiedResult *result, uint16_t *res_len);
@@ -71,8 +69,7 @@ private:
     uint64_t _update_generation; // updated on every metric change or addition of an object.
     uint64_t _delete_generation; // updated on object deletion (addition is safe during iteration).
     Object *_delete_log[DELETED_OBJECTS_LOG_SIZE];
-    Object *_head;
-    Object *_tail;
+    IList _list;
 };
 
 }}

@@ -70,31 +70,31 @@ TEST(TestMetricsAgent, test_list)
     NS1::NS2::TestDriveMetrics drive2;
     NS1::NS2::TestDriveMetrics drive3;
 
-    ASSERT_EQ(agent.get_first_object(), nullptr);
+    ASSERT_TRUE(agent.get_list()->empty());
     drive1.init(&agent, nullptr, "drive1");
-    ASSERT_EQ(agent.get_first_object(), &drive1);
+    ASSERT_EQ(agent.get_list()->get_first(), &drive1.list_node);
     drive1.destroy();
 
     drive1.init(&agent, nullptr, "drive1");
     drive2.init(&agent, nullptr, "drive2");
-    ASSERT_EQ(agent.get_first_object()->get_next(), &drive2);
-    ASSERT_EQ(agent.get_first_object()->get_next()->get_next(), nullptr);
+    ASSERT_EQ(agent.get_list()->get_first()->get_next(), &drive2.list_node);
+    ASSERT_EQ(agent.get_list()->get_last(), &drive2.list_node);
 
     drive1.destroy();
-    ASSERT_EQ(agent.get_first_object(), &drive2);
-    ASSERT_EQ(agent.get_first_object()->get_next(), nullptr);
+    ASSERT_EQ(agent.get_list()->get_first(), &drive2.list_node);
+    ASSERT_FALSE(agent.get_list()->empty());
     drive2.destroy();
-    ASSERT_EQ(agent.get_first_object(), nullptr);
+    ASSERT_TRUE(agent.get_list()->empty());
 
     drive1.init(&agent, nullptr, "drive1");
     drive2.init(&agent, nullptr, "drive2");
     drive3.init(&agent, nullptr, "drive3");
 
     drive2.destroy();
-    ASSERT_EQ(drive1.get_next(), &drive3);
+    ASSERT_EQ(drive1.list_node.get_next(), &drive3.list_node);
     drive3.destroy();
     drive1.destroy();
-    ASSERT_EQ(agent.get_first_object(), nullptr);
+    ASSERT_TRUE(agent.get_list()->empty());
     agent.destroy();
 }
 
@@ -144,7 +144,7 @@ TEST(TestMetricsAgent, test_get_modified)
 
     // test fetching all objects from the start
     Agent::GetModifiedParams params;
-    params.from_object = nullptr;
+    params.cookie = nullptr;
     params.delete_generation = 666;
     params.from_generation = 0;
     Agent::GetModifiedResult *result = (Agent::GetModifiedResult*) malloc(P::VMsg::RPC_BUFFER_SIZE);
@@ -155,7 +155,7 @@ TEST(TestMetricsAgent, test_get_modified)
     params.delete_generation = 0;
     agent.get_modified(&params, result, &res_len);
     ASSERT_EQ(result->success, true);
-    ASSERT_EQ(result->next_object, nullptr);
+    ASSERT_EQ(result->cookie, nullptr);
     ASSERT_EQ(result->count, 2);
     ASSERT_EQ(res_len, sizeof(NS1::NS2::TestDriveMetricsClone) * 2 + sizeof(Agent::GetModifiedResult));
 
@@ -195,15 +195,15 @@ TEST(TestMetricsAgent, test_get_modified)
 
     do {
         agent.get_modified(&params, result, &res_len);
-        if (result->next_object != nullptr)
+        if (result->cookie != nullptr)
             ASSERT_EQ(result->count, drives_per_msg);
         ASSERT_EQ(result->success, true);
         LOOP(result->count, i) {
             driveXclone = (NS1::NS2::TestDriveMetricsClone*) (result->data + sizeof(NS1::NS2::TestDriveMetricsClone) * i);
             sum -= driveXclone->reads;
         }
-        params.from_object = result->next_object;
-    } while(result->next_object != nullptr);
+        params.cookie = result->cookie;
+    } while(result->cookie != nullptr);
     ASSERT_EQ(sum, 0);
 
     drive1.destroy();

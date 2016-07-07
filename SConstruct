@@ -148,7 +148,8 @@ test_metric_sources = FilterPaths(env.Metrics(DEFAULT_BUILD_DIR + '/tests/test.m
 LINKER_SCRIPT = 'linkerscript.lds'
 
 cpp_env = env.Clone()
-cpp_env.Append(CXXFLAGS=['-std=c++11'])
+cpp_env.Append(CXXFLAGS=['-std=c++11',
+                         '-Wno-invalid-offsetof']) # offsetof should work on non-POD objects as well
 if compiler == 'gcc':
    cpp_env.Append(LINKFLAGS=['-T' + LINKER_SCRIPT])
 pre = ARGUMENTS.get('pre')

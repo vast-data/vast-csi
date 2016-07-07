@@ -13,8 +13,7 @@ void Agent::init()
 {
     _update_generation = 0;
     _delete_generation = 0;
-    _head = nullptr;
-    _tail = nullptr;
+    _list.init();
 }
 
 void Agent::destroy()
@@ -22,39 +21,24 @@ void Agent::destroy()
 
 }
 
+IList *Agent::get_list()
+{
+    return &_list;
+}
+
+/*!
+ * Objects are always added to the end of the list. That way, there are higher chances
+ * clients will get them on the first sync they do.
+ */
 void Agent::on_object_init(Object *object)
 {
-    if (unlikely(_head == nullptr)) {
-        _head = object;
-        _tail = object;
-    } else {
-        _tail->set_next(object);
-        _tail = object;
-    }
+    _list.get_last()->append(&object->list_node);
 }
 
 void Agent::on_object_destroy(Object *object)
 {
     _delete_log[_delete_generation++ % DELETED_OBJECTS_LOG_SIZE] = object;
-
-    if (unlikely(object == _tail && object == _head)) {
-        _tail = nullptr;
-        _head = nullptr;
-        return;
-    }
-
-    if (likely(object != _head)) {
-        Object *prev = _head;
-        while (prev->get_next() != object) {
-            prev = prev->get_next();
-        }
-        prev->set_next(object->get_next());
-
-        if (unlikely(object == _tail))
-            _tail = prev;
-    } else {
-        _head = object->get_next();
-    }
+    object->list_node.remove();
 }
 
 void Agent::get_generations(GetGenerationsParams *params, GetGenerationsResult *result)
@@ -80,32 +64,32 @@ void Agent::get_modified(GetModifiedParams *params, GetModifiedResult *result, u
     }
     result->success = true;
     result->count = 0;
-    result->next_object = nullptr; // assume no additional calls are needed
+    result->cookie = nullptr; // assume no additional calls are needed
 
-    Object *obj = params->from_object;
-    if (obj == nullptr)
-        obj = _head;
+    IListNode *node = (IListNode*) params->cookie;
+    if (node == nullptr)
+        node = _list.get_first();
 
-    byte *write_ptr = result->data;
     size_t size_left = VMsg::RPC_BUFFER_SIZE - sizeof(GetModifiedResult);
-    size_t cloned_size;
-    while (obj != nullptr) {
-        auto object_size = obj->get_clone_size();
+    byte *write_ptr = result->data;
+    while (!_list.is_last(node)) {
+        Object *obj = p_container_of(node, Object, list_node);
+        size_t object_size = obj->get_clone_size();
         ASSERT_OP(object_size, <=, VMsg::RPC_BUFFER_SIZE - sizeof(GetModifiedResult));
         if (object_size > size_left) { // additional calls are needed!
-            result->next_object = obj;
+            PT_INFO("Next object to sync from: %p", obj);
+            result->cookie = node;
             break;
         }
         if (obj->get_generation() >= params->from_generation) { // object modified!
-            cloned_size = obj->clone(write_ptr);
+            size_t cloned_size = obj->clone(write_ptr);
             ASSERT_EQUAL(cloned_size, object_size);
             size_left -= object_size;
             write_ptr += object_size;
             result->count++;
         }
-        obj = obj->get_next();
+        node = node->get_next();
     }
-    PT_INFO("Next object to sync from: %p", obj);
     *res_len = (uintptr_t) write_ptr - (uintptr_t) result;
 }
 

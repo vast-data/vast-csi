@@ -18,9 +18,7 @@
 // as defined in the linux kernel
 #define likely(x)      __builtin_expect(!!(x), 1)
 #define unlikely(x)    __builtin_expect(!!(x), 0)
-#define p_container_of(ptr, type, member) ({                      \
-        auto __mptr = (ptr);                                    \
-        (type *)( (byte *)__mptr - offsetof(type,member) );})
+#define p_container_of(member_ptr, type, member) ((type*) ((uintptr_t) (member_ptr) - offsetof(type, member)))
 
 #define CONCAT_IMPL( x, y ) x##y
 #define MACRO_CONCAT( x, y ) CONCAT_IMPL( x, y )
