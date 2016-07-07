@@ -13,7 +13,6 @@
 #include "../data/dlist.hpp"
 #include "sync/rwlock.hpp"
 #include "../../defs.hpp"
-#include "../../modules/module_interface.hpp"
 
 namespace P {
 

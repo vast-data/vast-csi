@@ -6,6 +6,7 @@
 #include "plasma/trace/emitter.hpp"
 #include "plasma/vmsg/vmsg_defs.hpp"
 #include "plasma/execution/silo.hpp"
+#include "plasma/control/agent.hpp"
 
 namespace P { namespace Metrics {
 
@@ -118,7 +119,7 @@ void Agent::get_deletions(GetDeletionsParams *params, GetDeletionsResult *result
 
 Agent *Agent::get_current()
 {
-    return &Silo::get_module()->control_agent.metrics_agent;
+    return &Silo::get_module()->control_agent->metrics_agent;
 }
 
 }}

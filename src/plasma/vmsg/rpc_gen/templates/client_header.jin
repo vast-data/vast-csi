@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "{{ module.include }}"
+#include "{{ server.include }}"
 #include "modules/module_interface.hpp"
 #include "plasma/vmsg/vmsg_defs.hpp"
 
@@ -14,14 +14,14 @@ class VMsg;
 }
 }
 
-{% for namespace in module.namespaces -%}
+{% for namespace in server.namespaces -%}
 namespace {{ namespace }} {
 {% endfor %}
 
-class {{ module.name }}Client {
+class {{ server.name }}Client {
 public:
     void init(P::VMsg::VMsg *vmsg);
-{% for method in module.methods %}
+{% for method in server.methods %}
     {{ method.arg }} *alloc_{{ method.name }}();
     P::VMsg::VMsgRes {{ method.name }}_sync(P::VMsg::ModuleGUID dest, {{ method.arg }} *args, {{ method.res }} **reply, uint64_t timeout_usec = P::VMsg::DEFUALT_MSG_TIMEOUT_USEC, uint16_t request_len = sizeof({{ method.arg }}), uint32_t *reply_len = nullptr);
     P::VMsg::VMsgRes {{ method.name }}_async(P::VMsg::ModuleGUID dest, {{ method.arg }} *args, P::VMsg::VMsgFutureRes<{{ method.res }}> **future, uint64_t timeout_usec = P::VMsg::DEFUALT_MSG_TIMEOUT_USEC, uint16_t request_len = sizeof({{ method.arg }}));
@@ -31,6 +31,6 @@ private:
     P::VMsg::VMsg *_vmsg;
 };
 
-{% for namespace in module.namespaces -%}
+{% for namespace in server.namespaces -%}
 }
 {% endfor %}

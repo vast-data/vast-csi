@@ -3,33 +3,34 @@
 
 #pragma once
 
-#include "{{ module.include }}"
+#include "{{ server.include }}"
 #include "defs.hpp"
 #include "modules/module_interface.hpp"
-#include "plasma/vmsg/module_server.hpp"
+#include "plasma/execution/silo.hpp"
+#include "plasma/vmsg/rpc_server.hpp"
 
-{% for namespace in module.namespaces -%}
+{% for namespace in server.namespaces -%}
 namespace {{ namespace }} {
 {% endfor %}
 
-class {{ module.name }}Server : public P::VMsg::ModuleServer {
+class {{ server.name }}Server : public P::VMsg::RpcServer {
 public:
     enum ops {
-        {% for method in module.methods -%}
+        {% for method in server.methods -%}
             {{ method.name.upper() }} = {{ method.op_id }},
         {% endfor -%}
         COUNT
      };
 
-    void register_server();
-    virtual ModuleId get_module_id() override;
-    virtual FiberGroupId get_op_fiber_group(uint16_t op_id) override;
-    virtual void run_op(uint16_t op_id, void *request, uint16_t request_len, void *reply, uint16_t *reply_len) override;
-{% for method in module.methods %}
+    void register_server(P::SiloId silo_id, ModuleId module_id);
+    virtual P::VMsg::RpcServerId get_server_id() override;
+    virtual FiberGroupId get_op_fiber_group(uint8_t op_id) override;
+    virtual void run_op(uint8_t op_id, void *request, uint16_t request_len, void *reply, uint16_t *reply_len) override;
+{% for method in server.methods %}
     virtual void {{ method.name }}({{ method.arg }} *args, uint16_t request_len, {{ method.res }} *res, uint16_t *reply_len) = 0;
 {% endfor %}
 };
 
-{% for namespace in module.namespaces -%}
+{% for namespace in server.namespaces -%}
 }
 {% endfor %}

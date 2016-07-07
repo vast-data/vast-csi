@@ -102,15 +102,17 @@ struct VMsgHeader {
     uint16_t payload_size;
     // running number
     uint16_t seq_num;
+    // Identifier for the server that should handle the operation
+    uint8_t server_id;
     // Identifier for the operation that should be done at the destination
-    uint16_t op_id;
+    uint8_t op_id;
     // length of additional internal messaging data, if tail_size is positive additional
     // information is available following the payload
     uint16_t tail_size;
 };
 static_assert(sizeof(VMsgHeader) == 32, "VMsgHeader size should be 32 bytes");
 #define TRACE_VMSG_HEADER(MSG, HDR) \
-    PT_DEBUG(MSG " header=%p silo_id=%hhu seq_num=%hu op_id=%hu", HDR, HDR->sender.silo_id, HDR->seq_num, HDR->op_id); \
+    PT_DEBUG(MSG " header=%p silo_id=%hhu seq_num=%hu server_id=%hhu op_id=%hhu", HDR, HDR->sender.silo_id, HDR->seq_num, HDR->server_id, HDR->op_id); \
     TRACE_GUID("sender guid", HDR->sender); \
     TRACE_GUID("dest guid", HDR->dest); \
     TRACE_MSG_ID("sender msg_id", HDR->sender_msg_id)

@@ -1,6 +1,5 @@
-class: TestModule
-include: test_module_defs.hpp
-module_id: TEST
+class: TestRpc
+include: test_rpc_defs.hpp
 api_version: 1
 namespaces: []
 methods:

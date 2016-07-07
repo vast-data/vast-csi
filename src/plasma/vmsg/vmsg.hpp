@@ -6,7 +6,7 @@
 #include "address_table.hpp"
 #include "rdma_transport.hpp"
 #include "vmsg_pool.hpp"
-#include "module_server.hpp"
+#include "rpc_server.hpp"
 #include "plasma/data/spsc_queue.hpp"
 #include "plasma/memory/cpool.hpp"
 #include "plasma/utils/time.hpp"
@@ -39,7 +39,7 @@ public:
     /*!
      * Register a module server
      */
-    void register_server(ModuleServer *server);
+    void register_server(RpcServer *server, SiloId silo_id, ModuleId module_id);
 
     /*!
      * Allocate a buffer that can be used for sending RPC messages, the usable buffer size is RPC_BUFFER_SIZE
@@ -52,14 +52,14 @@ public:
      * Low level API for sending a sync RPC request.
      * In the common case this API should only be used by auto generated code.
      */
-    VMsgRes send_sync(ModuleGUID dest_guid, uint16_t op, uint64_t timeout_usec,
+    VMsgRes send_sync(ModuleGUID dest_guid, RpcServerId server_id, uint8_t op_id, uint64_t timeout_usec,
                       void *buffer, uint16_t len, void **reply, uint32_t *reply_len);
 
     /*!
      * Low level API for sending an async RPC request.
      * In the common case this API should only be used by auto generated code.
      */
-    VMsgRes send_async(ModuleGUID dest_guid, uint16_t op, uint64_t timeout_usec,
+    VMsgRes send_async(ModuleGUID dest_guid, RpcServerId server_id, uint8_t op_id, uint64_t timeout_usec,
                        void *buffer, uint16_t len, VMsgFuture **future);
 
     /*!
@@ -95,11 +95,15 @@ private:
     void add_piggyback_acks(VMsgHeader *header, const SiloId silo_id);
     void handle_piggyback_data(VMsgHeader *header, SiloId silo_id);
     void add_ack(MsgId *id, SiloId silo_id, EnvId env_id);
+    RpcServer *get_rpc_server(VMsgHeader *header);
 
 private:
     static const uint64_t RESPONSE_TIMEOUT_USEC = MICRO_TO_SEC(60);
 
     typedef struct SiloContext {
+        // modules RPC servers
+        RpcServer *rpc_servers[MODULES_COUNT][(int)RpcServerId::COUNT];
+
         SPSCQueue events_queue;
         uint16_t seq_num;
 
@@ -120,8 +124,6 @@ private:
     RDMATransport _rdma_transport;
     // a map of the modules that are allowed to communicate
     TransportType _module_pairs[MODULES_COUNT][MODULES_COUNT];
-    // modules RPC servers
-    ModuleServer *_servers[MODULES_COUNT];
     // lock for polling transports
     Sync::SpinLock _poll_lock;
     VMsgConfiguration _vmsg_configuration;

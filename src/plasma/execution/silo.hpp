@@ -9,12 +9,13 @@
 #include <stdint.h>
 #include <limits.h>
 #include <pthread.h>
-#include "modules/module_interface.hpp"
 #include "../fiber/scheduler.hpp"
 #include "../trace/emitter.hpp"
 #include "../trace/dumper.hpp"
 #include "config.hpp"
 #include "defs.hpp"
+
+class ModuleInterface;
 
 namespace P {
 

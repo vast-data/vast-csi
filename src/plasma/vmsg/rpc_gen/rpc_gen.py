@@ -28,14 +28,13 @@ class Method(object):
         self.fiber_group = method_dict['fiber_group']
 
 
-class Module(object):
-    def __init__(self, module_dict):
-        self.name = module_dict['class']
-        self.include = module_dict.get('include', None)
-        self.module_id = module_dict['module_id']
-        self.api_version = module_dict['api_version']
-        self.namespaces = module_dict.get('namespaces', [])
-        self.methods = [Method(method) for method in module_dict['methods']]
+class Server(object):
+    def __init__(self, server_dict):
+        self.name = server_dict['class']
+        self.include = server_dict.get('include', None)
+        self.api_version = server_dict['api_version']
+        self.namespaces = server_dict.get('namespaces', [])
+        self.methods = [Method(method) for method in server_dict['methods']]
         self.name_snake_case = camel_case_to_snake_case(self.name)
 
     def generate_file(self, template_file, output_file):
@@ -44,7 +43,7 @@ class Module(object):
         if os.path.exists(output_file):
             os.chmod(output_file, 0o755)
         with open(output_file, 'w') as f:
-            for line in template.generate(module=self):
+            for line in template.generate(server=self):
                 f.write(line)
 
     def generate(self, output_file_prefix):
@@ -57,9 +56,9 @@ class Module(object):
 
 
 def rpc_gen(input_file, output_file_prefix):
-    module_dict = yaml.load(open(input_file))
-    module = Module(module_dict)
-    module.generate(output_file_prefix)
+    server_dict = yaml.load(open(input_file))
+    server = Server(server_dict)
+    server.generate(output_file_prefix)
 
 
 @click.command()

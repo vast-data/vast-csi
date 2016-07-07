@@ -117,7 +117,7 @@ def rpc_emitter(target, source, env):
                    'src/plasma/vmsg/rpc_gen/templates/client_header.jin',
                    'src/plasma/vmsg/rpc_gen/templates/client_impl.jin',
                    'src/plasma/vmsg/rpc_gen/templates/server_header.jin',
-                   'src/plasma/vmsg/rpc_gen/templates/client_impl.jin'])
+                   'src/plasma/vmsg/rpc_gen/templates/server_impl.jin'])
     targets = [str(source[0]) + suffix for suffix in ('.server.cpp', '.server.hpp', '.client.cpp', '.client.hpp')]
     return targets, source
 env.Append(BUILDERS = {'Rpc': Builder(action='./venv/bin/gen-rpc $SOURCE $SOURCE', emitter=rpc_emitter)})
@@ -126,7 +126,7 @@ rpc_sources = []
 for rpc_file in RGlob('src', '*.rpc'):
     rpc_file = DEFAULT_BUILD_DIR + '/' + rpc_file
     rpc_sources.extend(FilterPaths(env.Rpc(rpc_file), '*.cpp'))
-test_rpc_sources = FilterPaths(env.Rpc(DEFAULT_BUILD_DIR + '/tests/test_module.rpc'), '*.cpp')
+test_rpc_sources = FilterPaths(env.Rpc(DEFAULT_BUILD_DIR + '/tests/test_rpc.rpc'), '*.cpp')
 
 # ----- Metrics ----- #
 def metrics_emitter(target, source, env):

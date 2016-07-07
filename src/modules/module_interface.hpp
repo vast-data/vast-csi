@@ -10,10 +10,13 @@
 #include "defs.hpp"
 #include "plasma/utils/types.hpp"
 #include "plasma/execution/config.hpp"
-#include "plasma/control/agent.hpp"
 
 namespace P {
     class Silo;
+
+    namespace Control {
+        class Agent;
+    }
 }
 
 class ModuleInterface {
@@ -21,7 +24,7 @@ public:
     virtual void init(P::Silo *silo, P::Conf::ConfigSetting *setting) = 0;
     virtual void start() = 0;
 
-    P::Control::Agent control_agent;
+    P::Control::Agent *control_agent;
 };
 
 /*!

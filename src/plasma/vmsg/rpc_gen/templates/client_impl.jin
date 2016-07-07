@@ -1,7 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 /* Auto generated code - DO NOT EDIT */
 
-#include "{{ module.name_snake_case }}.rpc.client.hpp"
+#include "{{ server.name_snake_case }}.rpc.client.hpp"
 #include "plasma/vmsg/vmsg.hpp"
 
 using P::VMsg::VMsg;
@@ -9,43 +9,44 @@ using P::VMsg::VMsgRes;
 using P::VMsg::VMsgFuture;
 using P::VMsg::VMsgFutureRes;
 using P::VMsg::ModuleGUID;
+using P::VMsg::RpcServerId;
 
-{% for namespace in module.namespaces -%}
+{% for namespace in server.namespaces -%}
 namespace {{ namespace }} {
 {% endfor %}
 
-void {{ module.name }}Client::init(P::VMsg::VMsg *vmsg)
+void {{ server.name }}Client::init(P::VMsg::VMsg *vmsg)
 {
     _vmsg = vmsg;
 }
 
-{% for method in module.methods %}
+{% for method in server.methods %}
 static_assert(sizeof({{ method.arg }}) <= P::VMsg::RPC_BUFFER_SIZE, "method argument cannot be contained within RPC BUFFER");
 static_assert(!std::is_polymorphic<{{ method.arg }}>::value, "method argument must not have a vtable");
 static_assert(sizeof({{ method.res }}) <= P::VMsg::RPC_BUFFER_SIZE, "method result cannot be contained within RPC BUFFER");
 static_assert(!std::is_polymorphic<{{ method.res }}>::value, "method result must not have a vtable");
-{{ method.arg }} * {{ module.name }}Client::alloc_{{ method.name }}()
+{{ method.arg }} * {{ server.name }}Client::alloc_{{ method.name }}()
 {
     return ({{ method.arg }} *)_vmsg->alloc();
 }
 
-VMsgRes {{ module.name }}Client::{{ method.name }}_sync(ModuleGUID dest, {{ method.arg }} *args, {{ method.res }} **reply, uint64_t timeout_usec, uint16_t request_len, uint32_t *reply_len)
+VMsgRes {{ server.name }}Client::{{ method.name }}_sync(ModuleGUID dest, {{ method.arg }} *args, {{ method.res }} **reply, uint64_t timeout_usec, uint16_t request_len, uint32_t *reply_len)
 {
-    return _vmsg->send_sync(dest, {{ method.op_id }}, timeout_usec, args, request_len, (void **)reply, reply_len);
+    return _vmsg->send_sync(dest, RpcServerId::{{ server.name }}, {{ method.op_id }}, timeout_usec, args, request_len, (void **)reply, reply_len);
 }
 
-VMsgRes {{ module.name }}Client::{{ method.name }}_async(ModuleGUID dest, {{ method.arg }} *args, VMsgFutureRes<{{ method.res }}> **future, uint64_t timeout_usec, uint16_t request_len)
+VMsgRes {{ server.name }}Client::{{ method.name }}_async(ModuleGUID dest, {{ method.arg }} *args, VMsgFutureRes<{{ method.res }}> **future, uint64_t timeout_usec, uint16_t request_len)
 {
-    return _vmsg->send_async(dest, {{ method.op_id }}, timeout_usec, args, request_len, (VMsgFuture **)future);
+    return _vmsg->send_async(dest, RpcServerId::{{ server.name }}, {{ method.op_id }}, timeout_usec, args, request_len, (VMsgFuture **)future);
 }
 
-void {{ module.name }}Client::free_{{ method.name }}({{ method.res }} *res)
+void {{ server.name }}Client::free_{{ method.name }}({{ method.res }} *res)
 {
    _vmsg->free_reply((void *)res);
 }
 
 {% endfor -%}
 
-{% for namespace in module.namespaces -%}
+{% for namespace in server.namespaces -%}
 }
 {% endfor %}

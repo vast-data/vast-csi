@@ -1,6 +1,5 @@
-class: Agent
+class: MetricsAgent
 include: agent.hpp
-module_id: P
 api_version: 1
 namespaces: ["P", "Metrics"]
 methods:

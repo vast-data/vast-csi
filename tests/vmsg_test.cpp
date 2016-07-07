@@ -8,8 +8,8 @@
 #include "plasma/execution/env.hpp"
 #include "test_module.hpp"
 #include "globals.hpp"
-#include "test_module.rpc.server.hpp"
-#include "test_module.rpc.client.hpp"
+#include "test_rpc.rpc.server.hpp"
+#include "test_rpc.rpc.client.hpp"
 
 using namespace P::VMsg;
 using P::FiberSync::Future;
@@ -23,7 +23,7 @@ using P::Silo;
 #define CLIENT_CONFIG_FILE "tests/vmsg_test_client.config"
 #define SERVER_CONFIG_FILE "tests/vmsg_test_server.config"
 
-class TestModuleServerImpl : public TestModuleServer {
+class TestRpcServerImpl : public TestRpcServer {
 public:
     virtual void add(AddArgs *args, uint16_t request_len, AddRes *res, uint16_t *reply_len) override
     {
@@ -133,7 +133,7 @@ static void finish()
     env_stop = true;
 }
 
-static void sync_call(TestModuleClient *client, uint64_t i, uint32_t n_silos, EnvId dest_env)
+static void sync_call(TestRpcClient *client, uint64_t i, uint32_t n_silos, EnvId dest_env)
 {
     AddArgs *args  = client->alloc_add();
     ASSERT_NOT_NULL(args);
@@ -154,7 +154,7 @@ static void sync_call(TestModuleClient *client, uint64_t i, uint32_t n_silos, En
     client->free_add(add_res);
 }
 
-static void async_call(TestModuleClient *client, uint64_t i, uint32_t n_silos, EnvId dest_env)
+static void async_call(TestRpcClient *client, uint64_t i, uint32_t n_silos, EnvId dest_env)
 {
     static const uint64_t ASYNC_REQUESTS_PER_LOOP = 16;
     VMsgFutureRes<MultiplyRes> *futures[ASYNC_REQUESTS_PER_LOOP];
@@ -193,7 +193,7 @@ void VMsgTest::client_test()
     add_addresses(SERVER_ENV_ID, SERVER_PORT);
     uint32_t n_silos = Env::get()->get_num_silos();
 
-    TestModuleClient client;
+    TestRpcClient client;
     client.init(Env::get()->get_vmsg());
 
     static const uint64_t LOOPS = 1000;
@@ -214,16 +214,16 @@ void VMsgTest::client_test()
     }
 }
 
-static TestModuleServerImpl *module_server_init()
+static TestRpcServerImpl *rpc_server_init(Silo *silo)
 {
-    TestModuleServerImpl *server = new TestModuleServerImpl();
-    server->register_server();
+    TestRpcServerImpl *server = new TestRpcServerImpl();
+    server->register_server(silo->get_id(), ModuleId::TEST);
     return server;
 }
 
-static void init_test_server(void *)
+static void init_test_server(void *silo)
 {
-    static TestModuleServer *server = module_server_init();;
+    TestRpcServer *server = rpc_server_init((Silo*) silo);;
 }
 
 static void client_test_func(void *ctx)
@@ -286,10 +286,10 @@ void VMsgTest::create_config_files()
 
 TEST(TestVMsg, test)
 {
-VMsgTest test;
-test.init();
-test.run_test();
-test.destroy();
+    VMsgTest test;
+    test.init();
+    test.run_test();
+    test.destroy();
 }
 
 int main(int argc, char **argv) {

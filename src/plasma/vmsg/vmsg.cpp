@@ -19,10 +19,6 @@ void VMsg::init(VMsgConfiguration *vmsg_configuration)
         }
     }
 
-    LOOP(ModuleId::COUNT, i) {
-        _servers[i] = nullptr;
-    }
-
     _poll_lock.init();
     _vmsg_pool.init(&_vmsg_configuration);
     _address_table.init();
@@ -34,6 +30,14 @@ void VMsg::init(VMsgConfiguration *vmsg_configuration)
     }
 
     _silos_context = new SiloContext[_vmsg_configuration.n_silos];
+    LOOP(vmsg_configuration->n_silos, silo_id) {
+        LOOP(ModuleId::COUNT, module_id) {
+            LOOP(RpcServerId::COUNT, server_id) {
+                _silos_context[silo_id].rpc_servers[module_id][server_id] = nullptr;
+            }
+        }
+    }
+
     LOOP(_vmsg_configuration.n_silos, i) {
         SiloContext *ctx = &_silos_context[i];
         ctx->events_queue.init();
@@ -98,12 +102,19 @@ void VMsg::set_env_addresses(EnvId env_id, EnvAddresses *addresses)
     }
 }
 
-void VMsg::register_server(ModuleServer *server)
+void VMsg::register_server(RpcServer *server, SiloId silo_id, ModuleId module_id)
 {
-    ModuleId id = server->get_module_id();
-    ASSERT(_servers[(int)id] == nullptr);
-    _servers[(int)id] = server;
-    PT_DEBUG("registered server for module_id=%hhu", id);
+    RpcServerId server_id = server->get_server_id();
+    ASSERT(_silos_context[silo_id].rpc_servers[(int)module_id][(int)server_id] == nullptr);
+    _silos_context[silo_id].rpc_servers[(int)module_id][(int)server_id] = server;
+}
+
+RpcServer *VMsg::get_rpc_server(VMsgHeader *header)
+{
+    SiloId silo_id = header->dest.silo_id;
+    uint8_t module_id = header->dest.module_id;
+    uint8_t server_id = header->server_id;
+    return _silos_context[silo_id].rpc_servers[(int)module_id][(int)server_id];
 }
 
 VMsgRes VMsg::request_connection(EnvId env_id, ModuleId module_id, TransportType transport_type)
@@ -275,8 +286,8 @@ VMsgRes VMsg::send_request(VMsgHeader *header, uint64_t timeout_usec)
     return VMsgRes::OK;
 }
 
-VMsgRes VMsg::send_async(ModuleGUID dest_guid, uint16_t op, uint64_t timeout_usec, void *buffer,
-                         uint16_t len, VMsgFuture **future)
+VMsgRes VMsg::send_async(ModuleGUID dest_guid, RpcServerId server_id, uint8_t op_id,
+                         uint64_t timeout_usec, void *buffer, uint16_t len, VMsgFuture **future)
 {
     ASSERT(len <= RPC_BUFFER_SIZE);
 
@@ -298,7 +309,8 @@ VMsgRes VMsg::send_async(ModuleGUID dest_guid, uint16_t op, uint64_t timeout_use
     header->response_msg_id = {0};
     header->payload_size = len;
     header->verifier = 0;
-    header->op_id = op;
+    header->server_id = (uint8_t) server_id;
+    header->op_id = op_id;
     header->tail_size = 0;
     header->seq_num = _silos_context[silo_id].seq_num++;
     add_piggyback_acks(header, silo_id);
@@ -315,11 +327,11 @@ VMsgRes VMsg::send_async(ModuleGUID dest_guid, uint16_t op, uint64_t timeout_use
     return VMsgRes::OK;
 }
 
-VMsgRes VMsg::send_sync(ModuleGUID dest_guid, uint16_t op, uint64_t timeout_usec, void *buffer,
-                        uint16_t len, void **reply, uint32_t *reply_len)
+VMsgRes VMsg::send_sync(ModuleGUID dest_guid, RpcServerId server_id, uint8_t op_id, uint64_t timeout_usec,
+                        void *buffer, uint16_t len, void **reply, uint32_t *reply_len)
 {
     VMsgFuture *future;
-    VMsgRes res = send_async(dest_guid, op, timeout_usec, buffer, len, &future);
+    VMsgRes res = send_async(dest_guid, server_id, op_id, timeout_usec, buffer, len, &future);
     if (res != VMsgRes::OK) {
         return res;
     }
@@ -456,16 +468,16 @@ void VMsg::free_msg(SiloId silo_id, MsgId id)
 
 void VMsg::execute_incoming_request(VMsgHeader *request_header)
 {
-    const SiloId current_silo_id = Silo::get_current_silo_id();
     TRACE_VMSG_HEADER("incoming request", request_header);
 
-    VMsgHeader *response = (VMsgHeader *)_vmsg_pool.alloc(BufferType::RESPONSE,
-                                                          (ModuleId) request_header->dest.module_id,
-                                                          current_silo_id);
+    SiloId silo_id = request_header->dest.silo_id;
+    ModuleId module_id = (ModuleId) request_header->dest.module_id;
+
+    VMsgHeader *response = (VMsgHeader *)_vmsg_pool.alloc(BufferType::RESPONSE, module_id, silo_id);
     ASSERT(response != nullptr);
 
     // call server
-    ModuleServer *server = _servers[(int)request_header->dest.module_id];
+    RpcServer *server = get_rpc_server(request_header);
     DEBUG_ASSERT(server != nullptr);
     server->run_op(request_header->op_id, VMsgPool::msg_header_to_payload(request_header), request_header->payload_size,
                    VMsgPool::msg_header_to_payload(response), &response->payload_size);
@@ -476,11 +488,11 @@ void VMsg::execute_incoming_request(VMsgHeader *request_header)
     MsgId response_msg_id = {
         .buffer_index = (uint16_t)_vmsg_pool.address_to_index(BufferType::RESPONSE,
                                                               (ModuleId) request_header->dest.module_id, response),
-        .module_id = (uint8_t)request_header->dest.module_id,
+        .module_id = (uint8_t)module_id,
         .buffer_type = (uint8_t)BufferType::RESPONSE,
     };
 
-    MemRegion *region = _vmsg_pool.get_region(BufferType::RESPONSE, (ModuleId) request_header->dest.module_id);
+    MemRegion *region = _vmsg_pool.get_region(BufferType::RESPONSE, module_id);
 
     response->sender = request_header->dest;
     response->dest = request_header->sender;
@@ -488,16 +500,17 @@ void VMsg::execute_incoming_request(VMsgHeader *request_header)
     response->sender_msg_id = request_header->sender_msg_id;
     response->response_msg_id = response_msg_id;
     response->verifier = 0;
+    response->server_id = request_header->server_id;
     response->op_id = request_header->op_id;
     response->tail_size = 0;
-    add_piggyback_acks(response, current_silo_id);
+    add_piggyback_acks(response, silo_id);
 
     VMsgRes res = _rdma_transport.send_response(response->dest, region, response_msg_id, response, msg_len(response));
     if (res != VMsgRes::OK) {
         PT_ERROR("failed to send response res=%d", res);
         _vmsg_pool.free_address(BufferType::RESPONSE,
-                                (ModuleId) request_header->dest.module_id,
-                                current_silo_id, response);
+                                module_id,
+                                silo_id, response);
     }
 
     // done with the server buffer
@@ -513,7 +526,7 @@ static void handle_incoming_msg_func(void *request_header)
 void VMsg::handle_incoming_msg(VMsgHeader *request_header)
 {
     // create a fiber to execute the request
-    ModuleServer *server = _servers[(int)request_header->dest.module_id];
+    RpcServer *server = get_rpc_server(request_header);
     ASSERT(server != nullptr);
     FiberGroupId fiber_group_id = server->get_op_fiber_group(request_header->op_id);
     Fiber *fiber = P::Fiber::init((Index)fiber_group_id, handle_incoming_msg_func, request_header, false);

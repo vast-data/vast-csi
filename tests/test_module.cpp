@@ -1,5 +1,6 @@
 #include "test_module.hpp"
 #include "plasma/execution/env.hpp"
+#include "plasma/execution/silo.hpp"
 #include "plasma/fiber/fiber.hpp"
 
 using namespace P::Conf;
@@ -39,7 +40,7 @@ void TestModule::init(P::Silo *silo, P::Conf::ConfigSetting *setting)
 {
     _init = true;
     if (_init_func) {
-        _init_func(_init_func_ctx);
+        _init_func(_init_func_ctx == nullptr ? silo : _init_func_ctx);
     }
 }
 
