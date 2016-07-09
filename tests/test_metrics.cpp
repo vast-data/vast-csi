@@ -11,7 +11,7 @@ TEST(TestMetricsParser, test)
     tracker.init();
 
     NS1::NS2::TestDriveMetrics drive;
-    drive.init(&tracker, nullptr, "drive");
+    drive.init_with_tracker(&tracker, nullptr, "drive");
 
     auto g = drive.get_generation();
     drive.inc_reads();
@@ -41,7 +41,7 @@ TEST(TestMetricsObject, test_clone)
 
     NS1::NS2::TestDriveMetrics parent;
     NS1::NS2::TestDriveMetrics drive;
-    drive.init(&tracker, &parent, "drive");
+    drive.init_with_tracker(&tracker, &parent, "drive");
 
     drive.set_reads(1);
     drive.set_writes(2);
@@ -71,12 +71,12 @@ TEST(TestMetricsTracker, test_list)
     NS1::NS2::TestDriveMetrics drive3;
 
     ASSERT_TRUE(tracker.get_list()->empty());
-    drive1.init(&tracker, nullptr, "drive1");
+    drive1.init_with_tracker(&tracker, nullptr, "drive1");
     ASSERT_EQ(tracker.get_list()->get_first(), &drive1.list_node);
     drive1.destroy();
 
-    drive1.init(&tracker, nullptr, "drive1");
-    drive2.init(&tracker, nullptr, "drive2");
+    drive1.init_with_tracker(&tracker, nullptr, "drive1");
+    drive2.init_with_tracker(&tracker, nullptr, "drive2");
     ASSERT_EQ(tracker.get_list()->get_first()->get_next(), &drive2.list_node);
     ASSERT_EQ(tracker.get_list()->get_last(), &drive2.list_node);
 
@@ -86,9 +86,9 @@ TEST(TestMetricsTracker, test_list)
     drive2.destroy();
     ASSERT_TRUE(tracker.get_list()->empty());
 
-    drive1.init(&tracker, nullptr, "drive1");
-    drive2.init(&tracker, nullptr, "drive2");
-    drive3.init(&tracker, nullptr, "drive3");
+    drive1.init_with_tracker(&tracker, nullptr, "drive1");
+    drive2.init_with_tracker(&tracker, nullptr, "drive2");
+    drive3.init_with_tracker(&tracker, nullptr, "drive3");
 
     drive2.destroy();
     ASSERT_EQ(drive1.list_node.get_next(), &drive3.list_node);
@@ -112,8 +112,8 @@ TEST(TestMetricsTracker, test_get_generations)
     NS1::NS2::TestDriveMetrics drive1;
     NS1::NS2::TestDriveMetrics drive2;
 
-    drive1.init(&tracker, nullptr, "drive1");
-    drive2.init(&tracker, nullptr, "drive2");
+    drive1.init_with_tracker(&tracker, nullptr, "drive1");
+    drive2.init_with_tracker(&tracker, nullptr, "drive2");
 
     tracker.get_generations(&params, &result);
     ASSERT_EQ(result.update_generation, 2);
@@ -137,8 +137,8 @@ TEST(TestMetricsTracker, test_get_modified)
     NS1::NS2::TestDriveMetrics drive1;
     NS1::NS2::TestDriveMetrics drive2;
 
-    drive1.init(&tracker, nullptr, "drive1");
-    drive2.init(&tracker, nullptr, "drive2");
+    drive1.init_with_tracker(&tracker, nullptr, "drive1");
+    drive2.init_with_tracker(&tracker, nullptr, "drive2");
     drive1.set_reads(3);
     drive2.set_reads(4);
 
@@ -185,7 +185,7 @@ TEST(TestMetricsTracker, test_get_modified)
     NS1::NS2::TestDriveMetrics drives[100];
     int sum = 0;
     LOOP(100, i) {
-        drives[i].init(&tracker, nullptr, "drive");
+        drives[i].init_with_tracker(&tracker, nullptr, "drive");
         drives[i].set_reads(i);
         sum += i;
     }
@@ -225,9 +225,9 @@ TEST(TestMetricsTracker, test_get_deletions)
     NS1::NS2::TestDriveMetrics drive2;
     NS1::NS2::TestDriveMetrics drive3;
 
-    drive1.init(&tracker, nullptr, "drive1");
-    drive2.init(&tracker, nullptr, "drive2");
-    drive3.init(&tracker, nullptr, "drive3");
+    drive1.init_with_tracker(&tracker, nullptr, "drive1");
+    drive2.init_with_tracker(&tracker, nullptr, "drive2");
+    drive3.init_with_tracker(&tracker, nullptr, "drive3");
 
     Tracker::GetDeletionsParams params;
     params.from_generation = 0;

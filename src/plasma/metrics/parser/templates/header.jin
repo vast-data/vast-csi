@@ -25,8 +25,8 @@ struct {{ cls }}Clone {
 
 class {{ cls }}: public P::Metrics::Object {
 public:
-    void init(P::Metrics::Tracker *tracker, Object *parent, const char *name);
     void init(Object *parent, const char *name);
+    void init_with_tracker(P::Metrics::Tracker *tracker, Object *parent, const char *name);
 
 {% for metric in cls_attrs.metrics %}
     void set_{{ metric.name }}({{ metric.type }} value=1)
