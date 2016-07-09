@@ -7,24 +7,24 @@
 #pragma once
 
 #include "defs.hpp"
-#include "agent.hpp"
+#include "tracker.hpp"
 
 namespace P { namespace Metrics {
 
 class Object {
 public:
-    void init(P::Metrics::Agent *agent, Object *parent)
+    void init(P::Metrics::Tracker *tracker, Object *parent)
     {
         list_node.init();
-        _agent = agent;
+        _tracker = tracker;
         _parent = parent;
-        _generation = _agent->next_generation();
-        _agent->on_object_init(this);
+        _generation = _tracker->next_generation();
+        _tracker->on_object_init(this);
     }
 
     void destroy()
     {
-        _agent->on_object_destroy(this);
+        _tracker->on_object_destroy(this);
     }
 
     uint64_t get_generation()
@@ -38,7 +38,7 @@ public:
     IListNode list_node;
 
 protected:
-    Agent *_agent;
+    Tracker *_tracker;
     Object *_parent;
     uint64_t _generation;
 };

@@ -4,7 +4,7 @@
 #pragma once
 
 #include "plasma/metrics/object.hpp"
-#include "plasma/metrics/agent.hpp"
+#include "plasma/metrics/tracker.hpp"
 
 {% for cls, cls_attrs in defs.items() %}
 
@@ -25,14 +25,14 @@ struct {{ cls }}Clone {
 
 class {{ cls }}: public P::Metrics::Object {
 public:
-    void init(P::Metrics::Agent *agent, Object *parent, const char *name);
+    void init(P::Metrics::Tracker *tracker, Object *parent, const char *name);
     void init(Object *parent, const char *name);
 
 {% for metric in cls_attrs.metrics %}
     void set_{{ metric.name }}({{ metric.type }} value=1)
     {
         _{{ metric.name }} = value;
-        _generation = _agent->next_generation();
+        _generation = _tracker->next_generation();
     }
 {% if metric.kind == 'counter' %}
     void inc_{{ metric.name }}({{ metric.type }} value=1)

@@ -1,15 +1,15 @@
 class: MetricsAgent
-include: agent.hpp
+include: tracker.hpp
 api_version: 1
 namespaces: ["P", "Metrics"]
 methods:
 - method: get_generations
   op_id: 1
   fiber_group: P
-  arg: Agent::GetGenerationsParams
-  res: Agent::GetGenerationsResult
+  arg: Tracker::GetGenerationsParams
+  res: Tracker::GetGenerationsResult
 - method: get_modified
   op_id: 2
   fiber_group: P
-  arg: Agent::GetModifiedParams
-  res: Agent::GetModifiedResult
+  arg: Tracker::GetModifiedParams
+  res: Tracker::GetModifiedResult
