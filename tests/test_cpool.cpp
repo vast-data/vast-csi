@@ -8,7 +8,7 @@
 #define N_BUFFERS_PER_SILO 100
 #define CACHE_SIZE 10
 
-void init_cpool(void *ctx)
+void init_cpool(P::Silo *silo, void *ctx)
 {
     uint32_t num_silos = P::Env::get()->get_num_silos();
     P::CPool *pool = (P::CPool *)ctx;

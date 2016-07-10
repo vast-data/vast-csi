@@ -112,6 +112,7 @@ void VMsg::register_server(RpcServer *server, SiloId silo_id, ModuleId module_id
 RpcServer *VMsg::get_rpc_server(VMsgHeader *header)
 {
     SiloId silo_id = header->dest.silo_id;
+    DEBUG_ASSERT(silo_id == Silo::get_current_silo_id());
     uint8_t module_id = header->dest.module_id;
     uint8_t server_id = header->server_id;
     return _silos_context[silo_id].rpc_servers[(int)module_id][(int)server_id];

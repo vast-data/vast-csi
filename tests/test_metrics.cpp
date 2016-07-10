@@ -77,7 +77,7 @@ TEST(TestMetricsTracker, test_list)
 
     drive1.init_with_tracker(&tracker, nullptr, "drive1");
     drive2.init_with_tracker(&tracker, nullptr, "drive2");
-    ASSERT_EQ(tracker.get_list()->get_first()->get_next(), &drive2.list_node);
+    ASSERT_EQ(tracker.get_list()->get_first()->next(), &drive2.list_node);
     ASSERT_EQ(tracker.get_list()->get_last(), &drive2.list_node);
 
     drive1.destroy();
@@ -91,7 +91,7 @@ TEST(TestMetricsTracker, test_list)
     drive3.init_with_tracker(&tracker, nullptr, "drive3");
 
     drive2.destroy();
-    ASSERT_EQ(drive1.list_node.get_next(), &drive3.list_node);
+    ASSERT_EQ(drive1.list_node.next(), &drive3.list_node);
     drive3.destroy();
     drive1.destroy();
     ASSERT_TRUE(tracker.get_list()->empty());

@@ -9,11 +9,12 @@
 #include "modules/module_interface.hpp"
 #include "plasma/execution/config.hpp"
 
-typedef void (*TestFunc)(void *);
-
 namespace P {
-class Silo;
+    class Silo;
 }
+
+typedef void (*InitFunc)(P::Silo *, void *);
+typedef void (*StartFunc)(void *);
 
 class TestModule : public ModuleInterface {
 public:
@@ -24,15 +25,15 @@ public:
 
     static bool is_init();
     static bool is_started();
-    static void set_init_func(TestFunc func, void *ctx);
-    static void set_start_func(TestFunc func, void *ctx);
+    static void set_init_func(InitFunc func, void *ctx);
+    static void set_start_func(StartFunc func, void *ctx);
     static void run_start_func();
 
 private:
     static bool _init;
     static bool _started;
-    static TestFunc _init_func;
+    static InitFunc _init_func;
     static void *_init_func_ctx;
-    static TestFunc _start_func;
+    static StartFunc _start_func;
     static void *_start_func_ctx;
 };

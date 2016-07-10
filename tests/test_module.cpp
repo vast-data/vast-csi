@@ -8,9 +8,9 @@ using P::Silo;
 
 /*static*/ bool TestModule::_init = false;
 /*static*/ bool TestModule::_started = false;
-/*static*/ TestFunc TestModule::_init_func = nullptr;
+/*static*/ InitFunc TestModule::_init_func = nullptr;
 /*static*/ void *TestModule::_init_func_ctx = nullptr;
-/*static*/ TestFunc TestModule::_start_func = nullptr;
+/*static*/ StartFunc TestModule::_start_func = nullptr;
 /*static*/ void *TestModule::_start_func_ctx = nullptr;
 
 
@@ -24,13 +24,13 @@ bool TestModule::is_started()
     return _started;
 }
 
-void TestModule::set_init_func(TestFunc func, void *ctx)
+void TestModule::set_init_func(InitFunc func, void *ctx)
 {
     _init_func = func;
     _init_func_ctx = ctx;
 }
 
-void TestModule::set_start_func(TestFunc func, void *ctx)
+void TestModule::set_start_func(StartFunc func, void *ctx)
 {
     _start_func = func;
     _start_func_ctx = ctx;
@@ -40,7 +40,7 @@ void TestModule::init(P::Silo *silo, P::Conf::ConfigSetting *setting)
 {
     _init = true;
     if (_init_func) {
-        _init_func(_init_func_ctx == nullptr ? silo : _init_func_ctx);
+        _init_func(silo, _init_func_ctx);
     }
 }
 

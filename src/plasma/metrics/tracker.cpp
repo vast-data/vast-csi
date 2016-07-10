@@ -33,7 +33,7 @@ IList *Tracker::get_list()
  */
 void Tracker::on_object_init(Object *object)
 {
-    _list.get_last()->append(&object->list_node);
+    _list.append(&object->list_node);
 }
 
 void Tracker::on_object_destroy(Object *object)
@@ -67,19 +67,19 @@ void Tracker::get_modified(GetModifiedParams *params, GetModifiedResult *result,
     result->count = 0;
     result->cookie = nullptr; // assume no additional calls are needed
 
-    IListNode *node = (IListNode*) params->cookie;
+    IList::Node *node = (IList::Node*) params->cookie;
     if (node == nullptr)
         node = _list.get_first();
 
     size_t size_left = VMsg::RPC_BUFFER_SIZE - sizeof(GetModifiedResult);
     byte *write_ptr = result->data;
-    while (!_list.is_last(node)) {
-        Object *obj = p_container_of(node, Object, list_node);
+    ILIST_ITER_FROM(&_list, i, node) {
+        Object *obj = p_container_of(i, Object, list_node);
         size_t object_size = obj->get_clone_size();
         ASSERT_OP(object_size, <=, VMsg::RPC_BUFFER_SIZE - sizeof(GetModifiedResult));
         if (object_size > size_left) { // additional calls are needed!
             PT_INFO("Next object to sync from: %p", obj);
-            result->cookie = node;
+            result->cookie = i;
             break;
         }
         if (obj->get_generation() >= params->from_generation) { // object modified!
@@ -89,7 +89,6 @@ void Tracker::get_modified(GetModifiedParams *params, GetModifiedResult *result,
             write_ptr += object_size;
             result->count++;
         }
-        node = node->get_next();
     }
     *res_len = (uintptr_t) write_ptr - (uintptr_t) result;
 }

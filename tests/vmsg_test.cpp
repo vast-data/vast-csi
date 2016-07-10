@@ -221,9 +221,9 @@ static TestRpcServerImpl *rpc_server_init(Silo *silo)
     return server;
 }
 
-static void init_test_server(void *silo)
+static void init_test_server(Silo *silo, void *ctx)
 {
-    TestRpcServer *server = rpc_server_init((Silo*) silo);;
+    TestRpcServer *server = rpc_server_init(silo);;
 }
 
 static void client_test_func(void *ctx)

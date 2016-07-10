@@ -35,7 +35,7 @@ public:
     virtual size_t get_clone_size() = 0;
     virtual size_t clone(void *buffer) = 0;
 
-    IListNode list_node;
+    IList::Node list_node;
 
 protected:
     Tracker *_tracker;
