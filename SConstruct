@@ -101,6 +101,9 @@ def develop_package(target, dir):
 
 rpc_gen = develop_package('venv/rpc_installed.txt', 'src/plasma/vmsg/rpc_gen')
 metrics_gen = develop_package('venv/metrics_installed.txt', 'src/plasma/metrics/parser')
+vproto_gen = develop_package('venv/vproto_installed.txt', 'src/plasma/vproto')
+vproto_tests = env.Alias('pytest', [], './venv/bin/py.test src/plasma/vproto/test.py')
+env.Depends(vproto_tests, vproto_gen)
 hubble = develop_package('venv/trace_installed.txt', 'src/plasma/trace/reader')
 trace_tests = env.Alias('pytest', [], './venv/bin/py.test src/plasma/trace/reader/tests')
 env.Depends(trace_tests, hubble)
@@ -143,6 +146,19 @@ for metric_file in RGlob('src', '*.metrics'):
     metric_file = DEFAULT_BUILD_DIR + '/' + metric_file
     metric_sources.extend(FilterPaths(env.Metrics(metric_file), '*.cpp'))
 test_metric_sources = FilterPaths(env.Metrics(DEFAULT_BUILD_DIR + '/tests/test.metrics'), '*.cpp')
+
+# ----- VProto ----- #
+def vproto_emitter(target, source, env):
+    source.extend([vproto_gen,
+                   'src/plasma/vproto/vproto/main.py',
+                   'src/plasma/vproto/vproto/parser.py',
+                   'src/plasma/vproto/vproto/templates/header.jin'])
+    return str(source[0]) + '.hpp', source
+env.Append(BUILDERS = {'VProto': Builder(action='./venv/bin/gen-vproto $SOURCE $SOURCE', emitter=vproto_emitter)})
+
+for metric_file in RGlob('src', '*.vproto') + ['tests/test.vproto', 'tests/test_older.vproto']:
+    metric_file = DEFAULT_BUILD_DIR + '/' + metric_file
+    env.VProto(metric_file)
 
 # ----- C++ Environment ----- #
 LINKER_SCRIPT = 'linkerscript.lds'
@@ -195,6 +211,7 @@ AddCppTest(target='dist/tests/perf', source=[DEFAULT_BUILD_DIR + '/tests/test_pe
 AddCppTest(target='dist/tests/metrics', source=[DEFAULT_BUILD_DIR + '/tests/test_metrics.cpp', test_metric_sources])
 AddCppTest(target='dist/tests/rdma_transport', source=[DEFAULT_BUILD_DIR + '/tests/test_rdma_transport.cpp'])
 AddCppTest(target='dist/tests/vmsg', source=[DEFAULT_BUILD_DIR + '/tests/vmsg_test.cpp', test_rpc_sources])
+AddCppTest(target='dist/tests/vproto', source=[DEFAULT_BUILD_DIR + '/tests/test_vproto.cpp'])
 
 cpp_env.AlwaysBuild('cpptest')
 env.Alias('test', 'cpptest')

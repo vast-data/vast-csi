@@ -12,5 +12,8 @@
 /.idea
 /tests/vmsg_test_client.config
 /tests/vmsg_test_server.config
+parser.out
+parsetab.py
 __pycache__
+.cache
 *.egg-info

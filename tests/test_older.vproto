@@ -1,0 +1,3 @@
+struct OldPerson {
+    @0 age uint32_t;
+};

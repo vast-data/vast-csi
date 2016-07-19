@@ -1,0 +1,26 @@
+$namespace NS
+
+enum Gender : uint8_t {
+    MALE = 0,
+    FEMALE
+};
+
+enum Profession {
+    JANITOR,
+    PILOT
+};
+
+struct Phone {
+    @0 number uint32_t;
+    @1 active bool = true;
+};
+
+struct Person {
+    @0 age uint32_t;
+    @1 name char[128];
+    @4 weight uint32_t;
+    @5 active bool = true;
+    @2 gender Gender;
+    @3 profession Profession = Profession::PILOT;
+    @6 phones Phone[2];
+};

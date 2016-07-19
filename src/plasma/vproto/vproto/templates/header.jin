@@ -1,0 +1,83 @@
+/* Copyright (C) Vast Data Ltd. */
+/* Auto generated code - DO NOT EDIT */
+
+#pragma once
+
+#include "plasma/utils/types.hpp"
+#include "plasma/utils/assert.hpp"
+
+{% for ns in namespaces %}
+namespace {{ ns }} {
+{% endfor %}
+
+{% for enum in enums %}
+enum class {{ enum.name.value }}{% if enum.type %} : {{ enum.type.value }}{% endif %} {
+{% for enum_value in enum.values %}
+    {{ enum_value.name.value }}{% if enum_value.value %} = {{ enum_value.value.value }}{% endif %},
+{% endfor %}
+};
+
+{% endfor %}
+
+{% for struct in structs %}
+{% set sorted_fields = struct.fields|sort(attribute='index') %}
+{% set last_index = sorted_fields[-1].index.value %}
+class {{ struct.name.value }} {
+private:
+
+    uint16_t _vproto_last_index{ {{ last_index }} };
+    uint16_t _vproto_reserved{};
+
+    // unified initializers are used in order to efficiently zero initialize array/struct members
+{% for field in sorted_fields %}
+    {{ field.type.name.value }} _{{ field.name.value }}{% if field.type.elements %}[{{ field.type.elements.value }}]{% endif %}{ {% if field.default %}{{ field.default.value }} {% endif %}};
+{% endfor %}
+
+public:
+
+    void init() { }
+    void destroy() { }
+
+{% for field in sorted_fields %}
+    {% if field.type.elements %}
+    static const uint32_t {{ field.name.value|upper }}_COUNT = {{ field.type.elements.value }};
+    {% endif %}
+{% endfor %}
+
+{% for field in sorted_fields %}
+    {% if not field.type.elements %}
+    void set{{ field.name.value.capitalize() }}({{ field.type.name.value }} {{ field.name.value }})
+    {
+        _{{ field.name.value }} = {{ field.name.value }};
+    }
+
+    {% endif %}
+{% endfor %}
+
+{% for field in sorted_fields %}
+    {{ field.type.name.value }} {% if field.type.elements %}*{% endif %}get{{ field.name.value.capitalize() }}({% if field.type.elements %}uint32_t index=0{% endif %})
+    {
+        if ({{ field.index.value }} <= _vproto_last_index) {
+            {% if field.type.elements %}
+            ASSERT_OP(index, <, {{ field.type.elements.value }}, "Invalid array index at field '{{ field.name.value }}' of struct '{{ struct.name.value }}'");
+            {% endif %}
+            return _{{ field.name.value }}{% if field.type.elements %} + index{% endif %};
+        } else {
+            {% if field.default %}
+            return {{ field.default.value }};
+            {% elif field.type.elements %}
+            return nullptr;
+            {% else %}
+            PANIC("No default value assigned to field '{{ field.name.value }}' of struct '{{ struct.name.value }}'");
+            {% endif %}
+        }
+    }
+
+{% endfor %}
+} __attribute__((packed));
+
+{% endfor %}
+
+{% for ns in namespaces %}
+}
+{% endfor %}
