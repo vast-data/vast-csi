@@ -15,12 +15,19 @@ struct Phone {
     @1 active bool = true;
 };
 
+struct Address {
+    @0 street char[128];
+    @1 number uint16_t = 999;
+};
+
 struct Person {
     @0 age uint32_t;
-    @1 name char[128];
-    @4 weight uint32_t;
+    @1 gender Gender;
+    @3 weight uint32_t; // for testing: this field doesn't have a default value even though it should (it doesn't appear in the older version)
+    @4 name char[123];
     @5 active bool = true;
-    @2 gender Gender;
-    @3 profession Profession = Profession::PILOT;
-    @6 phones Phone[2];
+    @6 profession Profession = Profession::PILOT;
+
+    @2 phones Phone[2];
+    @7 address Address;
 };

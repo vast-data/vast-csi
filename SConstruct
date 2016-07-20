@@ -151,6 +151,7 @@ test_metric_sources = FilterPaths(env.Metrics(DEFAULT_BUILD_DIR + '/tests/test.m
 def vproto_emitter(target, source, env):
     source.extend([vproto_gen,
                    'src/plasma/vproto/vproto/main.py',
+                   'src/plasma/vproto/vproto/struct.py',
                    'src/plasma/vproto/vproto/parser.py',
                    'src/plasma/vproto/vproto/templates/header.jin'])
     return str(source[0]) + '.hpp', source

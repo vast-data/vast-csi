@@ -1,9 +1,8 @@
 import os
 import click
 from .parser import parse, Struct, Enum, Directive
+from .struct import VProtoStruct, TypeRegistry, SchemaError
 from jinja2 import Environment, PackageLoader, StrictUndefined
-
-class SchemaError(Exception): pass
 
 env = Environment(loader=PackageLoader(__name__, 'templates'),
                   undefined=StrictUndefined,
@@ -19,29 +18,18 @@ def parse_directives(directives):
         options['namespaces'] = value.split('::')
     return options
 
-def validate_struct(struct):
-    indices = []
-    for field in struct.fields:
-        if field.type.elements is not None and field.default is not None:
-            raise SchemaError('Array fields cannot have default values: {}.{}'.format(struct.name.value, field.name.value))
-        indices.append(field.index.value)
-
-    indices.sort()
-    missing = set(range(indices[-1])) - set(indices)
-    if missing:
-        raise SchemaError('Struct {} is missing indices: {}'.format(struct.name.value, ', '.join(map(str, missing))))
-
 def convert(proto_file, output_prefix):
     with open(proto_file) as proto:
         defs = parse(proto.read())
+    registry = TypeRegistry()
     structs = []
     enums = []
     directives = []
     for i in defs:
         if isinstance(i, Struct):
-            validate_struct(i)
-            structs.append(i)
+            structs.append(VProtoStruct(i, registry))
         elif isinstance(i, Enum):
+            registry.add_enum(i)
             enums.append(i)
         if isinstance(i, Directive):
             directives.append(i)

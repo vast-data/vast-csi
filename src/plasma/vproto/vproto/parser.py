@@ -47,6 +47,9 @@ def t_DIRECTIVE(t):
     t.value = Directive(value=t.value[1:])
     return t
 
+def t_COMMENT(t):
+    r'//.*'
+
 def t_NAME(t):
     r'[a-zA-Z][a-zA-Z0-9:_]*'
     if t.value not in reserved:
@@ -76,11 +79,11 @@ def p_definition(p):
 
 def p_struct(p):
     r'struct : STRUCT NAME "{" struct_fields "}" ";"'
-    p[0] = Struct(name=p[2], fields=p[4])
+    p[0] = Struct(name=p[2].value, fields=p[4])
 
 def p_struct_empty(p):
     r'struct : STRUCT NAME "{" "}" ";"'
-    p[0] = Struct(name=p[2], fields=[])
+    p[0] = Struct(name=p[2].value, fields=[])
 
 def p_fields_multiple(p):
     r'struct_fields : struct_fields struct_field'
@@ -92,27 +95,27 @@ def p_fields_single(p):
 
 def p_field(p):
     r'struct_field : "@" NUMBER NAME field_type ";"'
-    p[0] = Field(index=p[2], name=p[3], type=p[4], default=None)
+    p[0] = Field(index=p[2].value, name=p[3].value, type=p[4], default=None)
 
 def p_field_default(p):
     r'struct_field : "@" NUMBER NAME field_type "=" value ";"'
-    p[0] = Field(index=p[2], name=p[3], type=p[4], default=p[6])
+    p[0] = Field(index=p[2].value, name=p[3].value, type=p[4], default=p[6])
 
 def p_field_type(p):
     r'field_type : NAME'
-    p[0] = FieldType(name=p[1], elements=None)
+    p[0] = FieldType(name=p[1].value, elements=None)
 
 def p_field_type_array(p):
     r'field_type : NAME "[" NUMBER "]"'
-    p[0] = FieldType(name=p[1], elements=p[3])
+    p[0] = FieldType(name=p[1].value, elements=p[3].value)
 
 def p_enum_type(p):
     r'enum : ENUM NAME ":" NAME "{" enum_values "}" ";"'
-    p[0] = Enum(name=p[2], values=p[6], type=p[4])
+    p[0] = Enum(name=p[2].value, values=p[6], type=p[4].value)
 
 def p_enum(p):
     r'enum : ENUM NAME "{" enum_values "}" ";"'
-    p[0] = Enum(name=p[2], values=p[4], type=None)
+    p[0] = Enum(name=p[2].value, values=p[4], type=None)
 
 def p_enum_values_multiple(p):
     r'enum_values : enum_values "," enum_value'
@@ -124,11 +127,11 @@ def p_enum_values_single(p):
 
 def p_enum_value(p):
     r'enum_value : NAME'
-    p[0] = EnumValue(name=p[1], value=None)
+    p[0] = EnumValue(name=p[1].value, value=None)
 
 def p_enum_value_value(p):
     r'enum_value : NAME "=" value'
-    p[0] = EnumValue(name=p[1], value=p[3])
+    p[0] = EnumValue(name=p[1].value, value=p[3])
 
 def p_bool(p):
     r'''bool : TRUE

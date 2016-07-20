@@ -3,80 +3,257 @@
 
 #pragma once
 
-#include "plasma/utils/types.hpp"
 #include "plasma/utils/assert.hpp"
+#include "plasma/vproto/vproto.hpp"
 
 {% for ns in namespaces %}
 namespace {{ ns }} {
 {% endfor %}
 
+
 {% for enum in enums %}
-enum class {{ enum.name.value }}{% if enum.type %} : {{ enum.type.value }}{% endif %} {
+enum class {{ enum.name }}{% if enum.type %} : {{ enum.type }}{% endif %} {
 {% for enum_value in enum.values %}
-    {{ enum_value.name.value }}{% if enum_value.value %} = {{ enum_value.value.value }}{% endif %},
+    {{ enum_value.name }}{% if enum_value.value %} = {{ enum_value.value.value }}{% endif %},
 {% endfor %}
 };
 
 {% endfor %}
 
+
 {% for struct in structs %}
-{% set sorted_fields = struct.fields|sort(attribute='index') %}
-{% set last_index = sorted_fields[-1].index.value %}
-class {{ struct.name.value }} {
+class {{ struct.name }} {
 private:
 
-    uint16_t _vproto_last_index{ {{ last_index }} };
-    uint16_t _vproto_reserved{};
-
-    // unified initializers are used in order to efficiently zero initialize array/struct members
-{% for field in sorted_fields %}
-    {{ field.type.name.value }} _{{ field.name.value }}{% if field.type.elements %}[{{ field.type.elements.value }}]{% endif %}{ {% if field.default %}{{ field.default.value }} {% endif %}};
-{% endfor %}
-
 public:
+    class Reader;
 
-    void init() { }
-    void destroy() { }
+    class FixedData {
+        friend class Reader;
+    protected:
+    {% for field in struct.primitive_fields %}
+        {{ field.type.name }} _{{ field.name }}{% if field.elements %}[{{ field.elements }}]{% endif %}; // index: {{ field.index }} offset: {{ field.offset }} size: {{ field.type.size * (field.elements if field.elements else 1) }}
+    {% endfor %}
+    };
 
-{% for field in sorted_fields %}
-    {% if field.type.elements %}
-    static const uint32_t {{ field.name.value|upper }}_COUNT = {{ field.type.elements.value }};
-    {% endif %}
-{% endfor %}
-
-{% for field in sorted_fields %}
-    {% if not field.type.elements %}
-    void set{{ field.name.value.capitalize() }}({{ field.type.name.value }} {{ field.name.value }})
-    {
-        _{{ field.name.value }} = {{ field.name.value }};
-    }
-
-    {% endif %}
-{% endfor %}
-
-{% for field in sorted_fields %}
-    {{ field.type.name.value }} {% if field.type.elements %}*{% endif %}get{{ field.name.value.capitalize() }}({% if field.type.elements %}uint32_t index=0{% endif %})
-    {
-        if ({{ field.index.value }} <= _vproto_last_index) {
-            {% if field.type.elements %}
-            ASSERT_OP(index, <, {{ field.type.elements.value }}, "Invalid array index at field '{{ field.name.value }}' of struct '{{ struct.name.value }}'");
-            {% endif %}
-            return _{{ field.name.value }}{% if field.type.elements %} + index{% endif %};
-        } else {
-            {% if field.default %}
-            return {{ field.default.value }};
-            {% elif field.type.elements %}
-            return nullptr;
-            {% else %}
-            PANIC("No default value assigned to field '{{ field.name.value }}' of struct '{{ struct.name.value }}'");
-            {% endif %}
+    template <class Parent>
+    class AbstractBuilder : public Parent, public FixedData {
+    public:
+        void init()
+        {
+            // parent size can be 8 or 1. 8 when it's the root or 1 for an empty class (which is actually 0).
+            auto parent_size = sizeof(Parent) == 1 ? 0 : sizeof(Parent);
+            {% for field in struct.variable_fields %}
+            _{{ field.name }}_ptr.init(parent_size + {{ field.offset}}, {{ field.type.size }}, {{ field.elements if field.elements else 1 }}, {{ field.type.last_index if not field.type.is_primitive else 0 }});
+                {% if not field.type.is_primitive %}
+                    {% if field.elements %}
+            for (size_t i; i < {{ field.elements }}; i++)
+                _{{ field.name }}[i].init();
+                    {% else %}
+            _{{ field.name }}.init();
+                    {% endif %}
+                {% endif %}
+            {% endfor %}
         }
-    }
+
+        {% for field in struct.primitive_fields %}
+        {% if field.type.name != 'P::VProto::ArrayPtr' %}
+        void set_{{ field.name }}({{ field.type.name }} {{ field.name }})
+        {
+            _{{ field.name }} = {{ field.name }};
+        }
+        {% endif %}
+        {% endfor %}
+
+        {% for field in struct.variable_fields %}
+        {% if field.elements %}
+        uint16_t get_{{ field.name }}_count()
+        {
+            return {{ field.elements }};
+        }
+
+        {% endif %}
+        {{ field.type.name }}{% if not field.type.is_primitive %}::Builder{% endif %} *get_{{ field.name }}({% if field.elements %}uint16_t index=0{% endif %})
+        {
+            {% if field.elements %}
+            ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
+            {% endif %}
+            return &_{{ field.name }}{% if field.elements %}[index]{% endif %};
+        }
+        {% endfor %}
+
+    protected:
+    {% for field in struct.variable_fields %}
+        {{ field.type.name }}{% if not field.type.is_primitive %}::Builder{% endif %} _{{ field.name }}{% if field.elements %}[{{ field.elements }}]{% endif %}; // index: {{ field.index }} offset: {{ field.offset }} size: {{ field.type.size * (field.elements if field.elements else 1) }}
+    {% endfor %}
+    };
+
+    class Builder : public AbstractBuilder<P::VProto::EmbeddedStruct> {
+
+    };
+
+    class RootReader;
+
+    class RootBuilder : public AbstractBuilder<P::VProto::RootStruct> {
+    public:
+        void init()
+        {
+            AbstractBuilder<P::VProto::RootStruct>::init();
+            _vproto_header.init({{ struct.size }}, {{ struct.last_index }});
+        }
+
+         RootReader *as_reader()
+         {
+             return (RootReader*) this;
+         }
+    };
+
+    class Reader {
+        {% for field in struct.primitive_fields %}
+        static_assert(offsetof(FixedData, _{{ field.name }}) == {{ field.offset }}, "{{struct.name}}.{{field.name}} has an unexpected offset.");
+        {% endfor %}
+
+    private:
+        FixedData *_object;
+        int16_t _last_index; // valid values are -1 or a uint8 of an index
+
+    public:
+        void init(FixedData *object, int16_t last_index)
+        {
+            _object = object;
+            _last_index = last_index;
+        }
+
+        {% for field in struct.primitive_fields %}
+        {% if field.type.name != 'P::VProto::ArrayPtr' %}
+        {{ field.type.name }} get_{{ field.name }}()
+        {
+            if ({{ field.index }} <= _last_index) {
+                return _object->_{{ field.name }};
+            } else {
+                {% if field.default %}
+                return {{ field.default.value }};
+                {% else %}
+                PANIC("No default value assigned to field '{{ field.name }}' of struct '{{ struct.name }}'");
+                {% endif %}
+            }
+        }
+
+        {% endif %}
+        {% endfor %}
+        {% for field in struct.variable_fields %}
+        {% if field.elements %}
+        uint16_t get_{{ field.name }}_count()
+        {
+            if ({{ field.index }} <= _last_index) {
+                return _object->_{{ field.name }}_ptr.get_count();
+            } else {
+                return 0;
+            }
+        }
+
+        {% endif %}
+        {% if field.type.is_primitive %}
+        {{ field.type.name }} *get_{{ field.name }}(uint16_t index=0)
+        {
+            {% if field.elements %}
+            ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
+            {% endif %}
+            if ({{ field.index }} <= _last_index) {
+                return ({{ field.type.name }}*) ((P::byte*) _object + _object->_{{ field.name }}_ptr.get_offset() + index * _object->_{{ field.name }}_ptr.get_size());
+            } else {
+                return nullptr;
+            }
+        }
+        {% else %}
+        void get_{{ field.name }}({{ field.type.name }}::Reader *{{ field.name }}{% if field.elements %}, uint16_t index=0{% endif %})
+        {
+            if ({{ field.index }} <= _last_index) {
+                {% if field.elements %}
+                ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
+                {% endif %}
+                {{ field.name }}->init(({{ field.type.name }}::FixedData*) ((P::byte*) _object + (_object->_{{ field.name }}_ptr.get_offset(){% if field.elements %} + index * _object->_{{ field.name }}_ptr.get_size(){% endif %})), _object->_{{ field.name }}_ptr.get_last_index());
+            } else {
+                {% if field.elements %}
+                PANIC("Array did not exist in older version: {{ struct.name }}.{{ field.name }}");
+                {% else %}
+                {{ field.name }}->init(nullptr, -1);
+                {% endif %}
+            }
+        }
+        {% endif %}
+
+        {% endfor %}
+    };
+
+    class RootReader : public P::VProto::RootStruct, public FixedData {
+    public:
+
+        {% for field in struct.primitive_fields %}
+        {% if field.type.name != 'P::VProto::ArrayPtr' %}
+        {{ field.type.name }} get_{{ field.name }}()
+        {
+            if ({{ field.index }} <= _vproto_header.get_last_index()) {
+                return _{{ field.name }};
+            } else {
+                {% if field.default %}
+                return {{ field.default.value }};
+                {% else %}
+                PANIC("No default value assigned to field '{{ field.name }}' of struct '{{ struct.name }}'");
+                {% endif %}
+            }
+        }
+
+        {% endif %}
+        {% endfor %}
+        {% for field in struct.variable_fields %}
+        {% if field.elements %}
+        uint16_t get_{{ field.name }}_count()
+        {
+            if ({{ field.index }} <= _vproto_header.get_last_index()) {
+                return _{{ field.name }}_ptr.get_count();
+            } else {
+                return 0;
+            }
+        }
+
+        {% endif %}
+        {% if field.type.is_primitive %}
+        {{ field.type.name }} *get_{{ field.name }}(uint16_t index=0)
+        {
+            {% if field.elements %}
+            ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
+            {% endif %}
+            if ({{ field.index }} <= _vproto_header.get_last_index()) {
+                return ({{ field.type.name }}*) ((P::byte*) this + _{{ field.name }}_ptr.get_offset() + index * _{{ field.name }}_ptr.get_size());
+            } else {
+                return nullptr;
+            }
+        }
+        {% else %}
+        void get_{{ field.name }}({{ field.type.name }}::Reader *{{ field.name }}{% if field.elements %}, uint16_t index{% endif %})
+        {
+            if ({{ field.index }} <= _vproto_header.get_last_index()) {
+                {% if field.elements %}
+                ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
+                {% endif %}
+                {{ field.name }}->init(({{ field.type.name }}::FixedData*) ((P::byte*) this + _{{ field.name }}_ptr.get_offset(){% if field.elements %} + index * _{{ field.name }}_ptr.get_size() {% endif %}), _{{ field.name }}_ptr.get_last_index());
+            } else {
+                {% if field.elements %}
+                PANIC("Array did not exist in older version: {{ struct.name }}.{{ field.name }}");
+                {% else %}
+                {{ field.name }}->init(nullptr, -1);
+                {% endif %}
+            }
+        }
+        {% endif %}
+
+        {% endfor %}
+    };
+};
 
 {% endfor %}
-} __attribute__((packed));
 
-{% endfor %}
 
 {% for ns in namespaces %}
 }

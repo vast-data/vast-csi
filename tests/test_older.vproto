@@ -1,3 +1,16 @@
+$namespace NS
+
+enum OldGender : uint8_t {
+    MALE = 0,
+    FEMALE
+};
+
+struct OldPhone {
+    @0 number uint32_t;
+};
+
 struct OldPerson {
     @0 age uint32_t;
+    @1 gender OldGender;
+    @2 phones OldPhone[2];
 };
