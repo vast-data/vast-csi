@@ -40,6 +40,7 @@ public:
     void init(uint8_t buffer_count, uint32_t size);
     void destroy();
     void write(void *data, P_DBUFFER_LENGTH_TYPE length);
+    void flush();
 
 private:
     Buffer *get_buffer(uint64_t generation);
@@ -75,7 +76,7 @@ private:
     bool overflow();
 
     DBuffer *_dbuf;
-    uint32_t _generation;
+    uint32_t _read_generation;
     uint32_t _read_index;
 };
 

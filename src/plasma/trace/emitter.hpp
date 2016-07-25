@@ -66,6 +66,11 @@ public:
     void destroy();
 
     /*!
+     * Flush buffers so the trace dumper could write data to disk.
+     */
+    void flush();
+
+    /*!
      * Set this emitter to be used by default by trace calls made from the current pthread.
      */
     void set_local();

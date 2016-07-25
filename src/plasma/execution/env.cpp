@@ -31,7 +31,6 @@ void Env::error()
 
     _dumper.stop();
     _dumper.wait();
-
 }
 
 static Config *parse_config(const char *path)

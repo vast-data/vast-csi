@@ -50,9 +50,11 @@ public:
      * \param group_index the index of the fiber_group (configured in Scheduler::init()).
      * \param func a function to be called when the fiber is started.
      * \param arg an argument to be passed to the func.
+     * \param parent_will_join when true, notifies a joining parent and potentially resuming it (if this child is the last)
+     * \param daemon when true, the scheduler doesn't wait for this fiber to finish in order to exit
      * \return a pointer to a fiber or nullptr if the pool is empty.
      */
-    static Fiber *init(Index group_index, void (*func)(void *arg), void *arg, bool parent_will_join);
+    static Fiber *init(Index group_index, void (*func)(void *arg), void *arg, bool parent_will_join, bool daemon=false);
 
     /*!
      * A fiber should call this function to yield the CPU. Should be used in CPU-intensive code.
@@ -154,6 +156,7 @@ private:
     SuspendState _sus_state;
     uint32_t _join_count;
     State _state; // currently used for debug purposes
+    bool _daemon;
 
 #ifdef DEBUG
     Scheduler *_owner_sched;

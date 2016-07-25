@@ -35,6 +35,14 @@ uint64_t Emitter::get_fiber_id()
         return 0; // trace records emitted before running within a scheduler
 }
 
+void Emitter::flush()
+{
+    LOOP(ComponentId::COUNT, i) {
+        if (_buffers[i] != nullptr)
+            _buffers[i]->flush();
+    }
+}
+
 const byte BUFFER_COUNT = 4;
 const byte DEFAULT_BUF_SIZE_MB = 8;
 

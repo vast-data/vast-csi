@@ -96,7 +96,8 @@ void Fiber::destroy()
     Scheduler *sched = Scheduler::get();
     _group->stacks->partitioned_free_address(_stack, _group->stacks_partition);
     sched->_fiber_pool.partitioned_free_address(this, _group->index);
-    sched->_running_fiber_count--;
+    if (!_daemon)
+        sched->_running_fiber_count--;
 }
 
 uint32_t Fiber::get_job_id()
@@ -104,7 +105,7 @@ uint32_t Fiber::get_job_id()
     return _job_id;
 }
 
-Fiber *Fiber::init(Index group_index, void (*func)(void *arg), void *arg, bool parent_will_join)
+Fiber *Fiber::init(Index group_index, void (*func)(void *arg), void *arg, bool parent_will_join, bool daemon)
 {
     Scheduler *sched = Scheduler::get();
     DEBUG_ASSERT_OP(group_index, <, sched->_group_count, "out of bounds group index");
@@ -128,6 +129,7 @@ Fiber *Fiber::init(Index group_index, void (*func)(void *arg), void *arg, bool p
     fiber->_func = func;
     fiber->_arg = arg;
     fiber->_group = group;
+    fiber->_daemon = daemon;
     fiber->_job_id = ++Scheduler::get()->_curr_job_id;
     fiber->_parent = nullptr; // will be used by join
     fiber->_join_count = 0;
@@ -141,7 +143,8 @@ Fiber *Fiber::init(Index group_index, void (*func)(void *arg), void *arg, bool p
 #endif
 
     fiber->resume();
-    sched->_running_fiber_count++;
+    if (!daemon)
+        sched->_running_fiber_count++;
     return fiber;
 }
 

@@ -16,6 +16,7 @@
 #include "plasma/fiber/fiber.hpp"
 #include "plasma/control/agent.hpp"
 #include "../internal.hpp"
+#include "globals.hpp"
 #include "config.hpp"
 #include "defs.hpp"
 #include "env.hpp"
@@ -81,13 +82,27 @@ static void pin_to_core(int32_t core_id)
     ASSERT_EQUAL(pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset), 0);
 }
 
-void Silo::silo_start_in_fiber_func(void *silo_arg)
+/*static*/ void Silo::start_modules_fiber_func(void *silo_arg)
 {
     Silo *silo = (Silo *)silo_arg;
-    silo->silo_start_in_fiber();
+    silo->start_modules();
 }
 
-void Silo::silo_start_in_fiber()
+/*static*/ void Silo::maintenance_fiber_func(void *silo_arg)
+{
+    Silo *silo = (Silo *)silo_arg;
+    silo->maintenance();
+}
+
+void Silo::maintenance()
+{
+    while (true) {
+        P::TimerQueues::sleep(P::SleepInterval::SLEEP_1_SECOND);
+        _trace_emitter.flush();
+    }
+}
+
+void Silo::start_modules()
 {
     Env::get()->wait_for_run_state();
 
@@ -110,13 +125,13 @@ SiloId Silo::get_current_silo_id(void)
     return silo != nullptr ? silo->get_id() : INVALID_SILO_ID;
 }
 
-/*static*/ void *Silo::silo_main_func(void *silo_arg)
+/*static*/ void *Silo::main_func(void *silo_arg)
 {
     Silo *silo = (Silo *) silo_arg;
-    return silo->silo_main();
+    return silo->main();
 }
 
-void *Silo::silo_main()
+void *Silo::main()
 {
     if (_affinity != Silo::NO_AFFINITY)
         pin_to_core(_affinity);
@@ -128,7 +143,8 @@ void *Silo::silo_main()
     PT_INFO("Silo started. Affinity set to: %d.", _affinity);
 
     Scheduler::init(&_scheduler_config);
-    ASSERT_NOT_NULL(Fiber::init((P::Index)FiberGroupId::P, silo_start_in_fiber_func, this, false));
+    ASSERT_NOT_NULL(Fiber::init((P::Index)FiberGroupId::P, start_modules_fiber_func, this, false));
+    ASSERT_NOT_NULL(Fiber::init((P::Index)FiberGroupId::P, maintenance_fiber_func, this, false, true));
     Scheduler::run();
     // we shouldn't regularly get here. it means all fiber have finished running.
     Scheduler::destroy();
@@ -143,7 +159,7 @@ void *Silo::silo_main()
 
 void Silo::start()
 {
-    ASSERT_EQUAL(pthread_create(&_pthread, nullptr, silo_main_func, this), 0);
+    ASSERT_EQUAL(pthread_create(&_pthread, nullptr, main_func, this), 0);
 }
 
 void Silo::join()

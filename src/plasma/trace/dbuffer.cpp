@@ -70,28 +70,33 @@ void DBuffer::destroy()
     delete[] _buffers;
 }
 
+void DBuffer::flush()
+{
+    _generation++;
+    get_buffer(_generation)->reset();
+}
+
 void DBuffer::write(void *data, P_DBUFFER_LENGTH_TYPE length)
 {
     ASSERT_OP(length, <=, P_DBUFFER_MAX_RECORD, "record size bigger than max");
-    Buffer *buf = get_buffer(_generation);
+    auto buf = get_buffer(_generation);
     if (!buf->has_room(length)) {
-        _generation++;
+        flush();
         buf = get_buffer(_generation);
-        buf->reset();
     }
     buf->write(data, length);
 }
 
 void DBufferReader::reset(P_DBUFFER_LENGTH_TYPE *buffers_lost OUT)
 {
-    uint32_t generation = _generation;
+    uint32_t generation = _read_generation;
     _read_index = 0;
     if (_dbuf->_generation >= _dbuf->_buffer_count)
-        _generation = _dbuf->_generation - _dbuf->_buffer_count + 1;
+        _read_generation = _dbuf->_generation - _dbuf->_buffer_count + 1;
     else
-        _generation = 0;
+        _read_generation = 0;
     if (buffers_lost != nullptr)
-        *buffers_lost = (uint16_t) (_generation - generation);
+        *buffers_lost = (uint16_t) (_read_generation - generation);
 }
 
 void DBufferReader::init(DBuffer *dbuf)
@@ -102,20 +107,20 @@ void DBufferReader::init(DBuffer *dbuf)
 
 bool DBufferReader::overflow()
 {
-    ASSERT_OP(_generation, <=, _dbuf->_generation, "Somehow the reader got in front of the writer");
-    return _dbuf->_generation - _generation >= _dbuf->_buffer_count;
+    ASSERT_OP(_read_generation, <=, _dbuf->_generation, "Somehow the reader got in front of the writer");
+    return _dbuf->_generation - _read_generation >= _dbuf->_buffer_count;
 }
 
 DBufferReader::ReadResult DBufferReader::read(void *data OUT, P_DBUFFER_LENGTH_TYPE *length OUT, bool force)
 {
     // when force==true we are allowed to read from the writer's buffer.
-    if (!force && _generation == _dbuf->_generation)
+    if (!force && _read_generation == _dbuf->_generation)
         return ReadResult::NOTHING;
 
     if (overflow())
         goto overflow;
 
-    _dbuf->get_buffer(_generation)->read(_read_index, length, P_DBUFFER_LENGTH_BYTES);
+    _dbuf->get_buffer(_read_generation)->read(_read_index, length, P_DBUFFER_LENGTH_BYTES);
 
     if (overflow())
         goto overflow;
@@ -123,15 +128,15 @@ DBufferReader::ReadResult DBufferReader::read(void *data OUT, P_DBUFFER_LENGTH_T
     if (*length == 0) {
         // when force==true and we reached the end of the buffer, there's no next buffer to go to
         ReadResult result = ReadResult::NOTHING;
-        if (!force || _generation < _dbuf->_generation) {
-            _generation++;
+        if (!force || _read_generation < _dbuf->_generation) {
+            _read_generation++;
             _read_index = 0;
             result = ReadResult::NEXT;
         }
         return result;
     }
 
-    _dbuf->get_buffer(_generation)->read(_read_index + P_DBUFFER_LENGTH_BYTES, data, *length);
+    _dbuf->get_buffer(_read_generation)->read(_read_index + P_DBUFFER_LENGTH_BYTES, data, *length);
     if (overflow())
         goto overflow;
 

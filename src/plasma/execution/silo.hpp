@@ -117,11 +117,14 @@ private:
 
     ModuleDescriptor *get_module_descriptor();
 
-    static void silo_start_in_fiber_func(void *silo_arg);
-    void silo_start_in_fiber();
+    static void maintenance_fiber_func(void *silo_arg);
+    void maintenance();
 
-    static void *silo_main_func(void *silo_arg);
-    void *silo_main();
+    static void start_modules_fiber_func(void *silo_arg);
+    void start_modules();
+
+    static void *main_func(void *silo_arg);
+    void *main();
 
 private:
     ModuleDescriptor _module_descriptors[(int)ModuleId::COUNT];
