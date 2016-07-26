@@ -1,4 +1,5 @@
 import fnmatch
+import re
 import os
 
 DEFAULT_COMPILER = 'clang'
@@ -148,6 +149,19 @@ for metric_file in RGlob('src', '*.metrics'):
 test_metric_sources = FilterPaths(env.Metrics(DEFAULT_BUILD_DIR + '/tests/test.metrics'), '*.cpp')
 
 # ----- VProto ----- #
+VPROTO_INCLUDE_DIRS = ['src', 'tests']
+import_re = re.compile(r'^\$import (\S+)(?: as \S+)?$', re.M)
+def vproto_scan(node, env, path):
+    contents = node.get_contents()
+    imports = []
+    for i in import_re.findall(contents):
+        for d in VPROTO_INCLUDE_DIRS:
+            full_path = os.path.join(d, i)
+            if os.path.exists(full_path):
+                # the '#' prefix makes scons look for the file from the root of the project (vs. relatively to the file).
+                imports.append('#' + full_path)
+    return imports
+
 def vproto_emitter(target, source, env):
     source.extend([vproto_gen,
                    'src/plasma/vproto/vproto/main.py',
@@ -155,7 +169,8 @@ def vproto_emitter(target, source, env):
                    'src/plasma/vproto/vproto/parser.py',
                    'src/plasma/vproto/vproto/templates/header.jin'])
     return str(source[0]) + '.hpp', source
-env.Append(BUILDERS = {'VProto': Builder(action='./venv/bin/gen-vproto -i build/src:build/tests $SOURCE $SOURCE', emitter=vproto_emitter)})
+env.Append(BUILDERS = {'VProto': Builder(action='./venv/bin/gen-vproto -i {} $SOURCE $SOURCE'.format(':'.join(VPROTO_INCLUDE_DIRS)), emitter=vproto_emitter)},
+           SCANNERS = Scanner(function=vproto_scan, skeys=['.vproto']))
 
 for metric_file in RGlob('src', '*.vproto') + RGlob('tests', '*.vproto'):
     metric_file = DEFAULT_BUILD_DIR + '/' + metric_file

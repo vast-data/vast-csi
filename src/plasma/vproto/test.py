@@ -73,10 +73,27 @@ struct Person {
     with pytest.raises(SchemaError):
         validate_struct(struct)
 
-        struct, = parse('''
+    struct, = parse('''
 struct Person {
   @0 age uint32_t;
   @1 age uint32_t;
+};
+''')
+    with pytest.raises(SchemaError):
+        validate_struct(struct)
+
+    struct, = parse('''
+struct Person {
+  @1 age uint32_t;
+  @1 weight uint32_t;
+};
+''')
+    with pytest.raises(SchemaError):
+        validate_struct(struct)
+
+    struct, = parse('''
+struct Person {
+  @0 name char[1000000];
 };
 ''')
     with pytest.raises(SchemaError):

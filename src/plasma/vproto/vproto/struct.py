@@ -1,6 +1,10 @@
 from collections import namedtuple, OrderedDict, Counter
 from .parser import Field, FieldType
 
+MAX_STRUCT_FIELDS = 255
+MAX_STRUCT_SIZE = 2**20
+MAX_ARRAY_ELEMENTS = 2**16
+
 class SchemaError(Exception): pass
 
 VProtoType = namedtuple('VProtoType', ['name', 'size', 'is_primitive', 'module'])
@@ -155,6 +159,9 @@ class VProtoStruct(object):
         # the entire struct should be aligned on the size of its largest member (simplifies array stride)
         if self.size > 0 and self.size % self.largest_field > 0:
             self.size += self.largest_field - self.size % self.largest_field
+
+        if self.size > MAX_STRUCT_SIZE:
+            raise SchemaError('Struct {} is larger than allowed maximum ({}): {}'.format(self.name, MAX_STRUCT_SIZE, self.size))
         registry.add_struct(self)
 
 def validate_struct(struct, registry=TypeRegistry()):
@@ -165,6 +172,8 @@ def validate_struct(struct, registry=TypeRegistry()):
         names.append(field.name)
         if field.default is not None and not field_is_primitive(field, registry):
             raise SchemaError('Array/Struct fields cannot have default values: {}.{}'.format(struct.name, field.name))
+        if field.type.elements is not None and field.type.elements > MAX_ARRAY_ELEMENTS:
+            raise SchemaError('Array {}.{} has an invalid number of elements (maximum is {}): {}'.format(struct.name, field.name, MAX_ARRAY_ELEMENTS, field.type.elements))
 
     if indices:
         indices.sort()
@@ -179,3 +188,6 @@ def validate_struct(struct, registry=TypeRegistry()):
         for index, count in Counter(indices).items():
             if count > 1:
                 raise SchemaError('Index cannot be repeated within a struct: {}.{}'.format(struct.name, index))
+
+        if len(indices) > MAX_STRUCT_FIELDS:
+            raise SchemaError('Struct {} has an invalid number of fields (maximum is {}): {}'.format(struct.name, MAX_STRUCT_FIELDS, len(indices)))
