@@ -3,47 +3,65 @@ from .parser import Field, FieldType
 
 class SchemaError(Exception): pass
 
-VProtoType = namedtuple('VProtoType', ['name', 'size', 'is_primitive'])
+VProtoType = namedtuple('VProtoType', ['name', 'size', 'is_primitive', 'module'])
+
+class VProtoBuiltinsModule(object):
+    def get_namespace(self):
+        return 'P'
+vproto_builtins_module = VProtoBuiltinsModule()
+
+class BuiltinsModule(object):
+    def get_namespace(self):
+        return ''
+builtins_module = BuiltinsModule()
 
 class TypeRegistry(object):
+    BUILTINS = {'bool': 1,
+                'char': 1,
+                'int8_t': 1,
+                'uint8_t': 1,
+                'int16_t': 2,
+                'uint16_t': 2,
+                'int32_t': 4,
+                'uint32_t': 4,
+                'int64_t': 8,
+                'uint64_t': 8,
+                'float': 4,
+                'double': 8}
+    VPROTO_BUILTINS = [VProtoType('byte', 1, True, vproto_builtins_module),
+                       VProtoType('Index', 4, True, vproto_builtins_module),
+                       VProtoType('VProto::ArrayPtr', 8, True, vproto_builtins_module)]
+    BUILTINS_NAMES = list(BUILTINS.keys()) + [i.name for i in VPROTO_BUILTINS]
+
     def __init__(self):
-        self.types = {}
+        self._types = {}
 
-        # add builtin types
-        self.add(VProtoType('bool', 1, True))
-        self.add(VProtoType('char', 1, True))
-        self.add(VProtoType('int8_t', 1, True))
-        self.add(VProtoType('uint8_t', 1, True))
-        self.add(VProtoType('int16_t', 2, True))
-        self.add(VProtoType('uint16_t', 2, True))
-        self.add(VProtoType('int32_t', 4, True))
-        self.add(VProtoType('uint32_t', 4, True))
-        self.add(VProtoType('int64_t', 8, True))
-        self.add(VProtoType('uint64_t', 8, True))
-        self.add(VProtoType('float', 4, True))
-        self.add(VProtoType('double', 8, True))
-
-        # vast types
-        self.add(VProtoType('byte', 1, True))
-        self.add(VProtoType('P::Index', 4, True))
-
-        # vproto
-        self.add(VProtoType('P::VProto::ArrayPtr', 8, True))
+        for name, size in self.BUILTINS.items():
+            self.add(VProtoType(name, size, True, builtins_module))
+        for builtin in self.VPROTO_BUILTINS:
+            self.add(builtin)
 
     def get(self, name):
         try:
-            return self.types[name]
+            return self._types[name]
         except KeyError:
             raise Exception('Unknown field type: {}'.format(name))
 
     def add(self, type):
-        self.types[type.name] = type
+        self._types[type.name] = type
 
     def add_struct(self, struct):
         self.add(struct)
 
-    def add_enum(self, enum):
-        self.add(VProtoType(enum.name, 4 if enum.type is None else self.get(enum.type).size, True))
+    DEFAULT_ENUM_SIZE = 4
+    def add_enum(self, module, enum):
+        self.add(VProtoType(enum.name, self.DEFAULT_ENUM_SIZE if enum.type is None else self.get(enum.type).size, True, module))
+
+    def merge(self, registry, alias=None):
+        prefix = '' if alias is None else alias + '.'
+        for name, type in registry._types.items():
+            if name not in self.BUILTINS_NAMES:
+                self._types[prefix + name] = type
 
 Padding = namedtuple('Padding', ['size', 'offset'])
 VProtoField = namedtuple('VProtoField', ['name', 'index', 'type', 'elements', 'default', 'offset'])
@@ -92,10 +110,11 @@ def field_is_primitive(field, registry):
     return field.type.elements is None and registry.get(field.type.name).is_primitive
 
 class VProtoStruct(object):
-    def __init__(self, struct_ast, registry=TypeRegistry()):
+    def __init__(self, struct_ast, module=None, registry=TypeRegistry()):
         validate_struct(struct_ast, registry)
-        self.is_primitive = False
+        self.module = module
         self.name = struct_ast.name
+        self.is_primitive = False
         self.largest_field = 0
 
         variable_fields = []
@@ -104,7 +123,7 @@ class VProtoStruct(object):
             if not field_is_primitive(field, registry):
                 variable_fields.append(field)
                 field = Field(name=field.name + '_ptr', index=field.index, default=None,
-                              type=FieldType(name='P::VProto::ArrayPtr', elements=None))
+                              type=FieldType(name='VProto::ArrayPtr', elements=None))
             primitive_fields.append(field)
             self.largest_field = max(self.largest_field, registry.get(field.type.name).size)
 
@@ -127,6 +146,8 @@ class VProtoStruct(object):
             self.variable_fields.append(VProtoField(name=field.name, index=field.index,
                                                     type=field_type, elements=field.type.elements,
                                                     default=None, offset=self.size + padding))
+            if field_type.size == 0:
+                raise SchemaError('Field cannot be of size 0: {}.{}'.format(self.name, field.name))
             self.size += field_type.size * (1 if field.type.elements is None else field.type.elements)
             # each variable length field should be aligned on the size of its largest member.
             self.largest_field = max(self.largest_field, largest_field)

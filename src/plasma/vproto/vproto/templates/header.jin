@@ -6,6 +6,13 @@
 #include "plasma/utils/assert.hpp"
 #include "plasma/vproto/vproto.hpp"
 
+{% if imports %}
+// user defined imports
+{% endif %}
+{% for import in imports %}
+#include "{{ import }}.hpp"
+{% endfor %}
+
 {% for ns in namespaces %}
 namespace {{ ns }} {
 {% endfor %}
@@ -32,7 +39,7 @@ public:
         friend class Reader;
     protected:
     {% for field in struct.primitive_fields %}
-        {{ field.type.name }} _{{ field.name }}{% if field.elements %}[{{ field.elements }}]{% endif %}; // index: {{ field.index }} offset: {{ field.offset }} size: {{ field.type.size * (field.elements if field.elements else 1) }}
+        {{ get_fqn(field) }} _{{ field.name }}{% if field.elements %}[{{ field.elements }}]{% endif %}; // index: {{ field.index }} offset: {{ field.offset }} size: {{ field.type.size * (field.elements if field.elements else 1) }}
     {% endfor %}
     };
 
@@ -57,8 +64,8 @@ public:
         }
 
         {% for field in struct.primitive_fields %}
-        {% if field.type.name != 'P::VProto::ArrayPtr' %}
-        void set_{{ field.name }}({{ field.type.name }} {{ field.name }})
+        {% if field.type.name != 'VProto::ArrayPtr' %}
+        void set_{{ field.name }}({{ get_fqn(field) }} {{ field.name }})
         {
             _{{ field.name }} = {{ field.name }};
         }
@@ -73,7 +80,7 @@ public:
         }
 
         {% endif %}
-        {{ field.type.name }}{% if not field.type.is_primitive %}::Builder{% endif %} *get_{{ field.name }}({% if field.elements %}uint16_t index=0{% endif %})
+        {{ get_fqn(field) }}{% if not field.type.is_primitive %}::Builder{% endif %} *get_{{ field.name }}({% if field.elements %}uint16_t index=0{% endif %})
         {
             {% if field.elements %}
             ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
@@ -84,7 +91,7 @@ public:
 
     protected:
     {% for field in struct.variable_fields %}
-        {{ field.type.name }}{% if not field.type.is_primitive %}::Builder{% endif %} _{{ field.name }}{% if field.elements %}[{{ field.elements }}]{% endif %}; // index: {{ field.index }} offset: {{ field.offset }} size: {{ field.type.size * (field.elements if field.elements else 1) }}
+        {{ get_fqn(field) }}{% if not field.type.is_primitive %}::Builder{% endif %} _{{ field.name }}{% if field.elements %}[{{ field.elements }}]{% endif %}; // index: {{ field.index }} offset: {{ field.offset }} size: {{ field.type.size * (field.elements if field.elements else 1) }}
     {% endfor %}
     };
 
@@ -126,8 +133,8 @@ public:
         }
 
         {% for field in struct.primitive_fields %}
-        {% if field.type.name != 'P::VProto::ArrayPtr' %}
-        {{ field.type.name }} get_{{ field.name }}()
+        {% if field.type.name != 'VProto::ArrayPtr' %}
+        {{ get_fqn(field) }} get_{{ field.name }}()
         {
             if ({{ field.index }} < _next_index) {
                 return _object->_{{ field.name }};
@@ -155,25 +162,25 @@ public:
 
         {% endif %}
         {% if field.type.is_primitive %}
-        {{ field.type.name }} *get_{{ field.name }}(uint16_t index=0)
+        {{ get_fqn(field) }} *get_{{ field.name }}(uint16_t index=0)
         {
             {% if field.elements %}
             ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
             {% endif %}
             if ({{ field.index }} < _next_index) {
-                return ({{ field.type.name }}*) ((P::byte*) _object + _object->_{{ field.name }}_ptr.get_offset() + index * _object->_{{ field.name }}_ptr.get_size());
+                return ({{ get_fqn(field) }}*) ((P::byte*) _object + _object->_{{ field.name }}_ptr.get_offset() + index * _object->_{{ field.name }}_ptr.get_size());
             } else {
                 return nullptr;
             }
         }
         {% else %}
-        void get_{{ field.name }}({{ field.type.name }}::Reader *{{ field.name }}{% if field.elements %}, uint16_t index=0{% endif %})
+        void get_{{ field.name }}({{ get_fqn(field) }}::Reader *{{ field.name }}{% if field.elements %}, uint16_t index=0{% endif %})
         {
             if ({{ field.index }} < _next_index) {
                 {% if field.elements %}
                 ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
                 {% endif %}
-                {{ field.name }}->init(({{ field.type.name }}::FixedData*) ((P::byte*) _object + (_object->_{{ field.name }}_ptr.get_offset(){% if field.elements %} + index * _object->_{{ field.name }}_ptr.get_size(){% endif %})), _object->_{{ field.name }}_ptr.get_next_index());
+                {{ field.name }}->init(({{ get_fqn(field) }}::FixedData*) ((P::byte*) _object + (_object->_{{ field.name }}_ptr.get_offset(){% if field.elements %} + index * _object->_{{ field.name }}_ptr.get_size(){% endif %})), _object->_{{ field.name }}_ptr.get_next_index());
             } else {
                 {% if field.elements %}
                 PANIC("Array did not exist in older version: {{ struct.name }}.{{ field.name }}");
@@ -191,8 +198,8 @@ public:
     public:
 
         {% for field in struct.primitive_fields %}
-        {% if field.type.name != 'P::VProto::ArrayPtr' %}
-        {{ field.type.name }} get_{{ field.name }}()
+        {% if field.type.name != 'VProto::ArrayPtr' %}
+        {{ get_fqn(field) }} get_{{ field.name }}()
         {
             if ({{ field.index }} < _vproto_header.get_next_index()) {
                 return _{{ field.name }};
@@ -220,25 +227,25 @@ public:
 
         {% endif %}
         {% if field.type.is_primitive %}
-        {{ field.type.name }} *get_{{ field.name }}(uint16_t index=0)
+        {{ get_fqn(field) }} *get_{{ field.name }}(uint16_t index=0)
         {
             {% if field.elements %}
             ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
             {% endif %}
             if ({{ field.index }} < _vproto_header.get_next_index()) {
-                return ({{ field.type.name }}*) ((P::byte*) this + _{{ field.name }}_ptr.get_offset() + index * _{{ field.name }}_ptr.get_size());
+                return ({{ get_fqn(field) }}*) ((P::byte*) this + _{{ field.name }}_ptr.get_offset() + index * _{{ field.name }}_ptr.get_size());
             } else {
                 return nullptr;
             }
         }
         {% else %}
-        void get_{{ field.name }}({{ field.type.name }}::Reader *{{ field.name }}{% if field.elements %}, uint16_t index{% endif %})
+        void get_{{ field.name }}({{ get_fqn(field) }}::Reader *{{ field.name }}{% if field.elements %}, uint16_t index{% endif %})
         {
             if ({{ field.index }} < _vproto_header.get_next_index()) {
                 {% if field.elements %}
                 ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
                 {% endif %}
-                {{ field.name }}->init(({{ field.type.name }}::FixedData*) ((P::byte*) this + _{{ field.name }}_ptr.get_offset(){% if field.elements %} + index * _{{ field.name }}_ptr.get_size() {% endif %}), _{{ field.name }}_ptr.get_next_index());
+                {{ field.name }}->init(({{ get_fqn(field) }}::FixedData*) ((P::byte*) this + _{{ field.name }}_ptr.get_offset(){% if field.elements %} + index * _{{ field.name }}_ptr.get_size() {% endif %}), _{{ field.name }}_ptr.get_next_index());
             } else {
                 {% if field.elements %}
                 PANIC("Array did not exist in older version: {{ struct.name }}.{{ field.name }}");

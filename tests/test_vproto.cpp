@@ -4,6 +4,10 @@
 #include "test.vproto.hpp"
 #include "test_older.vproto.hpp"
 
+// this following includes exist purely to make sure the code compiles
+#include "test_import.vproto.hpp"
+#include "plasma/vproto/empty.vproto.hpp"
+
 TEST(TestVProto, test_sanity)
 {
     const char *name = "foobar";

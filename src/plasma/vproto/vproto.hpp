@@ -42,7 +42,7 @@ private:
     uint8_t _next_index;
     uint32_t _offset : 20;
     uint32_t _size : 20;
-} __attribute__ (( packed )) __attribute__ ((align(8)));
+} __attribute__((packed, aligned(8)));
 static_assert(sizeof(ArrayPtr) == 8, "sizeof(ArrayPtr) should be 8 bytes");
 
 class RootStruct {

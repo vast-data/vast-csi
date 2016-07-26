@@ -51,7 +51,7 @@ def t_COMMENT(t):
     r'//.*'
 
 def t_NAME(t):
-    r'[a-zA-Z][a-zA-Z0-9:_]*'
+    r'[a-zA-Z][a-zA-Z0-9:_.]*'
     if t.value not in reserved:
         t.value = Name(value=t.value)
     else:

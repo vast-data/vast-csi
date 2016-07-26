@@ -33,7 +33,5 @@ struct Person {
     @7 profession Profession = Profession::PILOT;
 
     @2 phones Phone[2];
-    @6 empty Empty;
-    @8 empty_array Empty[2];
-    @9 address Address;
+    @6 address Address;
 };

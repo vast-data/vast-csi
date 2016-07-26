@@ -155,9 +155,9 @@ def vproto_emitter(target, source, env):
                    'src/plasma/vproto/vproto/parser.py',
                    'src/plasma/vproto/vproto/templates/header.jin'])
     return str(source[0]) + '.hpp', source
-env.Append(BUILDERS = {'VProto': Builder(action='./venv/bin/gen-vproto $SOURCE $SOURCE', emitter=vproto_emitter)})
+env.Append(BUILDERS = {'VProto': Builder(action='./venv/bin/gen-vproto -i build/src:build/tests $SOURCE $SOURCE', emitter=vproto_emitter)})
 
-for metric_file in RGlob('src', '*.vproto') + ['tests/test.vproto', 'tests/test_older.vproto']:
+for metric_file in RGlob('src', '*.vproto') + RGlob('tests', '*.vproto'):
     metric_file = DEFAULT_BUILD_DIR + '/' + metric_file
     env.VProto(metric_file)
 
@@ -184,6 +184,7 @@ cpp_env.Program(target='dist/env', source=[DEFAULT_BUILD_DIR + '/src/plasma/exec
 def AddCppTest(target, source, wrap=[]):
     cpp_test_env = cpp_env.Clone()
     cpp_test_env.Append(LIBS=['gtest', 'rt'])
+    cpp_test_env.Append(CPPPATH=['build/tests'])
     for func in wrap:
         cpp_test_env.Append(LINKFLAGS='-Wl,-wrap,' + func)
     test = cpp_test_env.Program(target=target, source=source)
