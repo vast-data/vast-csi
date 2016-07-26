@@ -10,6 +10,10 @@ enum Profession {
     PILOT
 };
 
+struct Empty {
+
+};
+
 struct Phone {
     @0 number uint32_t;
     @1 active bool = true;
@@ -26,8 +30,10 @@ struct Person {
     @3 weight uint32_t; // for testing: this field doesn't have a default value even though it should (it doesn't appear in the older version)
     @4 name char[123];
     @5 active bool = true;
-    @6 profession Profession = Profession::PILOT;
+    @7 profession Profession = Profession::PILOT;
 
     @2 phones Phone[2];
-    @7 address Address;
+    @6 empty Empty;
+    @8 empty_array Empty[2];
+    @9 address Address;
 };

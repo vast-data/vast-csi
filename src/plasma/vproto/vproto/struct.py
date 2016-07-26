@@ -109,16 +109,20 @@ class VProtoStruct(object):
             self.largest_field = max(self.largest_field, registry.get(field.type.name).size)
 
         self.primitive_fields = [i for i in align_fields(primitive_fields, registry) if not isinstance(i, Padding)]
-        self.last_index = self.primitive_fields[-1].index
-
+        if self.primitive_fields:
+            self.next_index = self.primitive_fields[-1].index + 1
+            self.size = self.primitive_fields[-1].offset + self.primitive_fields[-1].type.size
+        else:
+            self.next_index = 0
+            self.size = 0
 
         self.variable_fields = []
-        self.size = self.primitive_fields[-1].offset + self.primitive_fields[-1].type.size
+
         for field in variable_fields:
             field_type = registry.get(field.type.name)
             largest_field = field_type.size if field_type.is_primitive else field_type.largest_field
             padding = 0
-            if self.size % largest_field > 0:
+            if largest_field > 0 and self.size % largest_field > 0:
                 padding = largest_field - self.size % largest_field
             self.variable_fields.append(VProtoField(name=field.name, index=field.index,
                                                     type=field_type, elements=field.type.elements,
@@ -128,7 +132,7 @@ class VProtoStruct(object):
             self.largest_field = max(self.largest_field, largest_field)
 
         # the entire struct should be aligned on the size of its largest member (simplifies array stride)
-        if self.size % self.largest_field > 0:
+        if self.size > 0 and self.size % self.largest_field > 0:
             self.size += self.largest_field - self.size % self.largest_field
         registry.add_struct(self)
 
@@ -141,11 +145,16 @@ def validate_struct(struct, registry=TypeRegistry()):
         if field.default is not None and not field_is_primitive(field, registry):
             raise SchemaError('Array/Struct fields cannot have default values: {}.{}'.format(struct.name, field.name))
 
-    indices.sort()
-    missing = set(range(indices[-1])) - set(indices)
-    if missing:
-        raise SchemaError('Struct {} is missing indices: {}'.format(struct.name, ', '.join(map(str, missing))))
+    if indices:
+        indices.sort()
+        missing = set(range(indices[-1])) - set(indices)
+        if missing:
+            raise SchemaError('Struct {} is missing indices: {}'.format(struct.name, ', '.join(map(str, missing))))
 
-    for name, count in Counter(names).items():
-        if count > 1:
-            raise SchemaError('Field cannot be repeated within a struct: {}.{}'.format(struct.name, name))
+        for name, count in Counter(names).items():
+            if count > 1:
+                raise SchemaError('Field cannot be repeated within a struct: {}.{}'.format(struct.name, name))
+
+        for index, count in Counter(indices).items():
+            if count > 1:
+                raise SchemaError('Index cannot be repeated within a struct: {}.{}'.format(struct.name, index))
