@@ -45,5 +45,3 @@ private:
     bool _first_silo;
     P::Sync::SpinLock _lock;
 };
-
-

@@ -1,5 +1,5 @@
 class: TestRpc
-include: test_rpc_defs.hpp
+include: test_rpc.vproto.hpp
 api_version: 1
 namespaces: []
 methods:

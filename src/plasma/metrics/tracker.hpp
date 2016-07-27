@@ -9,6 +9,7 @@
 #include "plasma/utils/compiler.hpp"
 #include "plasma/utils/assert.hpp"
 #include "plasma/data/ilist.hpp"
+#include "tracker.vproto.hpp"
 
 namespace P { namespace Metrics {
 
@@ -29,41 +30,12 @@ public:
     }
     IList *get_list();
 
-    //---RPC-functions---
-    struct GetGenerationsParams {
-
-    };
-    struct GetGenerationsResult {
-        uint64_t update_generation;
-        uint64_t delete_generation;
-    };
-    void get_generations(GetGenerationsParams *params, GetGenerationsResult *result);
-
-    struct GetModifiedParams {
-        uint64_t delete_generation;
-        uint64_t from_generation;
-        void *cookie;
-    };
-    struct GetModifiedResult {
-        bool success; // fails if a deletion happened during sync. requires a re-sync.
-        uint16_t count;
-        void *cookie; // null value indicates end of list.
-        byte data[];
-    };
-    void get_modified(GetModifiedParams *params, GetModifiedResult *result, uint16_t *res_len);
-
-    struct GetDeletionsParams {
-        uint64_t from_generation;
-    };
-    struct GetDeletionsResult {
-        bool success; // fails if list has wrapped-around. requires re-sync.
-        bool has_more;
-        uint16_t count;
-        Object *objects[];
-    };
-    void get_deletions(GetDeletionsParams *params, GetDeletionsResult *result, uint16_t *res_len);
-
     static Tracker *get_current();
+
+    //---RPC-functions---
+    void get_generations(GetGenerationsParams::RootReader *params, GetGenerationsResult::RootBuilder *result);
+    void get_modified(GetModifiedParams::RootReader *params, GetModifiedResult::RootBuilder *result, uint16_t *res_len);
+    void get_deletions(GetDeletionsParams::RootReader *params, GetDeletionsResult::RootBuilder *result, uint16_t *res_len);
 
 private:
     uint64_t _update_generation; // updated on every metric change or addition of an object.

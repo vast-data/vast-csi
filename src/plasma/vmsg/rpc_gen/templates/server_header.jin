@@ -27,7 +27,7 @@ public:
     virtual FiberGroupId get_op_fiber_group(uint8_t op_id) override;
     virtual void run_op(uint8_t op_id, void *request, uint16_t request_len, void *reply, uint16_t *reply_len) override;
 {% for method in server.methods %}
-    virtual void {{ method.name }}({{ method.arg }} *args, uint16_t request_len, {{ method.res }} *res, uint16_t *reply_len) = 0;
+    virtual void {{ method.name }}({{ method.arg }}::RootReader *args, uint16_t request_len, {{ method.res }}::RootBuilder *res, uint16_t *reply_len) = 0;
 {% endfor %}
 };
 

@@ -1,0 +1,34 @@
+$namespace P::Metrics
+
+struct GetGenerationsParams {
+
+};
+
+struct GetGenerationsResult {
+    @0 update_generation uint64_t;
+    @1 delete_generation uint64_t;
+};
+
+struct GetModifiedParams {
+    @0 delete_generation uint64_t;
+    @1 from_generation uint64_t;
+    @2 cookie uint64_t;
+};
+
+struct GetModifiedResult {
+    @0 success bool; // fails if a deletion happened during sync. requires a re-sync.
+    @1 count uint16_t; // number of objects returned.
+    @2 cookie uint64_t; // null value indicates end of list.
+    @3 data byte[448]; // 512 (max rpc size) - 32 (vmsg header) - 8 (array ptr) - 8 (struct root) - 16 (other fields)
+};
+
+struct GetDeletionsParams {
+    @0 from_generation uint64_t;
+};
+
+struct GetDeletionsResult {
+    @0 success bool; // fails if a deletion happened during sync. requires a re-sync.
+    @1 has_more bool;
+    @2 count uint16_t; // number of objects returned.
+    @3 objects uint64_t[58]; // 512 (max rpc size) - 32 (vmsg header) - 8 (struct root) - 4 (other fields) = 468; 468 / 8 = 58.5
+};

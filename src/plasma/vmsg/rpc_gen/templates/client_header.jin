@@ -22,10 +22,10 @@ class {{ server.name }}Client {
 public:
     void init(P::VMsg::VMsg *vmsg);
 {% for method in server.methods %}
-    {{ method.arg }} *alloc_{{ method.name }}();
-    P::VMsg::VMsgRes {{ method.name }}_sync(P::VMsg::ModuleGUID dest, {{ method.arg }} *args, {{ method.res }} **reply, uint64_t timeout_usec = P::VMsg::DEFUALT_MSG_TIMEOUT_USEC, uint16_t request_len = sizeof({{ method.arg }}), uint32_t *reply_len = nullptr);
-    P::VMsg::VMsgRes {{ method.name }}_async(P::VMsg::ModuleGUID dest, {{ method.arg }} *args, P::VMsg::VMsgFutureRes<{{ method.res }}> **future, uint64_t timeout_usec = P::VMsg::DEFUALT_MSG_TIMEOUT_USEC, uint16_t request_len = sizeof({{ method.arg }}));
-    void free_{{ method.name }}({{ method.res }} *res);
+    {{ method.arg }}::RootBuilder *alloc_{{ method.name }}();
+    P::VMsg::VMsgRes {{ method.name }}_sync(P::VMsg::ModuleGUID dest, {{ method.arg }}::RootBuilder *args, {{ method.res }}::RootReader **reply, uint64_t timeout_usec = P::VMsg::DEFUALT_MSG_TIMEOUT_USEC, uint16_t request_len = sizeof({{ method.arg }}::RootBuilder), uint32_t *reply_len = nullptr);
+    P::VMsg::VMsgRes {{ method.name }}_async(P::VMsg::ModuleGUID dest, {{ method.arg }}::RootBuilder *args, P::VMsg::VMsgFutureRes<{{ method.res }}::RootReader> **future, uint64_t timeout_usec = P::VMsg::DEFUALT_MSG_TIMEOUT_USEC, uint16_t request_len = sizeof({{ method.arg }}::RootBuilder));
+    void free_{{ method.name }}({{ method.res }}::RootReader *res);
 {% endfor %}
 private:
     P::VMsg::VMsg *_vmsg;

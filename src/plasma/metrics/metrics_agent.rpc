@@ -1,15 +1,20 @@
 class: MetricsAgent
-include: tracker.hpp
+include: tracker.vproto.hpp
 api_version: 1
 namespaces: ["P", "Metrics"]
 methods:
 - method: get_generations
   op_id: 1
   fiber_group: P
-  arg: Tracker::GetGenerationsParams
-  res: Tracker::GetGenerationsResult
+  arg: GetGenerationsParams
+  res: GetGenerationsResult
 - method: get_modified
   op_id: 2
   fiber_group: P
-  arg: Tracker::GetModifiedParams
-  res: Tracker::GetModifiedResult
+  arg: GetModifiedParams
+  res: GetModifiedResult
+- method: get_deletions
+  op_id: 3
+  fiber_group: P
+  arg: GetDeletionsParams
+  res: GetDeletionsResult

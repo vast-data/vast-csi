@@ -3,6 +3,7 @@
 #pragma once
 
 #include "metrics_agent.rpc.server.hpp"
+#include "tracker.hpp"
 
 namespace P { namespace Metrics {
 
@@ -17,11 +18,12 @@ public:
     Metrics::Tracker tracker;
 
 private:
-    void get_generations(Tracker::GetGenerationsParams *args, uint16_t request_len,
-                         Tracker::GetGenerationsResult *res, uint16_t *reply_len);
-    void get_modified(Tracker::GetModifiedParams *args, uint16_t request_len,
-                      Tracker::GetModifiedResult *res, uint16_t *reply_len);
-
+    void get_generations(Metrics::GetGenerationsParams::RootReader *args, uint16_t request_len,
+                         Metrics::GetGenerationsResult::RootBuilder *res, uint16_t *reply_len);
+    void get_modified(Metrics::GetModifiedParams::RootReader *args, uint16_t request_len,
+                      Metrics::GetModifiedResult::RootBuilder *res, uint16_t *reply_len);
+    void get_deletions(Metrics::GetDeletionsParams::RootReader *args, uint16_t request_len,
+                       Metrics::GetDeletionsResult::RootBuilder *res, uint16_t *reply_len);
 };
 
 }}

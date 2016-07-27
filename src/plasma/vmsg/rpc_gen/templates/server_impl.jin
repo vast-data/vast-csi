@@ -34,9 +34,13 @@ void {{ server.name }}Server::run_op(uint8_t op_id, void *request, uint16_t requ
 {
     switch ((ops)op_id) {
         {% for method in server.methods -%}
-        case {{ method.name.upper() }}:
-            {{ method.name }}(({{ method.arg }} *)request, request_len, ({{ method.res }} *)reply, reply_len);
+        case {{ method.name.upper() }}: {
+            {{ method.res }}::RootBuilder *{{ method.name }}_reply = ({{ method.res }}::RootBuilder*) reply;
+            {{ method.name }}_reply->init();
+            *reply_len = sizeof({{ method.res }}::RootBuilder);
+            {{ method.name }}(({{ method.arg }}::RootReader *)request, request_len, {{ method.name }}_reply, reply_len);
             break;
+        }
         {% endfor -%}
         default:
             PANIC("invalid op id " << op_id);

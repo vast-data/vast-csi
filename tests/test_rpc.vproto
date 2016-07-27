@@ -1,0 +1,19 @@
+
+struct AddArgs {
+    @0 a uint64_t;
+    @1 b uint64_t;
+};
+
+struct AddRes {
+    @0 sum uint64_t;
+};
+
+struct MultiplyArgs {
+    @0 a uint64_t;
+    @1 b uint64_t;
+    @2 c uint64_t;
+};
+
+struct MultiplyRes {
+    @0 sum uint64_t;
+};

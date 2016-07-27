@@ -103,11 +103,15 @@ TEST(TestMetricsTracker, test_get_generations)
     Tracker tracker;
     tracker.init();
 
-    Tracker::GetGenerationsParams params;
-    Tracker::GetGenerationsResult result;
-    tracker.get_generations(&params, &result);
-    ASSERT_EQ(result.update_generation, 0);
-    ASSERT_EQ(result.delete_generation, 0);
+    GetGenerationsParams::RootBuilder params;
+    GetGenerationsResult::RootBuilder result;
+    params.init();
+    result.init();
+
+    tracker.get_generations(params.as_reader(), &result);
+    auto result_reader = result.as_reader();
+    ASSERT_EQ(result_reader->get_update_generation(), 0);
+    ASSERT_EQ(result_reader->get_delete_generation(), 0);
 
     NS1::NS2::TestDriveMetrics drive1;
     NS1::NS2::TestDriveMetrics drive2;
@@ -115,16 +119,16 @@ TEST(TestMetricsTracker, test_get_generations)
     drive1.init_with_tracker(&tracker, nullptr, "drive1");
     drive2.init_with_tracker(&tracker, nullptr, "drive2");
 
-    tracker.get_generations(&params, &result);
-    ASSERT_EQ(result.update_generation, 2);
-    ASSERT_EQ(result.delete_generation, 0);
+    tracker.get_generations(params.as_reader(), &result);
+    ASSERT_EQ(result_reader->get_update_generation(), 2);
+    ASSERT_EQ(result_reader->get_delete_generation(), 0);
 
     drive1.destroy();
     drive2.destroy();
 
-    tracker.get_generations(&params, &result);
-    ASSERT_EQ(result.update_generation, 2);
-    ASSERT_EQ(result.delete_generation, 2);
+    tracker.get_generations(params.as_reader(), &result);
+    ASSERT_EQ(result_reader->get_update_generation(), 2);
+    ASSERT_EQ(result_reader->get_delete_generation(), 2);
 
     tracker.destroy();
 }
@@ -143,43 +147,48 @@ TEST(TestMetricsTracker, test_get_modified)
     drive2.set_reads(4);
 
     // test fetching all objects from the start
-    Tracker::GetModifiedParams params;
-    params.cookie = nullptr;
-    params.delete_generation = 666;
-    params.from_generation = 0;
-    Tracker::GetModifiedResult *result = (Tracker::GetModifiedResult*) malloc(P::VMsg::RPC_BUFFER_SIZE);
+    GetModifiedParams::RootBuilder params;
+    params.init();
+    params.set_cookie(0);
+    params.set_delete_generation(666);
+    params.set_from_generation(0);
+    GetModifiedResult::RootBuilder result;
+    result.init();
+    GetModifiedResult::RootReader *result_reader = result.as_reader();
     uint16_t res_len;
-    tracker.get_modified(&params, result, &res_len);
-    ASSERT_EQ(result->success, false);
+    tracker.get_modified(params.as_reader(), &result, &res_len);
+    ASSERT_EQ(result_reader->get_success(), false);
 
-    params.delete_generation = 0;
-    tracker.get_modified(&params, result, &res_len);
-    ASSERT_EQ(result->success, true);
-    ASSERT_EQ(result->cookie, nullptr);
-    ASSERT_EQ(result->count, 2);
-    ASSERT_EQ(res_len, sizeof(NS1::NS2::TestDriveMetricsClone) * 2 + sizeof(Tracker::GetModifiedResult));
+    params.set_delete_generation(0);
+    tracker.get_modified(params.as_reader(), &result, &res_len);
+    ASSERT_EQ(result_reader->get_success(), true);
+    ASSERT_EQ(result_reader->get_cookie(), 0);
+    ASSERT_EQ(result_reader->get_count(), 2);
 
-    NS1::NS2::TestDriveMetricsClone *drive1clone = (NS1::NS2::TestDriveMetricsClone*) result->data;
-    NS1::NS2::TestDriveMetricsClone *drive2clone = (NS1::NS2::TestDriveMetricsClone*) (result->data + sizeof(NS1::NS2::TestDriveMetricsClone));
+    NS1::NS2::TestDriveMetricsClone *drive1clone = (NS1::NS2::TestDriveMetricsClone*) result_reader->get_data();
+    NS1::NS2::TestDriveMetricsClone *drive2clone = (NS1::NS2::TestDriveMetricsClone*) (result_reader->get_data() + sizeof(NS1::NS2::TestDriveMetricsClone));
     ASSERT_EQ(drive1clone->address, &drive1);
     ASSERT_EQ(drive1clone->reads, 3);
     ASSERT_EQ(drive2clone->reads, 4);
 
     // test fetching only modified objects
-    Tracker::GetGenerationsParams gen_params;
-    Tracker::GetGenerationsResult gen_result;
-    tracker.get_generations(&gen_params, &gen_result);
+    GetGenerationsParams::RootBuilder gen_params;
+    GetGenerationsResult::RootBuilder gen_result;
+    auto gen_result_reader = gen_result.as_reader();
+    gen_params.init();
+    gen_result.init();
+    tracker.get_generations(gen_params.as_reader(), &gen_result);
 
     drive2.set_reads(5);
-    params.from_generation = gen_result.update_generation;
-    tracker.get_modified(&params, result, &res_len);
-    ASSERT_EQ(result->success, true);
-    ASSERT_EQ(result->count, 1);
-    drive2clone = (NS1::NS2::TestDriveMetricsClone*) result->data;
+    params.set_from_generation(gen_result_reader->get_update_generation());
+    tracker.get_modified(params.as_reader(), &result, &res_len);
+    ASSERT_EQ(result_reader->get_success(), true);
+    ASSERT_EQ(result_reader->get_count(), 1);
+    drive2clone = (NS1::NS2::TestDriveMetricsClone*) result_reader->get_data();
     ASSERT_EQ(drive2clone->address, &drive2);
 
-    tracker.get_generations(&gen_params, &gen_result);
-    params.from_generation = gen_result.update_generation;
+    tracker.get_generations(gen_params.as_reader(), &gen_result);
+    params.set_from_generation(gen_result_reader->get_update_generation());
 
     // test fetching many objects
     NS1::NS2::TestDriveMetrics drives[100];
@@ -190,20 +199,20 @@ TEST(TestMetricsTracker, test_get_modified)
         sum += i;
     }
 
-    int drives_per_msg = (P::VMsg::RPC_BUFFER_SIZE - offsetof(Tracker::GetModifiedResult, data)) / sizeof(NS1::NS2::TestDriveMetricsClone);
+    int drives_per_msg = result_reader->get_data_count() / sizeof(NS1::NS2::TestDriveMetricsClone);
     NS1::NS2::TestDriveMetricsClone* driveXclone;
 
     do {
-        tracker.get_modified(&params, result, &res_len);
-        if (result->cookie != nullptr)
-            ASSERT_EQ(result->count, drives_per_msg);
-        ASSERT_EQ(result->success, true);
-        LOOP(result->count, i) {
-            driveXclone = (NS1::NS2::TestDriveMetricsClone*) (result->data + sizeof(NS1::NS2::TestDriveMetricsClone) * i);
+        tracker.get_modified(params.as_reader(), &result, &res_len);
+        if (result_reader->get_cookie() != 0)
+            ASSERT_EQ(result_reader->get_count(), drives_per_msg);
+        ASSERT_EQ(result_reader->get_success(), true);
+        LOOP(result_reader->get_count(), i) {
+            driveXclone = (NS1::NS2::TestDriveMetricsClone*) (result_reader->get_data() + sizeof(NS1::NS2::TestDriveMetricsClone) * i);
             sum -= driveXclone->reads;
         }
-        params.cookie = result->cookie;
-    } while(result->cookie != nullptr);
+        params.set_cookie(result_reader->get_cookie());
+    } while(result_reader->get_cookie() != 0);
     ASSERT_EQ(sum, 0);
 
     drive1.destroy();
@@ -212,8 +221,6 @@ TEST(TestMetricsTracker, test_get_modified)
         drives[i].destroy();
     }
     tracker.destroy();
-
-    free(result);
 }
 
 TEST(TestMetricsTracker, test_get_deletions)
@@ -229,33 +236,34 @@ TEST(TestMetricsTracker, test_get_deletions)
     drive2.init_with_tracker(&tracker, nullptr, "drive2");
     drive3.init_with_tracker(&tracker, nullptr, "drive3");
 
-    Tracker::GetDeletionsParams params;
-    params.from_generation = 0;
-    Tracker::GetDeletionsResult *result = (Tracker::GetDeletionsResult*) malloc(P::VMsg::RPC_BUFFER_SIZE);
+    GetDeletionsParams::RootBuilder params;
+    params.init();
+    params.set_from_generation(0);
+    GetDeletionsResult::RootBuilder result;
+    result.init();
+    auto result_reader = result.as_reader();
     uint16_t res_len;
-    tracker.get_deletions(&params, result, &res_len);
-    ASSERT_EQ(result->success, true);
-    ASSERT_EQ(result->has_more, false);
-    ASSERT_EQ(result->count, 0);
+    tracker.get_deletions(params.as_reader(), &result, &res_len);
+    ASSERT_EQ(result_reader->get_success(), true);
+    ASSERT_EQ(result_reader->get_has_more(), false);
+    ASSERT_EQ(result_reader->get_count(), 0);
 
     drive1.destroy();
     drive2.destroy();
-    tracker.get_deletions(&params, result, &res_len);
-    ASSERT_EQ(result->success, true);
-    ASSERT_EQ(result->has_more, false);
-    ASSERT_EQ(result->count, 2);
+    tracker.get_deletions(params.as_reader(), &result, &res_len);
+    ASSERT_EQ(result_reader->get_success(), true);
+    ASSERT_EQ(result_reader->get_has_more(), false);
+    ASSERT_EQ(result_reader->get_count(), 2);
 
     drive3.destroy();
-    params.from_generation = 2;
-    tracker.get_deletions(&params, result, &res_len);
-    ASSERT_EQ(result->success, true);
-    ASSERT_EQ(result->has_more, false);
-    ASSERT_EQ(result->count, 1);
-    ASSERT_EQ(result->objects[0], &drive3);
+    params.set_from_generation(2);
+    tracker.get_deletions(params.as_reader(), &result, &res_len);
+    ASSERT_EQ(result_reader->get_success(), true);
+    ASSERT_EQ(result_reader->get_has_more(), false);
+    ASSERT_EQ(result_reader->get_count(), 1);
+    ASSERT_EQ(*result_reader->get_objects(0), (uint64_t) &drive3);
 
     tracker.destroy();
-
-    free(result);
 }
 
 int main(int argc, char **argv)
