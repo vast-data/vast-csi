@@ -192,7 +192,8 @@ void Silo::halt()
     _trace_dumper.stop();
     _trace_dumper.wait();
 
-    pthread_kill(_pthread, SIGSTOP);
+    if (_pthread)
+        pthread_kill(_pthread, SIGSTOP);
 }
 
 void Silo::destroy()
