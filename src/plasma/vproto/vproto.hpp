@@ -24,7 +24,7 @@ static_assert(sizeof(StructHeader) == 8, "sizeof(StructHeader) should be 8 bytes
 
 class ArrayPtr {
 public:
-    void init(uint32_t offset, uint32_t size, uint8_t count, uint8_t next_index)
+    void init(uint32_t offset, uint32_t size, uint16_t count, uint8_t next_index)
     {
         _offset = offset;
         _count = count;
@@ -33,7 +33,7 @@ public:
     }
 
     uint32_t get_offset() { return _offset; }
-    uint8_t get_count() { return _count; }
+    uint16_t get_count() { return _count; }
     uint32_t get_size() { return _size; }
     uint8_t get_next_index() { return _next_index; }
 
