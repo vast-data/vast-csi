@@ -202,6 +202,10 @@ static void error_handler(int sig)
 {
     int exit_code = 0;
     switch(sig) {
+    case SIGTERM:
+        exit_code = 0;
+        printf("===TERMINATED===\n");
+        break;
     case SIGSEGV:
         exit_code = 1;
         printf("===SEGFAULT===\n");
@@ -210,9 +214,9 @@ static void error_handler(int sig)
         exit_code = 2;
         printf("===PANIC===\n");
         break;
-    case SIGTERM:
-        exit_code = 0;
-        printf("===TERMINATED===\n");
+    case SIGINT:
+        exit_code = 3;
+        printf("===INTERRUPT===\n");
         break;
     default:
         PANIC();

@@ -221,8 +221,9 @@ TEST(Trace, dumper)
 
 void trace_func()
 {
-    auto s1 = "abcdefghijklmnopqrstuvwxyz";
-    auto s2 = "abcdefghijklmnopqrstuvwxyz123456789";
+    const char *const_s1 = "abcdefghijklmnopqrstuvwxyz";
+    char *s1 = (char*) const_s1;
+    const char *s2 = "abcdefghijklmnopqrstuvwxyz123456789";
     LOOP(1000000, i)
         PT_INFO("Kawabanga: %ld %s!", i, i % 2 ? s1 : s2);
 }
@@ -260,8 +261,6 @@ TEST(Trace, concurrent_dumper)
 
 TEST(Trace, file)
 {
-    ensure_directory_exists(DATADIR);
-
     static TraceInfo TRACE_SECTION trace_info = {
         "Test trace file.", __FILE__, "<temp>", __LINE__, __func__
     };
@@ -279,6 +278,9 @@ TEST(Trace, file)
 
 int main(int argc, char **argv)
 {
+    ensure_directory_exists("data");
+    ensure_directory_exists(DATADIR);
+
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }

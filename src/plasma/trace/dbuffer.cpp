@@ -46,9 +46,11 @@ void Buffer::read(uint32_t offset, void *data OUT, P_DBUFFER_LENGTH_TYPE length)
 void Buffer::reset()
 {
     _write_index = 0;
+    P_DBUFFER_LENGTH_TYPE *mem_as_length = (P_DBUFFER_LENGTH_TYPE*) _mem;
+    *mem_as_length = 0;
 }
 
-Buffer *DBuffer::get_buffer(uint64_t generation)
+Buffer *DBuffer::get_buffer(uint32_t generation)
 {
     return &_buffers[generation % _buffer_count];
 }

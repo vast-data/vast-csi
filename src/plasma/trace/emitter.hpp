@@ -136,7 +136,7 @@ private:
         _write_index += length;
     }
 
-    void trace_emit_param(const char *value)
+    void trace_emit_param(char *value)
     {
         size_t length = strnlen(value, P_TRACE_MAX_STR_LEN);
         P_TRACE_STR_LEN_TYPE short_length = (P_TRACE_STR_LEN_TYPE) length;
@@ -150,6 +150,11 @@ private:
             emit_param(&short_length, sizeof(short_length));
             emit_param(value, short_length);
         }
+    }
+
+    void trace_emit_param(const char *value)
+    {
+        trace_emit_param((char*) value);
     }
 
     template<typename T>

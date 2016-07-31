@@ -43,7 +43,7 @@ public:
     void flush();
 
 private:
-    Buffer *get_buffer(uint64_t generation);
+    Buffer *get_buffer(uint32_t generation);
 
     Buffer *_buffers;
     std::atomic<uint32_t> _generation;

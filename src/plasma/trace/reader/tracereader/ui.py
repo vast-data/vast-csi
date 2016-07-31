@@ -79,6 +79,9 @@ def paths_to_files(paths):
             yield path
 
 def run(paths, verbose):
+    for path in paths_to_files(paths):
+        print("found {}".format(path))
+
     for trace in merge_sort(map(safe_handle_path, paths_to_files(paths)),
                             lambda trace: trace.header.time):
         print_trace(trace, verbose)
