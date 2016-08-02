@@ -116,8 +116,15 @@ void Dumper::main()
 {
     _running = true;
     while (!_stop) {
-        if (!iteration(false))
+        if (!iteration(false)) {
+            LOOP((byte)ComponentId::COUNT, i) {
+                if (_files[i] == nullptr) {
+                    continue;
+                }
+                _files[i]->flush();
+            }
             usleep(IDLE_SLEEP_MICROS);
+        }
     }
     while (iteration(true)) {
 

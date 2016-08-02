@@ -97,6 +97,12 @@ void TraceFile::create_file()
     write_header();
 }
 
+void TraceFile::flush()
+{
+    if (_file)
+        fflush(_file);
+}
+
 void TraceFile::close_file()
 {
     ASSERT_EQUAL(fclose(_file), 0);

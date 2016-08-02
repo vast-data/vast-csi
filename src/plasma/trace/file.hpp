@@ -29,6 +29,7 @@ public:
     void set_prefix(const char *prefix);
     void destroy();
     void emit(TraceRecord *record, P_DBUFFER_LENGTH_TYPE length);
+    void flush();
 
 private:
     void create_file();
