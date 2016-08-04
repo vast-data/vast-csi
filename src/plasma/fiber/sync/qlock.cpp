@@ -21,8 +21,10 @@ void Qlock::lock()
     if (is_locked()) {
         ASSERT(_owner != Fiber::get_current());
         Fiber::suspend_and_queue(&_anchor);
+        ASSERT(_owner == Fiber::get_current());
+    } else {
+        _owner = Fiber::get_current();
     }
-    _owner = Fiber::get_current();
 }
 
 bool Qlock::trylock()
