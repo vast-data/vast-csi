@@ -43,6 +43,13 @@ public:
     */
     void destroy();
 
+
+    /*!
+    * Return the object located at the given index
+    */
+    T *index_to_address(Index idx) { return &_mem[idx]; }
+
+
 private:
     T *_mem;
 

@@ -9,8 +9,8 @@
 #include <string.h>
 #include "types.hpp"
 
-#define MIN(a, b) ((a) > (b) ? (b) : (a))
-#define MAX(a, b) ((a) < (b) ? (b) : (a))
+#define P_MIN(a, b) ((a) > (b) ? (b) : (a))
+#define P_MAX(a, b) ((a) < (b) ? (b) : (a))
 
 #define NUM_ELEMENTS(array) (sizeof(array) / sizeof((array)[0]))
 #define SAFE_DESTROY(X, FUNC) if (X) FUNC(X)

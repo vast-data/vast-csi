@@ -161,7 +161,7 @@ private:
     void trace_emit_param(T arg)
     {
         // temporary workaround for ORION-35
-        emit_param(&arg, MAX(4, sizeof(T)));
+        emit_param(&arg, P_MAX(4, sizeof(T)));
     }
 
     void trace_emit()

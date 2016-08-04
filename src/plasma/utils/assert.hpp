@@ -39,6 +39,11 @@
 #define ASSERT_NOT_NULL(P)                                              \
     ASSERT(P != nullptr, MACRO_STRINGIFY(P) " is NULL")
 
+// assert for functions that set errno
+#define ASSERT_ERRNO(expr, ...)                                        \
+    ASSERT(expr, "errno: " << errno << " "  __VA_ARGS__)
+
+
 #ifdef DEBUG
   #define DEBUG_ASSERT(expr, ...) ASSERT(expr, ##__VA_ARGS__)
   #define DEBUG_ASSERT_OP(left, operator, right, ...) \

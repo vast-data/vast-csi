@@ -63,6 +63,41 @@ TEST(TestFiberSync, test_qlock)
     P::Scheduler::destroy();
 }
 
+static void dumb_qlocker(void *lock_arg)
+{
+    static int count = 0;
+    Qlock *lock = (Qlock*)lock_arg;
+
+    LOOP(100000, i) {
+        lock->lock();
+        count++;
+        P::Fiber::yield();
+        ASSERT_EQ(count, 1);
+        count--;
+        lock->unlock();
+    }
+}
+
+TEST(TestFiberSync2, test_qlock)
+{
+    Qlock lock;
+    lock.init();
+
+    P::Scheduler::init(&scheduler_config);
+
+    P::Fiber::init(FG_A, dumb_qlocker, &lock, false);
+    P::Fiber::init(FG_A, dumb_qlocker, &lock, false);
+    P::Fiber::init(FG_A, dumb_qlocker, &lock, false);
+    P::Fiber::init(FG_A, dumb_qlocker, &lock, false);
+    P::Fiber::init(FG_A, dumb_qlocker, &lock, false);
+
+    P::Scheduler::run();
+
+    lock.destroy();
+
+    P::Scheduler::destroy();
+}
+
 static int rwlock_state = 0;
 
 static void write_locker(void *lock_arg)

@@ -16,26 +16,19 @@
 #include <libaio.h>
 #include <sys/uio.h>
 
-#include "../memory/atomic_pool.hpp"
+#include "plasma/utils/io.hpp"
+#include "plasma/memory/atomic_pool.hpp"
 #include "plasma/fiber/sync/future_res.hpp"
 #include "plasma/fiber/sync/sem.hpp"
 #include "io_provider.hpp"
 
 namespace P {
 
-// This will probably move to a more general location...
-typedef uint64_t Baddr;
-typedef struct iovec IOVec;
-
 class IOProvider;
-
-typedef struct IOVecs {
-    uint32_t count;
-    IOVec *iovecs;
-} IOVecs;
 
 #define IO_BADDRS_MAX_COUNT 64
 
+typedef uint64_t Baddr;
 typedef struct Baddrs {
     uint32_t count; // We allow a maximum of IO_BADDRS_MAX_COUNT target baddrs for a single IO. Limiting stack allocated structures.
     Baddr *baddrs;

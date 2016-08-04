@@ -15,7 +15,7 @@
 #include "plasma/memory/alloc.hpp"
 #include "plasma/fiber/fiber.hpp"
 #include "plasma/control/agent.hpp"
-#include "../internal.hpp"
+#include "plasma/internal.hpp"
 #include "globals.hpp"
 #include "config.hpp"
 #include "defs.hpp"

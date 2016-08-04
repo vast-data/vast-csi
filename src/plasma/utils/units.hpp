@@ -1,2 +1,6 @@
 #define UNIT_KiB (1024)
 #define UNIT_MiB (UNIT_KiB * 1024)
+#define MAX_INT32  (0x7fffffff)
+#define MAX_UINT32 (0xffffffff)
+#define MAX_INT64  (0x7fffffffffffffff)
+#define MAX_UINT64 (0xffffffffffffffff)

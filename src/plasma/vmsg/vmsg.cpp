@@ -232,7 +232,7 @@ void VMsg::add_piggyback_acks(VMsgHeader *header, const SiloId silo_id)
         return;
     }
     // more than 1 ack to send, add piggyback information
-    uint16_t acks_to_send = MIN(ctx->n_acks[env_id], free_space / sizeof(MsgId));
+    uint16_t acks_to_send = P_MIN(ctx->n_acks[env_id], free_space / sizeof(MsgId));
     PiggybackData *data = VMsgPool::msg_header_to_piggyback(header);
     data->type = PiggybackType::MSG_ACKS;
     data->acks.n_acks = acks_to_send;

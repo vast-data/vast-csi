@@ -55,6 +55,8 @@ public:
     }
     static void NO_RETURN schedule();
 
+    Index get_running_fiber_count() const { return _running_fiber_count; }
+
 private:
     Pool *find_or_allocate_stacks(SchedulerConfig *config, Index group_index, Index *partition OUT);
 

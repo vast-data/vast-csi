@@ -540,7 +540,7 @@ static TransportEvent::Type ibv_op_code_to_trans_event(ibv_wc_opcode opcode)
 int RDMATransport::tpoll(TransportEvent *events, uint32_t max_events)
 {
     struct ibv_wc wc_events[MAX_EVENTS_PER_POLL];
-    int n_events = ibv_poll_cq(_cq, MIN(NUM_ELEMENTS(wc_events), max_events), wc_events);
+    int n_events = ibv_poll_cq(_cq, P_MIN(NUM_ELEMENTS(wc_events), max_events), wc_events);
     if (n_events < 0) {
         PT_ERROR("ibv_poll_cq failed %d:%s", errno, strerror(errno));
         return -1;

@@ -27,7 +27,7 @@ uint64_t TimerQueues::sleep(SleepInterval interval)
 {
     TimerQueues *timer_queues = Scheduler::get()->get_timer_queues();
     uint64_t start_time = get_time_nano();
-    timer_queues->_wakeup_time = MIN(timer_queues->_wakeup_time, start_time + MICRO_TO_NANO(interval_to_micro[(byte) interval]));
+    timer_queues->_wakeup_time = P_MIN(timer_queues->_wakeup_time, start_time + MICRO_TO_NANO(interval_to_micro[(byte) interval]));
     Fiber::suspend_and_queue(&timer_queues->_queues[(byte) interval]);
     return (uint64_t) NANO_TO_MICRO(get_time_nano() - start_time);
 }
@@ -58,7 +58,7 @@ void TimerQueues::poll()
             if (fiber_wakeup <= time) {
                 Fiber::pop_and_resume(anchor);
             } else {
-                _wakeup_time = MIN(_wakeup_time, fiber_wakeup);
+                _wakeup_time = P_MIN(_wakeup_time, fiber_wakeup);
                 break;
             }
         }

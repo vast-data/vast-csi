@@ -10,6 +10,7 @@
 
 #define COMPONENT_LIST(X)                       \
     X(PLASMA),                                  \
+    X(NFS),                                     \
     X(COUNT)
 
 DEFINE_LOOKUP_PROTOTYPES(COMPONENT_LIST,
@@ -21,6 +22,8 @@ DEFINE_LOOKUP_PROTOTYPES(COMPONENT_LIST,
     X(P),                                    \
     X(P_IO_POLLING),                         \
     X(P_VMSG_POLLING),                       \
+    X(NFS_POLLING),                          \
+    X(PROTO),                                \
     X(TEST),                                 \
     X(I_TEST),                               \
     X(COUNT)

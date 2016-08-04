@@ -96,7 +96,7 @@ bool Dumper::iteration(bool force)
                 record.severity = Severity::SEVERITY_ERROR;
                 record.info_index = overflow_index;
                 uint32_t large_length = length; // temporary workaround for ORION-35
-                memcpy(record.params, &large_length, MAX(sizeof(large_length), 4));
+                memcpy(record.params, &large_length, P_MAX(sizeof(large_length), 4));
                 _files[i]->emit(&record, offsetof(TraceRecord, params) + sizeof(large_length));
                 break;
             }
@@ -140,6 +140,9 @@ void Dumper::start()
     _stop = false;
 
     LOOP((byte)ComponentId::COUNT, i) {
+        if (_files[i] == nullptr) {
+            continue;
+        }
         _running = true;
         const char *comp = component_id_to_string((ComponentId) i);
         snprintf(_file_prefixes[i], MAX_PREFIX_SIZE, "%s.%ld", comp, syscall(SYS_gettid));

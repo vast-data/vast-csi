@@ -54,7 +54,7 @@ void VMsgPool::init(VMsgConfiguration *modules_resources)
             uint32_t buffer_size = calc_buffer_size((BufferType)buffer_type);
             uint32_t n_buffers = calc_n_buffers((BufferType)buffer_type, &modules_resources->modules[j]);
             // allocate at least 1 buffer in order to avoid pool initialization checks all over the place
-            n_buffers = MAX(1, n_buffers);
+            n_buffers = P_MAX(1, n_buffers);
             pool->init(num_silos, BUFFER_CACHE_SIZE, n_buffers, buffer_size);
         }
     }
