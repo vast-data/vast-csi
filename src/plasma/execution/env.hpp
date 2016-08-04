@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <limits.h>
 #include <pthread.h>
+#include <plasma/net/connections_manager.hpp>
 #include "plasma/vmsg/vmsg.hpp"
 
 #include "plasma/utils/compiler.hpp"
@@ -24,6 +25,9 @@ namespace P {
 class Silo;
 namespace VMsg {
 class VMsg;
+}
+namespace Net {
+class ConnectionsManager;
 }
 
 enum class EnvState {
@@ -63,6 +67,7 @@ public:
     void set_state(EnvState state) { _state = state; }
     uint32_t get_num_silos() const { return _num_silos; }
     VMsg::VMsg *get_vmsg() const { return _vmsg; }
+    Net::ConnectionsManager *get_conn_mgr() const { return _conn_mgr; }
 
     void register_module(ModuleId id, ModuleFactory *factory);
     ModuleInterface *create_module(const char *name, ModuleId *id OUT);
@@ -74,6 +79,7 @@ private:
     void start();
     void wait_for_silos();
     void init_vmsg(Conf::Config *config, uint32_t n_silos);
+    void init_nfs(Conf::Config *config);
 
     ModuleFactory *_module_factory[(int)ModuleId::COUNT];
     char _data_dir[PATH_MAX];
@@ -85,6 +91,7 @@ private:
     Trace::Emitter _emitter;
     Trace::Dumper _dumper;
     VMsg::VMsg *_vmsg;
+    P::Net::ConnectionsManager *_conn_mgr;
 };
 
 }

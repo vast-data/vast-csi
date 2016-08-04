@@ -2,8 +2,11 @@
 #include <unistd.h>
 #include <signal.h>
 #include <pthread.h>
+#include <proto/nfs3/nfs_proto.hpp>
+#include "proto/nfs3/nfs_defs.hpp"
 #include "plasma/trace/emitter.hpp"
 #include "plasma/memory/alloc.hpp"
+#include "plasma/net/connections_manager.hpp"
 #include "plasma/utils/macros.hpp"
 #include "plasma/utils/assert.hpp"
 #include "plasma/utils/os.hpp"
@@ -127,6 +130,9 @@ void Env::init(Config *config)
     ConfigSetting *traces_setting = conf_lookup(config, "global_traces");
     _emitter.init(traces_setting, true);
     _dumper.init(traces_setting, &_emitter, _trace_dir);
+    _conn_mgr = new P::Net::ConnectionsManager();
+    _conn_mgr->init();
+    init_nfs(config);
 
     ConfigSetting *silos_setting = conf_lookup(config, "silos");
     ASSERT_NOT_NULL(silos_setting);
@@ -135,10 +141,8 @@ void Env::init(Config *config)
     _num_silos = (uint32_t) conf_setting_length(silos_setting);
     init_vmsg(config, _num_silos);
 
-
     _silos = new Silo*[_num_silos];
-    LOOP(_num_silos, i)
-    {
+    LOOP(_num_silos, i) {
         _silos[i] = new Silo();
         ConfigSetting *silo_setting = conf_setting_get_element(silos_setting, (uint32_t) i);
         ConfigSetting *silo_type_name_setting = conf_setting_lookup_required(silo_setting, "type");
@@ -161,6 +165,9 @@ void Env::destroy()
     _vmsg->stop();
     _vmsg->destroy();
     delete _vmsg;
+    _conn_mgr->stop();
+    _conn_mgr->destroy();
+    delete _conn_mgr;
 
     _dumper.stop();
     _dumper.wait();
@@ -173,6 +180,7 @@ void Env::start()
 {
     _emitter.set_global();
     _dumper.start();
+    _conn_mgr->start();
     _vmsg->start();
 
     PT_INFO("Env started!");
@@ -239,6 +247,8 @@ static void register_signals()
     signal(SIGSEGV, error_handler);
     signal(SIGABRT, error_handler);
     signal(SIGTERM, error_handler);
+    signal(SIGINT, error_handler);
+    signal(SIGPIPE, SIG_IGN);
 }
 
 void Env::run(const char *config_path)
@@ -257,6 +267,12 @@ void Env::run(const char *config_path)
     set_state(EnvState::RUN);
     wait_for_silos();
     destroy();
+}
+
+void Env::init_nfs(Conf::Config *config)
+{
+    ConfigSetting *nfs_setting = conf_lookup(config, "nfs3");
+    Nfs::NfsProto::global_init(nfs_setting, _conn_mgr);
 }
 
 }

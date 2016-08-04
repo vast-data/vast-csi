@@ -199,7 +199,7 @@ void VMsgTest::client_test()
     TestRpcClient client;
     client.init(Env::get()->get_vmsg());
 
-    static const uint64_t LOOPS = 300;
+    static const uint64_t LOOPS = 50;
     LOOP(LOOPS, i) {
         sync_call(&client, i, n_silos, SERVER_ENV_ID);
         sync_call(&client, i, n_silos, CLIENT_ENV_ID);

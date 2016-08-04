@@ -35,7 +35,8 @@ Available targets:
 3. cpptest - builds and invoke C++ tests.
 4. test_* - build and invoke C++ test executable.
 5. pytest - run python tests.
-6. docs - builds the documentation. The result is located at docs/html/index.html.
+6. nfstest - run nfs tests.
+7. docs - builds the documentation. The result is located at docs/html/index.html.
 
 Parameters
 ----------
@@ -86,6 +87,21 @@ murmur_env.Append(CFLAGS=['-Wno-cast-align',
                           '-Wno-shorten-64-to-32',
                           '-Wno-incompatible-pointer-types-discards-qualifiers'])
 murmur = murmur_env.Object(build_dir + '/src/plasma/third_party/murmur3/murmur3.c')
+
+c_env = env.Clone()
+c_env.Append(CFLAGS=['-Wno-cast-align',
+                     '-Wno-sign-conversion',
+                     '-Wno-shorten-64-to-32',
+                     '-Wno-incompatible-pointer-types-discards-qualifiers',
+                     '-Wno-unused-variable',
+                     '-Wno-switch-enum',
+                     '-Wno-zero-length-array',
+                     '-Wno-covered-switch-default',
+                     '-Wno-typedef-redefinition'])
+murmur = c_env.Object(DEFAULT_BUILD_DIR + '/src/plasma/third_party/murmur3/murmur3.c')
+rpc_xdr = c_env.Object(DEFAULT_BUILD_DIR + '/src/proto/nfs3/rpcgen/rpc_defs_xdr.c')
+mnt_xdr = c_env.Object(DEFAULT_BUILD_DIR + '/src/proto/nfs3/rpcgen/mnt3_xdr.c')
+nfs_xdr = c_env.Object(DEFAULT_BUILD_DIR + '/src/proto/nfs3/rpcgen/nfs3_xdr.c')
 
 VariantDir(build_dir + '/src', 'src')
 VariantDir(build_dir + '/tests', 'tests')
@@ -195,23 +211,27 @@ cpp_sources = [build_dir + '/' + i for i in RGlob('src', '*.cpp', [], ['src/plas
 cpp_sources.extend(rpc_sources)
 cpp_sources.append(build_dir + '/tests/test_module.cpp')
 cpp_sources.append(murmur)
+cpp_sources.append(rpc_xdr)
+cpp_sources.append(mnt_xdr)
+cpp_sources.append(nfs_xdr)
 cpp_lib = cpp_env.Library(target='dist/orion_cpp', source=cpp_sources)
 cpp_env.Depends(cpp_lib, LINKER_SCRIPT)
 cpp_env.Append(LIBS=[cpp_lib, 'unwind', 'config', 'libaio', 'rdmacm', 'ibverbs'])
 cpp_env.Program(target='dist/env', source=[build_dir + '/src/plasma/execution/main.cpp'])
 
-def AddCppTest(target, source, wrap=[]):
+def AddCppTest(target, source, wrap=[], group_alias='cpptest'):
     cpp_test_env = cpp_env.Clone()
     cpp_test_env.Append(LIBS=['gtest', 'rt'])
     cpp_test_env.Append(CPPPATH=[build_dir + '/tests'])
     for func in wrap:
         cpp_test_env.Append(LINKFLAGS='-Wl,-wrap,' + func)
     test = cpp_test_env.Program(target=target, source=source)
-    for alias in ['cpptest', 'test_' + target.split('/')[-1]]:
+    for alias in [group_alias, 'test_' + target.split('/')[-1]]:
         cpp_test_env.Alias(alias, test, test[0].abspath)
         cpp_test_env.AlwaysBuild(alias)
 
 env.Alias('cpptest', env.Command('<phony>', [], 'sudo modprobe siw'))
+env.Alias('cpptest', env.Command('<phony>', [], 'sudo rpcbind ; true'))
 
 AddCppTest(target='dist/tests/assert', source=[build_dir + '/tests/test_assert.cpp'])
 AddCppTest(target='dist/tests/pool', source=[build_dir + '/tests/test_pool.cpp'])
@@ -236,6 +256,9 @@ AddCppTest(target='dist/tests/metrics', source=[build_dir + '/tests/test_metrics
 AddCppTest(target='dist/tests/rdma_transport', source=[build_dir + '/tests/test_rdma_transport.cpp'])
 AddCppTest(target='dist/tests/vmsg', source=[build_dir + '/tests/vmsg_test.cpp', test_rpc_sources])
 AddCppTest(target='dist/tests/vproto', source=[build_dir + '/tests/test_vproto.cpp'])
+AddCppTest(target='dist/tests/nfs_rpc', source=[build_dir + '/tests/test_nfs_rpc.cpp'])
+AddCppTest(target='dist/tests/nfs', source=[build_dir + '/tests/test_nfs.cpp'], group_alias='nfstest')
 
+cpp_env.AlwaysBuild('nfstest')
 cpp_env.AlwaysBuild('cpptest')
 env.Alias('test', 'cpptest')

@@ -6,8 +6,10 @@
  */
 #pragma once
 
+#include "estore/estore.hpp"
 #include "module_interface.hpp"
 #include "plasma/execution/config.hpp"
+#include "proto/nfs3/nfs_proto.hpp"
 
 
 class IModule : public ModuleInterface {
@@ -16,4 +18,8 @@ public:
     virtual void start();
     static ModuleId get_id() { return ModuleId::I; }
     static const char *get_name() { return "I"; }
+
+private:
+    Nfs::NfsProto _nfs;
+    EStore::EStore _estore;
 };
