@@ -18,6 +18,7 @@ class EStore;
 namespace Nfs {
 
 class Rpc;
+class NlmServer;
 class MountServer;
 class NfsServer;
 
@@ -38,6 +39,7 @@ private:
     static Nfs::NfsConfig _nfs_conf;
     EStore::EStore *_estore;
     Rpc *_rpc;
+    NlmServer *_nlm_srv;
     MountServer *_mount_srv;
     NfsServer *_nfs_srv;
     uint64_t _last_req_time;  // nano

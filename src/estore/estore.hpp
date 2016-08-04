@@ -128,6 +128,7 @@ enum class EStoreRes {
     NOT_EMPTY,               // attempt to delete a non empty directory
     INVALID_ELEMENT_VERSION, // element version given to readdir does not match the current element version
     NOT_A_CONTAINER,         // request to readdir from an element that is not allowed to have children
+    LOCKED,                  // operation is prohibited by locks held by other owner
 };
 
 typedef uint64_t EHandle;
@@ -171,6 +172,18 @@ struct EStoreStats {
     // The number of free element slots in the element store.
     uint64_t free_elements;
 };
+
+
+struct LockInfo {
+    bool exclusive;
+    int32_t svid;
+    char *owner;
+    int32_t owner_len;
+    uint64_t start;
+    uint64_t end;
+};
+typedef struct LockInfo LockInfo;
+
 
 class EStore {
 public:
@@ -464,7 +477,12 @@ public:
      *         STALE in case the provided handle points to a non existing element
      */
     EStoreRes get_stats(OpCallback op_cb, void *cb_ctx, EHandle handle, EStoreStats *stats OUT, SystemAttr *attr OUT);
+    
+    EStoreRes lock(OpCallback op_cb, void *cb_ctx, EHandle handle, LockInfo *lock);
 
+    EStoreRes unlock(OpCallback op_cb, void *cb_ctx, EHandle handle, LockInfo *lock);
+
+    EStoreRes test_lock(OpCallback op_cb, void *cb_ctx, EHandle handle, LockInfo *lock, LockInfo *existing_lock OUT);
 
 private:
     P::Pool _data_pool;

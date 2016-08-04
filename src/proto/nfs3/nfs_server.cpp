@@ -3,6 +3,7 @@
 #include <proto/nfs3/rpcgen/nfs3.h>
 #include <plasma/utils/units.hpp>
 #include "nfs_server.hpp"
+#include "nfs_utils.hpp"
 #include "estore/estore.hpp"
 #include "nfs_defs.hpp"
 #include <cmath>
@@ -174,8 +175,8 @@ void NfsServer::set_xdr_procs(RpcRequest *request)
             break;
 
         case NFSPROC3_LOOKUP:
-            request->args.lookup.what.dir.data.data_val = request->args_buffer;
-            request->args.lookup.what.name = request->args_buffer + FHSIZE3;
+            request->args.lookup.what.dir.data.data_val = request->args_buffer_nfs.fh0;
+            request->args.lookup.what.name = request->args_buffer_nfs.name0;
             request->res.lookup.LOOKUP3res_u.resok.object.data.data_val = request->res_buffer;
             request->args_proc = (xdrproc_t)xdr_LOOKUP3args;
             request->res_proc = (xdrproc_t)xdr_LOOKUP3res;
@@ -203,72 +204,72 @@ void NfsServer::set_xdr_procs(RpcRequest *request)
             break;
 
         case NFSPROC3_WRITE:
-            request->args.write.file.data.data_val = request->args_buffer;
-            request->args.write.io_vecs.iovecs = (P::IOVec *)(request->args_buffer + FHSIZE3);
+            request->args.write.file.data.data_val = request->args_buffer_nfs_with_4k.fh;
+            request->args.write.io_vecs.iovecs = (P::IOVec *)(request->args_buffer_nfs_with_4k._4k);
             request->args_proc = (xdrproc_t)xdr_buffered_WRITE3args;
             request->res_proc = (xdrproc_t)xdr_WRITE3res;
             break;
 
         case NFSPROC3_CREATE:
-            request->args.create.where.dir.data.data_val = request->args_buffer;
-            request->args.create.where.name = request->args_buffer + FHSIZE3;
+            request->args.create.where.dir.data.data_val = request->args_buffer_nfs.fh0;
+            request->args.create.where.name = request->args_buffer_nfs.name0;
             request->res.create.CREATE3res_u.resok.obj.post_op_fh3_u.handle.data.data_val = request->res_buffer;
             request->args_proc = (xdrproc_t)xdr_CREATE3args;
             request->res_proc = (xdrproc_t)xdr_CREATE3res;
             break;
 
         case NFSPROC3_MKDIR:
-            request->args.mkdir.where.name = request->args_buffer;
-            request->args.mkdir.where.dir.data.data_val = request->args_buffer + NAME_MAX;
+            request->args.mkdir.where.name = request->args_buffer_nfs.name0;
+            request->args.mkdir.where.dir.data.data_val = request->args_buffer_nfs.fh0;
             request->res.mkdir.MKDIR3res_u.resok.obj.post_op_fh3_u.handle.data.data_val = request->res_buffer;
             request->args_proc = (xdrproc_t)xdr_MKDIR3args;
             request->res_proc = (xdrproc_t)xdr_MKDIR3res;
             break;
 
         case NFSPROC3_SYMLINK:
-            request->args.symlink.where.dir.data.data_val = request->args_buffer;
-            request->args.symlink.where.name = request->args_buffer + FHSIZE3;
-            request->args.symlink.symlink.symlink_data = request->args.symlink.where.name + NAME_MAX + 1;
+            request->args.symlink.where.dir.data.data_val = request->args_buffer_nfs_with_4k.fh;
+            request->args.symlink.where.name = request->args_buffer_nfs_with_4k.name;
+            request->args.symlink.symlink.symlink_data = request->args_buffer_nfs_with_4k._4k;
             request->res.symlink.SYMLINK3res_u.resok.obj.post_op_fh3_u.handle.data.data_val = request->res_buffer;
             request->args_proc = (xdrproc_t)xdr_SYMLINK3args;
             request->res_proc = (xdrproc_t)xdr_SYMLINK3res;
             break;
 
         case NFSPROC3_MKNOD:
-            request->args.mknod.where.dir.data.data_val = request->args_buffer;
-            request->args.mknod.where.name = request->args.mknod.where.dir.data.data_val + FHSIZE3;
+            request->args.mknod.where.dir.data.data_val = request->args_buffer_nfs.fh0;
+            request->args.mknod.where.name = request->args_buffer_nfs.name0;
             request->res.mknod.MKNOD3res_u.resok.obj.post_op_fh3_u.handle.data.data_val = request->res_buffer;
             request->args_proc = (xdrproc_t)xdr_MKNOD3args;
             request->res_proc = (xdrproc_t)xdr_MKNOD3res;
             break;
 
         case NFSPROC3_REMOVE:
-            request->args.remove.object.dir.data.data_val = request->args_buffer;
-            request->args.remove.object.name = request->args_buffer + FHSIZE3;
+            request->args.remove.object.dir.data.data_val = request->args_buffer_nfs.fh0;
+            request->args.remove.object.name = request->args_buffer_nfs.name0;
             request->args_proc = (xdrproc_t)xdr_REMOVE3args;
             request->res_proc = (xdrproc_t)xdr_REMOVE3res;
             break;
 
         case NFSPROC3_RMDIR:
-            request->args.rmdir.object.dir.data.data_val = request->args_buffer;
-            request->args.rmdir.object.name = request->args_buffer + FHSIZE3;
+            request->args.rmdir.object.dir.data.data_val = request->args_buffer_nfs.fh0;
+            request->args.rmdir.object.name = request->args_buffer_nfs.name0;
             request->args_proc = (xdrproc_t)xdr_RMDIR3args;
             request->res_proc = (xdrproc_t)xdr_RMDIR3res;
             break;
 
         case NFSPROC3_RENAME:
-            request->args.rename.fromfile.dir.data.data_val = request->args_buffer;
-            request->args.rename.fromfile.name = request->args.rename.fromfile.dir.data.data_val + FHSIZE3;
-            request->args.rename.tofile.dir.data.data_val = request->args.rename.fromfile.name + NAME_MAX + 1;
-            request->args.rename.tofile.name = request->args.rename.tofile.dir.data.data_val + FHSIZE3;
+            request->args.rename.fromfile.dir.data.data_val = request->args_buffer_nfs.fh0;
+            request->args.rename.fromfile.name = request->args_buffer_nfs.name0;
+            request->args.rename.tofile.dir.data.data_val = request->args_buffer_nfs.fh1;
+            request->args.rename.tofile.name = request->args_buffer_nfs.name1;
             request->args_proc = (xdrproc_t)xdr_RENAME3args;
             request->res_proc = (xdrproc_t)xdr_RENAME3res;
             break;
 
         case NFSPROC3_LINK:
-            request->args.link.file.data.data_val = request->args_buffer;
-            request->args.link.link.dir.data.data_val = request->args.link.file.data.data_val + FHSIZE3;
-            request->args.link.link.name = request->args.link.link.dir.data.data_val + FHSIZE3;
+            request->args.link.file.data.data_val = request->args_buffer_nfs.fh0;
+            request->args.link.link.dir.data.data_val = request->args_buffer_nfs.fh1;
+            request->args.link.link.name = request->args_buffer_nfs.name0;
             request->args_proc = (xdrproc_t)xdr_LINK3args;
             request->res_proc = (xdrproc_t)xdr_LINK3res;
             break;
@@ -1284,23 +1285,6 @@ void NfsServer::fsstat(RpcRequest *request, FSSTAT3args *args, FSSTAT3res *res)
     resok->invarsec = 0;
 }
 
-void NfsServer::nfs_handle_to_ehandle(nfs_fh3 *fh3, EStore::EHandle *handle)
-{
-    // we are producing the handles so they should be the size of EHandle
-    if (fh3->data.data_len != sizeof(EHandle)) {
-        PT_WARN(DATA, "invalid handle size=%d", fh3->data.data_len);
-        *handle = EStore::INVALID_EHANDLE;
-        return;
-    }
-    *handle = *(EHandle*)fh3->data.data_val;
-}
-
-void NfsServer::ehandle_to_nfs_handle(EStore::EHandle handle, nfs_fh3 *fh3)
-{
-    fh3->data.data_len = sizeof(EHandle);
-    *(EHandle*)fh3->data.data_val = handle;
-}
-
 void NfsServer::sys_attr_to_nfs_attr(EStore::SystemAttr *attr, fattr3 *nfs_attr)
 {
     if (attr->element_flags & (uint64_t)ElementFlags::SYMLINK) {
@@ -1433,6 +1417,8 @@ nfsstat3 NfsServer::eres_to_nfs_status(EStore::EStoreRes res)
             return NFS3ERR_BAD_COOKIE;
         case EStoreRes::NOT_A_CONTAINER:
             return NFS3ERR_NOTDIR;
+        case EStoreRes::LOCKED:
+            return NFS3ERR_SERVERFAULT;
     }
 }
 

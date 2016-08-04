@@ -8,6 +8,7 @@
 #include "rpcgen/rpc_defs.h"
 #include "rpcgen/nfs3.h"
 #include "rpcgen/mnt3.h"
+#include "rpcgen/nlm4.h"
 
 namespace Nfs {
 
@@ -86,6 +87,12 @@ union NfsArgs {
 
     // mnt3
     dirpath mnt_dirpath;
+
+    // nlm
+    nlm4_testargs test_args;
+    nlm4_lockargs lock_args;
+    nlm4_cancargs cancel_args;
+    nlm4_unlockargs unlock_args;
 };
 
 union NfsRes {
@@ -116,6 +123,10 @@ union NfsRes {
     exports mntexport;
     mountres3 mnt_res;
     mountlist dump_res;
+
+    // nlm4
+    nlm4_testres nlm4_test_res;
+    nlm4_res nlm4_res;
 };
 
 enum class RpcStatus {
@@ -127,8 +138,26 @@ enum class RpcStatus {
     PROC_NOT_FOUND,     // unsupported procedure
 };
 
-// biggest request is symlink (+1 for null termination)
-static const uint32_t ARG_BUFFER_SIZE = PATH_MAX + 1 + NAME_MAX + 1 + FHSIZE3;
+struct NfsArgsBuffer {
+    char fh0[FHSIZE3];
+    char fh1[FHSIZE3];
+    char name0[NAME_MAX+1];
+    char name1[NAME_MAX+1];
+};
+
+struct NfsArgsBufferWith4K {
+    char fh[FHSIZE3];
+    char name[NAME_MAX+1];
+    char _4k[PATH_MAX+1];
+};
+
+struct NlmArgsBuffer {
+    char netobj0[MAXNETOBJ_SZ];
+    char netobj1[MAXNETOBJ_SZ];
+    char netobj2[MAXNETOBJ_SZ];
+    char caller_name[LM_MAXSTRLEN];
+};
+
 // biggest reply is readlink
 static const uint32_t RES_BUFFER_SIZE = PATH_MAX + 1;
 
@@ -149,8 +178,16 @@ struct RpcRequest {
     struct sockaddr_in addr;
     socklen_t addr_len;
     // buffers for storing dynamic arguments (e.g. names and paths)
-    char args_buffer[ARG_BUFFER_SIZE];
-    char res_buffer[RES_BUFFER_SIZE];
+    union {
+        char args_buffer[0];
+        NfsArgsBuffer args_buffer_nfs;
+        NfsArgsBufferWith4K args_buffer_nfs_with_4k;
+        NlmArgsBuffer args_buffer_nlm;
+    };
+    union {
+        char res_buffer[RES_BUFFER_SIZE];
+        NlmArgsBuffer res_buffer_nlm;
+    };
     // nfs args / result unions
     NfsArgs args;
     NfsRes res;

@@ -101,6 +101,7 @@ c_env.Append(CFLAGS=['-Wno-cast-align',
                      '-Wno-typedef-redefinition'])
 murmur = c_env.Object(build_dir + '/src/plasma/third_party/murmur3/murmur3.c')
 rpc_xdr = c_env.Object(build_dir + '/src/proto/nfs3/rpcgen/rpc_defs_xdr.c')
+nlm_xdr = c_env.Object(build_dir + '/src/proto/nfs3/rpcgen/nlm4_xdr.c')
 mnt_xdr = c_env.Object(build_dir + '/src/proto/nfs3/rpcgen/mnt3_xdr.c')
 nfs_xdr = c_env.Object(build_dir + '/src/proto/nfs3/rpcgen/nfs3_xdr.c')
 
@@ -217,7 +218,7 @@ if profile is not None:
 cpp_sources = [build_dir + '/' + i for i in RGlob('src', '*.cpp', [], ['src/plasma/execution/main.cpp'])]
 cpp_sources.extend(rpc_sources)
 cpp_sources.append(build_dir + '/tests/test_module.cpp')
-cpp_sources.extend([murmur, rpc_xdr, mnt_xdr, nfs_xdr])
+cpp_sources.extend([murmur, rpc_xdr, mnt_xdr, nfs_xdr, nlm_xdr])
 cpp_lib = cpp_env.Library(target='dist/orion_cpp', source=cpp_sources)
 cpp_env.Depends(cpp_lib, LINKER_SCRIPT)
 cpp_env.Append(LIBS=[cpp_lib, 'unwind', 'config', 'libaio', 'rdmacm', 'ibverbs'])

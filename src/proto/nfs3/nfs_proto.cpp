@@ -2,6 +2,7 @@
 #include "nfs_proto.hpp"
 #include "rpc.hpp"
 #include "mount_server.hpp"
+#include "nlm_server.hpp"
 #include "nfs_server.hpp"
 #include "plasma/fiber/provider.hpp"
 
@@ -22,12 +23,14 @@ void NfsProto::init(EStore::EStore *estore, TcpAcceptor *tcp_acceptor, bool prim
     }
     _last_req_time = P::get_time_nano();
     _estore = estore;
+    _nlm_srv = new NlmServer();
+    _nlm_srv->init(_estore);
     _mount_srv = new MountServer();
     _mount_srv->init(_estore);
     _nfs_srv = new NfsServer();
     _nfs_srv->init(&_nfs_conf, _estore);
     _rpc = new Rpc();
-    _rpc->init(&_nfs_conf, _estore, _mount_srv, _nfs_srv, primary_instance);
+    _rpc->init(&_nfs_conf, _estore, _nlm_srv, _mount_srv, _nfs_srv, primary_instance);
 
     tcp_acceptor->add_consumer(_rpc);
 }
@@ -38,8 +41,9 @@ void NfsProto::destroy()
         return;
     }
     _rpc->destroy();
-    _mount_srv->destroy();
     _nfs_srv->destroy();
+    _mount_srv->destroy();
+    _nlm_srv->destroy();
 }
 
 void NfsProto::poll()
@@ -90,12 +94,12 @@ void NfsProto::global_init(P::Conf::ConfigSetting *nfs_setting, P::Net::TcpAccep
     // set listen sockets
     tcp_acceptor->listen(P::Net::SocketId::NFS, _nfs_conf.port[ProtocolType::NFS3]);
     tcp_acceptor->listen(P::Net::SocketId::MOUNT, _nfs_conf.port[ProtocolType::MOUNT3]);
-//    tcp_acceptor->listen(P::Net::SocketId::NLM, nfs_conf.port[ProtocolType::NLM4]);
+    tcp_acceptor->listen(P::Net::SocketId::NLM, _nfs_conf.port[ProtocolType::NLM4]);
 
     // register with rpcbind
     reg_program(NFS_PROGRAM, NFS_V3, _nfs_conf.port[ProtocolType::NFS3], false);
     reg_program(MOUNT_PROGRAM, MOUNT_V3, _nfs_conf.port[ProtocolType::MOUNT3], true);
-//    reg_program(NLM_PROGRAM, NLM_V4, nfs_conf.port[ProtocolType::NLM4], false);
+    reg_program(NLM_PROGRAM, NLM_V4, _nfs_conf.port[ProtocolType::NLM4], true);
 }
 
 }

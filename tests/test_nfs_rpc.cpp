@@ -6,10 +6,30 @@
 #include <rpc/clnt.h>
 #include <proto/nfs3/rpcgen/nfs3.h>
 #include "proto/nfs3/rpcgen/mnt3.h"
+#include "proto/nfs3/rpcgen/nlm4.h"
 #include "plasma/execution/env.hpp"
 #include "globals.hpp"
 
 static struct timeval TIMEOUT = { 2, 0 };
+
+void test_nfs3_bad_version()
+{
+    CLIENT *nfs_clnt = clnt_create("127.0.0.1", NFS_PROGRAM, 1, "tcp");
+    struct rpc_err error;
+    ASSERT_NOT_NULL(nfs_clnt);
+
+    int res = clnt_call(nfs_clnt, NFSPROC3_NULL,
+                        (xdrproc_t) xdr_void, (caddr_t) nullptr,
+                        (xdrproc_t) xdr_void, (caddr_t) nullptr,
+                        TIMEOUT);
+
+    ASSERT(res == RPC_PROGVERSMISMATCH)
+    clnt_geterr(nfs_clnt, &error);
+    ASSERT(error.ru.RE_vers.low == 3)
+    ASSERT(error.ru.RE_vers.high == 3)
+
+    clnt_destroy(nfs_clnt);
+}
 
 void send_mount_msgs(CLIENT *clnt)
 {
@@ -98,10 +118,6 @@ void test_nfs3_getattr()
 
     ASSERT(getattr_res3.status == NFS3_OK)
     ASSERT(getattr_res3.GETATTR3res_u.resok.obj_attributes.type == NF3DIR)
-    ASSERT(getattr_res3.GETATTR3res_u.resok.obj_attributes.mode == 16893) // drwxrwxr-x
-    ASSERT(getattr_res3.GETATTR3res_u.resok.obj_attributes.uid == 1000)
-    ASSERT(getattr_res3.GETATTR3res_u.resok.obj_attributes.gid == 1000)
-
     ASSERT(clnt_freeres(mnt_clnt, (xdrproc_t) xdr_mountres3, (caddr_t) &mnt_res3) == 1);
     ASSERT(clnt_freeres(mnt_clnt, (xdrproc_t) xdr_GETATTR3res, (caddr_t) &getattr_res3) == 1);
     clnt_destroy(mnt_clnt);
@@ -170,6 +186,7 @@ TEST(TestNfsRpc, test)
     test_mount();
     test_nfs();
     test_nfs3_getattr();
+    test_nfs3_bad_version();
 
     env_stop = true;
     env_thread.join();

@@ -3,6 +3,9 @@
 // it is recommended to start from a clean directory
 
 #include <cstdlib>
+#include <limits>
+#include <vector>
+#include <cstring>
 #include "plasma/utils/assert.hpp"
 #include "estore.hpp"
 #include <map>
@@ -30,6 +33,40 @@ using std::string;
 // 0 is reserved
 static uint64_t ROOT_HANDLE = 1;
 #define ESTORE_PATH "/tmp/estore"
+
+class Lock {
+public:
+    void init(const LockInfo* lock_info) {
+        _lock_info = *lock_info;
+        _lock_info.owner = (char *)&_owner;
+        std::memcpy(&_owner, lock_info->owner, lock_info->owner_len);
+    } 
+    
+    bool no_overlap(const LockInfo* lock) {
+        return _lock_info.end < lock->start || lock->end <= _lock_info.start;
+    }
+
+    bool overlaps(const LockInfo* lock) {
+        return !no_overlap(lock);
+    }
+
+    bool can_be_taken_by(const LockInfo* lock) {
+        return no_overlap(lock) || (_lock_info.exclusive == false && lock->exclusive == false);
+    }
+
+    LockInfo* get_info() {
+        return &_lock_info;
+    }
+    
+private:
+    LockInfo _lock_info;
+    char _owner[1024];
+    int32_t _owner_len;
+};
+
+
+typedef std::vector<Lock> LocksVector;
+typedef std::map<EHandle, LocksVector> LocksMap;
 
 // container for mapping between paths, handles and open file descriptors.
 class HandleContainer {
@@ -170,6 +207,9 @@ private:
     std::map<string, EHandle> _path_to_handle;
     std::map<EHandle, std::set<string> > _handle_to_paths;
     std::map<EHandle, int> _handle_to_fd;
+
+public:
+    LocksMap _handle_to_locks;
 };
 
 static HandleContainer _handle_container;
@@ -868,6 +908,80 @@ EStoreRes EStore::get_stats(OpCallback op_cb, void *cb_ctx, EHandle handle, ESto
     stats->total_bytes = sfs.f_blocks * sfs.f_bsize;
     stats->free_elements = sfs.f_ffree;
     stats->total_elements = sfs.f_files;
+    return EStoreRes::OK;
+}
+
+EStoreRes EStore::lock(OpCallback op_cb, void *cb_ctx, EHandle handle, LockInfo *lock)
+{
+    Lock new_lock;
+    LocksMap* locks = &_handle_container._handle_to_locks;
+    LocksMap::iterator it = locks->find(handle);
+    if (it == locks->end()) {
+        new_lock.init(lock);
+        LocksVector v(1, new_lock);
+        locks->insert(std::pair<EHandle, LocksVector>(handle, v));
+        return EStoreRes::OK;
+    }
+
+    for(LocksVector::iterator l = it->second.begin(); l != it->second.end(); ++l) {
+        if (not l->can_be_taken_by(lock))
+        {
+            return EStoreRes::LOCKED;
+        }
+    }
+    
+    for(LocksVector::iterator l = it->second.begin(); l != it->second.end(); ++l) {
+        if (l->overlaps(lock))
+        {
+            it->second.erase(l);
+        }
+    }
+    
+    new_lock.init(lock);
+    it->second.push_back(new_lock);
+    return EStoreRes::OK;
+}
+
+EStoreRes EStore::unlock(OpCallback op_cb, void *cb_ctx, EHandle handle, LockInfo *lock)
+{
+    LocksMap* locks = &_handle_container._handle_to_locks;
+    LocksMap::iterator it = locks->find(handle);
+    if (it == locks->end()) {
+        return EStoreRes::OK;
+    }
+
+    for(LocksVector::iterator l = it->second.begin(); l != it->second.end(); ++l) {
+        if (not l->can_be_taken_by(lock))
+        {
+            return EStoreRes::LOCKED;
+        }
+    }
+
+    for(LocksVector::iterator l = it->second.begin(); l != it->second.end(); ++l) {
+        if (l->overlaps(lock))
+        {
+            it->second.erase(l);
+        }
+    }
+    return EStoreRes::OK;
+}
+
+EStoreRes EStore::test_lock(OpCallback op_cb, void *cb_ctx, EHandle handle, LockInfo *lock, LockInfo *existing_lock OUT)
+{
+    LocksMap* locks = &_handle_container._handle_to_locks;
+    LocksMap::iterator it = locks->find(handle);
+    if (it == locks->end()) {
+        return EStoreRes::OK;
+    }
+
+    for(LocksVector::iterator l = it->second.begin(); l != it->second.end(); ++l) {
+        if (not l->can_be_taken_by(lock))
+        {
+            *existing_lock = *l->get_info();
+            return EStoreRes::LOCKED;
+        }
+    }
+    
     return EStoreRes::OK;
 }
 

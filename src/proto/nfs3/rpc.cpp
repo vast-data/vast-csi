@@ -8,6 +8,7 @@
 #include "rpcgen/rpc_defs.h"
 #include "mount_server.hpp"
 #include "nfs_server.hpp"
+#include "nlm_server.hpp"
 #include "rpc.hpp"
 #include "defs.hpp"
 #include "plasma/utils/assert.hpp"
@@ -90,7 +91,7 @@ int writeit(char *handle, char *buff, int len)
     return written;
 }
 
-void Rpc::init(NfsConfig *nfs_conf, EStore::EStore *estore, MountServer *mount_server, NfsServer *nfs_server, bool start_udp)
+void Rpc::init(NfsConfig *nfs_conf, EStore::EStore *estore, NlmServer *nlm_server, MountServer *mount_server, NfsServer *nfs_server, bool start_udp)
 {
     _estore = estore;
     _nfs_conf = *nfs_conf;
@@ -110,10 +111,10 @@ void Rpc::init(NfsConfig *nfs_conf, EStore::EStore *estore, MountServer *mount_s
 
     _epoll.init();
 
+    init_protocol(ProtocolType::NLM4, NLM_PROGRAM, NLM_V4, _nfs_conf.port[ProtocolType::NLM4], nlm_server, start_udp);
     init_protocol(ProtocolType::MOUNT3, MOUNT_PROGRAM, MOUNT_V3, _nfs_conf.port[ProtocolType::MOUNT3], mount_server, start_udp);
     // no support for NFS UDP yet
     init_protocol(ProtocolType::NFS3, NFS_PROGRAM, NFS_V3, _nfs_conf.port[ProtocolType::NFS3], nfs_server, false);
-    memset(&_protocols[ProtocolType::NLM4], 0, sizeof(Protocol));
 
     LOOP(PROTOCOL_COUNT, i) {
         if (_protocols[i].udp_conn != nullptr) {
@@ -252,7 +253,7 @@ static vaccept_stat request_status_to_accept_status(RpcStatus status)
         case RpcStatus::OK:                  return VSUCCESS;
         case RpcStatus::AUTH_FAILURE:        return VSYSTEM_ERR;
         case RpcStatus::DECODE_ERROR:        return VGARBAGE_ARGS;
-        case RpcStatus::PROG_NOT_FOUND:      return VPROC_UNAVAIL;
+        case RpcStatus::PROG_NOT_FOUND:      return VPROG_UNAVAIL;
         case RpcStatus::VER_NOT_SUPPORTED:   return VPROG_MISMATCH;
         case RpcStatus::PROC_NOT_FOUND:      return VPROC_UNAVAIL;
     }
@@ -274,6 +275,17 @@ void Rpc::fill_msg_header(Rpc::Connection *conn, RpcRequest *request)
         reply->vreply_body_u.rreply.stat = VAUTH_ERROR;
     } else {
         reply->vreply_body_u.areply.reply_data.stat = request_status_to_accept_status(request->status);
+        if (reply->vreply_body_u.areply.reply_data.stat == VPROG_MISMATCH) {
+            vmismatch_info* versions = &reply->vreply_body_u.areply.reply_data.vreply_data_body_u.m_info;
+            versions->low = ~0;
+            versions->high = 0;
+            LOOP(PROTOCOL_COUNT, i) {
+                if (_protocols[i].program == request->msg.body.vrpc_msg_body_u.cbody.prog) {
+                    versions->low = MIN(versions->low, _protocols[i].version);
+                    versions->high = MAX(versions->high, _protocols[i].version);
+                }
+            }
+        }
     }
 }
 

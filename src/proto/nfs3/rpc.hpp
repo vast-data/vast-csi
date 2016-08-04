@@ -21,6 +21,7 @@
 
 namespace Nfs {
 
+class NlmServer;
 class MountServer;
 class NfsServer;
 
@@ -59,7 +60,7 @@ public:
     virtual void accept_connection(P::Net::SocketId id, int fd) override;
     virtual int64_t query_connection(P::Net::SocketId id) override;
 
-    void init(NfsConfig *nfs_conf, EStore::EStore *estore, MountServer *mount_server, NfsServer *nfs_server, bool start_udp);
+    void init(NfsConfig *nfs_conf, EStore::EStore *estore, NlmServer *nlm_server, MountServer *mount_server, NfsServer *nfs_server, bool start_udp);
     void destroy();
 
     // Check for new incoming RPC requests.
