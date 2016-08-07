@@ -18,7 +18,7 @@ bool Qlock::is_locked()
 
 void Qlock::lock()
 {
-    while (is_locked()) {
+    if (is_locked()) {
         ASSERT(_owner != Fiber::get_current());
         Fiber::suspend_and_queue(&_anchor);
     }
@@ -36,8 +36,7 @@ bool Qlock::trylock()
 void Qlock::unlock()
 {
     ASSERT(_owner == Fiber::get_current());
-    _owner = nullptr;
-    Fiber::pop_and_resume(&_anchor);
+    _owner = Fiber::pop_and_resume(&_anchor);
 }
 
 void Qlock::destroy()

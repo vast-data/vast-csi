@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <rpc/types.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #define CURRENT_COMPONENT ComponentId::PLASMA
 
@@ -103,7 +104,7 @@ void ConnectionsManager::poll()
             continue;
         }
         LOOP(n_events, i) {
-            Socket *socket = (Socket *)_events->data.ptr;
+            Socket *socket = (Socket *)_events[i].data.ptr;
             if ((_events[i].events & EPOLLERR) || (_events[i].events & EPOLLHUP)) {
                 // socket closed / error
                 PT_INFO("closing socket id=%d", socket->id);
@@ -141,7 +142,7 @@ void ConnectionsManager::accept_connections(Socket *listen_socket)
         unblock_socket(fd);
 
         // find the consumer with the minimal number of connections
-        int64_t min_conn = MAX_INT64;
+        int64_t min_conn = INT64_MAX;
         int consumer_idx = -1;
         LOOP(_n_consumers, i) {
             int64_t n_conn = _consumers[i]->query_connection(listen_socket->id);
