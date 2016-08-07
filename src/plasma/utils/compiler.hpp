@@ -22,3 +22,5 @@
 #define PACKED __attribute__ ((packed)))
 
 #define SECTIONIZE(name) __attribute__ ((section (name)))
+
+#define PAGE_SIZE_BYTES (4096)

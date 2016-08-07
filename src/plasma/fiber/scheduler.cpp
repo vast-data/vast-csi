@@ -1,9 +1,10 @@
 /* Copyright (C) Vast Data Ltd. */
 #include "scheduler.hpp"
 
-#include "../utils/assert.hpp"
-#include "../utils/macros.hpp"
-#include "../memory/alloc.hpp"
+#include "plasma/utils/assert.hpp"
+#include "plasma/utils/compiler.hpp"
+#include "plasma/utils/macros.hpp"
+#include "plasma/memory/alloc.hpp"
 
 namespace P {
 
@@ -31,10 +32,17 @@ Pool *Scheduler::find_or_allocate_stacks(SchedulerConfig *config, Index group_in
     Index num_partitions = 0;
     Index partitions[config->group_count];
     LOOP_FROM(group_index, config->group_count, i)
-        if (config->fiber_groups[i].stack_size == group->stack_size)
+        if (config->fiber_groups[i].stack_size == group->stack_size) {
             partitions[num_partitions++] = config->fiber_groups[i].fiber_count;
+        }
     pool = new Pool();
-    pool->partitioned_init(group->stack_size, num_partitions, partitions);
+
+    size_t block_size = group->stack_size;
+#ifdef DEBUG
+    block_size += PAGE_SIZE_BYTES;
+#endif
+    pool->partitioned_init(block_size, num_partitions, partitions, PAGE_SIZE_BYTES);
+
     return pool;
 }
 

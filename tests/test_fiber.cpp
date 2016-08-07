@@ -165,6 +165,55 @@ TEST(TestBacktrace, test_backtrace)
     Scheduler::destroy();
 }
 
+// Helper function, allocating a buffer on the stack according to the given value.
+static void alloc_on_stack(void *value)
+{
+    int alloc_size = *(int*)value;
+    unsigned char buf[alloc_size];
+    memset(buf, 0xFF, alloc_size);
+    // Make sure memset will work in non-debug mode (i.e. not optimized out by the compiler):
+    *((int*)value) = buf[0] + buf[alloc_size - 1];
+
+    Fiber::yield();
+}
+
+// Helper function, testing stack allocation.
+// Using FG_D (stack size is 4 pages).
+// In debug mode, we catch the stack overflow using the page guard (mprotect'ing it causes a segfault when trying to
+// write to the protected page. In release mode, there's no page guard so this is caught when checking for the magic (in
+// context_switch).
+static void test_stack_alloc(bool should_overflow)
+{
+    int alloc_size = should_overflow ? 4 * 4096 : 3 * 4096;
+
+    Scheduler::init(&scheduler_config);
+    Fiber *fiber = Fiber::init(FG_D, alloc_on_stack, &alloc_size, false);
+
+    if (should_overflow) {
+#ifdef DEBUG
+        // Expect a segfault due to mprotect'ing a page guard:
+        ASSERT_DEATH(Scheduler::run(), "");
+#else
+        // Expect a panic due to STACK_OVERFLOW_MAGIC:
+        ASSERT_DEATH(Scheduler::run(), "PANIC: assertion failed: .*STACK_OVERFLOW_MAGIC");
+#endif
+        // Explicitly destroy the fiber (which is still running), otherwise we won't be able to destroy the scheduler:
+        fiber->destroy();
+    } else {
+        Scheduler::run();
+    }
+    Scheduler::destroy();
+}
+TEST(TestFiber, test_stack_no_overflow)
+{
+    test_stack_alloc(false);
+}
+
+TEST(TestFiber, test_stack_overflow)
+{
+    test_stack_alloc(true);
+}
+
 int main(int argc, char **argv)
 {
     ::testing::InitGoogleTest(&argc, argv);

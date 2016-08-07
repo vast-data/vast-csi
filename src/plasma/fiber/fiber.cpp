@@ -4,13 +4,15 @@
  * Alternative implementations: https://swtch.com/libtask/amd64-ucontext.h,
  * http://rethinkdb.com/blog/making-coroutines-fast/
  */
+#include <sys/mman.h>
 
 #include "fiber.hpp"
 
-#include "../../globals.hpp"
+#include "globals.hpp"
 #include "scheduler.hpp"
-#include "../utils/assert.hpp"
-#include "../utils/time.hpp"
+#include "plasma/utils/assert.hpp"
+#include "plasma/utils/compiler.hpp"
+#include "plasma/utils/time.hpp"
 
 namespace P {
 
@@ -94,6 +96,10 @@ static intptr_t ptr_mangle(intptr_t addr)
 void Fiber::destroy()
 {
     Scheduler *sched = Scheduler::get();
+#ifdef DEBUG
+    _stack = (char*)_stack - PAGE_SIZE_BYTES;
+    ASSERT_EQUAL(mprotect(_stack, PAGE_SIZE_BYTES, PROT_READ|PROT_WRITE), 0, "errno = " << errno);
+#endif
     _group->stacks->partitioned_free_address(_stack, _group->stacks_partition);
     sched->_fiber_pool.partitioned_free_address(this, _group->index);
     if (!_daemon)
@@ -115,6 +121,10 @@ Fiber *Fiber::init(Index group_index, void (*func)(void *arg), void *arg, bool p
         return nullptr;
     Fiber *fiber = (Fiber*) sched->_fiber_pool.index_to_address(fiber_index);
     void *stack = group->stacks->partitioned_alloc_address(group->stacks_partition);
+#ifdef DEBUG
+    ASSERT_EQUAL(mprotect(stack, PAGE_SIZE_BYTES, PROT_NONE), 0, "errno = " << errno);
+    stack = (char*)stack + PAGE_SIZE_BYTES;
+#endif
     uint64_t *stack_int_ptr = (uint64_t*) stack;
     *stack_int_ptr = (intptr_t) STACK_OVERFLOW_MAGIC;
     // the stack grows downward so add the stack size and leave room for the instruction pointer.

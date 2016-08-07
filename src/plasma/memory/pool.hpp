@@ -14,7 +14,8 @@
 
 #include <stddef.h>
 
-#include "../utils/types.hpp"
+#include "plasma/utils/compiler.hpp"
+#include "plasma/utils/types.hpp"
 
 namespace P {
 
@@ -28,8 +29,10 @@ public:
     * \param block_size the size of each block in bytes (minimum of 4 bytes).
     * \param num_partitions the number of partitions
     * \param partitions array with the number of blocks per partition, isn't modified nor used after init is done
+    * \param alignment the requested alignment (cache line, by default)
     */
-    void partitioned_init(size_t block_size, Index num_partitions, Index partitions[]);
+    void partitioned_init(size_t block_size, Index num_partitions, Index partitions[],
+                          size_t alignment = CACHE_LINE_BYTES);
 
     /*!
     * Initialize a pool.

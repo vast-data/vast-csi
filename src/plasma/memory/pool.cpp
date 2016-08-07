@@ -9,7 +9,7 @@
 
 namespace P {
 
-void Pool::partitioned_init(size_t block_size, Index num_partitions, Index partitions[])
+void Pool::partitioned_init(size_t block_size, Index num_partitions, Index partitions[], size_t alignment)
 {
     // validate block_size is larger than the index it will contain.
     ASSERT_OP(block_size, >=, sizeof(Index), "invalid block size");
@@ -23,8 +23,8 @@ void Pool::partitioned_init(size_t block_size, Index num_partitions, Index parti
     }
 
     size_t mem_size = get_mem_size();
-    // allocate a cache aligned buffer and expand it to the nearest cache line (required by aligned_alloc)
-    _mem = cache_aligned_new_arr<byte>(mem_size);
+    // allocate an aligned buffer and expand it to the nearest alignment (required by aligned_alloc)
+    _mem = aligned_new_arr<byte>(alignment, mem_size);
     _free_head = 0;
     _num_partitions = num_partitions;
 
