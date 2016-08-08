@@ -75,6 +75,7 @@ bool Dumper::iteration(bool force)
     bool found = false;
     LOOP((byte)ComponentId::COUNT, i) {
         if (_files[i] != nullptr) {
+            // TODO: improve performance by flushing whole buffers instead of iterating over records.
             auto read_result = _readers[i]->read(&record, &length, force);
             switch (read_result) {
             case DBufferReader::ReadResult::NOTHING:
