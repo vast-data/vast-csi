@@ -41,10 +41,12 @@ const size_t TRACE_INFO_SIZE = 256; // has to be self-aligned, that's why its de
 
 typedef struct {
     byte format[128];
-    byte file[64];
-    byte func[54];
+    byte file[86];
     uint16_t line;
-    const char *func_ptr; // .func starts off empty because __func__ isn't considered a static value. The init_section function sets the value in .func_ptr to .func.
+    union {
+        const char *func_ptr; // .func starts off empty because __func__ isn't considered a static value. The init_section function sets the value in .func_ptr to .func.
+        byte func[40];
+    };
 } TraceInfo;
 
 }}

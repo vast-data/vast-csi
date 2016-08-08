@@ -16,7 +16,7 @@ TEST(TestAsserts, test_panic)
 
 TEST(TestAsserts, test_panic_location)
 {
-    ASSERT_DEATH(test_panic(), "at file: build/tests/test_assert.cpp line: 9");
+    ASSERT_DEATH(test_panic(), "tests/test_assert.cpp line: 9");
 }
 
 void test_assert_panics()

@@ -66,7 +66,7 @@ void Dumper::destroy()
 bool Dumper::iteration(bool force)
 {
     static TraceInfo TRACE_SECTION overflow_info = {
-        "Trace overflow. %hd buffers lost.", __FILE__, "<temp>", __LINE__, __func__
+        "Trace overflow. %hd buffers lost.", __FILE__, __LINE__, __func__
     };
     uint16_t overflow_index = get_trace_info_index(&overflow_info);
 

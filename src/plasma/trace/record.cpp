@@ -18,7 +18,7 @@ DEFINE_LOOKUP_IMPLEMENTATION(TRACE_SEVERITY_LIST,
 static __attribute__ ((constructor)) void init_section()
 {
     // the following trace is defined in order to force the linker to define the __start/stop_traces variables.
-    static TraceInfo SECTIONIZE("traces") __attribute__((used)) t = {"first trace", __FILE__, "", __LINE__, __func__};
+    static TraceInfo SECTIONIZE("traces") __attribute__((used)) t = {"first trace", __FILE__, __LINE__, __func__};
 
     for (TraceInfo *trace_info = __start_traces; trace_info != __stop_traces; trace_info++) {
         strcpy((char*) trace_info->func, trace_info->func_ptr);

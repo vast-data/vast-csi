@@ -5,8 +5,8 @@ import ctypes
 import struct
 import collections
 
-TraceInfo = collections.namedtuple('TraceInfo', ['format', 'file', 'func', 'line'])
-trace_info_struct = struct.Struct('128s64s54sH8x')
+TraceInfo = collections.namedtuple('TraceInfo', ['format', 'file', 'line', 'func'])
+trace_info_struct = struct.Struct('128s86sH40s')
 assert trace_info_struct.size == 256
 
 TraceHeader = collections.namedtuple('TraceHeader', ['time', 'job_id', 'info_index', 'severity'])

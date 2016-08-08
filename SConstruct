@@ -20,9 +20,6 @@ def RGlob(path, pattern, ignore_dirs=[], ignore_files=[]):
                 matches.append(filename)
     return matches
 
-VariantDir(DEFAULT_BUILD_DIR + '/src', 'src')
-VariantDir(DEFAULT_BUILD_DIR + '/tests', 'tests')
-
 vars = Variables(None, ARGUMENTS)
 vars.Add(BoolVariable('debug', 'Set debug to 1 to compile a debug version (defines the DEBUG macro)', False))
 vars.Add(EnumVariable('cc', 'A c compiler', DEFAULT_COMPILER, allowed_values=('clang', 'gcc')))
@@ -54,8 +51,11 @@ env['ENV'].update(LC_ALL='en_US.UTF-8',
 optimizations = ARGUMENTS.get('O', '2')
 debug = ARGUMENTS.get('debug')
 if debug is not None:
+    build_dir = DEFAULT_BUILD_DIR + '/debug'
     optimizations = '0'
     env.Append(CPPDEFINES=['DEBUG'])
+else:
+    build_dir = DEFAULT_BUILD_DIR + '/release'
 
 compiler = ARGUMENTS.get('cc', 'clang')
 if compiler == 'clang':
@@ -76,7 +76,7 @@ env.Append(CPPFLAGS=['-g',
                      '-Wno-vla',
                      '-Wno-padded',
                      '-Wno-cast-align'])
-env.Append(CPPPATH=['build/src'])
+env.Append(CPPPATH=[build_dir + '/src'])
 env.Append(LINKFLAGS=['-pthread'])
 
 murmur_env = env.Clone()
@@ -84,7 +84,10 @@ murmur_env.Append(CFLAGS=['-Wno-cast-align',
                           '-Wno-sign-conversion',
                           '-Wno-shorten-64-to-32',
                           '-Wno-incompatible-pointer-types-discards-qualifiers'])
-murmur = murmur_env.Object(DEFAULT_BUILD_DIR + '/src/plasma/third_party/murmur3/murmur3.c')
+murmur = murmur_env.Object(build_dir + '/src/plasma/third_party/murmur3/murmur3.c')
+
+VariantDir(build_dir + '/src', 'src')
+VariantDir(build_dir + '/tests', 'tests')
 
 # ----- Python Environment ----- #
 venv = env.Command(target='venv/requirements.txt',
@@ -128,9 +131,9 @@ env.Append(BUILDERS = {'Rpc': Builder(action='./venv/bin/gen-rpc $SOURCE $SOURCE
 
 rpc_sources = []
 for rpc_file in RGlob('src', '*.rpc'):
-    rpc_file = DEFAULT_BUILD_DIR + '/' + rpc_file
+    rpc_file = build_dir + '/' + rpc_file
     rpc_sources.extend(FilterPaths(env.Rpc(rpc_file), '*.cpp'))
-test_rpc_sources = FilterPaths(env.Rpc(DEFAULT_BUILD_DIR + '/tests/test_rpc.rpc'), '*.cpp')
+test_rpc_sources = FilterPaths(env.Rpc(build_dir + '/tests/test_rpc.rpc'), '*.cpp')
 
 # ----- Metrics ----- #
 def metrics_emitter(target, source, env):
@@ -144,9 +147,9 @@ env.Append(BUILDERS = {'Metrics': Builder(action='./venv/bin/gen-metrics $SOURCE
 
 metric_sources = []
 for metric_file in RGlob('src', '*.metrics'):
-    metric_file = DEFAULT_BUILD_DIR + '/' + metric_file
+    metric_file = build_dir + '/' + metric_file
     metric_sources.extend(FilterPaths(env.Metrics(metric_file), '*.cpp'))
-test_metric_sources = FilterPaths(env.Metrics(DEFAULT_BUILD_DIR + '/tests/test.metrics'), '*.cpp')
+test_metric_sources = FilterPaths(env.Metrics(build_dir + '/tests/test.metrics'), '*.cpp')
 
 # ----- VProto ----- #
 VPROTO_INCLUDE_DIRS = ['src', 'tests']
@@ -173,7 +176,7 @@ env.Append(BUILDERS = {'VProto': Builder(action='./venv/bin/gen-vproto -i {} $SO
            SCANNERS = Scanner(function=vproto_scan, skeys=['.vproto']))
 
 for metric_file in RGlob('src', '*.vproto') + RGlob('tests', '*.vproto'):
-    metric_file = DEFAULT_BUILD_DIR + '/' + metric_file
+    metric_file = build_dir + '/' + metric_file
     env.VProto(metric_file)
 
 # ----- C++ Environment ----- #
@@ -187,48 +190,48 @@ if compiler == 'gcc':
 pre = ARGUMENTS.get('pre')
 if pre is not None:
    cpp_env.Append(CCFLAGS=['-E'])
-cpp_sources = [DEFAULT_BUILD_DIR + '/' + i for i in RGlob('src', '*.cpp', [], ['src/plasma/execution/main.cpp'])]
+cpp_sources = [build_dir + '/' + i for i in RGlob('src', '*.cpp', [], ['src/plasma/execution/main.cpp'])]
 cpp_sources.extend(rpc_sources)
-cpp_sources.append(DEFAULT_BUILD_DIR + '/tests/test_module.cpp')
+cpp_sources.append(build_dir + '/tests/test_module.cpp')
 cpp_sources.append(murmur)
 cpp_lib = cpp_env.Library(target='dist/orion_cpp', source=cpp_sources)
 cpp_env.Depends(cpp_lib, LINKER_SCRIPT)
 cpp_env.Append(LIBS=[cpp_lib, 'unwind', 'config', 'libaio', 'rdmacm', 'ibverbs'])
-cpp_env.Program(target='dist/env', source=[DEFAULT_BUILD_DIR + '/src/plasma/execution/main.cpp'])
+cpp_env.Program(target='dist/env', source=[build_dir + '/src/plasma/execution/main.cpp'])
 
 def AddCppTest(target, source, wrap=[]):
     cpp_test_env = cpp_env.Clone()
     cpp_test_env.Append(LIBS=['gtest', 'rt'])
-    cpp_test_env.Append(CPPPATH=['build/tests'])
+    cpp_test_env.Append(CPPPATH=[build_dir + '/tests'])
     for func in wrap:
         cpp_test_env.Append(LINKFLAGS='-Wl,-wrap,' + func)
     test = cpp_test_env.Program(target=target, source=source)
     cpp_test_env.Alias('cpptest', test, test[0].abspath)
 env.Alias('cpptest', env.Command('<phony>', [], 'sudo modprobe siw'))
 
-AddCppTest(target='dist/tests/assert', source=[DEFAULT_BUILD_DIR + '/tests/test_assert.cpp'])
-AddCppTest(target='dist/tests/pool', source=[DEFAULT_BUILD_DIR + '/tests/test_pool.cpp'])
-AddCppTest(target='dist/tests/object_pool', source=[DEFAULT_BUILD_DIR + '/tests/test_object_pool.cpp'])
-AddCppTest(target='dist/tests/atomic_pool', source=[DEFAULT_BUILD_DIR + '/tests/test_atomic_pool.cpp'])
-AddCppTest(target='dist/tests/cpool', source=[DEFAULT_BUILD_DIR + '/tests/test_cpool.cpp'], wrap=['p_silo_get_id'])
-AddCppTest(target='dist/tests/config', source=[DEFAULT_BUILD_DIR + '/tests/test_config.cpp'])
-AddCppTest(target='dist/tests/dlist', source=[DEFAULT_BUILD_DIR + '/tests/test_dlist.cpp'])
-AddCppTest(target='dist/tests/list', source=[DEFAULT_BUILD_DIR + '/tests/test_list.cpp'])
-AddCppTest(target='dist/tests/io_provider', source=[DEFAULT_BUILD_DIR + '/tests/test_io_provider.cpp'])
-AddCppTest(target='dist/tests/fiber', source=[DEFAULT_BUILD_DIR + '/tests/test_fiber.cpp'])
-AddCppTest(target='dist/tests/env', source=[DEFAULT_BUILD_DIR + '/tests/test_env.cpp'])
-AddCppTest(target='dist/tests/sync', source=[DEFAULT_BUILD_DIR + '/tests/test_sync.cpp'])
-AddCppTest(target='dist/tests/fiber_sync', source=[DEFAULT_BUILD_DIR + '/tests/test_fiber_sync.cpp'])
-AddCppTest(target='dist/tests/hash', source=[DEFAULT_BUILD_DIR + '/tests/test_hash.cpp'])
-AddCppTest(target='dist/tests/queue', source=[DEFAULT_BUILD_DIR + '/tests/test_queue.cpp'])
-AddCppTest(target='dist/tests/trace', source=[DEFAULT_BUILD_DIR + '/tests/test_trace.cpp'])
-AddCppTest(target='dist/tests/spsc_queue', source=[DEFAULT_BUILD_DIR + '/tests/test_spsc_queue.cpp'])
-AddCppTest(target='dist/tests/time', source=[DEFAULT_BUILD_DIR + '/tests/test_time.cpp'])
-AddCppTest(target='dist/tests/perf', source=[DEFAULT_BUILD_DIR + '/tests/test_perf.cpp'])
-AddCppTest(target='dist/tests/metrics', source=[DEFAULT_BUILD_DIR + '/tests/test_metrics.cpp', test_metric_sources])
-AddCppTest(target='dist/tests/rdma_transport', source=[DEFAULT_BUILD_DIR + '/tests/test_rdma_transport.cpp'])
-AddCppTest(target='dist/tests/vmsg', source=[DEFAULT_BUILD_DIR + '/tests/vmsg_test.cpp', test_rpc_sources])
-AddCppTest(target='dist/tests/vproto', source=[DEFAULT_BUILD_DIR + '/tests/test_vproto.cpp'])
+AddCppTest(target='dist/tests/assert', source=[build_dir + '/tests/test_assert.cpp'])
+AddCppTest(target='dist/tests/pool', source=[build_dir + '/tests/test_pool.cpp'])
+AddCppTest(target='dist/tests/object_pool', source=[build_dir + '/tests/test_object_pool.cpp'])
+AddCppTest(target='dist/tests/atomic_pool', source=[build_dir + '/tests/test_atomic_pool.cpp'])
+AddCppTest(target='dist/tests/cpool', source=[build_dir + '/tests/test_cpool.cpp'], wrap=['p_silo_get_id'])
+AddCppTest(target='dist/tests/config', source=[build_dir + '/tests/test_config.cpp'])
+AddCppTest(target='dist/tests/dlist', source=[build_dir + '/tests/test_dlist.cpp'])
+AddCppTest(target='dist/tests/list', source=[build_dir + '/tests/test_list.cpp'])
+AddCppTest(target='dist/tests/io_provider', source=[build_dir + '/tests/test_io_provider.cpp'])
+AddCppTest(target='dist/tests/fiber', source=[build_dir + '/tests/test_fiber.cpp'])
+AddCppTest(target='dist/tests/env', source=[build_dir + '/tests/test_env.cpp'])
+AddCppTest(target='dist/tests/sync', source=[build_dir + '/tests/test_sync.cpp'])
+AddCppTest(target='dist/tests/fiber_sync', source=[build_dir + '/tests/test_fiber_sync.cpp'])
+AddCppTest(target='dist/tests/hash', source=[build_dir + '/tests/test_hash.cpp'])
+AddCppTest(target='dist/tests/queue', source=[build_dir + '/tests/test_queue.cpp'])
+AddCppTest(target='dist/tests/trace', source=[build_dir + '/tests/test_trace.cpp'])
+AddCppTest(target='dist/tests/spsc_queue', source=[build_dir + '/tests/test_spsc_queue.cpp'])
+AddCppTest(target='dist/tests/time', source=[build_dir + '/tests/test_time.cpp'])
+AddCppTest(target='dist/tests/perf', source=[build_dir + '/tests/test_perf.cpp'])
+AddCppTest(target='dist/tests/metrics', source=[build_dir + '/tests/test_metrics.cpp', test_metric_sources])
+AddCppTest(target='dist/tests/rdma_transport', source=[build_dir + '/tests/test_rdma_transport.cpp'])
+AddCppTest(target='dist/tests/vmsg', source=[build_dir + '/tests/vmsg_test.cpp', test_rpc_sources])
+AddCppTest(target='dist/tests/vproto', source=[build_dir + '/tests/test_vproto.cpp'])
 
 cpp_env.AlwaysBuild('cpptest')
 env.Alias('test', 'cpptest')

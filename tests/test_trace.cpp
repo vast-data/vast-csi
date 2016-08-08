@@ -262,7 +262,7 @@ TEST(Trace, concurrent_dumper)
 TEST(Trace, file)
 {
     static TraceInfo TRACE_SECTION trace_info = {
-        "Test trace file.", __FILE__, "<temp>", __LINE__, __func__
+        "Test trace file.", __FILE__, __LINE__, __func__
     };
     uint16_t info_index = get_trace_info_index(&trace_info);
 
