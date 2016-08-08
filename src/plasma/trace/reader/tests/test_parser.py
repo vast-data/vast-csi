@@ -12,7 +12,7 @@ def test_get_trace_info():
     assert infos[0].file.endswith('src/plasma/execution/silo.cpp')
     assert infos[0].func == 'main'
     assert infos[0].line == 143
-    #assert infos[1] == TraceInfo(format='Silo finished.', file='build/src/plasma/execution/p_silo.c', func='silo_main', line=122)
+    assert infos[1].format == 'Silo finished.'
 
 def test_get_header_and_data():
     test_data = b'\x13\x00(\xa5\xce\x0e\x0f\xf7S\x14\x00\x00\x00\x00\x00\x00\x02\xff\xff\xff\xff\x19\x004\x0f\xdb\x0e\x0f\xf7S\x14\x02\x00\x00\x00\x02\x00\x02\x08\x00MODULE_P'

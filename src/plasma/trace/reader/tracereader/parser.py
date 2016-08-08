@@ -18,6 +18,7 @@ def bytes_to_string(b):
 
 def get_trace_info(stream):
     version, = struct.unpack('H', stream.read(2))
+    assert version == 1
     count, = struct.unpack('H', stream.read(2))
     for i in range(count):
         fields = trace_info_struct.unpack(stream.read(trace_info_struct.size))
