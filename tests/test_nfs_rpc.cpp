@@ -47,6 +47,68 @@ void send_mount_msgs(CLIENT *clnt)
     }
 }
 
+void test_nfs3_getattr()
+{
+    const char *dir_path = "/";
+    mountres3 mnt_res3;
+    GETATTR3args getattr_args3;
+    GETATTR3res getattr_res3;
+    AUTH *auth = authunix_create_default();
+    CLIENT *mnt_clnt = clnt_create("127.0.0.1", MOUNT_PROGRAM, MOUNT_V3, "tcp");
+    CLIENT *nfs_clnt = clnt_create("127.0.0.1", NFS_PROGRAM, NFS_V3, "tcp");
+    ASSERT_NOT_NULL(mnt_clnt);
+    ASSERT_NOT_NULL(nfs_clnt);
+
+    memset(&mnt_res3, '\0', sizeof mnt_res3);
+    memset(&getattr_res3, '\0', sizeof getattr_res3);
+    mnt_clnt->cl_auth = auth;
+    nfs_clnt->cl_auth = auth;
+
+    if (clnt_call(mnt_clnt, MOUNTPROC3_MNT,
+                 (xdrproc_t) xdr_dirpath, (caddr_t) &dir_path,
+                 (xdrproc_t) xdr_mountres3, (caddr_t) &mnt_res3,
+                 TIMEOUT) != RPC_SUCCESS) {
+        printf("MNT call failed\n");
+        abort();
+    }
+
+    if (mnt_res3.fhs_status != MNT3_OK) {
+        printf("MNT failed\n");
+        abort();
+    }
+
+    getattr_args3.object.data.data_len = mnt_res3.mountres3_u.mountinfo.fhandle.fhandle3_len;
+    getattr_args3.object.data.data_val = mnt_res3.mountres3_u.mountinfo.fhandle.fhandle3_val;
+
+    if (clnt_call(nfs_clnt, NFSPROC3_GETATTR,
+                 (xdrproc_t) xdr_GETATTR3args, (caddr_t) &getattr_args3,
+                 (xdrproc_t) xdr_GETATTR3res, (caddr_t) &getattr_res3,
+                 TIMEOUT) != RPC_SUCCESS) {
+        printf("GETATTR call failed\n");
+        abort();
+    }
+
+    if (clnt_call(mnt_clnt, MOUNTPROC3_UMNT,
+                 (xdrproc_t) xdr_dirpath, (caddr_t) &dir_path,
+                 (xdrproc_t) xdr_void, (caddr_t) NULL,
+                 TIMEOUT) != RPC_SUCCESS) {
+        printf("UMNT call failed\n");
+        abort();
+    }
+
+    ASSERT(getattr_res3.status == NFS3_OK)
+    ASSERT(getattr_res3.GETATTR3res_u.resok.obj_attributes.type == NF3DIR)
+    ASSERT(getattr_res3.GETATTR3res_u.resok.obj_attributes.mode == 16893) // drwxrwxr-x
+    ASSERT(getattr_res3.GETATTR3res_u.resok.obj_attributes.uid == 1000)
+    ASSERT(getattr_res3.GETATTR3res_u.resok.obj_attributes.gid == 1000)
+
+    ASSERT(clnt_freeres(mnt_clnt, (xdrproc_t) xdr_mountres3, (caddr_t) &mnt_res3) == 1);
+    ASSERT(clnt_freeres(mnt_clnt, (xdrproc_t) xdr_GETATTR3res, (caddr_t) &getattr_res3) == 1);
+    clnt_destroy(mnt_clnt);
+    clnt_destroy(nfs_clnt);
+    auth_destroy(auth);
+}
+
 void test_mount()
 {
     AUTH *auth = authunix_create_default();
@@ -104,6 +166,7 @@ TEST(TestNfsRpc, test)
     usleep(10000);
     test_mount();
     test_nfs();
+    test_nfs3_getattr();
 
     env_stop = true;
     env_thread.join();
