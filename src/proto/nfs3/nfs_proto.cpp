@@ -16,7 +16,7 @@ namespace Nfs {
 void NfsProto::init(EStore::EStore *estore, TcpAcceptor *tcp_acceptor, bool primary_instance)
 {
     if (!_nfs_conf.enabled) {
-        PT_INFO("nfs not configured");
+        PT_INFO(CONTROL, "nfs not configured");
         return;
     }
     _estore = estore;

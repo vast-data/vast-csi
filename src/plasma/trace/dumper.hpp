@@ -2,8 +2,8 @@
 
 /*!
  * \file dumper.hpp
- * \brief The trace dumper emits trace records from memory to files. Each component has its own trace file.
- * The dumper starts a pthread that loops over all components until is explicitly stopped.
+ * \brief The trace dumper emits trace records from memory to files. Each channel has its own trace file.
+ * The dumper starts a pthread that loops over all channels until it's explicitly stopped.
  */
 #pragma once
 
@@ -57,14 +57,19 @@ public:
      */
     void main();
 private:
+    // Returns default persistence setting for the given channel.
+    // TODO: currently, the default config is defined here (in code). Consider changing this so that it will be defined
+    //       in a "default config" file.
+    bool should_persist_channel(Channel chan) { return chan != Channel::DETAILED_DATA; }
+
     bool iteration(bool force);
 
     static const uint32_t MAX_PREFIX_SIZE = 128;
 
-    char _file_prefixes[(int)ComponentId::COUNT][MAX_PREFIX_SIZE];
-    DBufferReader *_readers[(int)ComponentId::COUNT];
-    TraceFile *_files[(int)ComponentId::COUNT];
-    uint64_t _times[(int)ComponentId::COUNT];
+    char _file_prefixes[(int)Channel::COUNT][MAX_PREFIX_SIZE];
+    DBufferReader *_readers[(int)Channel::COUNT];
+    TraceFile *_files[(int)Channel::COUNT];
+    uint64_t _times[(int)Channel::COUNT];
     Emitter *_emitter;
     pthread_t _pthread;
     std::atomic<bool> _stop;

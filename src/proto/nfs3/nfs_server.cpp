@@ -73,20 +73,20 @@ xdr_buffered_WRITE3args(XDR *xdrs, BufferedWRITE3args *objp)
         P::IOVec *vec = &objp->io_vecs.iovecs[objp->io_vecs.count];
         vec->iov_base = rpc->alloc_data_buffer();
         if (vec->iov_base == nullptr) {
-            PT_DEBUG("no data buffer available");
+            PT_DEBUG(DATA, "no data buffer available");
             P::Fiber::yield();
             continue;
         }
         objp->io_vecs.count++;
         vec->iov_len = P_MIN(len, EStore::DATA_BUFFER_SIZE);
         if (!xdrdrec_direct_read(xdrs, (caddr_t)vec->iov_base, vec->iov_len)) {
-            PT_ERROR("xdrdrec_direct_read failed");
+            PT_ERROR(DATA, "xdrdrec_direct_read failed");
             break;
         }
         len -= vec->iov_len;
     }
     if (len > 0) {
-        PT_ERROR("reading data failed");
+        PT_ERROR(DATA, "reading data failed");
         free_iovec(&objp->io_vecs, rpc);
         return FALSE;
     }
@@ -310,7 +310,7 @@ void NfsServer::set_xdr_procs(RpcRequest *request)
             break;
 
         default:
-            PT_WARN("proc not found");
+            PT_WARN(DATA, "proc not found");
             request->status = RpcStatus::PROC_NOT_FOUND;
             break;
     }
@@ -407,7 +407,7 @@ void NfsServer::run_procedure(RpcRequest *request)
             break;
 
         default:
-            PT_WARN("proc not found");
+            PT_WARN(DATA, "proc not found");
             request->status = RpcStatus::PROC_NOT_FOUND;
             return;
     }
@@ -434,7 +434,7 @@ static void access_check(RpcRequest *request, EStore::SystemAttr *attr, uint32_t
     uint32_t element_mode = attr->mode;
     uint32_t caller_uid = request->auth_params.uid;
 
-    PT_DEBUG("element_mode=%o element_uid=%u element_uid=%u caller_uid=%u caller_gid=%u required_mode=%o",
+    PT_DEBUG(DATA, "element_mode=%o element_uid=%u element_uid=%u caller_uid=%u caller_gid=%u required_mode=%o",
            element_mode, element_uid, element_uid, caller_uid, request->auth_params.gid, required_mode);
 
     // caller is root
@@ -442,7 +442,7 @@ static void access_check(RpcRequest *request, EStore::SystemAttr *attr, uint32_t
         if (attr->element_flags & (uint64_t)ElementFlags::DIR) {
             // if its a directory root can do whatever it wants
             *granted_mode = required_mode;
-            PT_DEBUG("required_mode=%o granted_mode=%o", required_mode, *granted_mode);
+            PT_DEBUG(DATA, "required_mode=%o granted_mode=%o", required_mode, *granted_mode);
             return;
         }
         if (required_mode & EXEC_MODE && !(element_mode & (S_IXOTH | S_IXUSR | S_IXGRP))) {
@@ -451,7 +451,7 @@ static void access_check(RpcRequest *request, EStore::SystemAttr *attr, uint32_t
         } else {
             *granted_mode = required_mode;
         }
-        PT_DEBUG("required_mode=%o granted_mode=%o", required_mode, *granted_mode);
+        PT_DEBUG(DATA, "required_mode=%o granted_mode=%o", required_mode, *granted_mode);
         return;
     }
 
@@ -467,7 +467,7 @@ static void access_check(RpcRequest *request, EStore::SystemAttr *attr, uint32_t
     // if caller is not owner / in group the other bits will be used
 
     *granted_mode = required_mode & element_mode;
-    PT_DEBUG("required_mode=%o granted_mode=%o", required_mode, *granted_mode);
+    PT_DEBUG(DATA, "required_mode=%o granted_mode=%o", required_mode, *granted_mode);
 }
 
 struct AccessCheckCtx {
@@ -481,7 +481,7 @@ EStoreRes access_check_cb(SystemAttr *attr, void *ctx)
     uint32_t granted_mode = 0;
     access_check(check_ctx->request, attr, check_ctx->required_mode, &granted_mode);
     if (granted_mode != check_ctx->required_mode) {
-        PT_DEBUG("rejecting request");
+        PT_DEBUG(DATA, "rejecting request");
         return EStoreRes::PERM_ERROR;
     }
     return EStoreRes::OK;
@@ -495,7 +495,7 @@ static EStoreRes read_check_cb(SystemAttr *attr, void *ctx)
     // allowed to read or execute
     access_check(check_ctx->request, attr, READ_MODE | EXEC_MODE, &granted_mode);
     if (granted_mode == 0) {
-        PT_DEBUG("rejecting request");
+        PT_DEBUG(DATA, "rejecting request");
         return EStoreRes::PERM_ERROR;
     }
     return EStoreRes::OK;
@@ -509,13 +509,13 @@ static EStoreRes write_check_cb(SystemAttr *attr, void *ctx)
     // since a file owner can change the mode while keeping the file open, the owner of a file can access it
     // regardless of the permission setting.
     if (attr->uid == request->auth_params.uid) {
-        PT_DEV("allowing owner to write");
+        PT_DEV(DATA, "allowing owner to write");
         return EStoreRes::OK;
     }
 
     access_check(check_ctx->request, attr, WRITE_MODE, &granted_mode);
     if (granted_mode != WRITE_MODE) {
-        PT_DEBUG("rejecting request");
+        PT_DEBUG(DATA, "rejecting request");
         return EStoreRes::PERM_ERROR;
     }
     return EStoreRes::OK;
@@ -540,13 +540,13 @@ static EStoreRes setattr_check_cb(SystemAttr *attr, void *ctx)
     // only ownership change need to be checked for owner
     if (new_attr->uid.set_it == TRUE) {
         if (!is_owner) {
-            PT_DEBUG("regular user is only allowed to chown to itself");
+            PT_DEBUG(DATA, "regular user is only allowed to chown to itself");
             return EStoreRes::PERM_ERROR;
         }
     }
     if (new_attr->gid.set_it == TRUE) {
         if (!is_gid_in_request(request, new_attr->gid.set_gid3_u.gid)) {
-            PT_DEBUG("regular user can change group owner only to a group it is a member of");
+            PT_DEBUG(DATA, "regular user can change group owner only to a group it is a member of");
             return EStoreRes::PERM_ERROR;
         }
     }
@@ -594,7 +594,7 @@ void NfsServer::set_attr(RpcRequest *request, SETATTR3args *args, SETATTR3res *r
 {
     EHandle handle;
     nfs_handle_to_ehandle(&args->object, &handle);
-    PT_DEBUG("setattr on handle=%lx", handle);
+    PT_DEBUG(DATA, "setattr on handle=%lx", handle);
 
     AccessCheckCtx check_ctx = {
         .request = request,
@@ -614,7 +614,7 @@ void NfsServer::set_attr(RpcRequest *request, SETATTR3args *args, SETATTR3res *r
     EStoreRes eres = _estore->set_attr(setattr_check_cb, &check_ctx, handle, &sattr, ctime_guard,
                                        nullptr, nullptr, &pre_attr, &post_attr);
     if (eres != EStoreRes::OK) {
-        PT_ERROR("setattr on handle=%lx failed res=%d", handle, eres);
+        PT_ERROR(DATA, "setattr on handle=%lx failed res=%d", handle, eres);
         res->status = eres_to_nfs_status(eres);
         res->SETATTR3res_u.resfail.obj_wcc.after.attributes_follow = FALSE;
         res->SETATTR3res_u.resfail.obj_wcc.before.attributes_follow = FALSE;
@@ -627,7 +627,7 @@ void NfsServer::lookup(RpcRequest *request, LOOKUP3args *args, LOOKUP3res *res)
 {
     EHandle phandle;
     nfs_handle_to_ehandle(&args->what.dir, &phandle);
-    PT_DEBUG("lookup handle=%lx name=%s", phandle, args->what.name);
+    PT_DEBUG(DATA, "lookup handle=%lx name=%s", phandle, args->what.name);
     EHandle ehandle;
     SystemAttr eattr;
     SystemAttr pattr;
@@ -649,7 +649,7 @@ void NfsServer::lookup(RpcRequest *request, LOOKUP3args *args, LOOKUP3res *res)
         eres = _estore->lookup(access_check_cb, &check_ctx, phandle, args->what.name, true, &ehandle, &eattr, &pattr);
     }
     if (eres != EStoreRes::OK) {
-        PT_DEBUG("lookup failed eres=%d", eres);
+        PT_DEBUG(DATA, "lookup failed eres=%d", eres);
         res->status = eres_to_nfs_status(eres);
         res->LOOKUP3res_u.resfail.dir_attributes.attributes_follow = FALSE;
         return;
@@ -665,7 +665,7 @@ void NfsServer::access(RpcRequest *request, ACCESS3args *args, ACCESS3res *res)
 {
     EHandle handle;
     nfs_handle_to_ehandle(&args->object, &handle);
-    PT_DEBUG("access check handle=%lx requested access=%x", handle, args->access);
+    PT_DEBUG(DATA, "access check handle=%lx requested access=%x", handle, args->access);
 
     SystemAttr sys_attr;
     res->status = NFS3_OK;
@@ -685,7 +685,7 @@ void NfsServer::access(RpcRequest *request, ACCESS3args *args, ACCESS3res *res)
     uint32_t granted_access = 0;
     mode_to_nfs_access(granted_mode, &granted_access);
     granted_access &= requested_access;
-    PT_DEBUG("access check handle=%lx requested_access=%x granted_access=%x", handle, args->access, granted_access);
+    PT_DEBUG(DATA, "access check handle=%lx requested_access=%x granted_access=%x", handle, args->access, granted_access);
 
     res->ACCESS3res_u.resok.access = granted_access;
     res->ACCESS3res_u.resok.obj_attributes.attributes_follow = TRUE;
@@ -696,7 +696,7 @@ void NfsServer::readlink(RpcRequest *request, READLINK3args *args, READLINK3res 
 {
     EHandle handle;
     nfs_handle_to_ehandle(&args->symlink, &handle);
-    PT_DEBUG("readlink handle=%lx", handle);
+    PT_DEBUG(DATA, "readlink handle=%lx", handle);
 
     // symlink data is stored as an extended attribute
     SystemAttr sys_attr;
@@ -733,7 +733,7 @@ void NfsServer::read(RpcRequest *request, READ3args *args, BufferedREAD3res *res
 {
     EHandle handle;
     nfs_handle_to_ehandle(&args->file, &handle);
-    PT_DEBUG("read from handle=%lx offset=%lu count=%u", handle, args->offset, args->count);
+    PT_DEBUG(DATA, "read from handle=%lx offset=%lu count=%u", handle, args->offset, args->count);
 
     P::IOVecs *io_vecs = &res->READ3res_u.resok.io_vecs;
     io_vecs->count = (uint32_t)ceil((double)args->count / EStore::DATA_BUFFER_SIZE);
@@ -757,7 +757,7 @@ void NfsServer::read(RpcRequest *request, READ3args *args, BufferedREAD3res *res
                                    &pre_attr, &post_attr);
     if (eres != EStoreRes::OK) {
         res->status = eres_to_nfs_status(eres);
-        PT_DEBUG("read from handle=%lx offset=%lu count=%u failed res->status=%d",
+        PT_DEBUG(DATA, "read from handle=%lx offset=%lu count=%u failed res->status=%d",
                  handle, args->offset, args->count, res->status);
         res->READ3res_u.resfail.file_attributes.attributes_follow = FALSE;
         return;
@@ -771,7 +771,7 @@ void NfsServer::write(RpcRequest *request, BufferedWRITE3args *args, WRITE3res *
 {
     EHandle handle;
     nfs_handle_to_ehandle(&args->file, &handle);
-    PT_DEBUG("write to handle=%lx offset=%lu count=%u", handle, args->offset, args->count);
+    PT_DEBUG(DATA, "write to handle=%lx offset=%lu count=%u", handle, args->offset, args->count);
 
     if (args->count != args->data_len) {
         res->status = NFS3ERR_INVAL;
@@ -788,7 +788,7 @@ void NfsServer::write(RpcRequest *request, BufferedWRITE3args *args, WRITE3res *
     res->status = NFS3_OK;
     EStoreRes eres = _estore->write(write_check_cb, &check_ctx, handle, args->offset, &args->io_vecs, &pre_attr, &post_attr);
     if (eres != EStoreRes::OK) {
-        PT_DEBUG("write handle=%lx offset=%lu count=%u failed res=%d", handle, args->offset, args->count, eres);
+        PT_DEBUG(DATA, "write handle=%lx offset=%lu count=%u failed res=%d", handle, args->offset, args->count, eres);
         res->status = eres_to_nfs_status(eres);
         res->WRITE3res_u.resfail.file_wcc.after.attributes_follow = FALSE;
         res->WRITE3res_u.resfail.file_wcc.before.attributes_follow = FALSE;
@@ -805,7 +805,7 @@ void NfsServer::create(RpcRequest *request, CREATE3args *args, CREATE3res *res)
 {
     EHandle phandle;
     nfs_handle_to_ehandle(&args->where.dir, &phandle);
-    PT_DEBUG("create phandle=%lx name=%s", phandle, args->where.name);
+    PT_DEBUG(DATA, "create phandle=%lx name=%s", phandle, args->where.name);
     
     CreateFlags flags = CreateFlags::HAS_DATA;
     if (args->how.mode == GUARDED || args->how.mode == EXCLUSIVE) {
@@ -835,7 +835,7 @@ void NfsServer::create(RpcRequest *request, CREATE3args *args, CREATE3res *res)
     EStoreRes eres = _estore->create(access_check_cb, &check_ctx, phandle, args->where.name, flags, verifier, &settable_attr,
                                      nullptr, nullptr, &ehandle, &element_attr, &pre_pattr, &post_pattr);
     if (eres != EStoreRes::OK) {
-        PT_ERROR("create phandle=%lx name=%s failed res=%d", phandle, args->where.name, eres);
+        PT_ERROR(DATA, "create phandle=%lx name=%s failed res=%d", phandle, args->where.name, eres);
         res->status = eres_to_nfs_status(eres);
         res->CREATE3res_u.resfail.dir_wcc.after.attributes_follow = FALSE;
         res->CREATE3res_u.resfail.dir_wcc.before.attributes_follow = FALSE;
@@ -850,7 +850,7 @@ void NfsServer::mkdir(RpcRequest *request, MKDIR3args *args, MKDIR3res *res)
 {
     EHandle phandle;
     nfs_handle_to_ehandle(&args->where.dir, &phandle);
-    PT_DEBUG("mkdir phandle=%lx name=%s", phandle, args->where.name);
+    PT_DEBUG(DATA, "mkdir phandle=%lx name=%s", phandle, args->where.name);
 
     CreateFlags flags = CreateFlags::HAS_CHILDREN;
     SettableAttr settable_attr;
@@ -870,7 +870,7 @@ void NfsServer::mkdir(RpcRequest *request, MKDIR3args *args, MKDIR3res *res)
     EStoreRes eres = _estore->create(access_check_cb, &check_ctx, phandle, args->where.name, flags, 0, &settable_attr,
                                      nullptr, nullptr, &ehandle, &element_attr, &pre_pattr, &post_pattr);
     if (eres != EStoreRes::OK) {
-        PT_ERROR("mkdir phandle=%lx name=%s failed res=%d", phandle, args->where.name, eres);
+        PT_ERROR(DATA, "mkdir phandle=%lx name=%s failed res=%d", phandle, args->where.name, eres);
         res->status = eres_to_nfs_status(eres);
         res->MKDIR3res_u.resfail.dir_wcc.before.attributes_follow = FALSE;
         res->MKDIR3res_u.resfail.dir_wcc.after.attributes_follow = FALSE;
@@ -885,7 +885,7 @@ void NfsServer::symlink(RpcRequest *request, SYMLINK3args *args, SYMLINK3res *re
 {
     EHandle handle;
     nfs_handle_to_ehandle(&args->where.dir, &handle);
-    PT_DEBUG("symlink handle=%lx name=%s symlink=%s", handle, args->where.name, args->symlink.symlink_data);
+    PT_DEBUG(DATA, "symlink handle=%lx name=%s symlink=%s", handle, args->where.name, args->symlink.symlink_data);
 
     // estore does not know about symlink, instead we create an empty element and use an extended attribute in order
     // to store the link data
@@ -914,7 +914,7 @@ void NfsServer::symlink(RpcRequest *request, SYMLINK3args *args, SYMLINK3res *re
     EStoreRes eres = _estore->create(access_check_cb, &check_ctx, handle, args->where.name, flags, 0, &settable_attr,
                                      nullptr, &xattrs, &ehandle, &element_attr, &pre_pattr, &post_pattr);
     if (eres != EStoreRes::OK) {
-        PT_DEBUG("symlink handle=%lx name=%s symlink=%s failed res=%d",
+        PT_DEBUG(DATA, "symlink handle=%lx name=%s symlink=%s failed res=%d",
                  handle, args->where.name, args->symlink.symlink_data, eres);
         res->status = eres_to_nfs_status(eres);
         res->SYMLINK3res_u.resfail.dir_wcc.before.attributes_follow = FALSE;
@@ -931,7 +931,7 @@ void NfsServer::mknod(RpcRequest *request, MKNOD3args *args, MKNOD3res *res)
     EHandle phandle;
     nfs_handle_to_ehandle(&args->where.dir, &phandle);
     // not supported
-    PT_DEBUG("mknod phandle=%lx name=%s, not supported returning error", phandle, args->where.name);
+    PT_DEBUG(DATA, "mknod phandle=%lx name=%s, not supported returning error", phandle, args->where.name);
 
     res->status = NFS3ERR_NOTSUPP;
     res->MKNOD3res_u.resfail.dir_wcc.before.attributes_follow = FALSE;
@@ -942,7 +942,7 @@ void NfsServer::unlink(RpcRequest *request, diropargs3 *args, nfsstat3 *status, 
 {
     EHandle phandle;
     nfs_handle_to_ehandle(&args->dir, &phandle);
-    PT_DEBUG("unlink phandle=%lx name=%s", phandle, args->name);
+    PT_DEBUG(DATA, "unlink phandle=%lx name=%s", phandle, args->name);
 
     AccessCheckCtx check_ctx = {
         .request = request,
@@ -956,7 +956,7 @@ void NfsServer::unlink(RpcRequest *request, diropargs3 *args, nfsstat3 *status, 
         resfail->before.attributes_follow = FALSE;
         resfail->after.attributes_follow = FALSE;
         *status = eres_to_nfs_status(eres);
-        PT_ERROR("unlink phandle=%lx name=%s res=%d", phandle, args->name, eres);
+        PT_ERROR(DATA, "unlink phandle=%lx name=%s res=%d", phandle, args->name, eres);
         return;
     }
     fill_wcc_data(resok, &pre_attr, &post_attr);
@@ -986,7 +986,7 @@ void NfsServer::rename(RpcRequest *request, RENAME3args *args, RENAME3res *res)
     EHandle to_handle;
     nfs_handle_to_ehandle(&args->fromfile.dir, &from_handle);
     nfs_handle_to_ehandle(&args->tofile.dir, &to_handle);
-    PT_DEBUG("rename from handle=%lx name=%s to handle=%lx name=%s", from_handle, args->fromfile.name,
+    PT_DEBUG(DATA, "rename from handle=%lx name=%s to handle=%lx name=%s", from_handle, args->fromfile.name,
            to_handle, args->tofile.name);
 
     AccessCheckCtx check_ctx = {
@@ -1001,7 +1001,7 @@ void NfsServer::rename(RpcRequest *request, RENAME3args *args, RENAME3res *res)
     EStoreRes eres = _estore->rename(access_check_cb, &check_ctx, from_handle, args->fromfile.name, to_handle, args->tofile.name,
                                      &pre_src_attr, &post_src_attr, &pre_dst_attr, &post_dst_attr);
     if (eres != EStoreRes::OK) {
-        PT_ERROR("rename from handle=%lx name=%s to handle=%lx name=%s failed res=%d", from_handle, args->fromfile.name,
+        PT_ERROR(DATA, "rename from handle=%lx name=%s to handle=%lx name=%s failed res=%d", from_handle, args->fromfile.name,
                  to_handle, args->tofile.name, eres);
         res->status = eres_to_nfs_status(eres);
         res->RENAME3res_u.resfail.fromdir_wcc.after.attributes_follow = FALSE;
@@ -1020,7 +1020,7 @@ void NfsServer::link(RpcRequest *request, LINK3args *args, LINK3res *res)
     nfs_handle_to_ehandle(&args->file, &target_handle);
     EHandle phandle;
     nfs_handle_to_ehandle(&args->link.dir, &phandle);
-    PT_DEBUG("link from phandle=%lx name=%s to target_handle=%lx", phandle, args->link.name, target_handle);
+    PT_DEBUG(DATA, "link from phandle=%lx name=%s to target_handle=%lx", phandle, args->link.name, target_handle);
 
     AccessCheckCtx check_ctx = {
         .request = request,
@@ -1033,7 +1033,7 @@ void NfsServer::link(RpcRequest *request, LINK3args *args, LINK3res *res)
     EStoreRes eres = _estore->link(access_check_cb, &check_ctx, target_handle, phandle, args->link.name,
                                    &post_link_attr, &pre_pattr, &post_pattr);
     if (eres != EStoreRes::OK) {
-        PT_ERROR("link from phandle=%lx name=%s to target_handle=%lx failed res=%d",
+        PT_ERROR(DATA, "link from phandle=%lx name=%s to target_handle=%lx failed res=%d",
                  phandle, args->link.name, target_handle, eres);
         res->status = eres_to_nfs_status(eres);
         res->LINK3res_u.resfail.file_attributes.attributes_follow = FALSE;
@@ -1049,7 +1049,7 @@ void NfsServer::link(RpcRequest *request, LINK3args *args, LINK3res *res)
 static bool readdir_cb(EStore::ReaddirEntry *entry, void *ctx)
 {
     ReaddirState *rd_state = (ReaddirState *)ctx;
-    PT_DEBUG("add entry handle=%lx name=%s dir_mem_left=%lu mem_left=%lu", entry->handle, entry->name,
+    PT_DEBUG(DATA, "add entry handle=%lx name=%s dir_mem_left=%lu mem_left=%lu", entry->handle, entry->name,
            rd_state->dir_mem_left, rd_state->mem_left);
     rd_state->last_retval = false;
     // check if we have dir space left to store the name and file id (dir space only relates to directory information)
@@ -1100,7 +1100,7 @@ static bool readdir_plus_cb_func(EStore::ReaddirEntry *entry, void *ctx)
 bool NfsServer::readdir_plus_cb(EStore::ReaddirEntry *entry, void *ctx)
 {
     ReaddirState *rd_state = (ReaddirState *)ctx;
-    PT_DEBUG("add entry handle=%lx name=%s dir_mem_left=%lu mem_left=%lu", entry->handle, entry->name,
+    PT_DEBUG(DATA, "add entry handle=%lx name=%s dir_mem_left=%lu mem_left=%lu", entry->handle, entry->name,
            rd_state->dir_mem_left, rd_state->mem_left);
     rd_state->last_retval = false;
     // check if we have dir space left to store the name and file id (dir space only relates to directory information)
@@ -1136,7 +1136,7 @@ bool NfsServer::readdir_plus_cb(EStore::ReaddirEntry *entry, void *ctx)
     SystemAttr attr;
     EStoreRes eres = _estore->get_attr(nullptr, nullptr, entry->handle, &attr, nullptr, nullptr);
     if (eres != EStoreRes::OK) {
-        PT_WARN("get_attr failed res=%d", eres);
+        PT_WARN(DATA, "get_attr failed res=%d", eres);
         rdp_entry->name_attributes.attributes_follow = FALSE;
     } else {
         rdp_entry->name_attributes.attributes_follow = TRUE;
@@ -1165,7 +1165,7 @@ void NfsServer::readdir(RpcRequest *request, READDIR3args *args, READDIR3res *re
 {
     EHandle handle;
     nfs_handle_to_ehandle(&args->dir, &handle);
-    PT_DEBUG("readdir handle=%lx offset=%ld", handle, args->cookie);
+    PT_DEBUG(DATA, "readdir handle=%lx offset=%ld", handle, args->cookie);
 
     res->READDIR3res_u.resok.reply.entries->fileid = EStore::INVALID_EHANDLE;
     ReaddirState rd_state = {
@@ -1193,7 +1193,7 @@ void NfsServer::readdir(RpcRequest *request, READDIR3args *args, READDIR3res *re
                                 nullptr, 0, &current_dir_version, &post_attr);
     }
     if (eres != EStoreRes::OK) {
-        PT_ERROR("readdir handle=%lx offset=%ld failed res=%d", handle, args->cookie, eres);
+        PT_ERROR(DATA, "readdir handle=%lx offset=%ld failed res=%d", handle, args->cookie, eres);
         res->status = eres_to_nfs_status(eres);
         res->READDIR3res_u.resfail.dir_attributes.attributes_follow = FALSE;
         return;
@@ -1213,7 +1213,7 @@ void NfsServer::readdir_plus(RpcRequest *request, READDIRPLUS3args *args, READDI
 {
     EHandle handle;
     nfs_handle_to_ehandle(&args->dir, &handle);
-    PT_DEBUG("readdir_plus handle=%lx offset=%ld", handle, args->cookie);
+    PT_DEBUG(DATA, "readdir_plus handle=%lx offset=%ld", handle, args->cookie);
 
     res->READDIRPLUS3res_u.resok.reply.entries->fileid = EStore::INVALID_EHANDLE;
     ReaddirState rd_state = {
@@ -1241,7 +1241,7 @@ void NfsServer::readdir_plus(RpcRequest *request, READDIRPLUS3args *args, READDI
                                 &rd_state, nullptr, 0, &current_dir_version, &post_attr);
     }
     if (eres != EStoreRes::OK) {
-        PT_ERROR("readdir handle=%lx offset=%ld failed res=%d", handle, args->cookie, eres);
+        PT_ERROR(DATA, "readdir handle=%lx offset=%ld failed res=%d", handle, args->cookie, eres);
         res->status = eres_to_nfs_status(eres);
         res->READDIRPLUS3res_u.resfail.dir_attributes.attributes_follow = FALSE;
         return;
@@ -1261,13 +1261,13 @@ void NfsServer::fsstat(RpcRequest *request, FSSTAT3args *args, FSSTAT3res *res)
 {
     EHandle handle;
     nfs_handle_to_ehandle(&args->fsroot, &handle);
-    PT_DEBUG("fsstat handle=%lx", handle);
+    PT_DEBUG(DATA, "fsstat handle=%lx", handle);
     res->status = NFS3_OK;
     EStore::EStoreStats stats;
     SystemAttr attr;
     EStoreRes eres = _estore->get_stats(nullptr, nullptr, handle, &stats, &attr);
     if (eres != EStoreRes::OK) {
-        PT_DEBUG("get_stats handle=%lx failed res=%d", handle, eres);
+        PT_DEBUG(DATA, "get_stats handle=%lx failed res=%d", handle, eres);
         res->status = eres_to_nfs_status(eres);
         res->FSSTAT3res_u.resfail.obj_attributes.attributes_follow = FALSE;
         return;
@@ -1288,7 +1288,7 @@ void NfsServer::nfs_handle_to_ehandle(nfs_fh3 *fh3, EStore::EHandle *handle)
 {
     // we are producing the handles so they should be the size of EHandle
     if (fh3->data.data_len != sizeof(EHandle)) {
-        PT_WARN("invalid handle size=%d", fh3->data.data_len);
+        PT_WARN(DATA, "invalid handle size=%d", fh3->data.data_len);
         *handle = EStore::INVALID_EHANDLE;
         return;
     }
@@ -1332,7 +1332,7 @@ EStore::EStoreRes NfsServer::get_attr_from_fh3(nfs_fh3 *fh3, fattr3 *attr)
 {
     EHandle handle;
     nfs_handle_to_ehandle(fh3, &handle);
-    PT_DEBUG("get_attr handle=%lx", handle);
+    PT_DEBUG(DATA, "get_attr handle=%lx", handle);
 
     SystemAttr sys_attr;
     EStoreRes res = _estore->get_attr(nullptr, nullptr, handle, &sys_attr, nullptr, nullptr);
@@ -1351,7 +1351,7 @@ EStoreRes NfsServer::fill_post_op_attr(nfs_fh3 *fh3, post_op_attr *po_attr)
 
 void NfsServer::fsinfo(RpcRequest *request, FSINFO3args *args, FSINFO3res *res)
 {
-    PT_DEBUG("fs info request");
+    PT_DEBUG(DATA, "fs info request");
     res->status = NFS3_OK;
     EStoreRes eres = fill_post_op_attr(&args->fsroot, &res->FSINFO3res_u.resok.obj_attributes);
     if (eres != EStoreRes::OK) {
@@ -1376,7 +1376,7 @@ void NfsServer::fsinfo(RpcRequest *request, FSINFO3args *args, FSINFO3res *res)
 
 void NfsServer::pathconf(RpcRequest *request, PATHCONF3args *args, PATHCONF3res *res)
 {
-    PT_DEBUG("path conf");
+    PT_DEBUG(DATA, "path conf");
     res->status = NFS3_OK;
     EStoreRes eres = fill_post_op_attr(&args->object, &res->PATHCONF3res_u.resok.obj_attributes);
     if (eres != EStoreRes::OK) {
@@ -1399,7 +1399,7 @@ void NfsServer::commit(RpcRequest *request, COMMIT3args *args, COMMIT3res *res)
     // Yet in case the client is acting weird we'll just return NFS3_OK here
     EHandle handle;
     nfs_handle_to_ehandle(&args->file, &handle);
-    PT_WARN("commit request for handle=%lx", handle);
+    PT_WARN(DATA, "commit request for handle=%lx", handle);
     res->status = NFS3_OK;
     memset(&res->COMMIT3res_u.resok.verf, 0, sizeof(res->COMMIT3res_u.resok.verf));
     res->COMMIT3res_u.resok.file_wcc.after.attributes_follow = FALSE;

@@ -27,9 +27,9 @@ void AddressTable::set(EnvId env_id, EnvAddresses *addresses)
 {
     ASSERT(env_id < MAX_ENVS);
     _lock.wlock();
-    PT_DEBUG("set addresses for env_id=%hu", env_id);
+    PT_DEBUG(DATA, "set addresses for env_id=%hu", env_id);
     LOOP(addresses->n_addr, i) {
-//        PT_DEBUG("addr[%lu] host=%s port=%u", i, addresses->addresses[i].host, addresses->addresses[i].port);
+//        PT_DEBUG(DATA, "addr[%lu] host=%s port=%u", i, addresses->addresses[i].host, addresses->addresses[i].port);
     }
     _addresses[env_id] = *addresses;
     _lock.wunlock();

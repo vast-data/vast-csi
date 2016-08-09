@@ -62,7 +62,7 @@ void MountServer::set_xdr_procs(RpcRequest *request)
             break;
 
         default:
-            PT_ERROR("proc not found");
+            PT_ERROR(CONTROL, "proc not found");
             request->status = RpcStatus::PROC_NOT_FOUND;
             return;
     }
@@ -95,7 +95,7 @@ void MountServer::run_procedure(RpcRequest *request)
             break;
 
         default:
-            PT_ERROR("proc not found");
+            PT_ERROR(CONTROL, "proc not found");
             request->status = RpcStatus::PROC_NOT_FOUND;
             return;
     }
@@ -116,7 +116,7 @@ void MountServer::mnt(RpcRequest *request, dirpath *path, mountres3 *res)
     EHandle root_handle;
     _estore->get_root_handle(&root_handle);
 
-    PT_INFO("mnt request path=%s", *path);
+    PT_INFO(CONTROL, "mnt request path=%s", *path);
     res->fhs_status = MNT3_OK;
     res->mountres3_u.mountinfo.fhandle.fhandle3_len = sizeof(EHandle);
     *(EHandle*)res->mountres3_u.mountinfo.fhandle.fhandle3_val = root_handle;
@@ -133,7 +133,7 @@ void MountServer::dump(RpcRequest *request, mountlist *res)
 void MountServer::umnt(RpcRequest *request, dirpath *path)
 {
     // TODO remove from active mount list
-    PT_INFO("umnt request path=%s", *path);
+    PT_INFO(CONTROL, "umnt request path=%s", *path);
 }
 
 void MountServer::umntall(RpcRequest *request)

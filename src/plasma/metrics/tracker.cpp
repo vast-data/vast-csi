@@ -55,12 +55,13 @@ void Tracker::get_generations(GetGenerationsParams::RootReader *params, GetGener
  */
 void Tracker::get_modified(GetModifiedParams::RootReader *params, GetModifiedResult::RootBuilder *result, uint16_t *res_len)
 {
-    PT_INFO("Getting objects modified from generation=%ld", params->get_from_generation());
+    PT_INFO(CONTROL, "Getting objects modified from generation=%ld", params->get_from_generation());
     *res_len = sizeof(GetModifiedResult::RootBuilder);
     if (params->get_delete_generation() != _delete_generation ||
         params->get_from_generation() > _update_generation) {
         result->set_success(false);
-        PT_INFO("Delete generation differs: %ld vs. %ld", params->get_delete_generation(), _delete_generation);
+        PT_INFO(CONTROL, "Delete generation differs: %ld vs. %ld", params->get_delete_generation(),
+                _delete_generation);
         return;
     }
     uint16_t count = 0;
@@ -78,7 +79,7 @@ void Tracker::get_modified(GetModifiedParams::RootReader *params, GetModifiedRes
         size_t object_size = obj->get_clone_size();
         ASSERT_OP(object_size, <=, result->get_data_count());
         if (object_size > size_left) { // additional calls are needed!
-            PT_INFO("Next object to sync from: %p", obj);
+            PT_INFO(CONTROL, "Next object to sync from: %p", obj);
             result->set_cookie((uint64_t) i);
             break;
         }
@@ -99,7 +100,8 @@ void Tracker::get_deletions(GetDeletionsParams::RootReader *params, GetDeletions
     uint64_t start_generation = params->get_from_generation();
     if (_delete_generation - start_generation > DELETED_OBJECTS_LOG_SIZE ||
         start_generation > _delete_generation) {
-        PT_INFO("Delete generation overflow: %ld vs. %ld", params->get_from_generation(), _delete_generation);
+        PT_INFO(CONTROL, "Delete generation overflow: %ld vs. %ld", params->get_from_generation(),
+                _delete_generation);
         result->set_success(false);
         return;
     }
@@ -114,7 +116,7 @@ void Tracker::get_deletions(GetDeletionsParams::RootReader *params, GetDeletions
     bool has_more = start_generation < _delete_generation;
     result->set_count(i);
     result->set_has_more(has_more);
-    PT_INFO("Returned %zu objects. Has more: %c", i, has_more);
+    PT_INFO(CONTROL, "Returned %zu objects. Has more: %c", i, has_more);
     *res_len = sizeof(GetDeletionsResult::RootBuilder);
 }
 

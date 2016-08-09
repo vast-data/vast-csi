@@ -26,17 +26,22 @@
   #define TRACE_SECTION _TRACE_SECTION(__FILE__, MACRO_STRINGIFY(__LINE__))
 #endif
 
-#define P_TRACE(severity, component, fmt, ...) do {                                 \
-        static P::Trace::TraceInfo TRACE_SECTION info = {fmt, __FILE__, __LINE__, __func__}; \
+#define P_TRACE(channel, severity, component, fmt, ...) do {                                 \
+        static P::Trace::TraceInfo TRACE_SECTION info = {component, fmt, __FILE__, __LINE__, __func__}; \
         P::Trace::validate_format(fmt, ##__VA_ARGS__);                              \
-        P::Trace::Emitter::trace(severity, component, &info, ##__VA_ARGS__);        \
+        P::Trace::Emitter::trace(channel, severity, &info, ##__VA_ARGS__);        \
 } while(0)
 
-#define PT_DEV(...) P_TRACE(P::Trace::Severity::SEVERITY_DEV, CURRENT_COMPONENT, __VA_ARGS__)
-#define PT_DEBUG(...) P_TRACE(P::Trace::Severity::SEVERITY_DEBUG, CURRENT_COMPONENT, __VA_ARGS__)
-#define PT_INFO(...) P_TRACE(P::Trace::Severity::SEVERITY_INFO, CURRENT_COMPONENT, __VA_ARGS__)
-#define PT_WARN(...) P_TRACE(P::Trace::Severity::SEVERITY_WARN, CURRENT_COMPONENT, __VA_ARGS__)
-#define PT_ERROR(...) P_TRACE(P::Trace::Severity::SEVERITY_ERROR, CURRENT_COMPONENT, __VA_ARGS__)
+#define PT_HELPER(channel, severity, ...) \
+    P_TRACE(P::Trace::Channel:: channel, P::Trace::Severity:: severity, CURRENT_COMPONENT, __VA_ARGS__)
+
+// Convenience macros for specific severities:
+// Example: PT_INFO(DATA, "Here's the data: %d", i);
+#define PT_DEV(channel, ...) PT_HELPER(channel, DEV, __VA_ARGS__)
+#define PT_DEBUG(channel, ...) PT_HELPER(channel, _DEBUG, __VA_ARGS__)
+#define PT_INFO(channel, ...) PT_HELPER(channel, INFO, __VA_ARGS__)
+#define PT_WARN(channel, ...) PT_HELPER(channel, WARN, __VA_ARGS__)
+#define PT_ERROR(channel, ...) PT_HELPER(channel, ERROR, __VA_ARGS__)
 
 #define P_TRACE_MAX_STR_LEN 4096
 #define P_TRACE_STR_LEN_TYPE uint16_t
@@ -51,7 +56,7 @@ public:
      \code
      {
          PLASMA: {
-             min_severity: "SEVERITY_DEBUG",
+             min_severity: "DEBUG",
              buffer_size_mb: 8
          }
      }
@@ -80,16 +85,16 @@ public:
      */
     void set_global();
 
-    DBuffer *get_dbuffer(ComponentId component); // used only by the dumper
+    DBuffer *get_dbuffer(Channel channel); // used only by the dumper
 
     template<typename... Args>
-    static void trace(Severity severity, ComponentId component, TraceInfo *info, Args... args)
+    static void trace(Channel channel, Severity severity, TraceInfo *info, Args... args)
     {
-        if (!MACRO_IS_SET(DEBUG) && severity == Severity::SEVERITY_DEV)
+        if (!MACRO_IS_SET(DEBUG) && severity == Severity::DEV)
             return;
 
         Emitter *emitter = _local_emitter != nullptr ? _local_emitter : _global_emitter;
-        if (unlikely(emitter == nullptr || emitter->_min_severity[(byte) component] > severity))
+        if (unlikely(emitter == nullptr || emitter->_min_severity[(byte) info->component] > severity))
             return;
 
         // the global emitter is shared between pthreads and has a _lock where the local emitter doesn't need one
@@ -97,13 +102,13 @@ public:
             emitter->_lock->lock();
         emitter->record_start(info, severity);
         emitter->trace_emit(args...);
-        emitter->record_finish(component);
+        emitter->record_finish(channel);
         if (unlikely(emitter->_lock))
             emitter->_lock->unlock();
     }
 
 private:
-    DBuffer *_buffers[(byte) ComponentId::COUNT];
+    DBuffer *_buffers[(byte) Channel::COUNT];
     Severity _min_severity[(byte) ComponentId::COUNT];
     TraceRecord _record;
     P_DBUFFER_LENGTH_TYPE _write_index;
@@ -123,9 +128,9 @@ private:
         _write_index = 0;
     }
 
-    void record_finish(ComponentId comp)
+    void record_finish(Channel channel)
     {
-        _buffers[(byte) comp]->write(&_record, offsetof(TraceRecord, params) + _write_index);
+        _buffers[(byte) channel]->write(&_record, offsetof(TraceRecord, params) + _write_index);
     }
 
     void emit_param(const void *data, P_DBUFFER_LENGTH_TYPE length)

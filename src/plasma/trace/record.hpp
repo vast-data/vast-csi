@@ -5,23 +5,30 @@
  */
 #pragma once
 
+#include <defs.hpp>
 #include "../utils/macros.hpp"
 #include "../utils/types.hpp"
 
 namespace P { namespace Trace {
 
-#define TRACE_SEVERITY_LIST(X)              \
-        X(SEVERITY_DEV),                    \
-        X(SEVERITY_DEBUG),                  \
-        X(SEVERITY_INFO),                   \
-        X(SEVERITY_WARN),                   \
-        X(SEVERITY_ERROR),                  \
-        X(SEVERITY_COUNT)                   \
+#define TRACE_SEVERITY_LIST(X)                             \
+        X(DEV),         /* Available only in DEBUG mode */ \
+        X(_DEBUG),                                         \
+        X(INFO),                                           \
+        X(WARN),                                           \
+        X(ERROR),                                          \
+        X(COUNT)
 
-DEFINE_LOOKUP_PROTOTYPES(TRACE_SEVERITY_LIST,
-                         Severity, // the name of the enum
-                         severity_to_string, // the function that converts an enum value to string
-                         severity_from_string) // the function that converts a string to an enum value
+DEFINE_LOOKUP_PROTOTYPES(TRACE_SEVERITY_LIST, Severity, severity_to_string, severity_from_string)
+
+#define TRACE_CHANNEL_LIST(X) \
+    X(DATA),                  \
+    X(DETAILED_DATA),         \
+    X(CONTROL),               \
+    X(PERF),                  \
+    X(COUNT)
+
+DEFINE_LOOKUP_PROTOTYPES(TRACE_CHANNEL_LIST, Channel, channel_to_string, channel_from_string)
 
 // The potential maximum record size could be bigger but we pre allocate a trace
 // record per silo per component. There's no real reason to allocate more.
@@ -38,16 +45,20 @@ struct TraceRecord {
 static_assert(TRACE_RECORD_MAX_SIZE == sizeof(TraceRecord), "TraceRecord size mismatch");
 
 const size_t TRACE_INFO_SIZE = 256; // has to be self-aligned, that's why its defined explicitly
+const size_t func_name_size = 40;
 
 struct TraceInfo {
+    ComponentId component;
     byte format[128];
-    byte file[86];
+    byte file[85];
     uint16_t line;
     union {
         const char *func_ptr; // .func starts off empty because __func__ isn't considered a static value. The init_section function sets the value in .func_ptr to .func.
-        byte func[40];
+        byte func[func_name_size];
     };
 };
+
+static_assert(TRACE_INFO_SIZE == sizeof(TraceInfo), "TraceInfo size mismatch");
 
 }}
 
@@ -56,8 +67,6 @@ extern P::Trace::TraceInfo __start_traces[];
 extern P::Trace::TraceInfo __stop_traces[];
 
 namespace P { namespace Trace {
-
-static_assert(TRACE_INFO_SIZE == sizeof(TraceInfo), "TraceInfo size mismatch");
 
 static uint16_t get_trace_info_index(TraceInfo *info)
 {

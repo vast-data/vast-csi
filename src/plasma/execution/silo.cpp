@@ -108,7 +108,7 @@ void Silo::start_modules()
 
     LOOP(ModuleId::COUNT, i) {
         if (_module_descriptors[i].defined) {
-            PT_INFO("Starting module: %s.", module_id_to_string((ModuleId) i));
+            PT_INFO(CONTROL, "Starting module: %s.", module_id_to_string((ModuleId) i));
             _module_descriptors[i].module->start();
         }
     }
@@ -140,7 +140,7 @@ void *Silo::main()
     _trace_emitter.set_local();
     _trace_dumper.start();
 
-    PT_INFO("Silo started. Affinity set to: %d.", _affinity);
+    PT_INFO(CONTROL, "Silo started. Affinity set to: %d.", _affinity);
 
     Scheduler::init(&_scheduler_config);
     ASSERT_NOT_NULL(Fiber::init((P::Index)FiberGroupId::P, start_modules_fiber_func, this, false));
@@ -149,7 +149,7 @@ void *Silo::main()
     // we shouldn't regularly get here. it means all fiber have finished running.
     Scheduler::destroy();
 
-    PT_INFO("Silo finished.");
+    PT_INFO(CONTROL, "Silo finished.");
 
     _trace_dumper.stop();
     _trace_dumper.wait();

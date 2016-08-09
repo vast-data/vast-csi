@@ -17,7 +17,16 @@ class TraceFile {
 
 public:
     /*!
-     * Initialize a trace file.
+     * Initialize a trace file using a config setting.
+     *
+     * \param prefix the prefix each file name will have. The suffix is auto-generated and includes a timestamp.
+     * \param dir the directory to create traces in.
+     * \param setting the config setting. Can be nullptr (default values will be used).
+     */
+    void init_from_setting(const char *prefix, const char *dir, Conf::ConfigSetting *setting);
+
+    /*!
+     * Same as above, but explicitly getting the relevant config params.
      *
      * \param prefix the prefix each file name will have. The suffix is auto-generated and includes a timestamp.
      * \param dir the directory to create traces in.
@@ -25,7 +34,7 @@ public:
      * \param max_files the maximum number of files. Upon rotation, if this number is reached, the oldest file is deleted.
      */
     void init(const char *prefix, const char *dir, uint32_t max_file_size, uint16_t max_files);
-    void init_from_setting(const char *prefix, const char *dir, Conf::ConfigSetting *setting);
+
     void set_prefix(const char *prefix);
     void destroy();
     void emit(TraceRecord *record, P_DBUFFER_LENGTH_TYPE length);

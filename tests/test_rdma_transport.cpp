@@ -83,7 +83,7 @@ TEST(TestRDMATransport, test)
                 rcv_ack++;
                 TestMsg *msg = (TestMsg *) (recv_buff + (event.len * event.id.buffer_index));
                 ASSERT(msg->idx == event.id.buffer_index);
-                PT_DEBUG("received msg %d '%s'", msg->idx, msg->msg);
+                PT_DEBUG(DATA, "received msg %d '%s'", msg->idx, msg->msg);
                 sum += msg->idx;
             } else {
                 PANIC();

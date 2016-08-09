@@ -89,7 +89,7 @@ VMsgRes RDMATransport::start()
     _stop = false;
     _event_channel = rdma_create_event_channel();
     if (!_event_channel) {
-        PT_ERROR("rdma_create_event_channel");
+        PT_ERROR(DATA, "rdma_create_event_channel");
         return VMsgRes::SYS_ERR;
     }
 
@@ -106,15 +106,15 @@ VMsgRes RDMATransport::start()
 
     int ret = pthread_create(&_events_thread, NULL, RDMATransport::event_loop_func, this);
     if (ret) {
-        PT_ERROR("pthread_create failed errno=%d", errno);
+        PT_ERROR(DATA, "pthread_create failed errno=%d", errno);
         return VMsgRes::SYS_ERR;
     }
 
     // fake a self connection request in order to get the shared resources initialized
     request_connection(_vmsg_configuration.local_env_id, ModuleId::P);
-    PT_DEBUG("waiting for shared resource allocation");
+    PT_DEBUG(DATA, "waiting for shared resource allocation");
     sem_wait(&_start_sem);
-    PT_DEBUG("wait for shared resource allocation done");
+    PT_DEBUG(DATA, "wait for shared resource allocation done");
 
     return VMsgRes::OK;
 }
@@ -133,35 +133,35 @@ VMsgRes RDMATransport::open_devices()
     int n_devices;
     struct ibv_device **device_list = ibv_get_device_list(&n_devices);
     if (!device_list) {
-        PT_ERROR("ibv_get_device_list()  failed errno=%d", errno);
+        PT_ERROR(DATA, "ibv_get_device_list()  failed errno=%d", errno);
         return VMsgRes::SYS_ERR;
     }
 
-    PT_DEBUG("num_devices=%d", n_devices);
+    PT_DEBUG(DATA, "num_devices=%d", n_devices);
     for (int i = 0; i < n_devices; ++i) {
         struct ibv_context *ctx = ibv_open_device(device_list[i]);
         if (!ctx) {
-            PT_DEBUG("Error, failed to open the device '%s'",
+            PT_DEBUG(DATA, "Error, failed to open the device '%s'",
                      ibv_get_device_name(device_list[i]));
             continue;
         }
         const char *dev_name = ibv_get_device_name(ctx->device);
 
-        PT_DEBUG("opened device=%p name='%s'", ctx, dev_name);
+        PT_DEBUG(DATA, "opened device=%p name='%s'", ctx, dev_name);
         ibv_device_attr attr;
         int ret = ibv_query_device(ctx, &attr);
         if (ret == 0) {
-            PT_DEBUG("max_qp=%d max_qp_wr=%d", attr.max_qp, attr.max_qp_wr);
+            PT_DEBUG(DATA, "max_qp=%d max_qp_wr=%d", attr.max_qp, attr.max_qp_wr);
         }
         if (strstr(dev_name, "lo") != NULL) {
             //for now we work with loop back
-            PT_DEBUG("using device=%p name='%s'", ctx, dev_name);
+            PT_DEBUG(DATA, "using device=%p name='%s'", ctx, dev_name);
             _ibv_ctx = ctx;
         } else {
-            PT_DEBUG("closing device='%s'", dev_name);
+            PT_DEBUG(DATA, "closing device='%s'", dev_name);
             ret = ibv_close_device(ctx);
             if (ret) {
-                PT_DEBUG("ibv_close_device  failed errno=%d", errno);
+                PT_DEBUG(DATA, "ibv_close_device  failed errno=%d", errno);
             }
         }
     }
@@ -177,40 +177,40 @@ VMsgRes RDMATransport::create_device_resources(ibv_context *ibv_ctx)
 {
     _pd = ibv_alloc_pd(ibv_ctx);
     if (!_pd) {
-        PT_ERROR("ibv_alloc_pd  failed errno=%d", errno);
+        PT_ERROR(DATA, "ibv_alloc_pd  failed errno=%d", errno);
         return VMsgRes::SYS_ERR;
     }
-    PT_DEBUG("created pd %p", _pd);
+    PT_DEBUG(DATA, "created pd %p", _pd);
     _comp_channel = ibv_create_comp_channel(ibv_ctx);
     if (!_comp_channel) {
-        PT_ERROR("ibv_create_comp_channel  failed errno=%d", errno);
+        PT_ERROR(DATA, "ibv_create_comp_channel  failed errno=%d", errno);
         return VMsgRes::SYS_ERR;
     }
-    PT_DEBUG("created channel %p", _comp_channel);
+    PT_DEBUG(DATA, "created channel %p", _comp_channel);
 
     _cq = ibv_create_cq(ibv_ctx, CQ_DEPTH, this, _comp_channel, 0);
     if (!_cq) {
-        PT_ERROR("ibv_create_cq failed errno=%d", errno);
+        PT_ERROR(DATA, "ibv_create_cq failed errno=%d", errno);
         return VMsgRes::SYS_ERR;
     }
-    PT_DEBUG("created cq %p", _cq);
+    PT_DEBUG(DATA, "created cq %p", _cq);
 
     ibv_srq_init_attr srq_attr;
     memset(&srq_attr, 0, sizeof(srq_attr));
 
-    PT_DEBUG("creating SRQs");
+    PT_DEBUG(DATA, "creating SRQs");
     srq_attr.attr.max_sge = 1;
     LOOP(MODULES_COUNT, i) {
         srq_attr.attr.max_wr = _vmsg_configuration.modules[i].num_send_buffers;
         _client_srqs[i] = ibv_create_srq(_pd, &srq_attr);
         if (!_client_srqs[i]) {
-            PT_ERROR("ibv_create_srq  failed errno=%d", errno);
+            PT_ERROR(DATA, "ibv_create_srq  failed errno=%d", errno);
             return VMsgRes::SYS_ERR;
         }
         srq_attr.attr.max_wr = _vmsg_configuration.modules[i].num_recv_buffers;
         _server_srqs[i] = ibv_create_srq(_pd, &srq_attr);
         if (!_server_srqs[i]) {
-            PT_ERROR("ibv_create_srq  failed errno=%d", errno);
+            PT_ERROR(DATA, "ibv_create_srq  failed errno=%d", errno);
             return VMsgRes::SYS_ERR;
         }
     }
@@ -230,7 +230,7 @@ void RDMATransport::event_loop()
         handle_connection_requests();
         int ret = poll(&pfd, 1, POLL_TIMEOUT);
         if (ret == -1) {
-            PT_ERROR("poll  failed errno=%d", errno);
+            PT_ERROR(DATA, "poll  failed errno=%d", errno);
             continue;
         }
         if (ret == 0) {
@@ -240,7 +240,7 @@ void RDMATransport::event_loop()
         // we are only polling this event_channel file descriptor so no need to look at pfd
         ret = rdma_get_cm_event(_event_channel, &event);
         if (ret != 0) {
-            PT_ERROR("rdma_get_cm_event  failed errno=%d", errno);
+            PT_ERROR(DATA, "rdma_get_cm_event  failed errno=%d", errno);
             continue;
         }
         // the event is copied in order to avoid dead locks, more specifically when destroying a cm_id all events
@@ -253,7 +253,7 @@ void RDMATransport::event_loop()
         }
         rdma_ack_cm_event(event);
         handle_event(&event_copy);
-        PT_DEBUG("waiting for next event");
+        PT_DEBUG(DATA, "waiting for next event");
     }
 }
 
@@ -261,7 +261,7 @@ void RDMATransport::on_addr_resolved(struct rdma_cm_event *event)
 {
     RDMALink *link = (RDMALink *)event->id->context;
     if (event->status != 0) {
-        PT_ERROR("got event error %d", event->status);
+        PT_ERROR(DATA, "got event error %d", event->status);
         link->set_state(LinkState::ERROR);
         return;
     }
@@ -269,7 +269,7 @@ void RDMATransport::on_addr_resolved(struct rdma_cm_event *event)
     link->set_state(LinkState::ADDR_RESOLVED);
     int ret = rdma_resolve_route(event->id, RESOLVE_TIMEOUT_MS);
     if (ret) {
-        PT_ERROR("rdma_resolve_route failed errno=%d", errno);
+        PT_ERROR(DATA, "rdma_resolve_route failed errno=%d", errno);
         link->set_state(LinkState::ERROR);
     }
 }
@@ -278,7 +278,7 @@ void RDMATransport::on_route_resolved(struct rdma_cm_event *event)
 {
     RDMALink *link = (RDMALink *)event->id->context;
     if (event->status != 0) {
-        PT_ERROR("got event error %d", event->status);
+        PT_ERROR(DATA, "got event error %d", event->status);
         link->set_state(LinkState::ERROR);
         return;
     }
@@ -291,7 +291,7 @@ void RDMATransport::on_route_resolved(struct rdma_cm_event *event)
     VMsgRes res = link->establish_connection(_vmsg_configuration.local_env_id, _cq, _pd,
                                              _client_srqs[(uint8_t)link->get_module_id()]);
     if (res == VMsgRes::CONNECTION_REFUSED) {
-        PT_WARN("failed to connect to env_id=%u module_id=%hhu, retrying connection",
+        PT_WARN(DATA, "failed to connect to env_id=%u module_id=%hhu, retrying connection",
                 link->get_env_id(), link->get_module_id());
         link->reset();
         request_connection(link->get_env_id(), link->get_module_id());
@@ -301,7 +301,7 @@ void RDMATransport::on_route_resolved(struct rdma_cm_event *event)
 void RDMATransport::on_connect_request(struct rdma_cm_event *event)
 {
     if (event->status != 0) {
-        PT_DEBUG("got event status %d", event->status);
+        PT_DEBUG(DATA, "got event status %d", event->status);
         return;
     }
     if (_ibv_ctx == NULL) {
@@ -313,7 +313,7 @@ void RDMATransport::on_connect_request(struct rdma_cm_event *event)
     Handshake *handshake = (Handshake *)event->param.conn.private_data;
     ASSERT_EQUAL(event->param.conn.private_data_len, sizeof(Handshake));
     ModuleId module_id = handshake->module_id;
-    PT_DEBUG("connect request cm_id=%p dev=%p env_id=%hu module_id=%hhu module_ver=%u vmsg_ver=%u",
+    PT_DEBUG(DATA, "connect request cm_id=%p dev=%p env_id=%hu module_id=%hhu module_ver=%u vmsg_ver=%u",
              event->id, event->id->verbs, handshake->env_id, module_id, handshake->module_ver, handshake->vmsg_ver);
     RDMALink *srv_link = _server_connections[handshake->env_id][(uint8_t)module_id].get_free_link();
     srv_link->set_state(LinkState::CONNECT_REQUEST);
@@ -323,13 +323,13 @@ void RDMATransport::on_connect_request(struct rdma_cm_event *event)
 
 void RDMATransport::on_connection_established(struct rdma_cm_event *event)
 {
-    PT_DEBUG("connection established cm_id=%p", event->id);
+    PT_DEBUG(DATA, "connection established cm_id=%p", event->id);
     RDMALink *link = (RDMALink *)event->id->context;
     if (link->is_client_link()) {
         Handshake *handshake = (Handshake *)event->param.conn.private_data;
         ASSERT_EQUAL(event->param.conn.private_data_len, sizeof(Handshake));
         ModuleId module_id = handshake->module_id;
-        PT_DEBUG("server handshake env_id=%hu module_id=%hhu module_ver=%u vmsg_ver=%u",
+        PT_DEBUG(DATA, "server handshake env_id=%hu module_id=%hhu module_ver=%u vmsg_ver=%u",
                  handshake->env_id, module_id, handshake->module_ver, handshake->vmsg_ver);
         link->set_state(LinkState::CONNECTED);
     }
@@ -337,7 +337,7 @@ void RDMATransport::on_connection_established(struct rdma_cm_event *event)
 
 void RDMATransport::handle_event(rdma_cm_event *event)
 {
-    PT_DEBUG("cma_event type=%s cma_id=%p status=%d", rdma_event_str(event->event), event->id, event->status);
+    PT_DEBUG(DATA, "cma_event type=%s cma_id=%p status=%d", rdma_event_str(event->event), event->id, event->status);
 
     switch (event->event) {
         case RDMA_CM_EVENT_ADDR_RESOLVED:
@@ -361,15 +361,15 @@ void RDMATransport::handle_event(rdma_cm_event *event)
         case RDMA_CM_EVENT_CONNECT_ERROR:
         case RDMA_CM_EVENT_UNREACHABLE:
         case RDMA_CM_EVENT_REJECTED:
-            PT_ERROR("%s, error %d", rdma_event_str(event->event), event->status);
+            PT_ERROR(DATA, "%s, error %d", rdma_event_str(event->event), event->status);
             break;
 
         case RDMA_CM_EVENT_DISCONNECTED:
-            PT_ERROR("%s id=%p", rdma_event_str(event->event), event->id);
+            PT_ERROR(DATA, "%s id=%p", rdma_event_str(event->event), event->id);
             break;
 
         case RDMA_CM_EVENT_DEVICE_REMOVAL:
-            PT_ERROR("device removal");
+            PT_ERROR(DATA, "device removal");
             break;
 
         case RDMA_CM_EVENT_CONNECT_RESPONSE:
@@ -378,7 +378,7 @@ void RDMATransport::handle_event(rdma_cm_event *event)
         case RDMA_CM_EVENT_ADDR_CHANGE:
         case RDMA_CM_EVENT_TIMEWAIT_EXIT:
         default:
-            PT_ERROR("unhandled event: %s, ignoring", rdma_event_str(event->event));
+            PT_ERROR(DATA, "unhandled event: %s, ignoring", rdma_event_str(event->event));
             break;
     }
 }
@@ -417,7 +417,7 @@ MemRegion *RDMATransport::register_mem(void *addr, size_t len)
     DEBUG_ASSERT(_pd != nullptr);
     struct ibv_mr *mr = ibv_reg_mr(_pd, addr, len, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
     if (mr == NULL) {
-        PT_ERROR("ibv_reg_mr  failed errno=%d", errno);
+        PT_ERROR(DATA, "ibv_reg_mr  failed errno=%d", errno);
     }
     return (MemRegion *)mr;
 }
@@ -427,7 +427,7 @@ VMsgRes RDMATransport::unregister_mem(MemRegion *region)
     struct ibv_mr *mr = (struct ibv_mr *)region;
     int ret = ibv_dereg_mr(mr);
     if (ret) {
-        PT_ERROR("ibv_dereg_mr  failed errno=%d", errno);
+        PT_ERROR(DATA, "ibv_dereg_mr  failed errno=%d", errno);
         return VMsgRes::SYS_ERR;
     }
     return VMsgRes::OK;
@@ -449,7 +449,7 @@ VMsgRes RDMATransport::recv(struct ibv_srq *srq, struct ibv_mr *mr, MsgId msg_id
 
     struct ibv_recv_wr *bad_wr;
     if (ibv_post_srq_recv(srq, &wr, &bad_wr)) {
-        PT_ERROR("ibv_post_recv failed errno=%d", errno);
+        PT_ERROR(DATA, "ibv_post_recv failed errno=%d", errno);
         return VMsgRes::SYS_ERR;
     }
 
@@ -542,7 +542,7 @@ int RDMATransport::tpoll(TransportEvent *events, uint32_t max_events)
     struct ibv_wc wc_events[MAX_EVENTS_PER_POLL];
     int n_events = ibv_poll_cq(_cq, P_MIN(NUM_ELEMENTS(wc_events), max_events), wc_events);
     if (n_events < 0) {
-        PT_ERROR("ibv_poll_cq failed %d:%s", errno, strerror(errno));
+        PT_ERROR(DATA, "ibv_poll_cq failed %d:%s", errno, strerror(errno));
         return -1;
     }
 
@@ -553,7 +553,7 @@ int RDMATransport::tpoll(TransportEvent *events, uint32_t max_events)
 
         te->len = we->byte_len;
         if (we->status != IBV_WC_SUCCESS) {
-            PT_ERROR("wr_id %lx returned failed status %d:%s",
+            PT_ERROR(DATA, "wr_id %lx returned failed status %d:%s",
                      we->wr_id, we->status, ibv_wc_status_str(we->status));
         }
         te->status = ibv_status_to_vmsg_res(we->status);
@@ -573,7 +573,7 @@ void RDMATransport::handle_connection_requests()
         return;
     }
 
-    PT_DEBUG("handling connection request to env_id=%hu module_id=%hhu", request->env_id, request->module_id);
+    PT_DEBUG(DATA, "handling connection request to env_id=%hu module_id=%hhu", request->env_id, request->module_id);
 
     _addr_table->lock();
     EnvAddresses *addresses = _addr_table->get(request->env_id);

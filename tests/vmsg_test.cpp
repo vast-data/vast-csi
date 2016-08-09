@@ -31,7 +31,7 @@ public:
         ASSERT_EQUAL((size_t)*reply_len, sizeof(AddRes::RootBuilder));
         auto sum = args->get_a() + args->get_b();
         res->set_sum(sum);
-        PT_DEBUG("%lu + %lu = %lu", args->get_a(), args->get_b(), sum);
+        PT_DEBUG(DATA, "%lu + %lu = %lu", args->get_a(), args->get_b(), sum);
     }
 
     virtual void multiply(MultiplyArgs::RootReader *args, uint16_t request_len, MultiplyRes::RootBuilder *res, uint16_t *reply_len) override
@@ -40,7 +40,7 @@ public:
         ASSERT_EQUAL((size_t)*reply_len, sizeof(MultiplyRes::RootBuilder));
         auto sum = args->get_a() * args->get_b() * args->get_c();
         res->set_sum(sum);
-        PT_DEBUG("%lu * %lu * %lu = %lu", args->get_a(), args->get_b(), args->get_c(), sum);
+        PT_DEBUG(DATA, "%lu * %lu * %lu = %lu", args->get_a(), args->get_b(), args->get_c(), sum);
     }
 };
 
@@ -103,10 +103,10 @@ void VMsgTest::run_env(const char *config_file)
 
 #define WAIT_LOOPS 10000
 #define WAIT_FOR(X, MSG)                                            \
-    PT_DEBUG("waiting for %s", MSG);                                \
+    PT_DEBUG(DATA, "waiting for %s", MSG);                                \
     LOOP(WAIT_LOOPS, i) {                                           \
         if (X) {                                                    \
-            PT_DEBUG("done waiting for %s", MSG);                   \
+            PT_DEBUG(DATA, "done waiting for %s", MSG);                   \
             break;                                                  \
         }                                                           \
         if (i == WAIT_LOOPS - 1)                                    \
@@ -212,7 +212,7 @@ void VMsgTest::client_test()
     if (_finished_silos.fetch_add(1) == (n_silos - 1)) {
         _state->_server_shutdown = true;
         WAIT_FOR(_state->_server_shutdown_complete, "CLIENT: server shutdown complete");
-        PT_DEBUG("Exiting CLIENT");
+        PT_DEBUG(DATA, "Exiting CLIENT");
         finish();
     }
 }
@@ -246,14 +246,14 @@ void VMsgTest::server_test()
 {
     add_addresses(CLIENT_ENV_ID, CLIENT_PORT);
 
-    PT_DEBUG("Starting SERVER");
+    PT_DEBUG(DATA, "Starting SERVER");
     if (Silo::get_current_silo_id() != 0) {
-        PT_DEBUG("SERVER fiber EXIT");
+        PT_DEBUG(DATA, "SERVER fiber EXIT");
         return;
     }
 
     WAIT_FOR(_state->_server_shutdown, "SERVER: server shutdown");
-    PT_DEBUG("Exiting SERVER");
+    PT_DEBUG(DATA, "Exiting SERVER");
     _state->_server_shutdown_complete = true;
     finish();
 }

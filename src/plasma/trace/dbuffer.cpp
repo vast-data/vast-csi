@@ -11,7 +11,7 @@ void Buffer::init(uint32_t size)
 {
     _mem = new byte[size];
     _size = size;
-    _write_index = 0;
+    reset();
 }
 
 void Buffer::destroy()

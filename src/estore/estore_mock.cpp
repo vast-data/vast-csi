@@ -55,7 +55,7 @@ public:
         if (iter == _path_to_handle.end()) {
             // add new handle
             *handle = _current_handle++;
-            PT_DEV("new handle=%lx path=%s", *handle, path.c_str());
+            PT_DEV(DATA, "new handle=%lx path=%s", *handle, path.c_str());
             _handle_to_paths[*handle].insert(path);
             _path_to_handle[path] = *handle;
         } else {
@@ -91,7 +91,7 @@ public:
         auto fd_iter = _handle_to_fd.find(handle);
         if (fd_iter == _handle_to_fd.end()) {
             if (_handle_to_fd.size() > MAX_FD) {
-                PT_DEBUG("MAX number of open files reached");
+                PT_DEBUG(DATA, "MAX number of open files reached");
                 close_all_handles();
                 _handle_to_fd.clear();
             }
@@ -117,7 +117,7 @@ public:
         if (fd_iter != _handle_to_fd.end()) {
             int ret = ::close(fd_iter->second);
             if (ret != 0) {
-                PT_INFO("close failed");
+                PT_INFO(DATA, "close failed");
             }
             _handle_to_fd.erase(handle);
         }
@@ -291,7 +291,7 @@ EStoreRes EStore::get_attr(OpCallback op_cb, void *cb_ctx, EHandle handle, Syste
 {
     string path = _handle_container.get_path(handle);
     if (path.empty()) {
-        PT_DEBUG("stale handle=%lx", handle);
+        PT_DEBUG(DATA, "stale handle=%lx", handle);
         return EStoreRes::STALE;
     }
 
@@ -330,7 +330,7 @@ EStoreRes EStore::set_attr(OpCallback op_cb, void *cb_ctx, EHandle handle, Setta
 {
     string path_str = _handle_container.get_path(handle);
     if (path_str.empty()) {
-        PT_DEBUG("stale handle=%lx", handle);
+        PT_DEBUG(DATA, "stale handle=%lx", handle);
         return EStoreRes::STALE;
     }
     EStoreRes res = fill_attr(path_str, pre_attr);
@@ -365,7 +365,7 @@ EStoreRes EStore::set_attr(OpCallback op_cb, void *cb_ctx, EHandle handle, Setta
         ret = truncate(path, sattr->size);
     }
     if (ret != 0) {
-        PT_INFO("set attr op failed");
+        PT_INFO(DATA, "set attr op failed");
         return errno_to_estore_res();
     }
     struct utimbuf utb;
@@ -380,7 +380,7 @@ EStoreRes EStore::set_attr(OpCallback op_cb, void *cb_ctx, EHandle handle, Setta
         ret = utime(path, &utb);
     }
     if (ret != 0) {
-        PT_INFO("utime failed");
+        PT_INFO(DATA, "utime failed");
         return errno_to_estore_res();
     }
 
@@ -404,7 +404,7 @@ EStoreRes EStore::lookup(OpCallback op_cb, void *cb_ctx, EHandle parent, const c
 {
     string parent_path = _handle_container.get_path(parent);
     if (parent_path.empty()) {
-        PT_DEBUG("stale handle=%lx", parent);
+        PT_DEBUG(DATA, "stale handle=%lx", parent);
         return EStoreRes::STALE;
     }
 
@@ -441,7 +441,7 @@ EStoreRes EStore::lookup_parent(OpCallback op_cb, void *cb_ctx, EHandle handle, 
     } else {
         string parent_path = _handle_container.get_path(handle);
         if (parent_path.empty()) {
-            PT_DEBUG("stale handle=%lx", handle);
+            PT_DEBUG(DATA, "stale handle=%lx", handle);
             return EStoreRes::STALE;
         }
 
@@ -517,7 +517,7 @@ EStoreRes EStore::create(OpCallback op_cb, void *cb_ctx, EHandle parent, const c
         ret = symlink((char *)proto_xattr->attrs[0].val, path.c_str());
     }
     if (ret < 0) {
-        PT_DEBUG("create op failed path=%s errno=%d", path.c_str(), errno);
+        PT_DEBUG(DATA, "create op failed path=%s errno=%d", path.c_str(), errno);
         return EStoreRes::EXIST;
     }
     _handle_container.add_handle(path, element_handle);
@@ -525,7 +525,7 @@ EStoreRes EStore::create(OpCallback op_cb, void *cb_ctx, EHandle parent, const c
     SystemAttr element_pre_attr;
     res = set_attr(nullptr, nullptr, *element_handle, sattr, 0, user_xattr, proto_xattr, &element_pre_attr, element_attr);
     if (res != EStoreRes::OK) {
-        PT_DEBUG("set_attr failed res=%d", res);
+        PT_DEBUG(DATA, "set_attr failed res=%d", res);
         return res;
     }
 
@@ -560,7 +560,7 @@ EStoreRes EStore::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
     int fd;
     EStoreRes res = io_start(handle, pre_attr, &fd);
     if (res != EStoreRes::OK) {
-        PT_DEBUG("io_start failed res=%d", res);
+        PT_DEBUG(DATA, "io_start failed res=%d", res);
         return res;
     }
     if (op_cb) {
@@ -575,7 +575,7 @@ EStoreRes EStore::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
         if (!drop_writes) {
             ssize_t ret = pwrite(fd, io_vecs->iovecs[i].iov_base, io_vecs->iovecs[i].iov_len, current_offset);
             if (ret != io_vecs->iovecs[i].iov_len) {
-                PT_INFO("write failed");
+                PT_INFO(DATA, "write failed");
                 return EStoreRes::IO_ERROR;
             }
         }
@@ -587,7 +587,7 @@ EStoreRes EStore::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
     if (do_sync) {
         int ret = fsync(fd);
         if (ret != 0) {
-            PT_INFO("fsync failed");
+            PT_INFO(DATA, "fsync failed");
             return errno_to_estore_res();
         }
     }
@@ -651,7 +651,7 @@ EStoreRes EStore::readdir(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64
 {
     string path = _handle_container.get_path(handle);
     if (path.empty()) {
-        PT_DEBUG("stale handle=%lx", handle);
+        PT_DEBUG(DATA, "stale handle=%lx", handle);
         return EStoreRes::STALE;
     }
     SystemAttr pre_attr;
@@ -665,7 +665,7 @@ EStoreRes EStore::readdir(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64
 
     DIR *dir = opendir(path.c_str());
     if (dir == NULL) {
-        PT_INFO("open dir failed");
+        PT_INFO(DATA, "open dir failed");
         return errno_to_estore_res();
     }
     seekdir(dir, offset);
@@ -703,12 +703,12 @@ EStoreRes EStore::link(OpCallback op_cb, void *cb_ctx, EHandle link_target, EHan
 {
     string parent_path = _handle_container.get_path(parent);
     if (parent_path.empty()) {
-        PT_DEBUG("stale handle=%lx", parent);
+        PT_DEBUG(DATA, "stale handle=%lx", parent);
         return EStoreRes::STALE;
     }
     string target_path = _handle_container.get_path(link_target);
     if (target_path.empty()) {
-        PT_DEBUG("stale handle=%lx", parent);
+        PT_DEBUG(DATA, "stale handle=%lx", parent);
         return EStoreRes::STALE;
     }
 
@@ -724,10 +724,10 @@ EStoreRes EStore::link(OpCallback op_cb, void *cb_ctx, EHandle link_target, EHan
     }
 
     std::string element_path = parent_path + "/" + name;
-    PT_DEBUG("creating link from element_path=%s to target_path=%s", element_path.c_str(), target_path.c_str());
+    PT_DEBUG(DATA, "creating link from element_path=%s to target_path=%s", element_path.c_str(), target_path.c_str());
     int ret = ::link(target_path.c_str(), element_path.c_str());
     if (ret != 0) {
-        PT_INFO("link failed");
+        PT_INFO(DATA, "link failed");
         return errno_to_estore_res();
     }
 
@@ -749,7 +749,7 @@ EStoreRes EStore::unlink(OpCallback op_cb, void *cb_ctx, EHandle parent, const c
 {
     string parent_path = _handle_container.get_path(parent);
     if (parent_path.empty()) {
-        PT_DEBUG("stale handle=%lx", parent);
+        PT_DEBUG(DATA, "stale handle=%lx", parent);
         return EStoreRes::STALE;
     }
     std::string element_path = parent_path + "/" + name;
@@ -776,7 +776,7 @@ EStoreRes EStore::unlink(OpCallback op_cb, void *cb_ctx, EHandle parent, const c
         ret = ::unlink(element_path.c_str());
     }
     if (ret != 0) {
-        PT_INFO("element unlink failed");
+        PT_INFO(DATA, "element unlink failed");
         return errno_to_estore_res();
     }
     _handle_container.remove(element_path);
@@ -794,12 +794,12 @@ EStoreRes EStore::rename(OpCallback op_cb, void *cb_ctx, EHandle src_handle, con
 {
     std::string src_parent_path = _handle_container.get_path(src_handle);
     if (src_parent_path.empty()) {
-        PT_DEBUG("stale handle=%lx", src_handle);
+        PT_DEBUG(DATA, "stale handle=%lx", src_handle);
         return EStoreRes::STALE;
     }
     std::string dst_parent_path = _handle_container.get_path(dst_handle);
     if (dst_parent_path.empty()) {
-        PT_DEBUG("stale handle=%lx", dst_handle);
+        PT_DEBUG(DATA, "stale handle=%lx", dst_handle);
         return EStoreRes::STALE;
     }
 
@@ -825,7 +825,7 @@ EStoreRes EStore::rename(OpCallback op_cb, void *cb_ctx, EHandle src_handle, con
     std::string dst_path = dst_parent_path + "/" + dst_name;
     int ret = ::rename(src_path.c_str(), dst_path.c_str());
     if (ret != 0) {
-        PT_INFO("rename failed");
+        PT_INFO(DATA, "rename failed");
         return errno_to_estore_res();
     }
     _handle_container.rename(src_path, dst_path);
@@ -845,7 +845,7 @@ EStoreRes EStore::get_stats(OpCallback op_cb, void *cb_ctx, EHandle handle, ESto
 {
     std::string path = _handle_container.get_path(handle);
     if (path.empty()) {
-        PT_DEBUG("stale handle=%lx", handle);
+        PT_DEBUG(DATA, "stale handle=%lx", handle);
         return EStoreRes::STALE;
     }
     EStoreRes res = fill_attr(path, attr);

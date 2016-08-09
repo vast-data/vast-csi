@@ -33,7 +33,8 @@ bool DevIO::init(const char dev_name[], uint32_t iodepth, AtomicPool<DevIO::IO> 
     int open_flags = O_RDWR | O_DIRECT;
     _file_desc = open(_dev_name, open_flags);
     if (unlikely(_file_desc == -1)) {
-        PT_ERROR("Failed to open device path %s with errno %s", _dev_name, std::strerror(errno));
+        PT_ERROR(DATA, "Failed to open device path %s with errno %s", _dev_name,
+                 std::strerror(errno));
         return false;
     }
 
@@ -123,7 +124,7 @@ void DevIO::validate_io_event(struct io_event *event)
     size_t io_size = io_byte_count(event->obj);
     if (event->res != io_size) {
         DevIO::IO *io =  p_container_of(event->obj, DevIO::IO, io);
-        PT_ERROR("IO error: res=%ld, res2=%ld nbytes = %ld, opcode = %d\n",
+        PT_ERROR(DATA, "IO error: res=%ld, res2=%ld nbytes = %ld, opcode = %d\n",
                (long)event->res, (long)event->res2,
                (long)event->obj->u.c.nbytes, event->obj->aio_lio_opcode);
         io->io_future->res = ReturnCode::ERROR;

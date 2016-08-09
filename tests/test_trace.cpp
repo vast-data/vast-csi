@@ -141,13 +141,19 @@ TEST(DBuffer, overflow_four_buffers)
 }
 
 static char config_string[] = QUOTE(traces: {
-    PLASMA: {
-        min_severity: "SEVERITY_DEBUG",
-        buffer_size_mb: 1,
-        persistent: true,
-        file_size_mb: 2,
-        file_count: 10
-      }
+    channels: {
+        DATA: {
+            buffer_size_mb: 1,
+            persistent: true,
+            file_size_mb: 2,
+            file_count: 10
+        }
+    }
+    components: {
+        PLASMA: {
+            min_severity: "_DEBUG"
+        }
+    }
     });
 
 TEST(Trace, emitter)
@@ -173,9 +179,9 @@ TEST(Trace, emitter)
     float f = 1.2f;
     double d = 1.4;
 
-    PT_INFO("Parameterless trace");
+    PT_INFO(DATA, "Parameterless trace");
     LOOP(1000000, _)
-        PT_INFO("%ld %d %hd %c %p %s %f %lf %c", l, i, s, c, ptr, str, f, d, b);
+        PT_INFO(DATA, "%ld %d %hd %c %p %s %f %lf %c", l, i, s, c, ptr, str, f, d, b);
 
     byte string[5000];
     LOOP(4998, index)
@@ -183,7 +189,7 @@ TEST(Trace, emitter)
     string[4999] = '\0';
 
     LOOP(10, _)
-        PT_INFO("Long trace: %s", (char*) string);
+        PT_INFO(DATA, "Long trace: %s", (char*) string);
 
     emitter.destroy();
     conf_destroy(conf);
@@ -209,7 +215,7 @@ TEST(Trace, dumper)
     dumper.start();
 
     LOOP(1000000, i)
-        PT_INFO("Kawabanga: %ld!.", i);
+        PT_INFO(DATA, "Kawabanga: %ld!.", i);
 
     dumper.stop();
     dumper.wait();
@@ -225,7 +231,7 @@ void trace_func()
     char *s1 = (char*) const_s1;
     const char *s2 = "abcdefghijklmnopqrstuvwxyz123456789";
     LOOP(1000000, i)
-        PT_INFO("Kawabanga: %ld %s!", i, i % 2 ? s1 : s2);
+        PT_INFO(DATA, "Kawabanga: %ld %s!", i, i % 2 ? s1 : s2);
 }
 
 TEST(Trace, concurrent_dumper)
@@ -259,10 +265,12 @@ TEST(Trace, concurrent_dumper)
     conf_destroy(conf);
 }
 
+#define LONG_FUNC_NAME "123456789012345678901234567890123456789"
+
 TEST(Trace, file)
 {
     static TraceInfo TRACE_SECTION trace_info = {
-        "Test trace file.", __FILE__, __LINE__, __func__
+        CURRENT_COMPONENT, "Test trace file.", __FILE__, __LINE__, __func__
     };
     uint16_t info_index = get_trace_info_index(&trace_info);
 
@@ -274,6 +282,16 @@ TEST(Trace, file)
     LOOP(2000, _)
         file.emit(&record, offsetof(TraceRecord, params));
     file.destroy();
+}
+
+// Tests that the func name is truncated according to the func buffer size.
+TEST(Trace, func_name)
+{
+    static TraceInfo TRACE_SECTION trace_info = {
+        CURRENT_COMPONENT, "Test trace file.", __FILE__, __LINE__, LONG_FUNC_NAME
+    };
+    ASSERT_EQ(39, strlen((char*)trace_info.func));
+    ASSERT_EQ(0, strncmp(LONG_FUNC_NAME, (char*)trace_info.func, 39));
 }
 
 int main(int argc, char **argv)

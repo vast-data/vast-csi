@@ -33,12 +33,17 @@ void TraceFile::init(const char *prefix, const char *dir, uint32_t max_file_size
 
 void TraceFile::init_from_setting(const char *prefix, const char *dir, Conf::ConfigSetting *setting)
 {
-    ConfigSetting *file_size_setting = conf_setting_lookup_optional(setting, "file_size_mb");
+    ConfigSetting *file_size_setting = nullptr;
+    ConfigSetting *file_count_setting = nullptr;
+    if (setting != nullptr) {
+        file_size_setting = conf_setting_lookup_optional(setting, "file_size_mb");
+        file_count_setting = conf_setting_lookup_optional(setting, "file_count");
+    }
+
     uint32_t file_size = DEFAULT_FILE_SIZE_MB;
     if (file_size_setting != nullptr)
         file_size = (uint32_t) conf_setting_get_int32(file_size_setting);
 
-    ConfigSetting *file_count_setting = conf_setting_lookup_optional(setting, "file_count");
     uint16_t file_count = DEFAULT_FILE_COUNT;
     if (file_count_setting != nullptr)
         file_count = (uint16_t) conf_setting_get_int32(file_count_setting);

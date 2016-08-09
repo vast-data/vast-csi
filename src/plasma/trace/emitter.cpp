@@ -21,9 +21,9 @@ void Emitter::set_global()
     _global_emitter = this;
 }
 
-DBuffer *Emitter::get_dbuffer(ComponentId component)
+DBuffer *Emitter::get_dbuffer(Channel channel)
 {
-    return _buffers[(byte) component];
+    return _buffers[(byte) channel];
 }
 
 uint64_t Emitter::get_fiber_id()
@@ -37,7 +37,7 @@ uint64_t Emitter::get_fiber_id()
 
 void Emitter::flush()
 {
-    LOOP(ComponentId::COUNT, i) {
+    LOOP(Channel::COUNT, i) {
         if (_buffers[i] != nullptr)
             _buffers[i]->flush();
     }
@@ -48,12 +48,6 @@ const byte DEFAULT_BUF_SIZE_MB = 8;
 
 void Emitter::init(ConfigSetting *setting, bool shared)
 {
-    // start off with all components disabled (indicated by maximal severity).
-    LOOP(ComponentId::COUNT, i) {
-        _min_severity[i] = Severity::SEVERITY_COUNT;
-        _buffers[i] = nullptr;
-    }
-
     if (shared) {
         _lock = new Sync::SpinLock();
         _lock->init();
@@ -61,32 +55,63 @@ void Emitter::init(ConfigSetting *setting, bool shared)
         _lock = nullptr;
     }
 
-    if (setting == nullptr)
-        return;
+    ConfigSetting *channels_setting = nullptr;
+    ConfigSetting *components_setting = nullptr;
+    if (setting != nullptr) {
+        channels_setting = conf_setting_lookup_optional(setting, "channels");
+        components_setting = conf_setting_lookup_optional(setting, "components");
+    }
 
-    LOOP(conf_setting_length(setting), i) {
-        ConfigSetting *comp_setting = conf_setting_get_element(setting, (uint32_t) i);
-        const char *comp_name = conf_setting_name(comp_setting);
-        byte comp_id = (byte) component_id_from_string(comp_name);
+    LOOP (Channel::COUNT, i) {
+        _buffers[i] = nullptr;
+    }
 
-        ConfigSetting *buf_size_setting = conf_setting_lookup_optional(comp_setting, "buffer_size_mb");
-        uint32_t buf_size = DEFAULT_BUF_SIZE_MB;
-        if (buf_size_setting != nullptr)
-            buf_size = (uint32_t) conf_setting_get_int32(buf_size_setting);
-        _buffers[comp_id] = new DBuffer();
-        _buffers[comp_id]->init(BUFFER_COUNT, buf_size * UNIT_MiB);
+    if (channels_setting != nullptr) {
+        LOOP(conf_setting_length(channels_setting), i) {
+            ConfigSetting *chan_setting = conf_setting_get_element(channels_setting, (uint32_t) i);
+            const char *chan_name = conf_setting_name(chan_setting);
+            byte chan_id = (byte) channel_from_string(chan_name);
 
-        ConfigSetting *min_severity_setting = conf_setting_lookup_optional(comp_setting, "min_severity");
-        Severity min_severity = Severity::SEVERITY_DEBUG;
-        if (min_severity_setting != nullptr)
-            min_severity = severity_from_string(conf_setting_get_string(min_severity_setting));
-        _min_severity[comp_id] = min_severity;
+            ConfigSetting *buf_size_setting = conf_setting_lookup_optional(chan_setting, "buffer_size_mb");
+            if (buf_size_setting != nullptr) {
+                ASSERT(_buffers[chan_id] == nullptr);
+                _buffers[chan_id] = new DBuffer;
+                _buffers[chan_id]->init(BUFFER_COUNT, (uint32_t) conf_setting_get_int32(buf_size_setting) * UNIT_MiB);
+            }
+        }
+    }
+    LOOP (Channel::COUNT, i) {
+        if (_buffers[i] == nullptr) {
+            _buffers[i] = new DBuffer;
+            _buffers[i]->init(BUFFER_COUNT, DEFAULT_BUF_SIZE_MB * UNIT_MiB);
+        }
+    }
+
+    LOOP(ComponentId::COUNT, i) {
+#ifdef DEBUG
+        _min_severity[i] = Severity::_DEBUG;
+#else
+        _min_severity[i] = Severity::INFO;
+#endif
+    }
+
+    if (components_setting != nullptr) {
+        LOOP(conf_setting_length(components_setting), i) {
+            ConfigSetting *comp_setting = conf_setting_get_element(components_setting, (uint32_t) i);
+            const char *comp_name = conf_setting_name(comp_setting);
+            byte comp_id = (byte) component_id_from_string(comp_name);
+
+            ConfigSetting *min_severity_setting = conf_setting_lookup_optional(comp_setting, "min_severity");
+            if (min_severity_setting != nullptr) {
+                _min_severity[comp_id] = severity_from_string(conf_setting_get_string(min_severity_setting));
+            }
+        }
     }
 }
 
 void Emitter::destroy()
 {
-    LOOP(ComponentId::COUNT, i) {
+    LOOP(Channel::COUNT, i) {
         if (_buffers[i] != nullptr) {
             _buffers[i]->destroy();
             delete _buffers[i];

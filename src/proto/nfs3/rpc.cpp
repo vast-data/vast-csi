@@ -21,37 +21,37 @@ namespace Nfs {
 
 int readit(char *handle, char *buff, int len)
 {
-    PT_DEV("request to read %d", len);
+    PT_DEV(DATA, "request to read %d", len);
     Rpc::Connection *conn = ((Rpc::Connection *)handle);
     for (int i = 0; i < RECV_RETRY; ++i) {
         ssize_t res = read(conn->fd, buff, len);
         if (res == -1) {
             if (errno == EAGAIN) {
-                PT_DEV("got eagain from read (socket empty)");
+                PT_DEV(DATA, "got eagain from read (socket empty)");
                 P::Fiber::yield();
                 continue;
             } else {
-                PT_ERROR("read from socket failed errno=%d", errno);
+                PT_ERROR(DATA, "read from socket failed errno=%d", errno);
                 return -1;
             }
         }
         if (res == 0) {
             // socket closed
-            PT_WARN("read zero bytes (peer closed socket)");
+            PT_WARN(DATA, "read zero bytes (peer closed socket)");
             return -1;
         }
         // as long as we manged to read something we are good
-        PT_DEV("read %ld bytes", res);
+        PT_DEV(DATA, "read %ld bytes", res);
         return (int)res;
     }
-    PT_ERROR("read attempt passed max retries, returning with error");
+    PT_ERROR(DATA, "read attempt passed max retries, returning with error");
     return -1;
 }
 
 int writeit(char *handle, char *buff, int len)
 {
     int fd = ((Rpc::Connection *)handle)->fd;
-//    PT_DEBUG("request to write %d", len);
+//    PT_DEBUG(DATA, "request to write %d", len);
     int written = 0;
     for (int i = 0; i < SEND_RETRY && written < len; ++i) {
         // its seems redundant to check if the socket is writable since it is non blocking
@@ -62,30 +62,30 @@ int writeit(char *handle, char *buff, int len)
         bool can_write = ::poll(&pfd, 1, 0) > 0;
         if (can_write) {
             if (pfd.revents & POLLRDHUP) {
-                PT_WARN("socket disconnected (POLLRDHUP)");
+                PT_WARN(DATA, "socket disconnected (POLLRDHUP)");
                 return -1;
             }
         }
         if (!can_write) {
-            PT_DEBUG("socket full, waiting");
+            PT_DEBUG(DATA, "socket full, waiting");
             P::Fiber::yield();
             continue;
         }
         ssize_t res = write(fd, buff, len);
         if (res == -1 && errno == EAGAIN) {
-            PT_DEBUG("got eagain from write (socket full)");
+            PT_DEBUG(DATA, "got eagain from write (socket full)");
             P::Fiber::yield();
             continue;
         }
         if (res == -1) {
-            PT_ERROR("write failed errno=%d", errno);
+            PT_ERROR(DATA, "write failed errno=%d", errno);
             return -1;
         }
         written += len;
     }
-    PT_DEV("written %d bytes", written);
+    PT_DEV(DATA, "written %d bytes", written);
     if (written < len) {
-        PT_ERROR("write attempt passed max retries, managed to write %d bytes", written);
+        PT_ERROR(DATA, "write attempt passed max retries, managed to write %d bytes", written);
     }
     return written;
 }
@@ -143,7 +143,7 @@ void Rpc::destroy()
 void Rpc::decode_msg(Connection *conn, RpcRequest *request)
 {
     vcall_body *call = &request->msg.body.vrpc_msg_body_u.cbody;
-    PT_DEBUG("call for prog=%u ver=%u proc=%u auth=%d", call->prog, call->vers, call->proc, call->cred.flavor);
+    PT_DEBUG(DATA, "call for prog=%u ver=%u proc=%u auth=%d", call->prog, call->vers, call->proc, call->cred.flavor);
     request->status = RpcStatus::PROG_NOT_FOUND;
     LOOP(PROTOCOL_COUNT, i) {
         Protocol *proto = &_protocols[i];
@@ -162,7 +162,7 @@ void Rpc::decode_msg(Connection *conn, RpcRequest *request)
             bool_t xdr_res = request->args_proc(&conn->xdr, &request->args);
             if (xdr_res == FALSE) {
                 // can't decode the message, drop it
-                PT_ERROR("decode failed");
+                PT_ERROR(DATA, "decode failed");
                 request->status = RpcStatus::DECODE_ERROR;
                 return;
             }
@@ -200,7 +200,7 @@ void Rpc::decode_header(Rpc::Connection *conn, RpcRequest *request)
             request->status = RpcStatus::DECODE_ERROR;
             return;
         }
-        PT_DEV("UDP recv %ld bytes", recv_bytes);
+        PT_DEV(DATA, "UDP recv %ld bytes", recv_bytes);
         xdrmem_create(xdr, (caddr_t)conn->udp_buff, recv_bytes, XDR_DECODE);
         xdr->x_public = (caddr_t)this;
     }
@@ -213,7 +213,7 @@ void Rpc::decode_header(Rpc::Connection *conn, RpcRequest *request)
     if (xdr_res == FALSE) {
         // can't read the message, drop it
         request->status = RpcStatus::DECODE_ERROR;
-        PT_ERROR("failed decoding header");
+        PT_ERROR(DATA, "failed decoding header");
         return;
     }
 
@@ -228,16 +228,16 @@ void Rpc::decode_header(Rpc::Connection *conn, RpcRequest *request)
         xdrmem_create(&auth_xdr, (caddr_t)auth->body.body_val, auth->body.body_len, XDR_DECODE);
         xdr_res = xdr_vauthsys_parms(&auth_xdr, &request->auth_params);
         if (xdr_res == FALSE) {
-            PT_ERROR("failed decoding auth");
+            PT_ERROR(DATA, "failed decoding auth");
             request->status = RpcStatus::DECODE_ERROR;
             return;
         }
         request->unix_auth_set = true;
-        PT_DEBUG("auth unix: machine_name=%s uid=%d gid=%d", request->auth_params.machinename,
+        PT_DEBUG(DATA, "auth unix: machine_name=%s uid=%d gid=%d", request->auth_params.machinename,
                  request->auth_params.uid, request->auth_params.gid);
     } else if (auth->flavor != AUTH_NONE) {
         // not supported
-        PT_WARN("unsupported auth=%d", auth->flavor);
+        PT_WARN(DATA, "unsupported auth=%d", auth->flavor);
         request->status = RpcStatus::AUTH_FAILURE;
         return;
     }
@@ -291,14 +291,14 @@ void Rpc::do_encode(Rpc::Connection *conn, RpcRequest *request)
     // encode header
     bool_t xdr_res = xdr_vrpc_msg(xdr, msg);
     if (xdr_res != TRUE) {
-        PT_ERROR("encode header failed");
+        PT_ERROR(DATA, "encode header failed");
         return;
     }
     // encode response
     if (reply->stat == VMSG_ACCEPTED) {
         xdr_res = request->res_proc(xdr, &request->res);
         if (xdr_res != TRUE) {
-            PT_ERROR("encode response failed");
+            PT_ERROR(DATA, "encode response failed");
             return;
         }
     }
@@ -307,7 +307,7 @@ void Rpc::do_encode(Rpc::Connection *conn, RpcRequest *request)
     if (conn->type == ConnectionType::TCP_CONN) {
         xdr_res = xdrdrec_endofrecord(xdr, true);
         if (xdr_res != TRUE) {
-            PT_ERROR("xdrdrec_endofrecord failed");
+            PT_ERROR(DATA, "xdrdrec_endofrecord failed");
             return;
         }
     } else {
@@ -315,13 +315,13 @@ void Rpc::do_encode(Rpc::Connection *conn, RpcRequest *request)
         ssize_t ret = sendto(conn->fd, conn->udp_buff, send_bytes, 0,
                              (sockaddr *)&request->addr, request->addr_len);
         if (ret < 0) {
-            PT_ERROR("send failed errno=%d", errno);
+            PT_ERROR(DATA, "send failed errno=%d", errno);
             return;
         }
         if (ret != send_bytes) {
             // currenlty we only use UDP fo small messages (mount protocol) so we do not expect full socket issues
             // and no retry logic has been implemented
-            PT_ERROR("failed to send full UDP message requested=%lu sent=%ld", send_bytes, ret);
+            PT_ERROR(DATA, "failed to send full UDP message requested=%lu sent=%ld", send_bytes, ret);
             return;
         }
     }
@@ -352,11 +352,11 @@ static void fiber_handle_msg(void *request_arg)
 
 void Rpc::handle_msg(Connection *conn, RpcRequest *request)
 {
-//    PT_DEBUG("handling msg on conn=%p", conn);
+//    PT_DEBUG(DATA, "handling msg on conn=%p", conn);
     request->status = RpcStatus::OK;
     decode_header(conn, request);
     if (request->status != RpcStatus::OK) {
-        PT_WARN("decode failure");
+        PT_WARN(DATA, "decode failure");
         return;
     }
     decode_msg(conn, request);
@@ -369,7 +369,7 @@ void Rpc::handle_msg(Connection *conn, RpcRequest *request)
             fiber = P::Fiber::init((P::Index)FiberGroupId::PROTO, fiber_handle_msg, request, false);
         }
         if (fiber == nullptr) {
-            PT_WARN("failed to allocate fiber, running operation on the poll fiber");
+            PT_WARN(DATA, "failed to allocate fiber, running operation on the poll fiber");
             fiber_handle_msg(request);
         }
     } else {
@@ -413,14 +413,14 @@ void Rpc::poll(int timeout_ms)
     P::Net::EPollEvent<Connection> *events = _events;
     n_events = _epoll.wait(events, MAX_EVENTS, timeout_ms);
     if (n_events < 0) {
-        PT_ERROR("epoll failed errno=%d", errno);
+        PT_ERROR(DATA, "epoll failed errno=%d", errno);
         return;
     }
     LOOP(n_events, i) {
         Connection *conn = events[i].get();
-//        PT_DEBUG("got event=%x conn=%p", events[i].events, conn);
+//        PT_DEBUG(DATA, "got event=%x conn=%p", events[i].events, conn);
         if (conn->fd < 0) {
-            PT_DEBUG("connection=%p already closed", conn);
+            PT_DEBUG(DATA, "connection=%p already closed", conn);
             continue;
         }
         if (events[i].in_error()) {
@@ -433,7 +433,7 @@ void Rpc::poll(int timeout_ms)
 
         if (!events[i].has_input()) {
             // shouldn't get this
-            PT_ERROR("unexpected event");
+            PT_ERROR(DATA, "unexpected event");
             continue;
         }
         DEBUG_ASSERT(conn->type == ConnectionType::TCP_CONN || conn->type == ConnectionType::UDP_CONN);
@@ -444,7 +444,7 @@ void Rpc::poll(int timeout_ms)
             xdr_data_available = false;
             RpcRequest *request = _requests.alloc();
             while (request == nullptr) {
-                PT_DEBUG("request object not available yielding fiber");
+                PT_DEBUG(DATA, "request object not available yielding fiber");
                 P::Fiber::yield();
                 request = _requests.alloc();
             }
@@ -452,7 +452,7 @@ void Rpc::poll(int timeout_ms)
 
             // check if there is still data left in the xdr buffer
             if (conn->type == ConnectionType::TCP_CONN && !xdrdrec_eof(&conn->xdr)) {
-                PT_DEV("more input available in xdr stream");
+                PT_DEV(DATA, "more input available in xdr stream");
                 // if there is more data in the xdr stream we must read it now since epoll will not tell us about it
                 xdr_data_available = true;
                 continue;
@@ -465,7 +465,7 @@ void Rpc::poll(int timeout_ms)
             has_more_data = ::poll(&pfd, 1, 0) > 0;
             if (has_more_data) {
                 if (pfd.revents & POLLRDHUP) {
-                    PT_DEBUG("POLLRDHUP");
+                    PT_DEBUG(DATA, "POLLRDHUP");
                     has_more_data = false;
                 }
             }
@@ -477,7 +477,7 @@ void Rpc::accept_connection(P::Net::SocketId id, int fd)
 {
     // add the new connection to epoll
     Connection *conn = _connections.alloc();
-    PT_DEBUG("accepted new connection on rpc_server=%p descriptor=%d conn=%p", this, fd, conn);
+    PT_DEBUG(DATA, "accepted new connection on rpc_server=%p descriptor=%d conn=%p", this, fd, conn);
     conn->fd = fd;
     conn->type = ConnectionType::TCP_CONN;
     reg_with_epoll(conn);
@@ -498,7 +498,7 @@ void Rpc::reg_with_epoll(Connection *conn)
     conn->event.init(conn);
     int ret = _epoll.register_socket(conn->fd, &conn->event);
     if (ret == -1) {
-        PT_ERROR("_epoll.register_socket errno=%d", errno);
+        PT_ERROR(DATA, "_epoll.register_socket errno=%d", errno);
         close(conn->fd);
         _connections.free(conn);
     }
@@ -506,7 +506,7 @@ void Rpc::reg_with_epoll(Connection *conn)
 
 void Rpc::close_connection(Rpc::Connection *conn)
 {
-    PT_DEBUG("closing connection=%p", conn);
+    PT_DEBUG(DATA, "closing connection=%p", conn);
     close(conn->fd);
     conn->fd = -1;
     _connections.free(conn);

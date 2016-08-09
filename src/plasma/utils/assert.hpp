@@ -17,7 +17,7 @@
 #define PANIC(message) do { \
         std::ostringstream msg_string;                                  \
         msg_string << "" message;                                       \
-        P_TRACE(P::Trace::Severity::SEVERITY_ERROR, ComponentId::PLASMA, "PANIC: %s", msg_string.str().c_str()); \
+        P_TRACE(P::Trace::Channel::CONTROL, P::Trace::Severity::ERROR, ComponentId::PLASMA, "PANIC: %s", msg_string.str().c_str()); \
         std::cerr << "PANIC: " << msg_string.str() << "\nat file: " __FILE__ " line: " MACRO_STRINGIFY(__LINE__) " func: " << __PRETTY_FUNCTION__ << "\n"; \
         P::Backtracer::show_backtrace();                                \
         std::abort();                                                   \

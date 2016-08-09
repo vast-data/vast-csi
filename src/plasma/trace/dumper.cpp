@@ -3,6 +3,7 @@
 
 #include <pthread.h>
 #include <unistd.h>
+#include <plasma/internal.hpp>
 
 #include "../utils/os.hpp"
 #include "../utils/macros.hpp"
@@ -13,7 +14,6 @@ using namespace P::Conf;
 
 namespace P { namespace Trace {
 
-#define DEFAULT_PERSISTENT (true)
 void Dumper::init(ConfigSetting *setting, Emitter *emitter, const char *dir)
 {
     ensure_directory_exists(dir);
@@ -22,37 +22,53 @@ void Dumper::init(ConfigSetting *setting, Emitter *emitter, const char *dir)
     _running = false;
     _emitter = emitter;
 
-    LOOP((byte)ComponentId::COUNT, i) {
-        _readers[(byte)i] = nullptr;
-        _files[(byte)i] = nullptr;
-        _times[(byte)i] = 0;
+    bool configured[(byte)Channel::COUNT];
+    LOOP(Channel::COUNT, i) {
+        _readers[i] = new DBufferReader;
+        _readers[i]->init(emitter->get_dbuffer((Channel)i));
+
+        _files[i] = nullptr;
+        _times[i] = 0;
+
+        configured[i] = false;
     }
 
-    LOOP(conf_setting_length(setting), i) {
-        ConfigSetting *comp_setting = conf_setting_get_element(setting, (uint32_t) i);
-        const char *comp_name = conf_setting_name(comp_setting);
-        ComponentId comp_id = component_id_from_string(comp_name);
+    if (setting != nullptr) {
+        ConfigSetting *channels_setting = conf_setting_lookup_optional(setting, "channels");
+        if (channels_setting != nullptr) {
+            LOOP(conf_setting_length(channels_setting), i) {
+                ConfigSetting *chan_setting = conf_setting_get_element(channels_setting, (uint32_t) i);
+                const char *chan_name = conf_setting_name(chan_setting);
+                Channel chan_id = channel_from_string(chan_name);
 
-        _readers[(byte)comp_id] = new DBufferReader();
-        _readers[(byte)comp_id]->init(emitter->get_dbuffer(comp_id));
+                configured[(byte)chan_id] = true;
 
-        ConfigSetting *persistent_setting = conf_setting_lookup_optional(comp_setting, "persistent");
-        bool persistent = DEFAULT_PERSISTENT;
-        if (persistent_setting != nullptr)
-            persistent = conf_setting_get_bool(persistent_setting);
+                bool persistent = should_persist_channel(chan_id);
+                ConfigSetting *persistent_setting = conf_setting_lookup_optional(chan_setting, "persistent");
+                if (persistent_setting != nullptr) {
+                    persistent = conf_setting_get_bool(persistent_setting);
+                }
 
-        if (!persistent)
-            continue;
+                if (!persistent)
+                    continue;
 
-        _files[(byte)comp_id] = new TraceFile();
-        _files[(byte)comp_id]->init_from_setting(nullptr, dir, comp_setting);
+                _files[(byte)chan_id] = new TraceFile;
+                _files[(byte)chan_id]->init_from_setting(nullptr, dir, chan_setting);
+            }
+        }
+    }
+    LOOP(Channel::COUNT, i) {
+        if (!configured[i] && should_persist_channel((Channel)i)) {
+            _files[i] = new TraceFile;
+            _files[i]->init_from_setting(nullptr, dir, nullptr);
+        }
     }
 }
 
 void Dumper::destroy()
 {
     ASSERT(!_running);
-    LOOP((byte)ComponentId::COUNT, i) {
+    LOOP(Channel::COUNT, i) {
         if (_readers[i] != nullptr) {
             delete _readers[i];
             if (_files[i] != nullptr) {
@@ -66,14 +82,14 @@ void Dumper::destroy()
 bool Dumper::iteration(bool force)
 {
     static TraceInfo TRACE_SECTION overflow_info = {
-        "Trace overflow. %hd buffers lost.", __FILE__, __LINE__, __func__
+        CURRENT_COMPONENT, "Trace overflow. %hd buffers lost.", __FILE__, __LINE__, __func__
     };
     uint16_t overflow_index = get_trace_info_index(&overflow_info);
 
     TraceRecord record;
     P_DBUFFER_LENGTH_TYPE length;
     bool found = false;
-    LOOP((byte)ComponentId::COUNT, i) {
+    LOOP(Channel::COUNT, i) {
         if (_files[i] != nullptr) {
             // TODO: improve performance by flushing whole buffers instead of iterating over records.
             auto read_result = _readers[i]->read(&record, &length, force);
@@ -90,11 +106,11 @@ bool Dumper::iteration(bool force)
                 break;
             case DBufferReader::ReadResult::OVERFLOW:
                 found = true;
-                // set the time of the last record emitted for this component.
+                // set the time of the last record emitted for this channel.
                 // the reader expects timestamps to be monotonically increasing (does a merge sort).
                 record.time = _times[i];
                 record.job_id = 0; // no fiber
-                record.severity = Severity::SEVERITY_ERROR;
+                record.severity = Severity::ERROR;
                 record.info_index = overflow_index;
                 uint32_t large_length = length; // temporary workaround for ORION-35
                 memcpy(record.params, &large_length, P_MAX(sizeof(large_length), 4));
@@ -118,7 +134,7 @@ void Dumper::main()
     _running = true;
     while (!_stop) {
         if (!iteration(false)) {
-            LOOP((byte)ComponentId::COUNT, i) {
+            LOOP(Channel::COUNT, i) {
                 if (_files[i] == nullptr) {
                     continue;
                 }
@@ -140,13 +156,13 @@ void Dumper::start()
     ASSERT(!_running);
     _stop = false;
 
-    LOOP((byte)ComponentId::COUNT, i) {
+    LOOP(Channel::COUNT, i) {
         if (_files[i] == nullptr) {
             continue;
         }
         _running = true;
-        const char *comp = component_id_to_string((ComponentId) i);
-        snprintf(_file_prefixes[i], MAX_PREFIX_SIZE, "%s.%ld", comp, syscall(SYS_gettid));
+        const char *channel = channel_to_string((Channel) i);
+        snprintf(_file_prefixes[i], MAX_PREFIX_SIZE, "%s.%ld", channel, syscall(SYS_gettid));
         _files[i]->set_prefix(_file_prefixes[i]);
     }
 

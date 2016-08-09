@@ -161,7 +161,7 @@ void Env::init(Config *config)
 
 void Env::destroy()
 {
-    PT_INFO("Env stopping!");
+    PT_INFO(CONTROL, "Env stopping!");
     _vmsg->stop();
     _vmsg->destroy();
     delete _vmsg;
@@ -187,7 +187,7 @@ void Env::start()
     {
         _silos[i]->start();
     }
-    PT_INFO("Env started!");
+    PT_INFO(CONTROL, "Env started!");
 }
 
 void Env::wait_for_silos()

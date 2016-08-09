@@ -66,7 +66,8 @@ int EPoll<T>::register_socket(int fd, EPollEvent<T> *event)
     event->_event.events = EPOLLIN | EPOLLRDHUP;
     int ret = epoll_ctl(_epoll_fd, EPOLL_CTL_ADD, fd, &event->_event);
     if (ret == -1) {
-        P_TRACE(P::Trace::Severity::SEVERITY_ERROR, ComponentId::PLASMA, "epoll_ctl errno=%d", errno);
+        P_TRACE(P::Trace::Channel::CONTROL, P::Trace::Severity::ERROR, ComponentId::PLASMA, "epoll_ctl errno=%d",
+                errno);
         return -1;
     }
     return 0;
@@ -79,7 +80,8 @@ int EPoll<T>::wait(EPollEvent<T> *events, uint32_t n_events, int timeout_ms)
     int polled_events = epoll_wait(_epoll_fd, tmp_events, P_MIN(MAX_EVENTS, n_events), timeout_ms);
     if (polled_events < 0) {
         if (errno != EINTR) {
-            P_TRACE(P::Trace::Severity::SEVERITY_ERROR, ComponentId::PLASMA, "poll failed errno=%d", errno);
+            P_TRACE(P::Trace::Channel::CONTROL, P::Trace::Severity::ERROR, ComponentId::PLASMA,
+                    "poll failed errno=%d", errno);
             return 0;
         }
         return -1;

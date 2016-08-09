@@ -42,7 +42,7 @@ static struct addrinfo *get_addr(const char *host, uint16_t port)
     struct addrinfo *addr;
     int ret = getaddrinfo(host, portstr, NULL, &addr);
     if (ret) {
-        PT_ERROR("getaddrinfo failed - invalid hostname or IP address");
+        PT_ERROR(DATA, "getaddrinfo failed - invalid hostname or IP address");
         return NULL;
     }
     return addr;
@@ -52,30 +52,30 @@ VMsgRes RDMALink::listen(struct rdma_event_channel *channel, const char *host, u
 {
     int ret = rdma_create_id(channel, &_cm_id, this, RDMA_PS_TCP);
     if (ret) {
-        PT_ERROR("rdma_create_id failed errno=%d", errno);
+        PT_ERROR(DATA, "rdma_create_id failed errno=%d", errno);
         return VMsgRes::SYS_ERR;
     }
 
     struct addrinfo *addr = get_addr(host, port);
     if (addr == NULL) {
-        PT_ERROR("get_addr failed errno=%d", errno);
+        PT_ERROR(DATA, "get_addr failed errno=%d", errno);
         return VMsgRes::SYS_ERR;
     }
     ret = rdma_bind_addr(_cm_id, addr->ai_addr);
     freeaddrinfo(addr);
     if (ret) {
-        PT_ERROR("rdma_bind_addr errno=%d", errno);
+        PT_ERROR(DATA, "rdma_bind_addr errno=%d", errno);
         return VMsgRes::SYS_ERR;
     }
 
     ret = rdma_listen(_cm_id, LISTEN_BACKLOG);
     if (ret) {
-        PT_ERROR("rdma_listen failed errno=%d", errno);
+        PT_ERROR(DATA, "rdma_listen failed errno=%d", errno);
         return VMsgRes::SYS_ERR;
     }
     set_state(LinkState::LISTEN);
 
-    PT_DEBUG("created listen link cm_id=%p listening on port=%hd", _cm_id, ntohs(rdma_get_src_port(_cm_id)));
+    PT_DEBUG(DATA, "created listen link cm_id=%p listening on port=%hd", _cm_id, ntohs(rdma_get_src_port(_cm_id)));
     return VMsgRes::OK;
 }
 
@@ -88,20 +88,20 @@ VMsgRes RDMALink::initiate_connection(rdma_event_channel *channel, const char *h
 
     int ret = rdma_create_id(channel, &_cm_id, this, RDMA_PS_TCP);
     if (ret) {
-        PT_ERROR("rdma_create_id failed errno=%d", errno);
+        PT_ERROR(DATA, "rdma_create_id failed errno=%d", errno);
         return VMsgRes::SYS_ERR;
     }
 
     struct addrinfo *addr = get_addr(host, port);
     if (addr == NULL) {
-        PT_ERROR("get_addr  failed errno=%d", errno);
+        PT_ERROR(DATA, "get_addr  failed errno=%d", errno);
         return VMsgRes::SYS_ERR;
     }
 
     ret = rdma_resolve_addr(_cm_id, NULL, addr->ai_addr, RESOLVE_TIMEOUT_MS);
     freeaddrinfo(addr);
     if (ret) {
-        PT_ERROR("rdma_resolve_addr failed errno=%d", errno);
+        PT_ERROR(DATA, "rdma_resolve_addr failed errno=%d", errno);
         return VMsgRes::SYS_ERR;
     }
     set_state(LinkState::ADDR_RESOLVE_REQUEST);
@@ -115,10 +115,10 @@ VMsgRes RDMALink::establish_connection(EnvId local_env_id, struct ibv_cq *cq, st
     DEBUG_ASSERT(pd != NULL);
     DEBUG_ASSERT(srq != NULL);
 
-    PT_DEBUG("src_port=%hu dst_port=%hu client=%c",
+    PT_DEBUG(DATA, "src_port=%hu dst_port=%hu client=%c",
              ntohs(rdma_get_src_port(_cm_id)), ntohs(rdma_get_dst_port(_cm_id)), _client_link);
 
-    PT_DEBUG("creating qp pd=%p cm_id=%p srq=%p cm_device=%p cm_device_name='%s'",
+    PT_DEBUG(DATA, "creating qp pd=%p cm_id=%p srq=%p cm_device=%p cm_device_name='%s'",
              pd, _cm_id, srq, _cm_id->verbs, ibv_get_device_name(_cm_id->verbs->device));
     struct ibv_qp_init_attr init_attr;
     memset(&init_attr, 0, sizeof(init_attr));
@@ -136,7 +136,7 @@ VMsgRes RDMALink::establish_connection(EnvId local_env_id, struct ibv_cq *cq, st
 
     int ret = rdma_create_qp(_cm_id, pd, &init_attr);
     if (ret) {
-        PT_ERROR("rdma_create_qp failed errno=%d", errno);
+        PT_ERROR(DATA, "rdma_create_qp failed errno=%d", errno);
         return VMsgRes::SYS_ERR;
     }
 
@@ -156,26 +156,26 @@ VMsgRes RDMALink::establish_connection(EnvId local_env_id, struct ibv_cq *cq, st
     cm_params.retry_count = SEND_ERROR_RETRY_COUNT;
     cm_params.rnr_retry_count = SEND_RNR_RETRY_COUNT;
     if (_client_link) {
-        PT_DEBUG("calling rdma_connect");
+        PT_DEBUG(DATA, "calling rdma_connect");
         ret = rdma_connect(_cm_id, &cm_params);
         if (ret) {
-            PT_ERROR("rdma_connect  failed errno=%d", errno);
+            PT_ERROR(DATA, "rdma_connect  failed errno=%d", errno);
             set_state(LinkState::ERROR);
             return VMsgRes::CONNECTION_REFUSED;
         }
         set_state(LinkState::CONNECT_REQUEST);
     } else {
-        PT_DEBUG("calling rdma_accept");
+        PT_DEBUG(DATA, "calling rdma_accept");
         ret = rdma_accept(_cm_id, &cm_params);
         if (ret) {
-            PT_ERROR("rdma_accept  failed errno=%d", errno);
+            PT_ERROR(DATA, "rdma_accept  failed errno=%d", errno);
             set_state(LinkState::ERROR);
             return VMsgRes::SYS_ERR;
         }
         set_state(LinkState::CONNECTED);
     }
 
-    PT_DEBUG("connected qp=%p", _cm_id->qp);
+    PT_DEBUG(DATA, "connected qp=%p", _cm_id->qp);
     return VMsgRes::OK;
 }
 
@@ -209,7 +209,7 @@ VMsgRes RDMALink::send(struct ibv_mr *mr, MsgId msg_id, void *buff, uint32_t len
     struct ibv_send_wr *bad_wr;
     int ret = ibv_post_send(_cm_id->qp, &wr, &bad_wr);
     if (ret) {
-        PT_ERROR("ibv_post_send failed ret=%d qp=%p errno=%d", ret, _cm_id->qp, errno);
+        PT_ERROR(DATA, "ibv_post_send failed ret=%d qp=%p errno=%d", ret, _cm_id->qp, errno);
         return VMsgRes::SYS_ERR;
     }
     return VMsgRes::OK;
@@ -252,7 +252,7 @@ RDMALink::StateMatrix *RDMALink::init_state_transition()
 
 void RDMALink::verify_state_transition(LinkState link_state)
 {
-    PT_DEBUG("Link - env_id=%hu module_id=%hhu state transition %d-->%d", _env_id, _module_id, _state, link_state);
+    PT_DEBUG(DATA, "Link - env_id=%hu module_id=%hhu state transition %d-->%d", _env_id, _module_id, _state, link_state);
     ASSERT((*_state_trans)[(int)_state][(int)link_state],
            "Illegal state transition from " << (int)_state << " to " << (int)link_state);
 }

@@ -10,7 +10,7 @@ namespace VMsg {
 void VMsg::init(VMsgConfiguration *vmsg_configuration)
 {
     _vmsg_configuration = *vmsg_configuration;
-    PT_INFO("initializing VMsg local_env_id=%hu n_silos=%u", vmsg_configuration->local_env_id,
+    PT_INFO(DATA, "initializing VMsg local_env_id=%hu n_silos=%u", vmsg_configuration->local_env_id,
             vmsg_configuration->n_silos);
     _started = false;
     LOOP(ModuleId::COUNT, i) {
@@ -135,7 +135,7 @@ void VMsg::connect_to_peers()
 {
     LOOP(MAX_ENVS, env_id) {
         if (_address_table.has_addresses(env_id)) {
-            PT_INFO("connecting to env_id=%lu", env_id);
+            PT_INFO(DATA, "connecting to env_id=%lu", env_id);
             connect_to_peer_modules(env_id);
         }
     }
@@ -250,7 +250,7 @@ void VMsg::handle_piggyback_data(VMsgHeader *header, SiloId silo_id)
     }
     if (header->tail_size > 0) {
         PiggybackData *data = VMsgPool::msg_header_to_piggyback(header);
-        PT_DEBUG("Freeing %u messages", data->acks.n_acks);
+        PT_DEBUG(DATA, "Freeing %u messages", data->acks.n_acks);
         if (data->type == PiggybackType::MSG_ACKS) {
             LOOP(data->acks.n_acks, i) {
                 TRACE_MSG_ID("got ack", data->acks.acks[i]);
@@ -258,7 +258,7 @@ void VMsg::handle_piggyback_data(VMsgHeader *header, SiloId silo_id)
             }
         } else {
             // not panicking under the assumption that one day there might be new types add
-            PT_DEBUG("unknown piggyback type %u, ignoring", data->type);
+            PT_DEBUG(DATA, "unknown piggyback type %u, ignoring", data->type);
         }
     }
 }
@@ -269,7 +269,7 @@ VMsgRes VMsg::send_request(VMsgHeader *header, uint64_t timeout_usec)
     MemRegion *region = _vmsg_pool.get_region(BufferType::REQUEST, (ModuleId) dest.module_id);
     VMsgRes res = _rdma_transport.send_request(dest, region, header->sender_msg_id, header, msg_len(header));
     if (res == VMsgRes::NOT_CONNECTED && timeout_usec > 0) {
-        PT_INFO("no connection to destination env_id=%hu module_id=%hhu retrying send", dest.env_id, dest.module_id);
+        PT_INFO(DATA, "no connection to destination env_id=%hu module_id=%hhu retrying send", dest.env_id, dest.module_id);
         uint64_t now = 0;
         uint64_t start_time = NANO_TO_MICRO(get_time_nano());
         // wait for the send timeout for the link to get connected
@@ -281,7 +281,7 @@ VMsgRes VMsg::send_request(VMsgHeader *header, uint64_t timeout_usec)
         } while (res == VMsgRes::NOT_CONNECTED && (now - start_time) < timeout_usec);
     }
     if (res != VMsgRes::OK) {
-        PT_ERROR("failed to send message res=%d", res);
+        PT_ERROR(DATA, "failed to send message res=%d", res);
         return res;
     }
     return VMsgRes::OK;
@@ -368,7 +368,7 @@ void VMsg::poll()
 
 void VMsg::handle_event(TransportEvent *event)
 {
-//    PT_DEBUG("Got event type=%d status=%d len=%u",
+//    PT_DEBUG(DATA, "Got event type=%d status=%d len=%u",
 //               event->type, event->status, event->len);
 //    TRACE_MSG_ID("event msg_id", event->id);
     switch (event->type) {
@@ -399,7 +399,7 @@ void VMsg::on_read_complete(TransportEvent *event)
 
 void VMsg::on_send_complete(TransportEvent *event)
 {
-    PT_DEBUG("send complete");
+    PT_DEBUG(DATA, "send complete");
 }
 
 void VMsg::on_msg_recv(TransportEvent *event)
@@ -407,7 +407,7 @@ void VMsg::on_msg_recv(TransportEvent *event)
     const MsgId id = event->id;
     void *buffer = _vmsg_pool.msg_id_to_address(id);
     if (event->status != VMsgRes::OK) {
-        PT_ERROR("got recv failure status=%d", event->status);
+        PT_ERROR(DATA, "got recv failure status=%d", event->status);
         // post buffer again
         post_recv_buffer(event->id, buffer);
         return;
@@ -508,7 +508,7 @@ void VMsg::execute_incoming_request(VMsgHeader *request_header)
 
     VMsgRes res = _rdma_transport.send_response(response->dest, region, response_msg_id, response, msg_len(response));
     if (res != VMsgRes::OK) {
-        PT_ERROR("failed to send response res=%d", res);
+        PT_ERROR(DATA, "failed to send response res=%d", res);
         _vmsg_pool.free_address(BufferType::RESPONSE,
                                 module_id,
                                 silo_id, response);
@@ -536,7 +536,7 @@ void VMsg::handle_incoming_msg(VMsgHeader *request_header)
 
 void VMsg::handle_reply(VMsgHeader *header, SiloId silo_id)
 {
-    PT_DEBUG("handling reply for silo_id=%hhu seq_num=%hu ", header->dest.silo_id, header->seq_num);
+    PT_DEBUG(DATA, "handling reply for silo_id=%hhu seq_num=%hu ", header->dest.silo_id, header->seq_num);
     TRACE_VMSG_HEADER("reply header", header);
     VMsgHeader *pending_header = (VMsgHeader *)_vmsg_pool.msg_id_to_address(header->sender_msg_id);
     PendingMsg *pending_msg = VMsgPool::msg_header_to_pending_msg(pending_header);
@@ -552,7 +552,7 @@ void VMsg::handle_reply(VMsgHeader *header, SiloId silo_id)
     const EnvId env_id = header->sender.env_id;
     ctx->pending_acks_lists[env_id].append(ctx->acks_pool.address_to_index(ack_id));
     ctx->n_acks[env_id]++;
-    PT_DEBUG("add ack - silo_id=%hhu env_id=%hu n_acks=%u", silo_id, env_id, ctx->n_acks[env_id]);
+    PT_DEBUG(DATA, "add ack - silo_id=%hhu env_id=%hu n_acks=%u", silo_id, env_id, ctx->n_acks[env_id]);
 }
 
 void VMsg::free_reply(void *reply_buffer)

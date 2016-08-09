@@ -59,7 +59,8 @@ struct ModuleGUID {
 };
 static_assert(sizeof(ModuleGUID) == 4, "ModuleGUID size should be 4 bytes");
 #define TRACE_GUID(TEXT, GUID) \
-    PT_DEBUG(TEXT " env_id=%hu module_id=%hhu silo_id=%hhu", GUID.env_id, GUID.module_id, GUID.silo_id)
+    PT_DEBUG(DATA, TEXT " env_id=%hu module_id=%hhu silo_id=%hhu", GUID.env_id, \
+             GUID.module_id, GUID.silo_id)
 
 enum class BufferType {
     // request buffer - used for sending RPC requests by clients
@@ -83,7 +84,8 @@ struct MsgId {
 static_assert(sizeof(MsgId) == 4, "MsgId size should be 4 bytes");
 
 #define TRACE_MSG_ID(TEXT, ID) \
-    PT_DEBUG(TEXT " buffer_index=%hu module_id=%hhu buffer_type=%hhu", ID.buffer_index, ID.module_id, ID.buffer_type)
+    PT_DEBUG(DATA, TEXT " buffer_index=%hu module_id=%hhu buffer_type=%hhu", \
+             ID.buffer_index, ID.module_id, ID.buffer_type)
 
 struct VMsgHeader {
     // sender identifier
@@ -112,7 +114,8 @@ struct VMsgHeader {
 };
 static_assert(sizeof(VMsgHeader) == 32, "VMsgHeader size should be 32 bytes");
 #define TRACE_VMSG_HEADER(MSG, HDR) \
-    PT_DEBUG(MSG " header=%p silo_id=%hhu seq_num=%hu server_id=%hhu op_id=%hhu", HDR, HDR->sender.silo_id, HDR->seq_num, HDR->server_id, HDR->op_id); \
+    PT_DEBUG(DATA, MSG " header=%p silo_id=%hhu seq_num=%hu server_id=%hhu op_id=%hhu", HDR, \
+             HDR->sender.silo_id, HDR->seq_num, HDR->server_id, HDR->op_id); \
     TRACE_GUID("sender guid", HDR->sender); \
     TRACE_GUID("dest guid", HDR->dest); \
     TRACE_MSG_ID("sender msg_id", HDR->sender_msg_id)
@@ -214,7 +217,7 @@ struct QueuedEvent {
 };
 
 #define TRACE_VMSG_EVENT(event) \
-    PT_DEBUG("event: type=%d id_index=%hu module_id=%hhu len=%u status=%d", \
+    PT_DEBUG(DATA, "event: type=%d id_index=%hu module_id=%hhu len=%u status=%d", \
                event.type, event.id.buffer_index, event.id.module_id, event.len, event.status);
 
 }

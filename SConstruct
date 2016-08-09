@@ -226,9 +226,9 @@ def AddCppTest(target, source, wrap=[], group_alias='cpptest'):
         cpp_test_env.Alias(alias, test, test[0].abspath)
         cpp_test_env.AlwaysBuild(alias)
 
-env.Alias('cpptest', env.Command('<phony>', [], 'sudo modprobe siw'))
-env.Alias('cpptest', env.Command('<phony>', [], 'sudo rpcbind ; true'))
-env.Alias('nfstest', env.Command('<phony>', [], 'sudo rpcbind ; true'))
+env.Alias('cpptest', env.Command('<phony1>', [], 'sudo modprobe siw'))
+env.Alias('cpptest', env.Command('<phony2>', [], 'sudo rpcbind ; true'))
+env.Alias('nfstest', env.Command('<phony3>', [], 'sudo rpcbind ; true'))
 
 AddCppTest(target='dist/tests/assert', source=[build_dir + '/tests/test_assert.cpp'])
 AddCppTest(target='dist/tests/pool', source=[build_dir + '/tests/test_pool.cpp'])
