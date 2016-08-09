@@ -27,19 +27,19 @@ DEFINE_LOOKUP_PROTOTYPES(TRACE_SEVERITY_LIST,
 // record per silo per component. There's no real reason to allocate more.
 const size_t TRACE_RECORD_MAX_SIZE = 4096 * 4;
 
-typedef struct {
+struct TraceRecord {
     uint64_t time;
     uint32_t job_id;
     uint16_t info_index;
     Severity severity;
     byte params[TRACE_RECORD_MAX_SIZE - (8 + 4 + 2 + 1)];
-} TraceRecord;
+};
 
 static_assert(TRACE_RECORD_MAX_SIZE == sizeof(TraceRecord), "TraceRecord size mismatch");
 
 const size_t TRACE_INFO_SIZE = 256; // has to be self-aligned, that's why its defined explicitly
 
-typedef struct {
+struct TraceInfo {
     byte format[128];
     byte file[86];
     uint16_t line;
@@ -47,7 +47,7 @@ typedef struct {
         const char *func_ptr; // .func starts off empty because __func__ isn't considered a static value. The init_section function sets the value in .func_ptr to .func.
         byte func[40];
     };
-} TraceInfo;
+};
 
 }}
 

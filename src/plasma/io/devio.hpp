@@ -29,10 +29,10 @@ class IOProvider;
 #define IO_BADDRS_MAX_COUNT 64
 
 typedef uint64_t Baddr;
-typedef struct Baddrs {
+struct Baddrs {
     uint32_t count; // We allow a maximum of IO_BADDRS_MAX_COUNT target baddrs for a single IO. Limiting stack allocated structures.
     Baddr *baddrs;
-} Baddrs;
+};
 
 class DevIO {
 public:

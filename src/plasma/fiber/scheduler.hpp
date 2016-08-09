@@ -18,15 +18,11 @@
 
 namespace P {
 
-typedef struct FiberGroupConfig FiberGroupConfig;
-
 struct FiberGroupConfig {
     size_t stack_size;
     Index fiber_count;
     ModuleId module_id;
 };
-
-typedef struct SchedulerConfig SchedulerConfig;
 
 struct SchedulerConfig {
     FiberGroupConfig *fiber_groups;

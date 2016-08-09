@@ -5,10 +5,10 @@
 #include "plasma/vmsg/vmsg.hpp"
 #include "plasma/vmsg/vmsg_defs.hpp"
 
-typedef struct VMsgTestState {
+struct VMsgTestState {
     bool _server_shutdown;
     bool _server_shutdown_complete;
-} VMsgTestState;
+};
 
 static const P::VMsg::EnvId CLIENT_ENV_ID = 1;
 static const P::VMsg::EnvId SERVER_ENV_ID = 2;

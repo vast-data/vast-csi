@@ -220,8 +220,7 @@ static void io_poller(void *arg)
 
 static const char *create_device_file(ConfigSetting *io_module)
 {
-    ConfigSetting *io_provider_setting = conf_setting_lookup_required(io_module, "io_provider");
-    ConfigSetting *devices_setting = conf_setting_lookup_required(io_provider_setting, "devices");
+    ConfigSetting *devices_setting = conf_setting_lookup_required(io_module, "io_provider.devices");
 
     EXPECT_EQ(1, conf_setting_length(devices_setting));
 

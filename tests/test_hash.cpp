@@ -5,7 +5,6 @@
 #include "plasma/data/hash.hpp"
 #include "plasma/utils/types.hpp"
 
-typedef struct person person;
 struct person {
     char name[64];
 };

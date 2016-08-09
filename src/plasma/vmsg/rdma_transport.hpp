@@ -20,7 +20,7 @@
 namespace P {
 namespace VMsg {
 
-typedef struct MemRegion MemRegion;
+struct MemRegion;
 
 class RDMATransport {
 public:

@@ -11,10 +11,10 @@
 #define BUFF_SIZE (1024 * 1024)
 using namespace P::VMsg;
 
-typedef struct TestMsg {
+struct TestMsg {
     int  idx;
     char msg[256];
-} TestMsg;
+};
 
 TEST(TestRDMATransport, test)
 {

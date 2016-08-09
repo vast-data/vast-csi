@@ -13,9 +13,9 @@
 namespace P {
 
 typedef struct iovec IOVec;
-typedef struct IOVecs {
+struct IOVecs {
     uint32_t count;
     IOVec *iovecs;
-} IOVecs;
+};
 
 }

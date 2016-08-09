@@ -5,9 +5,9 @@
 
 using P::Queue;
 
-typedef struct Bubu {
+struct Bubu {
     uint32_t bla;
-} Bubu;
+};
 
 TEST(TestQueue, test) {
     Queue<Bubu> q;

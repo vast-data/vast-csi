@@ -109,11 +109,11 @@ public:
     void destroy();
 
 private:
-    typedef struct {
+    struct ModuleDescriptor {
         ModuleInterface *module;
         void *components[(int)ComponentId::COUNT];
         bool defined;
-    } ModuleDescriptor;
+    };
 
     ModuleDescriptor *get_module_descriptor();
 

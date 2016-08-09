@@ -15,7 +15,7 @@
 
 #include "config.hpp"
 
-typedef struct config_t config_t;
+struct config_t;
 
 namespace P {
 namespace Conf {

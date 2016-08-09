@@ -100,7 +100,7 @@ private:
 private:
     static const uint64_t RESPONSE_TIMEOUT_USEC = MICRO_TO_SEC(60);
 
-    typedef struct SiloContext {
+    struct SiloContext {
         // modules RPC servers
         RpcServer *rpc_servers[MODULES_COUNT][(int)RpcServerId::COUNT];
 
@@ -114,7 +114,7 @@ private:
         uint32_t n_acks[MAX_ENVS];
 
         Pool acks_pool;
-    } SiloContext;
+    };
 
     SiloContext *_silos_context;
 

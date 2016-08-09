@@ -14,7 +14,7 @@ namespace VMsg {
 
 class RDMATransport;
 
-typedef struct MemRegion MemRegion;
+struct MemRegion;
 
 class VMsgPool {
 public:

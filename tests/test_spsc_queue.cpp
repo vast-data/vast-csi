@@ -7,10 +7,10 @@
 
 using P::SPSCQueue;
 
-typedef struct TestElement {
+struct TestElement {
     SPSCQueue::Node node;
     uint64_t val;
-} TestElement;
+};
 
 TestElement test_elements[100000];
 uint64_t expected_sum = 0;
