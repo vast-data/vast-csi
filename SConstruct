@@ -33,8 +33,9 @@ Available targets:
 1. <none> - when running scons with no targets all executables are built.
 2. test - builds and invoke all tests.
 3. cpptest - builds and invoke C++ tests.
-4. pytest - run python tests.
-5. docs - builds the documentation. The result is located at docs/html/index.html.
+4. test_* - build and invoke C++ test executable.
+5. pytest - run python tests.
+6. docs - builds the documentation. The result is located at docs/html/index.html.
 
 Parameters
 ----------
@@ -206,7 +207,10 @@ def AddCppTest(target, source, wrap=[]):
     for func in wrap:
         cpp_test_env.Append(LINKFLAGS='-Wl,-wrap,' + func)
     test = cpp_test_env.Program(target=target, source=source)
-    cpp_test_env.Alias('cpptest', test, test[0].abspath)
+    for alias in ['cpptest', 'test_' + target.split('/')[-1]]:
+        cpp_test_env.Alias(alias, test, test[0].abspath)
+        cpp_test_env.AlwaysBuild(alias)
+
 env.Alias('cpptest', env.Command('<phony>', [], 'sudo modprobe siw'))
 
 AddCppTest(target='dist/tests/assert', source=[build_dir + '/tests/test_assert.cpp'])
