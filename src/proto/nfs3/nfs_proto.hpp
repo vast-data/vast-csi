@@ -8,7 +8,7 @@
 #pragma once
 
 #include "plasma/execution/config.hpp"
-#include "plasma/net/connections_manager.hpp"
+#include "plasma/net/tcp_acceptor.hpp"
 #include "nfs_defs.hpp"
 
 namespace EStore {
@@ -23,13 +23,13 @@ class NfsServer;
 
 class NfsProto {
 public:
-    void init(EStore::EStore *estore, P::Net::ConnectionsManager *connections_manager, bool primary_instance);
+    void init(EStore::EStore *estore, P::Net::TcpAcceptor *tcp_acceptor, bool primary_instance);
 
     void destroy();
 
     void poll(int timeout_ms);
 
-    static void global_init(P::Conf::ConfigSetting *nfs_setting, P::Net::ConnectionsManager *connections_manager);
+    static void global_init(P::Conf::ConfigSetting *nfs_setting, P::Net::TcpAcceptor *tcp_acceptor);
 
 private:
     static void read_conf(P::Conf::ConfigSetting *nfs_setting);

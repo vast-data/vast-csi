@@ -15,6 +15,8 @@
 #define NUM_ELEMENTS(array) (sizeof(array) / sizeof((array)[0]))
 #define SAFE_DESTROY(X, FUNC) if (X) FUNC(X)
 
+#define SET_ENUM_FLAG(ENUM, TYPE, FLAG) ENUM = (TYPE)(ENUM | TYPE::FLAG)
+
 // as defined in the linux kernel
 #define likely(x)      __builtin_expect(!!(x), 1)
 #define unlikely(x)    __builtin_expect(!!(x), 0)

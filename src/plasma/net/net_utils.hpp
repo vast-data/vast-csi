@@ -2,8 +2,6 @@
 
 #/* Copyright (C) Vast Data Ltd. */
 
-
-
 #pragma once
 
 namespace P {

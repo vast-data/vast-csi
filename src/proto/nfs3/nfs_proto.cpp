@@ -6,14 +6,14 @@
 
 #define CURRENT_COMPONENT ComponentId::NFS
 
-using P::Net::ConnectionsManager;
+using P::Net::TcpAcceptor;
 using namespace P::Conf;
 
 namespace Nfs {
 
 /*static*/ Nfs::NfsConfig NfsProto::_nfs_conf = { 0 };
 
-void NfsProto::init(EStore::EStore *estore, ConnectionsManager *connections_manager, bool primary_instance)
+void NfsProto::init(EStore::EStore *estore, TcpAcceptor *tcp_acceptor, bool primary_instance)
 {
     if (!_nfs_conf.enabled) {
         PT_INFO("nfs not configured");
@@ -27,7 +27,7 @@ void NfsProto::init(EStore::EStore *estore, ConnectionsManager *connections_mana
     _rpc = new Rpc();
     _rpc->init(&_nfs_conf, _estore, _mount_srv, _nfs_srv, primary_instance);
 
-    connections_manager->add_consumer(_rpc);
+    tcp_acceptor->add_consumer(_rpc);
 }
 
 void NfsProto::destroy()
@@ -70,7 +70,7 @@ void NfsProto::read_conf(P::Conf::ConfigSetting *nfs_setting)
     _nfs_conf.requests_per_silo = get_nfs_setting(nfs_setting, "requests_per_silo");
 }
 
-void NfsProto::global_init(P::Conf::ConfigSetting *nfs_setting, P::Net::ConnectionsManager *connections_manager)
+void NfsProto::global_init(P::Conf::ConfigSetting *nfs_setting, P::Net::TcpAcceptor *tcp_acceptor)
 {
     if (nfs_setting == nullptr) {
         _nfs_conf.enabled = false;
@@ -79,9 +79,9 @@ void NfsProto::global_init(P::Conf::ConfigSetting *nfs_setting, P::Net::Connecti
     _nfs_conf.enabled = true;
     read_conf(nfs_setting);
     // set listen sockets
-    connections_manager->listen(P::Net::SocketId::NFS, _nfs_conf.port[ProtocolType::NFS3]);
-    connections_manager->listen(P::Net::SocketId::MOUNT, _nfs_conf.port[ProtocolType::MOUNT3]);
-//    connections_manager->listen(P::Net::SocketId::NLM, nfs_conf.port[ProtocolType::NLM4]);
+    tcp_acceptor->listen(P::Net::SocketId::NFS, _nfs_conf.port[ProtocolType::NFS3]);
+    tcp_acceptor->listen(P::Net::SocketId::MOUNT, _nfs_conf.port[ProtocolType::MOUNT3]);
+//    tcp_acceptor->listen(P::Net::SocketId::NLM, nfs_conf.port[ProtocolType::NLM4]);
 
     // register with rpcbind
     reg_program(NFS_PROGRAM, NFS_V3, _nfs_conf.port[ProtocolType::NFS3], false);

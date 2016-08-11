@@ -6,7 +6,7 @@
 #include "proto/nfs3/nfs_defs.hpp"
 #include "plasma/trace/emitter.hpp"
 #include "plasma/memory/alloc.hpp"
-#include "plasma/net/connections_manager.hpp"
+#include "plasma/net/tcp_acceptor.hpp"
 #include "plasma/utils/macros.hpp"
 #include "plasma/utils/assert.hpp"
 #include "plasma/utils/os.hpp"
@@ -130,8 +130,8 @@ void Env::init(Config *config)
     ConfigSetting *traces_setting = conf_lookup(config, "global_traces");
     _emitter.init(traces_setting, true);
     _dumper.init(traces_setting, &_emitter, _trace_dir);
-    _conn_mgr = new P::Net::ConnectionsManager();
-    _conn_mgr->init();
+    _tcp_acceptor = new P::Net::TcpAcceptor();
+    _tcp_acceptor->init();
     init_nfs(config);
 
     ConfigSetting *silos_setting = conf_lookup(config, "silos");
@@ -165,9 +165,9 @@ void Env::destroy()
     _vmsg->stop();
     _vmsg->destroy();
     delete _vmsg;
-    _conn_mgr->stop();
-    _conn_mgr->destroy();
-    delete _conn_mgr;
+    _tcp_acceptor->stop();
+    _tcp_acceptor->destroy();
+    delete _tcp_acceptor;
 
     _dumper.stop();
     _dumper.wait();
@@ -180,7 +180,7 @@ void Env::start()
 {
     _emitter.set_global();
     _dumper.start();
-    _conn_mgr->start();
+    _tcp_acceptor->start();
     _vmsg->start();
 
     PT_INFO("Env started!");
@@ -272,7 +272,7 @@ void Env::run(const char *config_path)
 void Env::init_nfs(Conf::Config *config)
 {
     ConfigSetting *nfs_setting = conf_lookup(config, "nfs3");
-    Nfs::NfsProto::global_init(nfs_setting, _conn_mgr);
+    Nfs::NfsProto::global_init(nfs_setting, _tcp_acceptor);
 }
 
 }

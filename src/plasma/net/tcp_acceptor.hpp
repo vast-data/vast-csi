@@ -1,6 +1,6 @@
 /* Copyright (C) Vast Data Ltd. */
 /*!
- * \file connections_manager.hpp
+ * \file tcp_acceptor.hpp
  * \brief A service for accepting and dispatching TCP connections.
  *        The connections manager works by polling the set of sockets it has been requested to. Each time a new
  *        connection comes in the connection manager dispaches it to the consumer with the smallest number of connections.
@@ -8,9 +8,9 @@
 
 #pragma once
 
-#include <sys/epoll.h>
 #include <pthread.h>
 #include <stdint.h>
+#include "epoll.hpp"
 
 namespace P {
 namespace Net {
@@ -29,11 +29,11 @@ struct Socket {
     SocketId id;
     int fd;
     uint16_t port;
-    struct epoll_event event;
+    EPollEvent<Socket> event;
 };
 
 // Interface for objects that accept connections.
-class ConnectionsConsumer {
+class TcpConsumer {
 public:
     // tell the consumer take ownership of a new connection
     virtual void accept_connection(SocketId id, int fd) = 0;
@@ -42,7 +42,7 @@ public:
     virtual int64_t query_connection(SocketId id) = 0;
 };
 
-class ConnectionsManager {
+class TcpAcceptor {
 public:
     void init();
     void start();
@@ -52,7 +52,7 @@ public:
     // start listening on a new socket (may be called only once per socket id)
     void listen(SocketId socket_id, uint16_t port);
     // add a new consumer
-    void add_consumer(ConnectionsConsumer *consumer);
+    void add_consumer(TcpConsumer *consumer);
 
 private:
     static void *poll_func(void *arg);
@@ -63,10 +63,10 @@ private:
     static const uint16_t MAX_CONSUMERS = 128;
     static const uint16_t MAX_EVENTS = 16;
     Socket _sockets[SOCKET_ID_COUNT];
-    ConnectionsConsumer *_consumers[MAX_CONSUMERS];
+    TcpConsumer *_consumers[MAX_CONSUMERS];
     uint16_t _n_consumers;
-    int _epoll_fd;
-    struct epoll_event _events[MAX_EVENTS];
+    EPoll<Socket> _epoll;
+    EPollEvent<Socket> _events[MAX_EVENTS];
     bool _stop;
     pthread_t _poll_thread;
 };

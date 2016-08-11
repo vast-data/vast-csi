@@ -14,7 +14,7 @@ void IModule::init(Silo *silo, ConfigSetting *setting)
     static bool first_init = true;
 
     _estore.init();
-    _nfs.init(&_estore, P::Env::get()->get_conn_mgr(), first_init);
+    _nfs.init(&_estore, P::Env::get()->get_tcp_acceptor(), first_init);
     first_init = false;
 }
 

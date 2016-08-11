@@ -66,7 +66,6 @@ void MountServer::set_xdr_procs(RpcRequest *request)
             request->status = RpcStatus::PROC_NOT_FOUND;
             return;
     }
-
 }
 
 void MountServer::run_procedure(RpcRequest *request)
@@ -128,6 +127,7 @@ void MountServer::mnt(RpcRequest *request, dirpath *path, mountres3 *res)
 void MountServer::dump(RpcRequest *request, mountlist *res)
 {
     // need to understand if someone is actually using this API
+    PANIC("not implemented");
 }
 
 void MountServer::umnt(RpcRequest *request, dirpath *path)
@@ -139,11 +139,13 @@ void MountServer::umnt(RpcRequest *request, dirpath *path)
 void MountServer::umntall(RpcRequest *request)
 {
     // need to understand if someone is actually using this API
+    PANIC("not implemented");
 }
 
 void MountServer::list_export(RpcRequest *request, exports *exports_list)
 {
     // need to understand if someone is actually using this API
+    PANIC("not implemented");
 }
 
 }

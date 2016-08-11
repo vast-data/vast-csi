@@ -809,8 +809,8 @@ void NfsServer::create(RpcRequest *request, CREATE3args *args, CREATE3res *res)
     
     CreateFlags flags = CreateFlags::HAS_DATA;
     if (args->how.mode == GUARDED || args->how.mode == EXCLUSIVE) {
-        // I hate C++ enums !!!
-        *(int*)&flags = (int)flags | (int)CreateFlags::DONT_OVERWRITE;
+//        flags = (CreateFlags)(flags | CreateFlags::DONT_OVERWRITE);
+        SET_ENUM_FLAG(flags, CreateFlags, DONT_OVERWRITE);
     }
     uint64_t verifier = 0;
     SettableAttr settable_attr;
@@ -821,7 +821,7 @@ void NfsServer::create(RpcRequest *request, CREATE3args *args, CREATE3res *res)
         nfs_sattr_to_settable_attr(&args->how.createhow3_u.obj_attributes, &settable_attr);
     }
     set_owner_from_auth(&settable_attr, request);
-    *(int *)&settable_attr.flags |= (int)AttrFlag::ELEMENT_FLAGS;
+    SET_ENUM_FLAG(settable_attr.flags, AttrFlag, ELEMENT_FLAGS);
     settable_attr.element_flags |= (uint64_t)ElementFlags::FILE;
 
     AccessCheckCtx check_ctx = {
@@ -856,7 +856,7 @@ void NfsServer::mkdir(RpcRequest *request, MKDIR3args *args, MKDIR3res *res)
     SettableAttr settable_attr;
     nfs_sattr_to_settable_attr(&args->attributes, &settable_attr);
     set_owner_from_auth(&settable_attr, request);
-    *(int *)&settable_attr.flags |= (int)AttrFlag::ELEMENT_FLAGS;
+    SET_ENUM_FLAG(settable_attr.flags, AttrFlag, ELEMENT_FLAGS);
     settable_attr.element_flags |= (uint64_t)ElementFlags::DIR;
 
     AccessCheckCtx check_ctx = {
@@ -889,11 +889,11 @@ void NfsServer::symlink(RpcRequest *request, SYMLINK3args *args, SYMLINK3res *re
 
     // estore does not know about symlink, instead we create an empty element and use an extended attribute in order
     // to store the link data
-    CreateFlags flags = (CreateFlags)0;
+    CreateFlags flags = CreateFlags::NONE_CREATE_FLAGS;
     SettableAttr settable_attr;
     nfs_sattr_to_settable_attr(&args->symlink.symlink_attributes, &settable_attr);
     set_owner_from_auth(&settable_attr, request);
-    *(int *)&settable_attr.flags |= (int)AttrFlag::ELEMENT_FLAGS;
+    SET_ENUM_FLAG(settable_attr.flags, AttrFlag, ELEMENT_FLAGS);
     settable_attr.element_flags |= (uint64_t)ElementFlags::SYMLINK;
 
     ExtendedAttrs xattrs;
@@ -1452,25 +1452,25 @@ void NfsServer::nfs_sattr_to_settable_attr(sattr3 *nfs_sattr, SettableAttr *satt
     uint64_t time = 0;
     if (nfs_sattr->atime.set_it == SET_TO_CLIENT_TIME) {
         sattr->atime = SEC_TO_NANO(nfs_sattr->atime.set_atime_u.atime.seconds) +
-            nfs_sattr->atime.set_atime_u.atime.nseconds;
-        *(int*)&sattr->flags |= (int)AttrFlag::ATIME;
+        nfs_sattr->atime.set_atime_u.atime.nseconds;
+        SET_ENUM_FLAG(sattr->flags, AttrFlag, ATIME);
     }
     if (nfs_sattr->atime.set_it == SET_TO_SERVER_TIME) {
         time = P::get_time_nano();
         sattr->atime = time;
-        *(int*)&sattr->flags |= (int)AttrFlag::ATIME;
+        SET_ENUM_FLAG(sattr->flags, AttrFlag, ATIME);
     }
     if (nfs_sattr->mtime.set_it == SET_TO_CLIENT_TIME) {
         sattr->mtime = SEC_TO_NANO(nfs_sattr->mtime.set_mtime_u.mtime.seconds) +
-                       nfs_sattr->mtime.set_mtime_u.mtime.nseconds;
-        *(int*)&sattr->flags |= (int)AttrFlag::MTIME;
+        nfs_sattr->mtime.set_mtime_u.mtime.nseconds;
+        SET_ENUM_FLAG(sattr->flags, AttrFlag, MTIME);
     }
     if (nfs_sattr->mtime.set_it == SET_TO_SERVER_TIME) {
         if (time == 0) {
             time = P::get_time_nano();
         }
         sattr->mtime = time;
-        *(int*)&sattr->flags |= (int)AttrFlag::MTIME;
+        SET_ENUM_FLAG(sattr->flags, AttrFlag, MTIME);
     }
 }
 

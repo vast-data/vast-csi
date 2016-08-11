@@ -210,10 +210,7 @@ if pre is not None:
 cpp_sources = [build_dir + '/' + i for i in RGlob('src', '*.cpp', [], ['src/plasma/execution/main.cpp'])]
 cpp_sources.extend(rpc_sources)
 cpp_sources.append(build_dir + '/tests/test_module.cpp')
-cpp_sources.append(murmur)
-cpp_sources.append(rpc_xdr)
-cpp_sources.append(mnt_xdr)
-cpp_sources.append(nfs_xdr)
+cpp_sources.extend([murmur, rpc_xdr, mnt_xdr, nfs_xdr])
 cpp_lib = cpp_env.Library(target='dist/orion_cpp', source=cpp_sources)
 cpp_env.Depends(cpp_lib, LINKER_SCRIPT)
 cpp_env.Append(LIBS=[cpp_lib, 'unwind', 'config', 'libaio', 'rdmacm', 'ibverbs'])
@@ -232,6 +229,7 @@ def AddCppTest(target, source, wrap=[], group_alias='cpptest'):
 
 env.Alias('cpptest', env.Command('<phony>', [], 'sudo modprobe siw'))
 env.Alias('cpptest', env.Command('<phony>', [], 'sudo rpcbind ; true'))
+env.Alias('nfstest', env.Command('<phony>', [], 'sudo rpcbind ; true'))
 
 AddCppTest(target='dist/tests/assert', source=[build_dir + '/tests/test_assert.cpp'])
 AddCppTest(target='dist/tests/pool', source=[build_dir + '/tests/test_pool.cpp'])

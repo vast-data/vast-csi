@@ -108,8 +108,7 @@ void Rpc::init(NfsConfig *nfs_conf, EStore::EStore *estore, MountServer *mount_s
         conn->lock.init();
     }
 
-    _poll_fd = epoll_create1(0);
-    ASSERT_ERRNO(_poll_fd > 0);
+    _epoll.init();
 
     init_protocol(ProtocolType::MOUNT3, MOUNT_PROGRAM, MOUNT_V3, _nfs_conf.port[ProtocolType::MOUNT3], mount_server, start_udp);
     // no support for NFS UDP yet
@@ -118,7 +117,7 @@ void Rpc::init(NfsConfig *nfs_conf, EStore::EStore *estore, MountServer *mount_s
 
     LOOP(PROTOCOL_COUNT, i) {
         if (_protocols[i].udp_conn != nullptr) {
-            reg_with_epoll(_protocols[i].udp_conn, _poll_fd);
+            reg_with_epoll(_protocols[i].udp_conn);
         }
     }
 }
@@ -136,7 +135,7 @@ void Rpc::destroy()
         XDR_DESTROY(&conn->xdr);
         conn->lock.destroy();
     }
-    close(_poll_fd);
+    _epoll.destroy();
     _requests.destroy();
     _connections.destroy();
 }
@@ -411,22 +410,20 @@ void Rpc::poll(int timeout_ms)
 {
     int n_events = 0;
 
-    struct epoll_event *events = _events;
-    n_events = epoll_wait(_poll_fd, events, MAX_EVENTS, timeout_ms);
+    P::Net::EPollEvent<Connection> *events = _events;
+    n_events = _epoll.wait(events, MAX_EVENTS, timeout_ms);
     if (n_events < 0) {
-        if (errno != EINTR) {
-            PT_ERROR("poll failed errno=%d", errno);
-        }
+        PT_ERROR("epoll failed errno=%d", errno);
         return;
     }
     LOOP(n_events, i) {
-        Connection *conn = (Connection *)events->data.ptr;
+        Connection *conn = events[i].get();
 //        PT_DEBUG("got event=%x conn=%p", events[i].events, conn);
         if (conn->fd < 0) {
             PT_DEBUG("connection=%p already closed", conn);
             continue;
         }
-        if ((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (events[i].events & EPOLLRDHUP)) {
+        if (events[i].in_error()) {
             // socket closed / error
             if (conn->type == ConnectionType::TCP_CONN) {
                 close_connection(conn);
@@ -434,9 +431,9 @@ void Rpc::poll(int timeout_ms)
             continue;
         }
 
-        if (!(events[i].events & EPOLLIN)) {
+        if (!events[i].has_input()) {
             // shouldn't get this
-            PT_ERROR("unexpected event %d", events[i].events);
+            PT_ERROR("unexpected event");
             continue;
         }
         DEBUG_ASSERT(conn->type == ConnectionType::TCP_CONN || conn->type == ConnectionType::UDP_CONN);
@@ -483,7 +480,7 @@ void Rpc::accept_connection(P::Net::SocketId id, int fd)
     PT_DEBUG("accepted new connection on rpc_server=%p descriptor=%d conn=%p", this, fd, conn);
     conn->fd = fd;
     conn->type = ConnectionType::TCP_CONN;
-    reg_with_epoll(conn, _poll_fd);
+    reg_with_epoll(conn);
     _n_connections++;
 }
 
@@ -496,13 +493,12 @@ int64_t Rpc::query_connection(P::Net::SocketId id)
     return -1;
 }
 
-void Rpc::reg_with_epoll(Connection *conn, int epfd)
+void Rpc::reg_with_epoll(Connection *conn)
 {
-    conn->event.data.ptr = conn;
-    conn->event.events = EPOLLIN | EPOLLRDHUP;
-    int ret = epoll_ctl(epfd, EPOLL_CTL_ADD, conn->fd, &conn->event);
+    conn->event.init(conn);
+    int ret = _epoll.register_socket(conn->fd, &conn->event);
     if (ret == -1) {
-        PT_ERROR("epoll_ctl errno=%d", errno);
+        PT_ERROR("_epoll.register_socket errno=%d", errno);
         close(conn->fd);
         _connections.free(conn);
     }

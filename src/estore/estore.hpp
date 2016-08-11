@@ -140,6 +140,7 @@ typedef EStoreRes (*OpCallback)(SystemAttr *attr, void *ctx);
 
 // Element creation flags
 enum CreateFlags {
+    NONE_CREATE_FLAGS = 0,
     // don't overwrite existing elements
     DONT_OVERWRITE = 0x1,
     // if set the new element will be allowed to contain children

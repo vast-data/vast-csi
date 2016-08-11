@@ -1,4 +1,4 @@
-#include "connections_manager.hpp"
+#include "tcp_acceptor.hpp"
 #include "plasma/memory/alloc.hpp"
 #include "plasma/utils/units.hpp"
 #include "net_utils.hpp"
@@ -12,7 +12,7 @@
 namespace P {
 namespace Net {
 
-void ConnectionsManager::init()
+void TcpAcceptor::init()
 {
     LOOP(SOCKET_ID_COUNT, i) {
         fill_zeroes(&_sockets[i], sizeof(Socket));
@@ -23,43 +23,41 @@ void ConnectionsManager::init()
         _consumers[i] = nullptr;
     }
     _n_consumers = 0;
-
-    _epoll_fd = epoll_create1(0);
-    ASSERT_ERRNO(_epoll_fd > 0);
+    _epoll.init();
 }
 
-/*static*/ void *ConnectionsManager::poll_func(void *arg)
+/*static*/ void *TcpAcceptor::poll_func(void *arg)
 {
-    ConnectionsManager *connectionsManager = (ConnectionsManager *)arg;
+    TcpAcceptor *connectionsManager = (TcpAcceptor *)arg;
     connectionsManager->poll();
     return NULL;
 }
 
-void ConnectionsManager::start()
+void TcpAcceptor::start()
 {
     _stop = false;
     int ret = pthread_create(&_poll_thread, NULL, poll_func, this);
     ASSERT_ERRNO(ret == 0);
 }
 
-void ConnectionsManager::stop()
+void TcpAcceptor::stop()
 {
     _stop = true;
     pthread_kill(_poll_thread, SIGPOLL);
     pthread_join(_poll_thread, NULL);;
 }
 
-void ConnectionsManager::destroy()
+void TcpAcceptor::destroy()
 {
     LOOP(SOCKET_ID_COUNT, i) {
         if (_sockets[i].fd > 0) {
             close(_sockets[i].fd);
         }
-        close(_epoll_fd);
     }
+    _epoll.destroy();
 }
 
-void ConnectionsManager::listen(SocketId socket_id, uint16_t port)
+void TcpAcceptor::listen(SocketId socket_id, uint16_t port)
 {
     PT_INFO("Starting to listen for id=%d port=%hu", socket_id, port);
     Socket *sock = &_sockets[(int)socket_id];
@@ -72,13 +70,12 @@ void ConnectionsManager::listen(SocketId socket_id, uint16_t port)
     ASSERT_ERRNO(ret == 0);
     sock->port = port;
 
-    sock->event.data.ptr = sock;
-    sock->event.events = EPOLLIN;
-    ret = epoll_ctl(_epoll_fd, EPOLL_CTL_ADD, sock->fd, &sock->event);
+    sock->event.init(sock);
+    ret = _epoll.register_socket(sock->fd, &sock->event);
     ASSERT_ERRNO(ret == 0);
 }
 
-void ConnectionsManager::add_consumer(ConnectionsConsumer *consumer)
+void TcpAcceptor::add_consumer(TcpConsumer *consumer)
 {
     ASSERT(_n_consumers < MAX_CONSUMERS);
     _consumers[_n_consumers] = consumer;
@@ -90,22 +87,20 @@ void sig_handler(int sig)
     // do nothing, this is simply used to take the thread out of epoll
 }
 
-void ConnectionsManager::poll()
+void TcpAcceptor::poll()
 {
     int n_events = 0;
     signal(SIGPOLL, sig_handler);
 
     while (!_stop) {
-        n_events = epoll_wait(_epoll_fd, _events, MAX_EVENTS, 0);
+        n_events = _epoll.wait(_events, MAX_EVENTS, 0);
         if (n_events < 0) {
-            if (errno != EINTR) {
-                PT_ERROR("poll failed errno=%d", errno);
-            }
-            continue;
+            PT_ERROR("epoll failed errno=%d", errno);
+            return;
         }
         LOOP(n_events, i) {
-            Socket *socket = (Socket *)_events[i].data.ptr;
-            if ((_events[i].events & EPOLLERR) || (_events[i].events & EPOLLHUP)) {
+            Socket *socket = _events[i].get();
+            if (_events[i].in_error()) {
                 // socket closed / error
                 PT_INFO("closing socket id=%d", socket->id);
                 close(socket->fd);
@@ -116,9 +111,9 @@ void ConnectionsManager::poll()
                 continue;
             }
 
-            if (!(_events[i].events & EPOLLIN)) {
+            if (!_events[i].has_input()) {
                 // shouldn't get this
-                PT_INFO("ConnectionsManager unexpected event %d", _events[i].events);
+                PT_INFO("got unexpected event");
                 continue;
             }
             accept_connections(socket);
@@ -126,7 +121,7 @@ void ConnectionsManager::poll()
     }
 }
 
-void ConnectionsManager::accept_connections(Socket *listen_socket)
+void TcpAcceptor::accept_connections(Socket *listen_socket)
 {
     PT_INFO("accepting connection listen_socket=%d", listen_socket->fd);
     while (true) {

@@ -1,5 +1,5 @@
 /*
- * This API is derived from the xdr streams API and is under the LGPL license.
+ * This API is derived from the xdr streams API.
  * Our additions allow us to directly read and write from / to the underlying socket.
  *
  * Copyright (c) 2010, 2012, Oracle America, Inc.

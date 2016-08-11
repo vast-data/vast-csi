@@ -9,13 +9,13 @@
 #pragma once
 
 #include <stdint.h>
-#include <sys/epoll.h>
 #include <rpc/xdr.h>
 #include "third_party/xdr_drec.hpp"
 #include <estore/estore.hpp>
 #include "plasma/fiber/sync/qlock.hpp"
 #include "nfs_defs.hpp"
-#include "plasma/net/connections_manager.hpp"
+#include "plasma/net/tcp_acceptor.hpp"
+#include "plasma/net/epoll.hpp"
 #include "plasma/memory/object_pool.hpp"
 #include "plasma/memory/pool.hpp"
 
@@ -37,7 +37,7 @@ public:
 
 // Main class of the SUN RPC server.
 // The server is a uses the connection manager in order to accept connections.
-class Rpc : public P::Net::ConnectionsConsumer {
+class Rpc : public P::Net::TcpConsumer {
 public:
     enum ConnectionType {
         TCP_CONN,
@@ -46,7 +46,7 @@ public:
 
     struct Connection {
         ConnectionType type;
-        struct epoll_event event;
+        P::Net::EPollEvent<Connection> event;
         int fd;
         XDR xdr;
         // network buffer used only for UDP
@@ -55,7 +55,7 @@ public:
         P::FiberSync::Qlock lock;
     };
 
-    // ConnectionsConsumer API
+    // TcpConsumer API
     virtual void accept_connection(P::Net::SocketId id, int fd) override;
     virtual int64_t query_connection(P::Net::SocketId id) override;
 
@@ -89,7 +89,7 @@ private:
     void decode_header(Rpc::Connection *conn, RpcRequest *request);
     void decode_msg(Connection *conn, RpcRequest *request);
 
-    void reg_with_epoll(Connection *conn, int epfd);
+    void reg_with_epoll(Connection *conn);
     void allocate_udp_socket(Protocol *proto);
     void close_connection(Connection *conn);
 
@@ -104,8 +104,8 @@ private:
     EStore::EStore *_estore;
     Protocol _protocols[PROTOCOL_COUNT];
 
-    int _poll_fd;
-    struct epoll_event _events[MAX_EVENTS];
+    P::Net::EPoll<Connection> _epoll;
+    P::Net::EPollEvent<Connection> _events[MAX_EVENTS];
     P::ObjectPool<Connection> _connections;
     P::ObjectPool<RpcRequest> _requests;
     int64_t _n_connections;
