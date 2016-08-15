@@ -6,6 +6,7 @@ import sys
 import click
 import datetime
 import blessings
+import traceback
 import collections
 
 from .utils import merge_sort
@@ -30,21 +31,24 @@ severities = {0: term.red + 'DEV' + term.normal,
               2: term.cyan + 'INF' + term.normal,
               3: term.yellow + 'WRN' + term.normal,
               4: term.red + 'ERR' + term.normal}
+components = {0: 'PLASMA',
+              1: 'NFS'}
 
 TIME_FORMAT = '%y/%m/%d %H:%M:%S.%f'
-LOCATION_FORMAT = ' [{file}:{func}:{line}]'
+LOCATION_FORMAT = ' [{channel}:{file}:{func}:{line}]'
 TRACE_FORMAT = '{time} ({tid:5d}|{job_id:08x}) [{component:.4}] {severity}{location}: {message}'
 file_re = re.compile(r'(\w+)\.(\d+)')
 def print_trace(trace, verbose):
     time = datetime.datetime.fromtimestamp(trace.header.time / 1000000000.).strftime(TIME_FORMAT)
     message = c_format_to_python_format(underline_variables(trace.info.format)) % tuple(trace.params)
-    location = LOCATION_FORMAT.format(file=trace.info.file.rsplit('/', 1)[1],
+    location = LOCATION_FORMAT.format(channel=trace.channel,
+                                      file=trace.info.file.rsplit('/', 1)[1],
                                       func=term.bold + trace.info.func + term.normal,
                                       line=trace.info.line) if verbose else ''
     print(TRACE_FORMAT.format(time=time,
                               message=message,
                               location=location,
-                              component=trace.component,
+                              component=components.get(trace.info.component, ''),
                               tid=int(trace.tid),
                               job_id=trace.header.job_id,
                               severity=severities[trace.header.severity]))
@@ -52,21 +56,23 @@ def print_trace(trace, verbose):
 def print_error(msg):
     print(term.red + 'READER ERROR: ' + msg + term.normal)
 
-Trace = collections.namedtuple('Trace', ['info', 'header', 'params', 'component', 'tid'])
+Trace = collections.namedtuple('Trace', ['info', 'header', 'params', 'channel', 'tid'])
 def handle_path(path):
     assert os.path.exists(path), 'File does not exist: {}'.format(path)
     match = file_re.search(path)
     assert match is not None, 'Not a trace file: {}'.format(path)
     assert os.stat(path).st_size > 0, 'Trace file is empty: {}'.format(path)
-    component, tid = match.groups()
+    channel, tid = match.groups()
     with open(path, 'rb') as f:
         for info, header, params in get_traces(f, get_trace_info(f)):
-            yield Trace(info=info, header=header, params=params, component=component, tid=tid)
+            yield Trace(info=info, header=header, params=params, channel=channel, tid=tid)
 
-def safe_handle_path(path):
+def safe_handle_path(path, verbose):
     try:
         yield from handle_path(path)
     except Exception as e:
+        if verbose:
+            traceback.print_exc()
         print_error('Failed parsing trace file: {}. Error: {}'.format(path, e))
 
 def paths_to_files(paths):
@@ -82,7 +88,7 @@ def run(paths, verbose):
     for path in paths_to_files(paths):
         print("found {}".format(path))
 
-    for trace in merge_sort(map(safe_handle_path, paths_to_files(paths)),
+    for trace in merge_sort([safe_handle_path(path, verbose) for path in paths_to_files(paths)],
                             lambda trace: trace.header.time):
         print_trace(trace, verbose)
 

@@ -276,6 +276,7 @@ TEST(Trace, file)
 
     TraceRecord record;
     record.info_index = info_index;
+    record.severity = Severity::INFO;
 
     TraceFile file;
     file.init("test", DATADIR, UNIT_MiB * 2, 3);
