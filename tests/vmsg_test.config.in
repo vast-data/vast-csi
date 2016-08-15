@@ -38,17 +38,17 @@ silo_types: {
         fibers: (
           {
             count: 50
-            stack_size: 32368
+            stack_size: 32768
             group_id: "P"
           },
           {
             count: 1
-            stack_size: 32368
+            stack_size: 32768
             group_id: "P_IO_POLLING"
           },
           {
             count: 1
-            stack_size: 32368
+            stack_size: 32768
             group_id: "P_VMSG_POLLING"
           }
         )
@@ -60,7 +60,7 @@ silo_types: {
           fibers: (
             {
               count: 128
-              stack_size: 32368
+              stack_size: 32768
               group_id: "TEST"
             }
           )
