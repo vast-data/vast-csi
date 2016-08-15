@@ -86,7 +86,6 @@ murmur_env.Append(CFLAGS=['-Wno-cast-align',
                           '-Wno-sign-conversion',
                           '-Wno-shorten-64-to-32',
                           '-Wno-incompatible-pointer-types-discards-qualifiers'])
-murmur = murmur_env.Object(build_dir + '/src/plasma/third_party/murmur3/murmur3.c')
 
 c_env = env.Clone()
 c_env.Append(CFLAGS=['-Wno-cast-align',
@@ -98,10 +97,10 @@ c_env.Append(CFLAGS=['-Wno-cast-align',
                      '-Wno-zero-length-array',
                      '-Wno-covered-switch-default',
                      '-Wno-typedef-redefinition'])
-murmur = c_env.Object(DEFAULT_BUILD_DIR + '/src/plasma/third_party/murmur3/murmur3.c')
-rpc_xdr = c_env.Object(DEFAULT_BUILD_DIR + '/src/proto/nfs3/rpcgen/rpc_defs_xdr.c')
-mnt_xdr = c_env.Object(DEFAULT_BUILD_DIR + '/src/proto/nfs3/rpcgen/mnt3_xdr.c')
-nfs_xdr = c_env.Object(DEFAULT_BUILD_DIR + '/src/proto/nfs3/rpcgen/nfs3_xdr.c')
+murmur = c_env.Object(build_dir + '/src/plasma/third_party/murmur3/murmur3.c')
+rpc_xdr = c_env.Object(build_dir + '/src/proto/nfs3/rpcgen/rpc_defs_xdr.c')
+mnt_xdr = c_env.Object(build_dir + '/src/proto/nfs3/rpcgen/mnt3_xdr.c')
+nfs_xdr = c_env.Object(build_dir + '/src/proto/nfs3/rpcgen/nfs3_xdr.c')
 
 VariantDir(build_dir + '/src', 'src')
 VariantDir(build_dir + '/tests', 'tests')
