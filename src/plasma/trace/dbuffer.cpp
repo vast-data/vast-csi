@@ -74,8 +74,8 @@ void DBuffer::destroy()
 
 void DBuffer::flush()
 {
+    get_buffer(_generation + 1)->reset();
     _generation++;
-    get_buffer(_generation)->reset();
 }
 
 void DBuffer::write(void *data, P_DBUFFER_LENGTH_TYPE length)
