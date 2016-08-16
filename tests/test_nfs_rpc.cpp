@@ -28,7 +28,7 @@ void send_mount_msgs(CLIENT *clnt)
     char bla[8];
     sprintf(bla, "/");
     dirpath dirp = bla;
-    for (int i = 0; i < 1000; ++i) {
+    for (int i = 0; i < 100; ++i) {
         memset((char *)&mnt_res, 0, sizeof(mnt_res));
         if (clnt_call(clnt, MOUNTPROC3_MNT,
                       (xdrproc_t) xdr_dirpath, (caddr_t) &dirp,
@@ -119,8 +119,8 @@ void test_mount()
     tcp_clnt->cl_auth = auth;
 
     udp_clnt = clnt_create("127.0.0.1", MOUNT_PROGRAM, MOUNT_V3, "udp");
-    udp_clnt->cl_auth = auth;
     ASSERT_NOT_NULL(udp_clnt);
+    udp_clnt->cl_auth = auth;
 
     send_mount_msgs(tcp_clnt);
     clnt_destroy(tcp_clnt);
@@ -144,7 +144,7 @@ void test_nfs()
     clnt->cl_auth = auth;
 
 
-    for (int i = 0; i < 1000; ++i) {
+    for (int i = 0; i < 100; ++i) {
         if (clnt_call(clnt, NFSPROC3_NULL,
                       (xdrproc_t) xdr_void, (caddr_t) NULL,
                       (xdrproc_t) xdr_void, (caddr_t) NULL,
@@ -161,9 +161,12 @@ void test_nfs()
 TEST(TestNfsRpc, test)
 {
     debugging = true;
-    std::thread env_thread(&P::Env::run, P::Env::get(), "tests/nfs_test.config");
+    P::Env *env = P::Env::get();
+    std::thread env_thread(&P::Env::run, env, "tests/nfs_test.config");
     // wait for the env to start
-    usleep(10000);
+    while (env->get_state() != P::EnvState::RUN) {
+        usleep(100);
+    }
     test_mount();
     test_nfs();
     test_nfs3_getattr();

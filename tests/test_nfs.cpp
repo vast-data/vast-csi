@@ -11,9 +11,12 @@ static bool server_mode = false;
 TEST(TestNfs, test)
 {
     debugging = true;
-    std::thread env_thread(&P::Env::run, P::Env::get(), "tests/nfs_test.config");
+    P::Env *env = P::Env::get();
+    std::thread env_thread(&P::Env::run, env, "tests/nfs_test.config");
     // wait for the env to start
-    usleep(10000);
+    while (env->get_state() != P::EnvState::RUN) {
+        usleep(100);
+    }
 
     if (server_mode) {
         printf("NFS server is up, press any key to shutdown\n");

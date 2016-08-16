@@ -183,12 +183,11 @@ void Env::start()
     _tcp_acceptor->start();
     _vmsg->start();
 
-    PT_INFO("Env started!");
-
     LOOP(_num_silos, i)
     {
         _silos[i]->start();
     }
+    PT_INFO("Env started!");
 }
 
 void Env::wait_for_silos()
