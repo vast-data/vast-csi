@@ -54,6 +54,7 @@ public:
     Index get_running_fiber_count() const { return _running_fiber_count; }
 
 private:
+    Scheduler() = default;  // prevent from allocating on the stack.
     Pool *find_or_allocate_stacks(SchedulerConfig *config, Index group_index, Index *partition OUT);
 
     jmp_buf _caller;
