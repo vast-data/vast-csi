@@ -408,6 +408,9 @@ void Rpc::allocate_udp_socket(Protocol *proto)
 
 void Rpc::poll(int timeout_ms)
 {
+    if (_n_connections == 0 && timeout_ms == 0)
+        return;
+
     int n_events = 0;
 
     P::Net::EPollEvent<Connection> *events = _events;
@@ -481,7 +484,6 @@ void Rpc::accept_connection(P::Net::SocketId id, int fd)
     conn->fd = fd;
     conn->type = ConnectionType::TCP_CONN;
     reg_with_epoll(conn);
-    _n_connections++;
 }
 
 int64_t Rpc::query_connection(P::Net::SocketId id)
@@ -501,7 +503,9 @@ void Rpc::reg_with_epoll(Connection *conn)
         PT_ERROR(DATA, "_epoll.register_socket errno=%d", errno);
         close(conn->fd);
         _connections.free(conn);
+        return;
     }
+    ++_n_connections;
 }
 
 void Rpc::close_connection(Rpc::Connection *conn)
@@ -510,6 +514,7 @@ void Rpc::close_connection(Rpc::Connection *conn)
     close(conn->fd);
     conn->fd = -1;
     _connections.free(conn);
+    --_n_connections;
 }
 
 }
