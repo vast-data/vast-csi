@@ -13,6 +13,7 @@
 #include "../data/dlist.hpp"
 #include "sync/rwlock.hpp"
 #include "../../defs.hpp"
+#include "sleep.hpp"
 
 namespace P {
 
@@ -29,21 +30,22 @@ struct FiberGroup {
 };
 
 class Fiber {
+    typedef union {
+        uint32_t sem_count;
+        uint32_t waited_future_count;
+        FiberSync::RWlock::Type rw_lock_type;
+        SleepInterval sleep_interval;
+    } SuspendState;
 
+public:
     enum class State: byte {
+        // TODO: consider enriching this enum (e.g. add sub-types for SUSPENDED - SLEEP, LOCK, etc.).
         READY,
         RUNNING,
         SUSPENDED,
         FREE
     };
 
-    typedef union {
-        uint32_t sem_count;
-        uint32_t waited_future_count;
-        FiberSync::RWlock::Type rw_lock_type;
-    } SuspendState;
-
-public:
     /*!
      * Initialize a fiber.
      *
@@ -118,7 +120,7 @@ public:
     /*!
      * Should be called from a provider or sync primitive in the context of a running fiber.
      */
-    static void suspend(void);
+    static void suspend();
 
     /*!
      * Should be called from a provider or sync primitive in the context of a running fiber.
@@ -136,7 +138,8 @@ public:
      */
     void destroy();
 
-    SuspendState* get_suspend_state();
+    SuspendState* get_suspend_state() { return &_sus_state; }
+    const State& get_state() const { return _state; }
 
     static const uint64_t STACK_UNDERFLOW_MAGIC = 0xDEADBEEF;
     static const uint64_t STACK_OVERFLOW_MAGIC = 0xBABECAFE;
@@ -155,12 +158,12 @@ private:
     uint32_t _job_id;
     SuspendState _sus_state;
     uint32_t _join_count;
-    State _state; // currently used for debug purposes
+    State _state;
     bool _daemon;
 
 #ifdef DEBUG
     Scheduler *_owner_sched;
 #endif
-};
+};  // class Fiber
 
-}
+}  // namespace P

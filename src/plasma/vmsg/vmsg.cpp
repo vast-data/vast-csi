@@ -1,6 +1,8 @@
 #include "vmsg.hpp"
+#include "globals.hpp"
 #include "plasma/execution/silo.hpp"
 #include "plasma/execution/env.hpp"
+#include "plasma/fiber/provider.hpp"
 #include "plasma/internal.hpp"
 #include "plasma/trace/emitter.hpp"
 
@@ -44,12 +46,37 @@ void VMsg::init(VMsgConfiguration *vmsg_configuration)
         ctx->seq_num = 0;
         ctx->acks_pool.init(n_acks, sizeof(MsgId));
         ctx->pending_acks_list_pool.init(n_acks);
+        ctx->fiber = nullptr;
+        ctx->n_pending_requests = 0;
         LOOP(MAX_ENVS, i) {
             ctx->pending_acks_anchors[i].init();
             ctx->pending_acks_lists[i].init(&ctx->pending_acks_anchors[i], &ctx->pending_acks_list_pool);
             ctx->n_acks[i] = 0;
         }
     }
+
+    _last_req_time = get_time_nano();
+}
+
+static void vmsg_poll_fiber(void *vmsg)
+{
+    VMsg *p_vmsg = (VMsg *) vmsg;
+    while (true) {
+        p_vmsg->poll();
+        P::Fiber::yield();
+        if (unlikely(env_stop)) {
+            break;
+        }
+    }
+}
+
+void VMsg::start_silo_fiber()
+{
+    const SiloId silo_id = Silo::get_current_silo_id();
+    SiloContext *ctx = &_silos_context[silo_id];
+    ctx->fiber = Fiber::init((Index)FiberGroupId::P_VMSG_POLLING, vmsg_poll_fiber, this, false);
+    ASSERT_NOT_NULL(ctx->fiber);
+    ctx->n_pending_requests = 0;
 }
 
 void VMsg::destroy()
@@ -322,6 +349,9 @@ VMsgRes VMsg::send_async(ModuleGUID dest_guid, RpcServerId server_id, uint8_t op
         free_msg(silo_id, header->sender_msg_id);
         return res;
     }
+    if (++_silos_context[silo_id].n_pending_requests == 1) {
+        Provider::wakeup_if_sleeping(_silos_context[silo_id].fiber);
+    }
 
     pending_msg->future.init();
     *future = &pending_msg->future;
@@ -351,13 +381,33 @@ void VMsg::handle_transport_events()
         return;
     }
 
+    bool should_sleep = false;
+    uint64_t now = get_time_nano();
     TransportEvent events[RDMATransport::MAX_EVENTS_PER_POLL];
     int n_events = _rdma_transport.tpoll(events, NUM_ELEMENTS(events));
-    for (int i = 0; i < n_events; ++i) {
-        handle_event(&events[i]);
+    if (n_events == 0) {
+        if (NANO_TO_MILLI(now - _last_req_time) > Provider::IDLE_TIME_MILLI) {
+            should_sleep = true;
+            LOOP(_vmsg_configuration.n_silos, i) {
+                SiloContext *ctx = &_silos_context[i];
+                if (ctx->n_pending_requests > 0) {
+                    should_sleep = false;
+                    break;
+                }
+            }
+        }
+    } else {
+        _last_req_time = now;
+        for (int i = 0; i < n_events; ++i) {
+            handle_event(&events[i]);
+        }
     }
 
     _poll_lock.unlock();
+
+    if (should_sleep) {
+        TimerQueues::sleep(Provider::IDLE_SLEEP_INTERVAL);
+    }
 }
 
 void VMsg::poll()
@@ -553,6 +603,7 @@ void VMsg::handle_reply(VMsgHeader *header, SiloId silo_id)
     ctx->pending_acks_lists[env_id].append(ctx->acks_pool.address_to_index(ack_id));
     ctx->n_acks[env_id]++;
     PT_DEBUG(DATA, "add ack - silo_id=%hhu env_id=%hu n_acks=%u", silo_id, env_id, ctx->n_acks[env_id]);
+    --ctx->n_pending_requests;
 }
 
 void VMsg::free_reply(void *reply_buffer)

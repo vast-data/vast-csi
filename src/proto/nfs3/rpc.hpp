@@ -62,8 +62,9 @@ public:
     void init(NfsConfig *nfs_conf, EStore::EStore *estore, MountServer *mount_server, NfsServer *nfs_server, bool start_udp);
     void destroy();
 
-    // check for new incoming RPC requests
-    void poll(int timeout_ms);
+    // Check for new incoming RPC requests.
+    // Return value indicates the number of events (negative in case of an error).
+    int poll();
 
     void *alloc_data_buffer() { return _estore->alloc_data_buffer(); }
     void free_data_buffer(void *data_buffer) { _estore->free_data_buffer(data_buffer); }

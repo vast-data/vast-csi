@@ -93,7 +93,7 @@ void TcpAcceptor::poll()
     signal(SIGPOLL, sig_handler);
 
     while (!_stop) {
-        n_events = _epoll.wait(_events, MAX_EVENTS, 0);
+        n_events = _epoll.wait(_events, MAX_EVENTS, -1);
         if (n_events < 0) {
             PT_ERROR(DATA, "epoll failed errno=%d", errno);
             return;

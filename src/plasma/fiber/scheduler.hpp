@@ -71,6 +71,6 @@ private:
     uint32_t _curr_job_id;
 
     static thread_local Scheduler *_sched;
-};
+};  // class Scheduler
 
-}
+}  // namespace P

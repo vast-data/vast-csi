@@ -430,7 +430,7 @@ TEST(TestFiberSync, test_future)
     uint64_t duration_in_milli = NANO_TO_MILLI(duration);
 
     ASSERT_GE(duration_in_milli, 99);
-    ASSERT_LE(duration_in_milli, 101);
+    ASSERT_LE(duration_in_milli, 121);
 
     P::Scheduler::destroy();
 }

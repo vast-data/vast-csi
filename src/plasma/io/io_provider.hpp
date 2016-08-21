@@ -30,6 +30,11 @@ public:
     void init(DevIO *devices, size_t device_count);
 
     /*!
+     * Initialize the provider fiber.
+     */
+    void start();
+
+    /*!
      * Polls for IO completions on "active" IO devices (those that have pending IOs).
      */
     void poll();
@@ -49,6 +54,16 @@ public:
      */
     void destroy();
 
+    void suspend();
+
+    bool test_and_reset_was_suspended() {
+        if (_was_suspended) {
+            _was_suspended = false;
+            return true;
+        }
+        return false;
+    }
+
 private:
 
     // Todo: create a DList holding actual anchor and pool (and not reference)
@@ -56,6 +71,8 @@ private:
     DList::Anchor _active_devices_anchor;
     DList::Pool _active_devices_pool;
     size_t _device_count;
-};
+    Fiber *_fiber;  // Provider fiber.
+    bool _was_suspended;  // Indicates whether the provider fiber was suspended.
+};  // class IOProvider
 
-};
+};  // namespace P

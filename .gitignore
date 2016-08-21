@@ -8,6 +8,7 @@
 /TAGS
 /data
 /venv
+/venv2
 /testdata
 /.idea
 /tests/vmsg_test_client.config

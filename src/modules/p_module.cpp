@@ -7,7 +7,6 @@
 
 using namespace P::Conf;
 using P::Silo;
-using P::VMsg::VMsg;
 
 void PModule::init_io_from_settings(ConfigSetting *io_setting, P::DevIO **devices, P::AtomicPool<P::DevIO::IO> *iopool, P::IOProvider *io_provider)
 {
@@ -44,32 +43,8 @@ void PModule::init(Silo *silo, ConfigSetting *module_setting)
     init_io_from_settings(io_setting, &devices, &iopool, &io_provider);
 }
 
-static void io_poll_fiber(void *module)
-{
-    PModule *p_module = (PModule *) module;
-    while (true) {
-        p_module->io_provider.poll();
-        P::Fiber::yield();
-        if (unlikely(env_stop)) {
-            break;
-        }
-    }
-}
-
-static void vmsg_poll_fiber(void *module)
-{
-    VMsg *vmsg = P::Env::get()->get_vmsg();
-    while (true) {
-        vmsg->poll();
-        P::Fiber::yield();
-        if (unlikely(env_stop)) {
-            break;
-        }
-    }
-}
-
 void PModule::start()
 {
-    P::Fiber::init((P::Index)FiberGroupId::P_IO_POLLING, io_poll_fiber, this, false);
-    P::Fiber::init((P::Index)FiberGroupId::P_VMSG_POLLING, vmsg_poll_fiber, this, false);
+    io_provider.start();
+    P::Env::get()->get_vmsg()->start_silo_fiber();
 }

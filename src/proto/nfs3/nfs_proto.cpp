@@ -3,6 +3,7 @@
 #include "rpc.hpp"
 #include "mount_server.hpp"
 #include "nfs_server.hpp"
+#include "plasma/fiber/provider.hpp"
 
 #define CURRENT_COMPONENT ComponentId::NFS
 
@@ -19,6 +20,7 @@ void NfsProto::init(EStore::EStore *estore, TcpAcceptor *tcp_acceptor, bool prim
         PT_INFO(CONTROL, "nfs not configured");
         return;
     }
+    _last_req_time = P::get_time_nano();
     _estore = estore;
     _mount_srv = new MountServer();
     _mount_srv->init(_estore);
@@ -40,9 +42,16 @@ void NfsProto::destroy()
     _nfs_srv->destroy();
 }
 
-void NfsProto::poll(int timeout_ms)
+void NfsProto::poll()
 {
-    _rpc->poll(timeout_ms);
+    uint64_t now = P::get_time_nano();
+    if (_rpc->poll() == 0) {  // No events
+        if (NANO_TO_MILLI(now - _last_req_time) > P::Provider::IDLE_TIME_MILLI) {
+            P::TimerQueues::sleep(P::Provider::IDLE_SLEEP_INTERVAL);
+        }
+    } else {
+        _last_req_time = now;
+    }
 }
 
 static void reg_program(uint64_t program, uint64_t ver, uint32_t port, bool reg_udp)

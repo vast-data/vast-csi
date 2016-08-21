@@ -4,13 +4,18 @@
 #include "../utils/macros.hpp"
 #include "../utils/time.hpp"
 #include "scheduler.hpp"
+#include "fiber.hpp"
 
 namespace P {
 
-static const uint64_t interval_to_micro[] = {MILLI_TO_MICRO(100),
-                                             SEC_TO_MICRO(1),
-                                             SEC_TO_MICRO(10),
-                                             SEC_TO_MICRO(60)};
+// This should be kept in sync with SleepInterval.
+static const uint64_t interval_to_micro[] = {MILLI_TO_MICRO(1),    // SLEEP_1_MILLI
+                                             MILLI_TO_MICRO(100),  // SLEEP_100_MILLI
+                                             SEC_TO_MICRO(1),      // SLEEP_1_SECOND
+                                             SEC_TO_MICRO(10),     // SLEEP_10_SECOND
+                                             SEC_TO_MICRO(60)};    // SLEEP_MINUTE
+static_assert(NUM_ELEMENTS(interval_to_micro) == (size_t)SleepInterval::SLEEP_INTERVAL_COUNT,
+              "interval_to_micro size mismatch");
 
 void TimerQueues::init() {
     LOOP((byte) SleepInterval::SLEEP_INTERVAL_COUNT, i)
@@ -28,6 +33,9 @@ void TimerQueues::destroy() {
     uint64_t start_time = get_time_nano();
     timer_queues->_wakeup_time = P_MIN(timer_queues->_wakeup_time,
                                        start_time + MICRO_TO_NANO(interval_to_micro[(byte) interval]));
+
+    Fiber::get_current()->get_suspend_state()->sleep_interval = interval;
+
     Fiber::suspend_and_queue(&timer_queues->_queues[(byte) interval]);
     return (uint64_t) NANO_TO_MICRO(get_time_nano() - start_time);
 }
@@ -76,5 +84,10 @@ uint64_t TimerQueues::poll()
     return NANO_TO_MICRO(time - start_time);
 }
 
+/* static */ void TimerQueues::wakeup(Fiber *fiber, SleepInterval interval)
+{
+    TimerQueues *timer_queues = Scheduler::get()->get_timer_queues();
+    fiber->pop_and_resume(&timer_queues->_queues[(byte) fiber->get_suspend_state()->sleep_interval]);
+}
 
 }

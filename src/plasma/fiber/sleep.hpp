@@ -11,13 +11,17 @@
 
 namespace P {
 
+// This should be kept in sync with interval_to_micro (defined in sleep.cpp).
 enum class SleepInterval: byte {
+    SLEEP_1_MILLI,
     SLEEP_100_MILLI,
     SLEEP_1_SECOND,
     SLEEP_10_SECOND,
     SLEEP_MINUTE,
     SLEEP_INTERVAL_COUNT
 };
+
+class Fiber;
 
 class TimerQueues {
 
@@ -50,6 +54,11 @@ public:
      * Note that this function wastes a lot of CPU.
      */
     static uint64_t fast_sleep(uint64_t usecs);
+
+    /*!
+     * Wake up the given fiber, i.e. call pop_and_resume
+     */
+    static void wakeup(Fiber *fiber, SleepInterval interval);
 
 private:
     uint64_t _wakeup_time;

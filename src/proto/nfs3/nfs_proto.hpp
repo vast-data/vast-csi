@@ -27,7 +27,7 @@ public:
 
     void destroy();
 
-    void poll(int timeout_ms);
+    void poll();
 
     static void global_init(P::Conf::ConfigSetting *nfs_setting, P::Net::TcpAcceptor *tcp_acceptor);
 
@@ -40,6 +40,7 @@ private:
     Rpc *_rpc;
     MountServer *_mount_srv;
     NfsServer *_nfs_srv;
+    uint64_t _last_req_time;  // nano
 };
 
 }

@@ -123,7 +123,8 @@ void NO_RETURN Scheduler::schedule() {
         group = group->next_group;
         if (group == _sched->_first_group) {
             uint64_t wakeup_time = _sched->_timer_queues.poll();
-            if (_sched->_ready_fiber_count == 0 && wakeup_time < TimerQueues::NO_PENDING_FIBERS) {
+            if (_sched->_ready_fiber_count == 0) {
+                DEBUG_ASSERT(wakeup_time < TimerQueues::NO_PENDING_FIBERS);
                 uint64_t time = get_time_nano();
                 if (time < wakeup_time) {
                     uint64_t sleep_time = NANO_TO_MICRO(wakeup_time - time);
@@ -136,8 +137,8 @@ void NO_RETURN Scheduler::schedule() {
         DList queue;
         queue.init(&group->ready_queue, &_sched->_fiber_queues);
         fiber_index = queue.pop();
-        --_sched->_ready_fiber_count;
         if (fiber_index != INVALID_INDEX) {
+            --_sched->_ready_fiber_count;
             _sched->_last_group = group;
             fiber = (Fiber*) _sched->_fiber_pool.index_to_address(fiber_index);
             fiber->run();

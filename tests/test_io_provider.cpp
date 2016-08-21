@@ -1,6 +1,8 @@
 /* Copyright (C) Vast Data Ltd. */
+#include <fcntl.h>
 #include <gtest/gtest.h>
 
+#include "../src/globals.hpp"
 #include "../src/modules/p_module.hpp"
 #include "../src/plasma/execution/config_internal.hpp"
 #include "../src/plasma/fiber/scheduler.hpp"
@@ -11,10 +13,6 @@
 #include "../src/plasma/memory/alloc.hpp"
 
 #include "test_common_scheduler.hpp"
-
-#include <fcntl.h>
-
-static bool testing_io_provider = true;
 
 using namespace P::Conf;
 
@@ -206,16 +204,7 @@ static void io_submitter(void *arg)
 
     multiple_async_rw(device);
 
-    testing_io_provider = false;
-}
-
-static void io_poller(void *arg)
-{
-    P::IOProvider *io_provider = (P::IOProvider*) arg;
-    while (testing_io_provider) {
-        io_provider->poll();
-        P::Fiber::yield();
-    }
+    env_stop = true;
 }
 
 static const char *create_device_file(ConfigSetting *io_module)
@@ -258,7 +247,7 @@ TEST(TestIOProvider, test)
 
     P::Scheduler::init(&scheduler_config);
 
-    P::Fiber::init(FG_A, io_poller, &io_provider, false);
+    io_provider.start();
     P::Fiber::init(FG_A, io_submitter, &io_provider, false);
 
     P::Scheduler::run();

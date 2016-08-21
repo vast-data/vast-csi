@@ -128,7 +128,7 @@ void *dumper_main(void *dumper_arg) {
     return nullptr;
 }
 
-#define IDLE_SLEEP_MICROS 10
+#define IDLE_SLEEP_MICROS 1000
 void Dumper::main()
 {
     _running = true;

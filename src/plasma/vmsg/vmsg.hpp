@@ -27,6 +27,11 @@ public:
     void stop();
 
     /*!
+     * Initialize the provider fiber.
+     */
+    void start_silo_fiber();
+
+    /*!
      * Set the addresses for the specified env
     */
     void set_env_addresses(EnvId env_id, EnvAddresses *addresses);
@@ -114,6 +119,9 @@ private:
         uint32_t n_acks[MAX_ENVS];
 
         Pool acks_pool;
+
+        Fiber *fiber;
+        uint32_t n_pending_requests;
     };
 
     SiloContext *_silos_context;
@@ -127,7 +135,8 @@ private:
     // lock for polling transports
     Sync::SpinLock _poll_lock;
     VMsgConfiguration _vmsg_configuration;
-};
+    uint64_t _last_req_time;  // nano
+};  // class VMsg
 
-}
-}
+}  // namespace VMsg
+}  // namespace P {

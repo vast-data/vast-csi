@@ -406,18 +406,18 @@ void Rpc::allocate_udp_socket(Protocol *proto)
     XDR_DESTROY(&conn->xdr);
 }
 
-void Rpc::poll(int timeout_ms)
+int Rpc::poll()
 {
-    if (_n_connections == 0 && timeout_ms == 0)
-        return;
+    if (_n_connections == 0)
+        return 0;
 
     int n_events = 0;
 
     P::Net::EPollEvent<Connection> *events = _events;
-    n_events = _epoll.wait(events, MAX_EVENTS, timeout_ms);
+    n_events = _epoll.wait(events, MAX_EVENTS, 0);
     if (n_events < 0) {
         PT_ERROR(DATA, "epoll failed errno=%d", errno);
-        return;
+        return n_events;
     }
     LOOP(n_events, i) {
         Connection *conn = events[i].get();
@@ -474,6 +474,8 @@ void Rpc::poll(int timeout_ms)
             }
         }
     }
+
+    return n_events;
 }
 
 void Rpc::accept_connection(P::Net::SocketId id, int fd)

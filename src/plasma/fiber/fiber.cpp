@@ -18,7 +18,7 @@ namespace P {
 
 static const uint64_t STARVATION_THRESHOLD_NS = 100000000; // 100 ms
 
-Fiber *Fiber::get_current()
+/* static */ Fiber *Fiber::get_current()
 {
     Scheduler *sched = Scheduler::get();
     if (sched == nullptr)
@@ -26,7 +26,7 @@ Fiber *Fiber::get_current()
     return sched->_current_fiber;
 }
 
-ModuleId Fiber::get_module_id()
+/* static */ ModuleId Fiber::get_module_id()
 {
     return get_current()->_group->module_id;
 }
@@ -36,7 +36,7 @@ uint64_t Fiber::get_switch_time()
     return _switch_time;
 }
 
-void Fiber::context_switch()
+/* static */ void Fiber::context_switch()
 {
     Fiber *fiber = Fiber::get_current();
     ASSERT(fiber->_state != State::RUNNING, "Cannot suspend a fiber that isn't running");
@@ -52,7 +52,7 @@ void Fiber::context_switch()
     }
 }
 
-void NO_RETURN Fiber::main()
+/* static */ void NO_RETURN Fiber::main()
 {
     Fiber *fiber = Fiber::get_current();
     fiber->_func(fiber->_arg);
@@ -111,6 +111,7 @@ uint32_t Fiber::get_job_id()
     return _job_id;
 }
 
+/* static */
 Fiber *Fiber::init(Index group_index, void (*func)(void *arg), void *arg, bool parent_will_join, bool daemon)
 {
     Scheduler *sched = Scheduler::get();
@@ -158,13 +159,13 @@ Fiber *Fiber::init(Index group_index, void (*func)(void *arg), void *arg, bool p
     return fiber;
 }
 
-void Fiber::yield()
+/* static */ void Fiber::yield()
 {
     get_current()->resume();
     context_switch();
 }
 
-void Fiber::thread_or_fiber_yield()
+/* static */ void Fiber::thread_or_fiber_yield()
 {
     if (is_fiber()) {
         yield();
@@ -174,19 +175,19 @@ void Fiber::thread_or_fiber_yield()
     }
 }
 
-bool Fiber::is_fiber()
+/* static */ bool Fiber::is_fiber()
 {
     return Scheduler::get() != nullptr;
 }
 
-void Fiber::suspend()
+/* static */ void Fiber::suspend()
 {
     Fiber *fiber = get_current();
     fiber->_state = State::SUSPENDED;
     context_switch();
 }
 
-void Fiber::suspend_and_queue(DList::Anchor *anchor)
+/* static */ void Fiber::suspend_and_queue(DList::Anchor *anchor)
 {
     Scheduler *sched = Scheduler::get();
     DList queue;
@@ -206,7 +207,7 @@ void Fiber::resume()
     ++sched->_ready_fiber_count;
 }
 
-Fiber *Fiber::queue_peek(DList::Anchor *anchor)
+/* static */ Fiber *Fiber::queue_peek(DList::Anchor *anchor)
 {
     Scheduler *sched = Scheduler::get();
     DList queue;
@@ -216,7 +217,7 @@ Fiber *Fiber::queue_peek(DList::Anchor *anchor)
     return (Fiber*) sched->_fiber_pool.index_to_address(queue.get_first());
 }
 
-Fiber *Fiber::pop_and_resume(DList::Anchor *anchor)
+/* static */ Fiber *Fiber::pop_and_resume(DList::Anchor *anchor)
 {
     Fiber *fiber = queue_peek(anchor);
     if (fiber == nullptr) {
@@ -240,7 +241,7 @@ void NO_RETURN Fiber::run()
     longjmp(_jmp_buf, true);
 }
 
-void Fiber::join_all()
+/* static */ void Fiber::join_all()
 {
     // make sure there is a child fiber that will perform resume
     if (get_current()->_join_count > 0) {
@@ -248,9 +249,4 @@ void Fiber::join_all()
     }
 }
 
-Fiber::SuspendState* Fiber::get_suspend_state()
-{
-    return &_sus_state;
-}
-
-}
+}  // namespace P

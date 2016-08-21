@@ -22,12 +22,7 @@ static void nfs_poll_fiber(void *nfs_proto)
 {
     NfsProto *nfs = (NfsProto *)nfs_proto;
     while (true) {
-        // TODO create a generic mechanism for making poll time depend on the number of fibers
-        int poll_timeout_ms = 0;
-        if (P::Scheduler::get()->get_running_fiber_count() < 4) {
-            poll_timeout_ms = 10;
-        }
-        nfs->poll(poll_timeout_ms);
+        nfs->poll();
         P::Fiber::yield();
         if (unlikely(env_stop)) {
             break;
