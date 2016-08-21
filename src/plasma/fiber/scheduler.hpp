@@ -67,6 +67,7 @@ private:
     FiberGroup *_groups;
     Index _group_count;
     Index _running_fiber_count;
+    Index _ready_fiber_count;
     uint32_t _curr_job_id;
 
     static thread_local Scheduler *_sched;

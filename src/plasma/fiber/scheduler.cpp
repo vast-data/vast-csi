@@ -1,6 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 #include "scheduler.hpp"
 
+#include <unistd.h>
 #include "plasma/utils/assert.hpp"
 #include "plasma/utils/compiler.hpp"
 #include "plasma/utils/macros.hpp"
@@ -52,6 +53,7 @@ void Scheduler::init(SchedulerConfig *config) {
     _sched = new Scheduler();
     _sched->_current_fiber = nullptr;
     _sched->_running_fiber_count = 0;
+    _sched->_ready_fiber_count = 0;
     _sched->_curr_job_id = 1; // save 0 for trace records not created within fibers
     _sched->_group_count = config->group_count;
     _sched->_groups = new FiberGroup[_sched->_group_count];
@@ -120,11 +122,21 @@ void NO_RETURN Scheduler::schedule() {
     while (_sched->_running_fiber_count > 0) {
         group = group->next_group;
         if (group == _sched->_first_group) {
-            _sched->_timer_queues.poll();
+            uint64_t wakeup_time = _sched->_timer_queues.poll();
+            if (_sched->_ready_fiber_count == 0 && wakeup_time < TimerQueues::NO_PENDING_FIBERS) {
+                uint64_t time = get_time_nano();
+                if (time < wakeup_time) {
+                    uint64_t sleep_time = NANO_TO_MICRO(wakeup_time - time);
+                    if (sleep_time > 0) {
+                        usleep(sleep_time);
+                    }
+                }
+            }
         }
         DList queue;
         queue.init(&group->ready_queue, &_sched->_fiber_queues);
         fiber_index = queue.pop();
+        --_sched->_ready_fiber_count;
         if (fiber_index != INVALID_INDEX) {
             _sched->_last_group = group;
             fiber = (Fiber*) _sched->_fiber_pool.index_to_address(fiber_index);

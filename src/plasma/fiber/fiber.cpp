@@ -203,6 +203,7 @@ void Fiber::resume()
     DList queue;
     queue.init(&_group->ready_queue, &sched->_fiber_queues);
     queue.append(sched->_fiber_pool.address_to_index(this));
+    ++sched->_ready_fiber_count;
 }
 
 Fiber *Fiber::queue_peek(DList::Anchor *anchor)

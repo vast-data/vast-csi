@@ -22,9 +22,11 @@ enum class SleepInterval: byte {
 class TimerQueues {
 
 public:
+    static const uint64_t NO_PENDING_FIBERS = UINT64_MAX;
+
     // API for the scheduler
     void init();
-    void poll();
+    uint64_t poll();  // returns the wakeup time
     void destroy();
 
     // API for fiber implementors
@@ -53,6 +55,6 @@ private:
     uint64_t _wakeup_time;
     DList::Anchor _queues[(byte) SleepInterval::SLEEP_INTERVAL_COUNT];
 
-};
+};  // class TimerQueues
 
-}
+}  // namespace P
