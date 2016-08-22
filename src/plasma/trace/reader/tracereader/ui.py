@@ -86,7 +86,8 @@ def paths_to_files(paths):
 
 def run(paths, verbose):
     for path in paths_to_files(paths):
-        print("found {}".format(path))
+        if verbose:
+            print("found {}".format(path))
 
     for trace in merge_sort([safe_handle_path(path, verbose) for path in paths_to_files(paths)],
                             lambda trace: trace.header.time):
