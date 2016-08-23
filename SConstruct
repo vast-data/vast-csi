@@ -204,14 +204,15 @@ cpp_env = env.Clone()
 cpp_env.Append(CXXFLAGS=['-std=c++11',
                          '-Wno-invalid-offsetof']) # offsetof should work on non-POD objects as well
 if compiler == 'gcc':
-   cpp_env.Append(LINKFLAGS=['-T' + LINKER_SCRIPT])
+    cpp_env.Append(LINKFLAGS=['-T' + LINKER_SCRIPT])
 pre = ARGUMENTS.get('pre')
 if pre is not None:
-   cpp_env.Append(CCFLAGS=['-E'])
+    cpp_env.Append(CCFLAGS=['-E'])
 profile = ARGUMENTS.get('profile')
 if profile is not None:
-   cpp_env.Append(CCFLAGS=['-pg'])
-   cpp_env.Append(LINKFLAGS=['-pg'])
+    assert compiler == 'gcc', "profiling isn't supported with clang (pass cc=gcc)"
+    cpp_env.Append(CCFLAGS=['-pg'])
+    cpp_env.Append(LINKFLAGS=['-pg'])
 
 cpp_sources = [build_dir + '/' + i for i in RGlob('src', '*.cpp', [], ['src/plasma/execution/main.cpp'])]
 cpp_sources.extend(rpc_sources)
