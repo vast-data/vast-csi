@@ -110,7 +110,7 @@ VariantDir(build_dir + '/tests', 'tests')
 # ----- Python Environment ----- #
 venv = env.Command(target='venv/requirements.txt',
                    source=['python_requirements.txt'],
-                   action='virtualenv venv && '
+                   action='virtualenv -p /usr/bin/python3.4 venv && '
                    '. venv/bin/activate && '
                    'cp $SOURCE $TARGET && '
                    'pip install -r $SOURCE')
