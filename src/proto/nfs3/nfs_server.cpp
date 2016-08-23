@@ -1516,9 +1516,9 @@ EStore::EStoreRes NfsServer::add_dot_files(EStore::EHandle handle, uint64_t offs
                                            ReaddirState *rd_state, ReaddirCallback cb)
 {
     EStore::ReaddirEntry entry = {
-        .offset = 1,
         .handle = handle,
         .name = ".",
+        .offset = 1,
         .is_common_prefix = false,
     };
     if (offset == 0) {

@@ -24,6 +24,8 @@ vars = Variables(None, ARGUMENTS)
 vars.Add(BoolVariable('debug', 'Set debug to 1 to compile a debug version (defines the DEBUG macro)', False))
 vars.Add(EnumVariable('cc', 'A c compiler', DEFAULT_COMPILER, allowed_values=('clang', 'gcc')))
 vars.Add('O', 'Optimization level', DEFAULT_OPTIMIZATION_LEVEL)
+vars.Add(BoolVariable('pre', 'Set pre to 1 to generate preprocessor output instead of compiled object files', False))
+vars.Add(BoolVariable('profile', 'Turn on profiling. Example usage: ./dlist && gprof ./dlist | less', False))
 
 env = Environment(variables=vars)
 help_text = """
@@ -206,6 +208,11 @@ if compiler == 'gcc':
 pre = ARGUMENTS.get('pre')
 if pre is not None:
    cpp_env.Append(CCFLAGS=['-E'])
+profile = ARGUMENTS.get('profile')
+if profile is not None:
+   cpp_env.Append(CCFLAGS=['-pg'])
+   cpp_env.Append(LINKFLAGS=['-pg'])
+
 cpp_sources = [build_dir + '/' + i for i in RGlob('src', '*.cpp', [], ['src/plasma/execution/main.cpp'])]
 cpp_sources.extend(rpc_sources)
 cpp_sources.append(build_dir + '/tests/test_module.cpp')
