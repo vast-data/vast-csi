@@ -1,7 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 
 /*!
- * \file p_module.hpp
+ * \file e_module.hpp
  * \brief The plasma module.
  *
  * This module is initialized per silo (like all modules). Therefore, some plasma sub components which are global (like messaging) are initialized elsewhere (explicitly in the environment).
@@ -16,12 +16,12 @@
 #include "plasma/io/io_provider.hpp"
 #include "plasma/memory/atomic_pool.hpp"
 
-class PModule : public ModuleInterface {
+class EModule : public ModuleInterface {
 public:
     virtual void init(P::Silo *silo, P::Conf::ConfigSetting *setting);
     virtual void start();
-    static ModuleId get_id() { return ModuleId::P; }
-    static const char *get_name() { return "P"; }
+    static ModuleId get_id() { return ModuleId::E; }
+    static const char *get_name() { return "E"; }
 
     static void init_io_from_settings(P::Conf::ConfigSetting *io_module, P::DevIO **devices, P::AtomicPool<P::DevIO::IO> *iopool, P::IOProvider *io_provider);
 

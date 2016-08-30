@@ -3,7 +3,7 @@
 #include <gtest/gtest.h>
 
 #include "../src/globals.hpp"
-#include "../src/modules/p_module.hpp"
+#include "../src/modules/e_module.hpp"
 #include "../src/plasma/execution/config_internal.hpp"
 #include "../src/plasma/fiber/scheduler.hpp"
 #include "../src/plasma/utils/macros.hpp"
@@ -243,7 +243,7 @@ TEST(TestIOProvider, test)
 
     P::IOProvider io_provider;
 
-    PModule::init_io_from_settings(io_module, &devices, &iopool, &io_provider);
+    EModule::init_io_from_settings(io_module, &devices, &iopool, &io_provider);
 
     P::Scheduler::init(&scheduler_config);
 

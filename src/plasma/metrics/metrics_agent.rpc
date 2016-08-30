@@ -5,16 +5,16 @@ namespaces: ["P", "Metrics"]
 methods:
 - method: get_generations
   op_id: 1
-  fiber_group: P
+  fiber_group: E
   arg: GetGenerationsParams
   res: GetGenerationsResult
 - method: get_modified
   op_id: 2
-  fiber_group: P
+  fiber_group: E
   arg: GetModifiedParams
   res: GetModifiedResult
 - method: get_deletions
   op_id: 3
-  fiber_group: P
+  fiber_group: E
   arg: GetDeletionsParams
   res: GetDeletionsResult

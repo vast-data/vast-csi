@@ -111,7 +111,7 @@ VMsgRes RDMATransport::start()
     }
 
     // fake a self connection request in order to get the shared resources initialized
-    request_connection(_vmsg_configuration.local_env_id, ModuleId::P);
+    request_connection(_vmsg_configuration.local_env_id, ModuleId::E);
     PT_DEBUG(DATA, "waiting for shared resource allocation");
     sem_wait(&_start_sem);
     PT_DEBUG(DATA, "wait for shared resource allocation done");

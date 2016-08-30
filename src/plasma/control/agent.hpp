@@ -17,7 +17,6 @@ public:
         metrics_agent.init(silo_id, module_id);
     }
 
-
     Metrics::MetricsAgent metrics_agent;
 };
 

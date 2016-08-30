@@ -41,7 +41,7 @@ static void io_poll_fiber(void *io_provider)
 void IOProvider::start()
 {
     // Running this fiber as a daemon because it's suspended as long as there are no active devices
-    _fiber = Fiber::init((Index)FiberGroupId::P_IO_POLLING, io_poll_fiber, this, false, true);
+    _fiber = Fiber::init((Index)FiberGroupId::E_IO_POLLING, io_poll_fiber, this, false, true);
     ASSERT_NOT_NULL(_fiber);
 }
 

@@ -74,7 +74,7 @@ void VMsg::start_silo_fiber()
 {
     const SiloId silo_id = Silo::get_current_silo_id();
     SiloContext *ctx = &_silos_context[silo_id];
-    ctx->fiber = Fiber::init((Index)FiberGroupId::P_VMSG_POLLING, vmsg_poll_fiber, this, false);
+    ctx->fiber = Fiber::init((Index)FiberGroupId::E_VMSG_POLLING, vmsg_poll_fiber, this, false);
     ASSERT_NOT_NULL(ctx->fiber);
     ctx->n_pending_requests = 0;
 }

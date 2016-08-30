@@ -19,9 +19,9 @@ DEFINE_LOOKUP_PROTOTYPES(COMPONENT_LIST,
                          component_id_from_string)
 
 #define FIBER_GROUP_LIST(X)                  \
-    X(P),                                    \
-    X(P_IO_POLLING),                         \
-    X(P_VMSG_POLLING),                       \
+    X(E),                                    \
+    X(E_IO_POLLING),                         \
+    X(E_VMSG_POLLING),                       \
     X(NFS_POLLING),                          \
     X(PROTO),                                \
     X(TEST),                                 \
@@ -34,7 +34,7 @@ DEFINE_LOOKUP_PROTOTYPES(FIBER_GROUP_LIST,
                          fiber_group_id_from_string)
 
 #define MODULES_LIST(X) \
-    X(P),               \
+    X(E),               \
     X(I),               \
     X(TEST),            \
     X(COUNT)

@@ -1,5 +1,5 @@
 #include "module_interface.hpp"
-#include "p_module.hpp"
+#include "e_module.hpp"
 #include "i_module.hpp"
 #include "../tests/test_module.hpp"
 #include "plasma/execution/env.hpp"
@@ -12,10 +12,10 @@ class ModuleFactoryImpl : public ModuleFactory {
 };
 
 ModuleFactoryImpl<TestModule> t;
-ModuleFactoryImpl<PModule> p;
+ModuleFactoryImpl<EModule> e;
 ModuleFactoryImpl<IModule> i;
 
-ModuleFactory *factories[] = { &t, &p, &i };
+ModuleFactory *factories[] = { &t, &e, &i };
 
 void register_modules()
 {

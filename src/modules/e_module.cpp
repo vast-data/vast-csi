@@ -1,4 +1,4 @@
-#include "p_module.hpp"
+#include "e_module.hpp"
 #include "plasma/io/io_provider.hpp"
 #include "plasma/fiber/fiber.hpp"
 #include "plasma/utils/types.hpp"
@@ -8,7 +8,7 @@
 using namespace P::Conf;
 using P::Silo;
 
-void PModule::init_io_from_settings(ConfigSetting *io_setting, P::DevIO **devices, P::AtomicPool<P::DevIO::IO> *iopool, P::IOProvider *io_provider)
+void EModule::init_io_from_settings(ConfigSetting *io_setting, P::DevIO **devices, P::AtomicPool<P::DevIO::IO> *iopool, P::IOProvider *io_provider)
 {
     ConfigSetting* iopool_count_setting = conf_setting_lookup_required(io_setting, "io_pool_count");
     size_t iopool_count = conf_setting_get_int32(iopool_count_setting);
@@ -37,13 +37,13 @@ void PModule::init_io_from_settings(ConfigSetting *io_setting, P::DevIO **device
     io_provider->init(*devices, device_count);
 }
 
-void PModule::init(Silo *silo, ConfigSetting *module_setting)
+void EModule::init(Silo *silo, ConfigSetting *module_setting)
 {
     ConfigSetting *io_setting = conf_setting_lookup_required(module_setting, "io");
     init_io_from_settings(io_setting, &devices, &iopool, &io_provider);
 }
 
-void PModule::start()
+void EModule::start()
 {
     io_provider.start();
     P::Env::get()->get_vmsg()->start_silo_fiber();
