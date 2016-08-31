@@ -3,7 +3,9 @@
 
 #pragma once
 
-#include "{{ server.include }}"
+{% for include in server.includes %}
+#include "{{ include }}"
+{% endfor %}
 #include "modules/module_interface.hpp"
 #include "plasma/vmsg/vmsg_defs.hpp"
 

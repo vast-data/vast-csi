@@ -31,11 +31,13 @@ class Method(object):
 class Server(object):
     def __init__(self, server_dict):
         self.name = server_dict['class']
-        self.include = server_dict.get('include', None)
         self.api_version = server_dict['api_version']
         self.namespaces = server_dict.get('namespaces', [])
         self.methods = [Method(method) for method in server_dict['methods']]
         self.name_snake_case = camel_case_to_snake_case(self.name)
+        self.includes = server_dict.get('include', [])
+        if not isinstance(self.includes, list):
+            self.includes = [self.includes]
 
     def generate_file(self, template_file, output_file):
         print("generating {}".format(output_file))
