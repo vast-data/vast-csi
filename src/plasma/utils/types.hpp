@@ -26,7 +26,7 @@ public:
         uuid_generate(_value);
     }
 
-    bool equals(GUID *other) const { return uuid_compare(_value, other->_value) == 0; }
+    bool equals(GUID other) const { return uuid_compare(_value, other._value) == 0; }
 
     uint64_t get_first_half()
     {

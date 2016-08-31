@@ -1,0 +1,5 @@
+$import object.vproto
+
+struct SystemProto {
+    @0 base_proto ObjectBaseProto;
+};

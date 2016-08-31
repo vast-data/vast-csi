@@ -1,0 +1,7 @@
+$namespace Control;
+
+struct ObjectBaseProto {
+    @0 guid GUID;
+    @1 parent_guid GUID;
+    @2 name char[64];
+};

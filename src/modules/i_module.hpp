@@ -6,9 +6,9 @@
  */
 #pragma once
 
-#include "estore/estore.hpp"
 #include "module_interface.hpp"
-#include "plasma/control/agent.hpp"
+#include "estore/estore.hpp"
+#include "control/agent.hpp"
 #include "plasma/execution/config.hpp"
 #include "proto/nfs3/nfs_proto.hpp"
 

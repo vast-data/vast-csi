@@ -7,7 +7,7 @@
 #pragma once
 
 #include "modules/module_interface.hpp"
-#include "plasma/control/agent.hpp"
+#include "control/agent.hpp"
 #include "plasma/execution/config.hpp"
 
 namespace P {

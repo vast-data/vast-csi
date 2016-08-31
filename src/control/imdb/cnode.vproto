@@ -1,0 +1,6 @@
+$import object.vproto
+
+struct CNodeProto {
+    @0 base_proto ObjectBaseProto;
+    @1 version uint32_t;
+};

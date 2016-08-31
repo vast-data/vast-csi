@@ -2,11 +2,11 @@
 
 #include "tracker.hpp"
 #include "object.hpp"
+#include "control/agent.hpp"
 #include "plasma/internal.hpp"
 #include "plasma/trace/emitter.hpp"
 #include "plasma/vmsg/vmsg_defs.hpp"
 #include "plasma/execution/silo.hpp"
-#include "plasma/control/agent.hpp"
 
 namespace P { namespace Metrics {
 

@@ -177,11 +177,15 @@ def vproto_scan(node, env, path):
     contents = node.get_contents()
     imports = []
     for i in import_re.findall(contents):
+        found = False
         for d in VPROTO_INCLUDE_DIRS + [os.path.dirname(str(node))]:
             full_path = os.path.join(d, i)
             if os.path.exists(full_path.replace(build_dir + '/', '')):
                 # the '#' prefix makes scons look for the file from the root of the project (vs. relatively to the file).
                 imports.append('#' + full_path)
+                found = True
+        if not found:
+            raise Exception('Could not find module %s imported from %s' % (i, str(node)))
     return imports
 
 def vproto_emitter(target, source, env):
@@ -266,6 +270,7 @@ AddCppTest(target='dist/tests/nfs_rpc', source=[build_dir + '/tests/test_nfs_rpc
 AddCppTest(target='dist/tests/nfs', source=[build_dir + '/tests/test_nfs.cpp'], group_alias='nfstest')
 AddCppTest(target='dist/tests/os', source=[build_dir + '/tests/os_test.cpp'])
 AddCppTest(target='dist/tests/box', source=[build_dir + '/tests/test_box.cpp'])
+AddCppTest(target='dist/tests/imdb', source=[build_dir + '/tests/test_imdb.cpp'])
 
 cpp_env.AlwaysBuild('nfstest')
 cpp_env.AlwaysBuild('cpptest')

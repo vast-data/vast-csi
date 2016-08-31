@@ -144,7 +144,7 @@ TEST(TestVProto, test_guid)
 
     auto reader = builder.as_reader();
     P::GUID reader_guid = reader->get_guid();
-    ASSERT_TRUE(guid.equals(&reader_guid));
+    ASSERT_TRUE(guid.equals(reader_guid));
     ASSERT_EQ(reader->get_bar(), 123);
     ASSERT_EQ(reader->get_first(), 'a');
     ASSERT_EQ(reader->get_last(), 'b');

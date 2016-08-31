@@ -21,8 +21,8 @@ namespace P {
 class Hash {
 public:
 
-    typedef bool (*PHashMatchFunc)(void *match_arg, P::Index value, void *key, size_t length);
-    typedef size_t (*PHashKeyToBucket)(Hash *hash, void *key, size_t length);
+    typedef bool (*MatchFunc)(void *match_arg, P::Index value, void *key, size_t length);
+    typedef size_t (*HashFunc)(void *key, size_t length);
 
     /*!
      * Initialize a hash table. Call destroy() to free allocated resources.
@@ -30,20 +30,19 @@ public:
      * \param n_buckets number of buckets. The value should be a power of 2.
      *        For consistent performance aim for n_buckets to be up to 75% of the expected keys.
      * \param n_values expected number of values in the hash.
-     * \param match a match function that converts an index to a key and compares with the given key.
+     * \param match_func a match function that converts an index to a key and compares with the given key.
      * \param match_arg a parameter to pass over to match.
      * \return a pointer to a heap allocated hash table.
      */
-    void init(size_t n_buckets, P::Index n_values, PHashMatchFunc match, void *match_arg);
+    void init(size_t n_buckets, Index n_values, MatchFunc match_func, void *match_arg);
 
     /*!
      * Initialize a hash table with a custom hash function.
      * Gets the same parameters as init() with an extra key_to_bucket parameter.
      *
-     * \param key_to_bucket a function that gets a key and returns its respective bucket.
+     * \param hash_func a function that gets a key and returns a hash.
      */
-    void init_custom(size_t n_buckets, P::Index n_values, PHashMatchFunc match,
-                     void *match_arg, PHashKeyToBucket key_to_bucket);
+    void init_custom(size_t n_buckets, Index n_values, MatchFunc match_func, void *match_arg, HashFunc hash_func);
 
     /*!
      * Set a key+value pair.
@@ -52,7 +51,7 @@ public:
      * \param length size of the buffer in bytes.
      * \return a boolean indicating if the value was inserted.
      */
-    bool set(void *key, size_t length, P::Index value);
+    bool set(void *key, size_t length, Index value);
 
     /*!
      * Get the value of a key in the hash.
@@ -61,7 +60,7 @@ public:
      * \param length size of the buffer in bytes.
      * \return the index if the key exists, otherwise P_INVALID_INDEX.
      */
-    P::Index get(void *key, size_t length);
+    Index get(void *key, size_t length);
 
     /*!
      * Remove a key from the hash.
@@ -75,16 +74,14 @@ public:
     size_t get_n_buckets() const { return _n_buckets; }
 
 private:
+    DList::Anchor *get_bucket(void *key, size_t length) { return &_buckets[_hash_func(key, length) & (_n_buckets - 1)]; }
 
-    static size_t default_key_to_bucket(Hash *hash, void *key, size_t length);
-
-private:
     size_t _n_buckets;
-    P::DList::Anchor *_buckets;
-    P::DList::Pool _values;
-    PHashMatchFunc _match;
+    DList::Anchor *_buckets;
+    DList::Pool _values;
+    MatchFunc _match_func;
     void *_match_arg;
-    PHashKeyToBucket _key_to_bucket;
+    HashFunc _hash_func;
 };
 
 }

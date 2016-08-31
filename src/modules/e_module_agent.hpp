@@ -3,7 +3,7 @@
 #pragma once
 
 #include "e_module_agent_server.hpp"
-#include "plasma/control/agent.hpp"
+#include "control/agent.hpp"
 
 namespace P {
 

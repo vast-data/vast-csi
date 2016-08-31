@@ -9,8 +9,8 @@
 #pragma once
 
 #include "c_module.hpp"
+#include "control/agent.hpp"
 #include "plasma/execution/silo.hpp"
-#include "plasma/control/agent.hpp"
 
 namespace Control {
 
