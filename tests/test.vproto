@@ -1,4 +1,5 @@
 $namespace NS
+$typedef bool flag
 
 enum Gender : uint8_t {
     MALE = 0,
@@ -29,7 +30,7 @@ struct Person {
     @1 gender Gender;
     @3 weight uint32_t; // for testing: this field doesn't have a default value even though it should (it doesn't appear in the older version)
     @4 name char[123];
-    @5 active bool = true;
+    @5 active flag = true;
     @7 profession Profession = Profession::PILOT;
 
     @2 phones Phone[2];

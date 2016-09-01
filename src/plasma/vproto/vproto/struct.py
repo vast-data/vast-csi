@@ -39,6 +39,7 @@ class TypeRegistry(object):
 
     def __init__(self):
         self._types = {}
+        self._aliases = {}
 
         for name, size in self.BUILTINS.items():
             self.add(VProtoType(name, size, True, builtins_module))
@@ -49,10 +50,16 @@ class TypeRegistry(object):
         try:
             return self._types[name]
         except KeyError:
-            raise Exception('Unknown field type: {}'.format(name))
+            try:
+                return self._types[self._aliases[name]]
+            except KeyError:
+                raise SchemaError('Unknown field type: {}'.format(name))
 
     def add(self, type):
         self._types[type.name] = type
+
+    def add_alias(self, type_name, alias):
+        self._aliases[alias] = type_name
 
     def add_struct(self, struct):
         self.add(struct)
@@ -66,6 +73,8 @@ class TypeRegistry(object):
         for name, type in registry._types.items():
             if name not in self.BUILTINS_NAMES:
                 self._types[prefix + name] = type
+        for type_alias, type_name in registry._aliases.items():
+            self._aliases[prefix + type_alias] = type_name
 
 Padding = namedtuple('Padding', ['size', 'offset'])
 VProtoField = namedtuple('VProtoField', ['name', 'index', 'type', 'elements', 'default', 'offset'])

@@ -11,7 +11,7 @@ env = Environment(loader=PackageLoader(__name__, 'templates'),
                   trim_blocks=True)
 
 def parse_directives(directives):
-    options = {'namespaces': [], 'imports': {}}
+    options = {'namespaces': [], 'imports': {}, 'typedefs': {}}
     for directive in directives:
         command, value = directive.value.split(' ', 1)
         if command == 'namespace':
@@ -25,6 +25,11 @@ def parse_directives(directives):
             except ValueError:
                 path = value
             options['imports'][path] = label
+        elif command == 'typedef':
+            type_name, alias = value.split(' ')
+            if type_name in options['typedefs']:
+                raise SchemaError("The '{}' type is already defined".format(type_name))
+            options['typedefs'][alias] = type_name
         else:
             raise SchemaError('Unsupported directive: {}. Options: namespace, import'.format(command))
     return options
@@ -55,6 +60,9 @@ class VProtoModule(object):
             module_registry = TypeRegistry()
             VProtoModule(path, module_registry, import_path)
             registry.merge(module_registry, label)
+
+        for alias, type_name in self.options['typedefs'].items():
+            registry.add_alias(type_name, alias)
 
         self.structs = []
         self.enums = []
