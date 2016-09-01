@@ -65,6 +65,26 @@ public:
             {% endfor %}
         }
 
+        void init_defaults()
+        {
+            {% for field in struct.primitive_fields %}
+                {% if field.type.name != 'VProto::ArrayPtr' and field.default %}
+            set_{{ field.name }}({{field.default.value }});
+                {% endif %}
+            {% endfor %}
+            {% for field in struct.variable_fields %}
+                {% if not field.type.is_primitive %}
+                    {% if field.elements %}
+            for (size_t i=0; i < get_{{ field.name }}_count(); i++) {
+                get_{{ field.name }}(i)->init_defaults();
+            }
+                    {% else %}
+            get_{{ field.name }}()->init_defaults();
+                    {% endif %}
+                {%endif%}
+            {% endfor %}
+        }
+
         {% for field in struct.primitive_fields %}
         {% if field.type.name != 'VProto::ArrayPtr' %}
         void set_{{ field.name }}({{ get_fqn(field) }} {{ field.name }})
@@ -138,6 +158,41 @@ public:
         {
             _object = object;
             _next_index = next_index;
+        }
+
+        void init_from_builder(Builder *builder)
+        {
+            init(builder, {{ struct.next_index }});
+        }
+
+        void to_builder(Builder *builder)
+        {
+            builder->init();
+            {% for field in struct.primitive_fields %}
+                {% if field.type.name != 'VProto::ArrayPtr' %}
+            builder->set_{{ field.name }}(get_{{ field.name }}());
+                {% endif %}
+            {% endfor %}
+            {% for field in struct.variable_fields %}
+                {% if field.elements %}
+                    {% if field.type.is_primitive %}
+            memcpy(builder->get_{{ field.name }}(), get_{{ field.name }}(), std::min(get_{{ field.name }}_count(), builder->get_{{ field.name }}_count()) * {{ field.type.size }});
+                    {% else %}
+            {{ get_fqn(field) }}::Reader {{ field.name }}_reader;
+            for (size_t i; i < std::min(get_{{ field.name }}_count(), builder->get_{{ field.name }}_count()); i++) {
+                get_{{ field.name }}(&{{ field.name }}_reader, i);
+                {{ field.name }}_reader.to_builder(builder->get_{{ field.name }}(i));
+            }
+            for (size_t i=get_{{ field.name }}_count(); i < builder->get_{{ field.name }}_count(); i++) {
+                builder->get_{{ field.name }}(i)->init_defaults();
+            }
+                    {% endif %}
+                {% else %}
+            {{ get_fqn(field) }}::Reader {{ field.name }}_reader;
+            get_{{ field.name }}(&{{ field.name }}_reader);
+            {{ field.name }}_reader.to_builder(builder->get_{{ field.name }}());
+                {% endif %}
+            {% endfor %}
         }
 
         {% for field in struct.primitive_fields %}

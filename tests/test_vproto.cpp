@@ -108,6 +108,20 @@ TEST(TestVProto, test_backward_compat)
     ASSERT_EQ(address_reader.get_street_count(), 0);
 }
 
+TEST(TestVProto, test_to_from_builder)
+{
+    NS::Person::Builder first_builder;
+    first_builder.init();
+    first_builder.set_age(120);
+
+    NS::Person::Reader reader;
+    reader.init_from_builder(&first_builder);
+
+    NS::Person::Builder second_builder;
+    reader.to_builder(&second_builder);
+    ASSERT_EQ(second_builder.get_age(), 120);
+}
+
 int main(int argc, char **argv)
 {
     ::testing::FLAGS_gtest_death_test_style = "threadsafe";
