@@ -21,10 +21,11 @@ namespace P {
 
 class ModuleInterface {
 public:
+    // Each inheriting module should call Agent::init() on its agent.
     virtual void init(P::Silo *silo, P::Conf::ConfigSetting *setting) = 0;
     virtual void start() = 0;
 
-    P::Control::Agent *control_agent;
+    virtual P::Control::Agent* get_control_agent() = 0;
 };
 
 /*!

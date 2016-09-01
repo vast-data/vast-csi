@@ -12,8 +12,8 @@ namespace VMsg {
 void VMsg::init(VMsgConfiguration *vmsg_configuration)
 {
     _vmsg_configuration = *vmsg_configuration;
-    PT_INFO(DATA, "initializing VMsg local_env_id=%hu n_silos=%u", vmsg_configuration->local_env_id,
-            vmsg_configuration->n_silos);
+    PT_INFO(DATA, "initializing VMsg local_env_id=%hu n_silos=%u", _vmsg_configuration.local_env_id,
+            _vmsg_configuration.n_silos);
     _started = false;
     LOOP(ModuleId::COUNT, i) {
         LOOP(ModuleId::COUNT, j) {
@@ -24,7 +24,7 @@ void VMsg::init(VMsgConfiguration *vmsg_configuration)
     _poll_lock.init();
     _vmsg_pool.init(&_vmsg_configuration);
     _address_table.init();
-    _rdma_transport.init(vmsg_configuration, &_address_table);
+    _rdma_transport.init(&_vmsg_configuration, &_address_table);
 
     uint32_t n_acks = 0;
     LOOP(ModuleId::COUNT, i) {
@@ -32,7 +32,7 @@ void VMsg::init(VMsgConfiguration *vmsg_configuration)
     }
 
     _silos_context = new SiloContext[_vmsg_configuration.n_silos];
-    LOOP(vmsg_configuration->n_silos, silo_id) {
+    LOOP(_vmsg_configuration.n_silos, silo_id) {
         LOOP(ModuleId::COUNT, module_id) {
             LOOP(RpcServerId::COUNT, server_id) {
                 _silos_context[silo_id].rpc_servers[module_id][server_id] = nullptr;
@@ -121,10 +121,10 @@ void VMsg::stop()
     _rdma_transport.stop();
 }
 
-void VMsg::set_env_addresses(EnvId env_id, EnvAddresses *addresses)
+void VMsg::set_env_addresses(EnvId env_id, EnvAddresses::RootBuilder *addresses)
 {
     _address_table.set(env_id, addresses);
-    if (_started && addresses->n_addr > 0) {
+    if (_started && addresses->get_n_addr() > 0) {
         connect_to_peer_modules(env_id);
     }
 }

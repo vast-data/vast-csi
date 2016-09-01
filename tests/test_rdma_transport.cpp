@@ -22,10 +22,10 @@ TEST(TestRDMATransport, test)
     AddressTable addr_table;
     addr_table.init();
 
-    EnvAddresses addresses;
-    addresses.addresses[0].port = 4000;
-    strcpy(addresses.addresses[0].host, "127.0.0.1");
-    addresses.n_addr = 1;
+    EnvAddresses::RootBuilder addresses;
+    addresses.get_addresses(0)->set_port(4000);
+    strcpy(addresses.get_addresses(0)->get_host(), "127.0.0.1");
+    addresses.set_n_addr(1);
     addr_table.set(0, &addresses);
 
     VMsgConfiguration configuration;

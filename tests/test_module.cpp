@@ -42,6 +42,7 @@ void TestModule::init(P::Silo *silo, P::Conf::ConfigSetting *setting)
     if (_init_func) {
         _init_func(silo, _init_func_ctx);
     }
+    _agent.init(silo->get_id() , get_id());
 }
 
 void TestModule::run_start_func()

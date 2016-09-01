@@ -25,7 +25,7 @@ void {{ server.name }}Client::init(P::VMsg::VMsg *vmsg)
 }
 
 {% for method in server.methods %}
-static_assert(sizeof({{ method.arg }}::RootBuilder) <= P::VMsg::RPC_BUFFER_SIZE, "method argument cannot be contained within RPC BUFFER");
+static_assert(sizeof({{ method.arg }}::RootBuilder) + sizeof(P::VMsg::VMsgHeader) <= P::VMsg::RPC_BUFFER_SIZE, "method argument cannot be contained within RPC BUFFER");
 static_assert(!std::is_polymorphic<{{ method.arg }}::RootBuilder>::value, "method argument must not have a vtable");
 static_assert(sizeof({{ method.res }}::RootBuilder) <= P::VMsg::RPC_BUFFER_SIZE, "method result cannot be contained within RPC BUFFER");
 static_assert(!std::is_polymorphic<{{ method.res }}::RootBuilder>::value, "method result must not have a vtable");

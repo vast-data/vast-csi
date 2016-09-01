@@ -26,7 +26,7 @@ def parse_directives(directives):
                 path = value
             options['imports'][path] = label
         elif command == 'typedef':
-            type_name, alias = value.split(' ')
+            type_name, alias = value.strip(';').split(' ')
             if type_name in options['typedefs']:
                 raise SchemaError("The '{}' type is already defined".format(type_name))
             options['typedefs'][alias] = type_name

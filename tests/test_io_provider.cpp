@@ -243,7 +243,7 @@ TEST(TestIOProvider, test)
 
     P::IOProvider io_provider;
 
-    EModule::init_io_from_settings(io_module, &devices, &iopool, &io_provider);
+    P::EModule::init_io_from_settings(io_module, &devices, &iopool, &io_provider);
 
     P::Scheduler::init(&scheduler_config);
 

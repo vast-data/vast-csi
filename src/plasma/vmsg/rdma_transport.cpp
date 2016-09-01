@@ -18,10 +18,10 @@ using namespace P::Sync;
 namespace P {
 namespace VMsg {
 
-void RDMATransport::init(VMsgConfiguration *vmsg_configuration, AddressTable *addr_table)
+void RDMATransport::init(const VMsgConfiguration *vmsg_configuration, AddressTable *addr_table)
 {
     _addr_table = addr_table;
-    _vmsg_configuration = *vmsg_configuration;
+    _vmsg_configuration = vmsg_configuration;
     sem_init(&_start_sem, 0, 0);
     _conn_lock.init();
     _conn_queue.init(MAX_CONN_REQUESTS);
@@ -93,14 +93,14 @@ VMsgRes RDMATransport::start()
         return VMsgRes::SYS_ERR;
     }
 
-    ASSERT(_addr_table->has_addresses(_vmsg_configuration.local_env_id), "no local addresses configured");
+    ASSERT(_addr_table->has_addresses(_vmsg_configuration->local_env_id), "no local addresses configured");
 
     _addr_table->lock();
-    EnvAddresses *addresses = _addr_table->get(_vmsg_configuration.local_env_id);
-    LOOP(addresses->n_addr, i) {
-        EnvAddress *addr = &addresses->addresses[i];
-        VMsgRes res = _listen_links[i].listen(_event_channel, addr->host, addr->port);
-        ASSERT(res == VMsgRes::OK, "failed to listen on " << addr->host << ":" << addr->port);
+    EnvAddresses::RootBuilder *addresses = _addr_table->get(_vmsg_configuration->local_env_id);
+    LOOP(addresses->get_n_addr(), i) {
+        EnvAddress::Builder *addr = addresses->get_addresses(i);
+        VMsgRes res = _listen_links[i].listen(_event_channel, addr->get_host(), addr->get_port());
+        ASSERT(res == VMsgRes::OK, "failed to listen on " << addr->get_host() << ":" << addr->get_port());
     }
     _addr_table->unlock();
 
@@ -111,7 +111,7 @@ VMsgRes RDMATransport::start()
     }
 
     // fake a self connection request in order to get the shared resources initialized
-    request_connection(_vmsg_configuration.local_env_id, ModuleId::E);
+    request_connection(_vmsg_configuration->local_env_id, ModuleId::E);
     PT_DEBUG(DATA, "waiting for shared resource allocation");
     sem_wait(&_start_sem);
     PT_DEBUG(DATA, "wait for shared resource allocation done");
@@ -201,13 +201,13 @@ VMsgRes RDMATransport::create_device_resources(ibv_context *ibv_ctx)
     PT_DEBUG(DATA, "creating SRQs");
     srq_attr.attr.max_sge = 1;
     LOOP(MODULES_COUNT, i) {
-        srq_attr.attr.max_wr = _vmsg_configuration.modules[i].num_send_buffers;
+        srq_attr.attr.max_wr = _vmsg_configuration->modules[i].num_send_buffers;
         _client_srqs[i] = ibv_create_srq(_pd, &srq_attr);
         if (!_client_srqs[i]) {
             PT_ERROR(DATA, "ibv_create_srq  failed errno=%d", errno);
             return VMsgRes::SYS_ERR;
         }
-        srq_attr.attr.max_wr = _vmsg_configuration.modules[i].num_recv_buffers;
+        srq_attr.attr.max_wr = _vmsg_configuration->modules[i].num_recv_buffers;
         _server_srqs[i] = ibv_create_srq(_pd, &srq_attr);
         if (!_server_srqs[i]) {
             PT_ERROR(DATA, "ibv_create_srq  failed errno=%d", errno);
@@ -288,7 +288,7 @@ void RDMATransport::on_route_resolved(struct rdma_cm_event *event)
         _ibv_ctx = event->id->verbs;
     }
     link->set_state(LinkState::ROUTE_RESOLVED);
-    VMsgRes res = link->establish_connection(_vmsg_configuration.local_env_id, _cq, _pd,
+    VMsgRes res = link->establish_connection(_vmsg_configuration->local_env_id, _cq, _pd,
                                              _client_srqs[(uint8_t)link->get_module_id()]);
     if (res == VMsgRes::CONNECTION_REFUSED) {
         PT_WARN(DATA, "failed to connect to env_id=%u module_id=%hhu, retrying connection",
@@ -318,7 +318,7 @@ void RDMATransport::on_connect_request(struct rdma_cm_event *event)
     RDMALink *srv_link = _server_connections[handshake->env_id][(uint8_t)module_id].get_free_link();
     srv_link->set_state(LinkState::CONNECT_REQUEST);
     srv_link->set_cm_id(event->id);
-    srv_link->establish_connection(_vmsg_configuration.local_env_id, _cq, _pd, _server_srqs[(uint8_t)module_id]);
+    srv_link->establish_connection(_vmsg_configuration->local_env_id, _cq, _pd, _server_srqs[(uint8_t)module_id]);
 }
 
 void RDMATransport::on_connection_established(struct rdma_cm_event *event)
@@ -576,13 +576,13 @@ void RDMATransport::handle_connection_requests()
     PT_DEBUG(DATA, "handling connection request to env_id=%hu module_id=%hhu", request->env_id, request->module_id);
 
     _addr_table->lock();
-    EnvAddresses *addresses = _addr_table->get(request->env_id);
-    ASSERT(addresses->n_addr > 0, "Env " << request->env_id << " have no addresses configured");
-    EnvAddress addr = addresses->addresses[0];
+    EnvAddresses::RootBuilder *addresses = _addr_table->get(request->env_id);
+    ASSERT(addresses->get_n_addr() > 0, "Env " << request->env_id << " have no addresses configured");
+    EnvAddress::Builder *addr = addresses->get_addresses(0);
     _addr_table->unlock();
 
     RDMALink *link = _client_connections[request->env_id][(int)request->module_id].get_free_link();
-    link->initiate_connection(_event_channel, addr.host, addr.port);
+    link->initiate_connection(_event_channel, addr->get_host(), addr->get_port());
 
     _conn_lock.lock();
     _conn_queue.free(request);

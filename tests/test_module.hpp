@@ -7,6 +7,7 @@
 #pragma once
 
 #include "modules/module_interface.hpp"
+#include "plasma/control/agent.hpp"
 #include "plasma/execution/config.hpp"
 
 namespace P {
@@ -20,6 +21,7 @@ class TestModule : public ModuleInterface {
 public:
     virtual void init(P::Silo *silo, P::Conf::ConfigSetting *setting);
     virtual void start();
+    virtual P::Control::Agent* get_control_agent() { return &_agent; }
     static ModuleId get_id() { return ModuleId::TEST; }
     static const char *get_name() { return "TEST"; }
 
@@ -36,4 +38,5 @@ private:
     static void *_init_func_ctx;
     static StartFunc _start_func;
     static void *_start_func_ctx;
+    P::Control::Agent _agent;
 };

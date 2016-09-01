@@ -104,11 +104,16 @@ void Env::init_vmsg(Config *config, uint32_t n_silos)
     ASSERT_NOT_NULL(local_address_setting);
     ConfigSetting *port_setting = conf_lookup(config, "vmsg.port");
     ASSERT_NOT_NULL(port_setting);
-    EnvAddresses addresses;
-    strcpy(addresses.addresses[0].host, conf_setting_get_string(local_address_setting));
-    addresses.addresses[0].port = (uint16_t)conf_setting_get_int32(port_setting);
-    addresses.n_addr = 1;
-    _vmsg->set_env_addresses(env_id, &addresses);
+
+    EnvAddresses::RootBuilder addresses_builder;
+    addresses_builder.init();
+    EnvAddress::Builder *address_builder = addresses_builder.get_addresses(0);
+    const char *local_address = conf_setting_get_string(local_address_setting);
+    ASSERT(strlen(local_address) + 1 <= address_builder->get_host_count());
+    strcpy(address_builder->get_host(), local_address);
+    address_builder->set_port((uint16_t)conf_setting_get_int32(port_setting));
+    addresses_builder.set_n_addr(1);
+    _vmsg->set_env_addresses(env_id, &addresses_builder);
 }
 
 void Env::init(Config *config)

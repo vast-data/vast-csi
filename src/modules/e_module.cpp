@@ -5,31 +5,32 @@
 #include "plasma/internal.hpp"
 #include "globals.hpp"
 
-using namespace P::Conf;
-using P::Silo;
+namespace P {
 
-void EModule::init_io_from_settings(ConfigSetting *io_setting, P::DevIO **devices, P::AtomicPool<P::DevIO::IO> *iopool, P::IOProvider *io_provider)
+using namespace Conf;
+
+/* static */ void EModule::init_io_from_settings(ConfigSetting *io_setting, DevIO **devices,
+                                                 AtomicPool<DevIO::IO> *iopool, IOProvider *io_provider)
 {
-    ConfigSetting* iopool_count_setting = conf_setting_lookup_required(io_setting, "io_pool_count");
+    ConfigSetting *iopool_count_setting = conf_setting_lookup_required(io_setting, "io_pool_count");
     size_t iopool_count = conf_setting_get_int32(iopool_count_setting);
     iopool->init(iopool_count);
 
     ConfigSetting *io_provider_setting = conf_setting_lookup_required(io_setting, "io_provider");
     ConfigSetting *devices_setting = conf_setting_lookup_required(io_provider_setting, "devices");
     const size_t device_count = (size_t)conf_setting_length(devices_setting);
-    *devices = new P::DevIO[device_count];
+    *devices = new DevIO[device_count];
 
-    LOOP(device_count, i)
-    {
+    LOOP(device_count, i) {
         ConfigSetting *device_setting = conf_setting_get_element(devices_setting, (uint32_t) i);
         ConfigSetting *dev_path_setting = conf_setting_lookup_required(device_setting, "dev_path");
         ConfigSetting *io_depth_setting = conf_setting_lookup_required(device_setting, "io_depth");
         ConfigSetting *device_size_setting = conf_setting_lookup_required(device_setting, "device_size");
 
         if (unlikely(!(*devices)[i].init(conf_setting_get_string(dev_path_setting),
-                                      (uint32_t)conf_setting_get_int32(io_depth_setting), iopool,
-                                      (size_t)conf_setting_get_int32(device_size_setting)))) {
-            // TODO: this should be replaces with a notification to control and then possibly skip/retry/panic?
+                                         (uint32_t) conf_setting_get_int32(io_depth_setting), iopool,
+                                         (size_t) conf_setting_get_int32(device_size_setting)))) {
+            // TODO: this should be replaced with a notification to control and then possibly skip/retry/panic?
             PANIC();
         }
     }
@@ -41,10 +42,13 @@ void EModule::init(Silo *silo, ConfigSetting *module_setting)
 {
     ConfigSetting *io_setting = conf_setting_lookup_required(module_setting, "io");
     init_io_from_settings(io_setting, &devices, &iopool, &io_provider);
+    _agent.init(silo->get_id(), get_id());
 }
 
 void EModule::start()
 {
     io_provider.start();
-    P::Env::get()->get_vmsg()->start_silo_fiber();
+    Env::get()->get_vmsg()->start_silo_fiber();
 }
+
+}  // namespace P

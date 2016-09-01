@@ -44,9 +44,9 @@ void Silo::init(ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, co
         ModuleInterface *module = Env::get()->create_module(module_name, &module_id);
         _module_descriptors[(int)module_id].defined = true;
         _module_descriptors[(int)module_id].module = module;
-        module->control_agent = new Control::Agent();
-        module->control_agent->init(silo_id, module_id);
         module->init(this, module_setting);
+        // Each module is responsible for calling allocating its agent and calling Agent::init() on it.
+        ASSERT(module->get_control_agent()->is_initialized());
 
         ConfigSetting *fibers_setting = conf_setting_lookup_required(module_setting, "fibers");
         LOOP(conf_setting_length(fibers_setting), j) {

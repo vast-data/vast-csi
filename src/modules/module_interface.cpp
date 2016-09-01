@@ -12,7 +12,7 @@ class ModuleFactoryImpl : public ModuleFactory {
 };
 
 ModuleFactoryImpl<TestModule> t;
-ModuleFactoryImpl<EModule> e;
+ModuleFactoryImpl<P::EModule> e;
 ModuleFactoryImpl<IModule> i;
 
 ModuleFactory *factories[] = { &t, &e, &i };

@@ -121,10 +121,10 @@ void VMsgTest::add_addresses(EnvId id, uint16_t port)
     _lock.lock();
     if (_first_silo) {
         vmsg->add_module_pair(ModuleId::TEST, ModuleId::TEST, TransportType::RDMA);
-        EnvAddresses addresses;
-        addresses.n_addr = 1;
-        strcpy(addresses.addresses[0].host, "127.0.0.1");
-        addresses.addresses[0].port = port;
+        EnvAddresses::RootBuilder addresses;
+        addresses.set_n_addr(1);
+        strcpy(addresses.get_addresses(0)->get_host(), "127.0.0.1");
+        addresses.get_addresses(0)->set_port(port);
         vmsg->set_env_addresses(id, &addresses);
         _first_silo = false;
     }
@@ -226,7 +226,7 @@ static TestRpcServerImpl *rpc_server_init(Silo *silo)
 
 static void init_test_server(Silo *silo, void *ctx)
 {
-    TestRpcServer *server = rpc_server_init(silo);;
+    TestRpcServer *server = rpc_server_init(silo);
 }
 
 static void client_test_func(void *ctx)

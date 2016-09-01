@@ -29,7 +29,7 @@ public:
      * /param local_env_id the id of the env we are running in
      * /param pointer to an initialized address table containing the addresses of env we connect too
      */
-    void init(VMsgConfiguration *vmsg_configuration, AddressTable *addr_table);
+    void init(const VMsgConfiguration *vmsg_configuration, AddressTable *addr_table);
     void destroy();
     VMsgRes start();
     void stop();
@@ -144,7 +144,7 @@ private:
     static const uint32_t MAX_CONN_REQUESTS = 64;
 
     AddressTable *_addr_table;
-    VMsgConfiguration _vmsg_configuration;
+    const VMsgConfiguration *_vmsg_configuration;
 
     // connection requests queue
     P::Queue<ConnectionRequest> _conn_queue;

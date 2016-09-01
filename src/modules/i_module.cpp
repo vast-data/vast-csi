@@ -15,6 +15,7 @@ void IModule::init(Silo *silo, ConfigSetting *setting)
 
     _estore.init();
     _nfs.init(&_estore, P::Env::get()->get_tcp_acceptor(), first_init);
+    _agent.init(silo->get_id(), get_id());
     first_init = false;
 }
 

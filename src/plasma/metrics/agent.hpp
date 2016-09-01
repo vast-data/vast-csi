@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "metrics_agent.rpc.server.hpp"
+#include "plasma/metrics/metrics_agent.rpc.server.hpp"
 #include "tracker.hpp"
 
 namespace P { namespace Metrics {

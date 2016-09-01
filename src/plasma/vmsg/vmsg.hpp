@@ -32,9 +32,14 @@ public:
     void start_silo_fiber();
 
     /*!
+     * Set the env ID for the local env
+    */
+    void set_local_env_id(EnvId env_id) { _vmsg_configuration.local_env_id = env_id; }
+
+    /*!
      * Set the addresses for the specified env
     */
-    void set_env_addresses(EnvId env_id, EnvAddresses *addresses);
+    void set_env_addresses(EnvId env_id, EnvAddresses::RootBuilder *addresses);
 
     /*!
      * Defines a connection pair between the client and server modules

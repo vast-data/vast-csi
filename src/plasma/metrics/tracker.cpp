@@ -122,7 +122,7 @@ void Tracker::get_deletions(GetDeletionsParams::RootReader *params, GetDeletions
 
 Tracker *Tracker::get_current()
 {
-    return &Silo::get_module()->control_agent->metrics_agent.tracker;
+    return &Silo::get_module()->get_control_agent()->get_metrics_agent()->tracker;
 }
 
 }}

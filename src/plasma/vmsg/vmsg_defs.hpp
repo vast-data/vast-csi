@@ -11,6 +11,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "plasma/vmsg/vmsg.vproto.hpp"
 #include "plasma/fiber/sync/future.hpp"
 #include "plasma/data/spsc_queue.hpp"
 #include "modules/module_interface.hpp"
@@ -21,14 +22,12 @@ namespace VMsg {
 static const uint32_t VMSG_VERSION = 1;
 static const int RESOLVE_TIMEOUT_MS = 1000;
 static const uint8_t MAX_PRIVATE_DATA = 255;
-static const uint16_t RPC_BUFFER_SIZE = 512;
+static const uint16_t RPC_BUFFER_SIZE = 4096;
 static const uint16_t MAX_CONCURRENT_RPC_REQUESTS = 1024;
 static const uint16_t MAX_ENVS = 32;
-static const uint16_t MAX_ADDR_PER_ENV = 8;
 static const uint64_t DEFUALT_MSG_TIMEOUT_USEC = SEC_TO_MICRO(60);
 
 typedef uint8_t SiloId;
-typedef uint16_t EnvId;
 typedef uint32_t EnvVerifier;
 
 struct ModuleResources {
@@ -165,18 +164,6 @@ enum class TransportType {
     RDMA,
     TCP,
     NONE
-};
-
-// A container for a single env address
-struct EnvAddress {
-    char host[256];
-    uint16_t port;
-};
-
-// A container for an env addresses
-struct EnvAddresses {
-    EnvAddress addresses[MAX_ADDR_PER_ENV];
-    uint16_t n_addr;
 };
 
 // connection request information

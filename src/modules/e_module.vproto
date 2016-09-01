@@ -1,0 +1,12 @@
+$import plasma/vmsg/vmsg.vproto as VMsg
+
+$namespace P
+
+struct ConnectParams {
+    @0 env_id VMsg.EnvId;
+    @1 addresses VMsg.EnvAddresses;
+};
+
+struct DisconnectParams {
+    @0 env_id VMsg.EnvId;
+};
