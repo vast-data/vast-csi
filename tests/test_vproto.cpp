@@ -118,8 +118,14 @@ TEST(TestVProto, test_to_from_builder)
     reader.init_from_builder(&first_builder);
 
     NS::Person::Builder second_builder;
-    reader.to_builder(&second_builder);
+    second_builder.init_from_reader(&reader);
+
     ASSERT_EQ(second_builder.get_age(), 120);
+
+    NS::Person::RootBuilder root_builder;
+    root_builder.init_from_reader(&reader);
+
+    ASSERT_EQ(root_builder.get_age(), 120);
 }
 
 int main(int argc, char **argv)
