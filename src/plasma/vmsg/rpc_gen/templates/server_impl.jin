@@ -1,5 +1,9 @@
 /* Copyright (C) Vast Data Ltd. */
 /* Auto generated code - DO NOT EDIT */
+{% if server.source_name  %}
+/* Generated from: {{ server.source_name }} */
+{% endif %}
+/* Generation time: {{ generation_time }} */
 
 #include "{{ server.name_snake_case }}.rpc.server.hpp"
 #include "plasma/execution/silo.hpp"

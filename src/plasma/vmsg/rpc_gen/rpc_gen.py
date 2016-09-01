@@ -4,6 +4,7 @@ import os
 import re
 import yaml
 import click
+import datetime
 from jinja2 import Environment, PackageLoader, StrictUndefined
 
 env = Environment(loader=PackageLoader(__name__, 'templates'),
@@ -29,7 +30,8 @@ class Method(object):
 
 
 class Server(object):
-    def __init__(self, server_dict):
+    def __init__(self, server_dict, source_name=None):
+        self.source_name = source_name
         self.name = server_dict['class']
         self.api_version = server_dict['api_version']
         self.namespaces = server_dict.get('namespaces', [])
@@ -45,7 +47,7 @@ class Server(object):
         if os.path.exists(output_file):
             os.chmod(output_file, 0o755)
         with open(output_file, 'w') as f:
-            for line in template.generate(server=self):
+            for line in template.generate(server=self, generation_time=datetime.datetime.now()):
                 f.write(line)
 
     def generate(self, output_file_prefix):
@@ -59,7 +61,7 @@ class Server(object):
 
 def rpc_gen(input_file, output_file_prefix):
     server_dict = yaml.load(open(input_file))
-    server = Server(server_dict)
+    server = Server(server_dict, input_file)
     server.generate(output_file_prefix)
 
 
