@@ -1,5 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 /* Auto generated code - DO NOT EDIT */
+/* Generated from: {{ source_path }} */
+/* Generation time: {{ generation_time }} */
 
 #pragma once
 

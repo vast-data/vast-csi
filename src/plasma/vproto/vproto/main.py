@@ -1,5 +1,6 @@
 import os
 import click
+import datetime
 from .parser import parse, Struct, Enum, Directive
 from .struct import VProtoStruct, TypeRegistry, SchemaError
 from jinja2 import Environment, PackageLoader, StrictUndefined
@@ -41,7 +42,8 @@ def find_module(path, import_path=None):
 
 class VProtoModule(object):
     def __init__(self, path, registry, import_path=None):
-        with open(find_module(path, import_path)) as proto_file:
+        self.path = find_module(path, import_path)
+        with open(self.path) as proto_file:
             defs = parse(proto_file.read())
 
         directives = []
@@ -67,8 +69,6 @@ class VProtoModule(object):
         return '::'.join(self.options['namespaces'])
 
     def get_fqn(self, field):
-        #print(field.name, field.type.name, field.type.module, field.type.module.get_namespace())
-        #import pdb;pdb.set_trace()
         if field.type.module == self:
             return field.type.name
 
@@ -79,7 +79,12 @@ class VProtoModule(object):
 
     def render(self, path):
         with open(path, 'w') as f:
-            f.write(env.get_template('header.jin').render(structs=self.structs, enums=self.enums, get_fqn=self.get_fqn, **self.options))
+            f.write(env.get_template('header.jin').render(source_path=self.path,
+                                                          generation_time=datetime.datetime.now(),
+                                                          structs=self.structs,
+                                                          enums=self.enums,
+                                                          get_fqn=self.get_fqn,
+                                                          **self.options))
 
 def convert(proto_file, output_prefix, import_path=None):
     registry = TypeRegistry()
