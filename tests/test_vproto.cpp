@@ -22,6 +22,7 @@ TEST(TestVProto, test_sanity)
     person_builder.set_active(true);
     person_builder.set_gender(NS::Gender::FEMALE);
     person_builder.set_profession(NS::Profession::PILOT);
+    ASSERT_EQ(person_builder.get_age(), 120);
 
     NS::Phone::Builder *phone_builder = person_builder.get_phones(0);
     phone_builder->set_number(144);

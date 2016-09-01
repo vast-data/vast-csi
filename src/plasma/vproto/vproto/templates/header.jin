@@ -71,6 +71,12 @@ public:
         {
             _{{ field.name }} = {{ field.name }};
         }
+
+        {{ get_fqn(field) }} get_{{ field.name }}()
+        {
+            return _{{ field.name }};
+        }
+
         {% endif %}
         {% endfor %}
 
@@ -112,10 +118,10 @@ public:
             _vproto_header.init({{ struct.size }}, {{ struct.next_index }});
         }
 
-         RootReader *as_reader()
-         {
-             return (RootReader*) this;
-         }
+        RootReader *as_reader()
+        {
+            return (RootReader*) this;
+        }
     };
 
     class Reader {
