@@ -19,6 +19,9 @@
 namespace {{ ns }} {
 {% endfor %}
 
+{% for alias, type in typedefs.items() %}
+typedef {{ type }} {{ alias }};
+{% endfor %}
 
 {% for enum in enums %}
 enum class {{ enum.name }}{% if enum.type %} : {{ enum.type }}{% endif %} {
