@@ -31,7 +31,7 @@ struct Person {
     assert person_struct == Struct(name='Person',
                                    fields=[Field(name='name',
                                                  index=0,
-                                                 type=FieldType(name='char', elements=128),
+                                                 type=FieldType(name='char', elements=Number(value=128)),
                                                  default=None),
                                            Field(name='age',
                                                  index=1,
@@ -86,14 +86,6 @@ struct Person {
 struct Person {
   @1 age uint32_t;
   @1 weight uint32_t;
-};
-''')
-    with pytest.raises(SchemaError):
-        validate_struct(struct)
-
-    struct, = parse('''
-struct Person {
-  @0 name char[1000000];
 };
 ''')
     with pytest.raises(SchemaError):
