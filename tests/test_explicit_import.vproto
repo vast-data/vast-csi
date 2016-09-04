@@ -1,0 +1,8 @@
+$import test.vproto as test
+
+$namespace NS
+
+struct ContactList {
+    @0 people test.Person[128];
+    @1 active test.flag;
+};
