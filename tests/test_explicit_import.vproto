@@ -5,4 +5,5 @@ $namespace NS
 struct ContactList {
     @0 people test.Person[128];
     @1 active test.flag;
+    @2 default_profession test.Profession;
 };

@@ -43,8 +43,11 @@ def t_NUMBER(t):
     return t
 
 def t_DIRECTIVE(t):
-    r'\$.+'
-    t.value = Directive(value=t.value[1:])
+    r'\$.+;?'
+    directive = t.value[1:]
+    if directive.endswith(';'):
+        directive = directive[:-1]
+    t.value = Directive(value=directive)
     return t
 
 def t_COMMENT(t):
@@ -106,8 +109,8 @@ def p_field_type(p):
     p[0] = FieldType(name=p[1].value, elements=None)
 
 def p_field_type_array(p):
-    r'field_type : NAME "[" NUMBER "]"'
-    p[0] = FieldType(name=p[1].value, elements=p[3].value)
+    r'field_type : NAME "[" value "]"'
+    p[0] = FieldType(name=p[1].value, elements=p[3])
 
 def p_enum_type(p):
     r'enum : ENUM NAME ":" NAME "{" enum_values "}" ";"'

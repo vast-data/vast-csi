@@ -1,5 +1,5 @@
 from collections import namedtuple, OrderedDict, Counter
-from .parser import Field, FieldType
+from .parser import Field, FieldType, Name, Number
 
 MAX_STRUCT_FIELDS = 255
 MAX_STRUCT_SIZE = 2**20
@@ -40,6 +40,7 @@ class TypeRegistry(object):
     def __init__(self):
         self._types = {}
         self._aliases = {}
+        self._consts = {}
 
         for name, size in self.BUILTINS.items():
             self.add(VProtoType(name, size, True, builtins_module))
@@ -61,12 +62,21 @@ class TypeRegistry(object):
     def add_alias(self, type_name, alias):
         self._aliases[alias] = type_name
 
+    def add_const(self, name, type, value):
+        self._consts[name] = (type, value)
+
+    def get_const_value(self, name):
+        try:
+            return self._consts[name][1]
+        except KeyError:
+            raise SchemaError('Unknown const name: {}'.format(name))
+
     def add_struct(self, struct):
         self.add(struct)
 
     DEFAULT_ENUM_SIZE = 4
-    def add_enum(self, module, enum):
-        self.add(VProtoType(enum.name, self.DEFAULT_ENUM_SIZE if enum.type is None else self.get(enum.type).size, True, module))
+    def add_enum(self, enum):
+        self.add(VProtoType(enum.name, self.DEFAULT_ENUM_SIZE if enum.type is None else enum.type.size, True, enum.module))
 
     def merge(self, registry, alias=None):
         prefix = '' if alias is None else alias + '.'
@@ -156,12 +166,26 @@ class VProtoStruct(object):
             padding = 0
             if largest_field > 0 and self.size % largest_field > 0:
                 padding = largest_field - self.size % largest_field
+
+            elements = field.type.elements
+            if elements is not None:
+                if isinstance(elements, Name):
+                    elements = registry.get_const_value(elements.value)
+                    if not elements.isdigit():
+                        raise SchemaError('Array size constant should be a number: {}.{}'.format(self.name, field.name))
+                    elements = int(elements)
+                elif isinstance(elements, Number):
+                    elements = elements.value
+                else:
+                    raise SchemaError('Array size should be a number or a name of constant: {}.{}'.format(self.name, field.name))
+                if elements > MAX_ARRAY_ELEMENTS:
+                    raise SchemaError('Array {}.{} has too many elements (max={}): {}'.format(self.name, self.name, MAX_ARRAY_ELEMENTS, elements))
             self.variable_fields.append(VProtoField(name=field.name, index=field.index,
-                                                    type=field_type, elements=field.type.elements,
+                                                    type=field_type, elements=elements,
                                                     default=None, offset=self.size + padding))
             if field_type.size == 0:
                 raise SchemaError('Field cannot be of size 0: {}.{}'.format(self.name, field.name))
-            self.size += field_type.size * (1 if field.type.elements is None else field.type.elements)
+            self.size += field_type.size * (1 if elements is None else elements)
             # each variable length field should be aligned on the size of its largest member.
             self.largest_field = max(self.largest_field, largest_field)
 
@@ -181,8 +205,6 @@ def validate_struct(struct, registry=TypeRegistry()):
         names.append(field.name)
         if field.default is not None and not field_is_primitive(field, registry):
             raise SchemaError('Array/Struct fields cannot have default values: {}.{}'.format(struct.name, field.name))
-        if field.type.elements is not None and field.type.elements > MAX_ARRAY_ELEMENTS:
-            raise SchemaError('Array {}.{} has an invalid number of elements (maximum is {}): {}'.format(struct.name, field.name, MAX_ARRAY_ELEMENTS, field.type.elements))
 
     if indices:
         indices.sort()
@@ -200,3 +222,12 @@ def validate_struct(struct, registry=TypeRegistry()):
 
         if len(indices) > MAX_STRUCT_FIELDS:
             raise SchemaError('Struct {} has an invalid number of fields (maximum is {}): {}'.format(struct.name, MAX_STRUCT_FIELDS, len(indices)))
+
+class VProtoEnum(object):
+
+    def __init__(self, enum_ast, module=None, registry=TypeRegistry()):
+        self.module = module
+        self.values = enum_ast.values
+        self.name = enum_ast.name
+        self.type = registry.get(enum_ast.type) if enum_ast.type is not None else None
+        registry.add_enum(self)

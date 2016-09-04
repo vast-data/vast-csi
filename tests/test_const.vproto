@@ -1,0 +1,18 @@
+$typedef bool flag
+
+$namespace CONST
+
+enum Profession : byte {
+    PAINTER,
+    FEMALE
+};
+
+$const flag DEFAULT_ACTIVE = true;
+$const size_t NAME_SIZE = 128;
+$const Profession DEFAULT_PROFESSION = Profession::PAINTER;
+
+struct Person {
+    @0 profession Profession = DEFAULT_PROFESSION;
+    @1 active flag = DEFAULT_ACTIVE;
+    @2 name char[NAME_SIZE];
+};

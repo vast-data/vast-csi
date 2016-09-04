@@ -2,7 +2,7 @@ import os
 import click
 import datetime
 from .parser import parse, Struct, Enum, Directive
-from .struct import VProtoStruct, TypeRegistry, SchemaError
+from .struct import VProtoStruct, VProtoEnum, TypeRegistry, SchemaError
 from jinja2 import Environment, PackageLoader, StrictUndefined
 
 env = Environment(loader=PackageLoader(__name__, 'templates'),
@@ -11,7 +11,7 @@ env = Environment(loader=PackageLoader(__name__, 'templates'),
                   trim_blocks=True)
 
 def parse_directives(directives):
-    options = {'namespaces': [], 'imports': {}, 'typedefs': {}}
+    options = {'namespaces': [], 'imports': {}, 'typedefs': {}, 'consts': {}}
     for directive in directives:
         command, value = directive.value.split(' ', 1)
         if command == 'namespace':
@@ -30,6 +30,13 @@ def parse_directives(directives):
             if type_name in options['typedefs']:
                 raise SchemaError("The '{}' type is already defined".format(type_name))
             options['typedefs'][alias] = type_name
+        elif command == 'const':
+            # example value: int COUNT = 3;
+            type, pair = value.split(' ', 1)
+            name, value = map(str.strip, pair.split('='))
+            if name in options['consts']:
+                raise SchemaError("The '{}' const is already defined".format(name))
+            options['consts'][name] = (type, value)
         else:
             raise SchemaError('Unsupported directive: {}. Options: namespace, import'.format(command))
     return options
@@ -64,14 +71,16 @@ class VProtoModule(object):
         for alias, type_name in self.options['typedefs'].items():
             registry.add_alias(type_name, alias)
 
+        for name, (type, value) in self.options['consts'].items():
+            registry.add_const(name, type, value)
+
         self.structs = []
         self.enums = []
         for i in defs:
             if isinstance(i, Struct):
                 self.structs.append(VProtoStruct(i, self, registry))
             elif isinstance(i, Enum):
-                registry.add_enum(self, i)
-                self.enums.append(i)
+                self.enums.append(VProtoEnum(i, self, registry))
 
     def get_namespace(self):
         return '::'.join(self.options['namespaces'])

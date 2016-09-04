@@ -24,7 +24,7 @@ typedef {{ type }} {{ alias }};
 {% endfor %}
 
 {% for enum in enums %}
-enum class {{ enum.name }}{% if enum.type %} : {{ enum.type }}{% endif %} {
+enum class {{ enum.name }}{% if enum.type %} : {{ get_fqn(enum) }}{% endif %} {
 {% for enum_value in enum.values %}
     {{ enum_value.name }}{% if enum_value.value %} = {{ enum_value.value.value }}{% endif %},
 {% endfor %}
@@ -32,6 +32,9 @@ enum class {{ enum.name }}{% if enum.type %} : {{ enum.type }}{% endif %} {
 
 {% endfor %}
 
+{% for name, (type, value) in consts.items() %}
+const {{ type }} {{ name }} = {{ value }};
+{% endfor %}
 
 {% for struct in structs %}
 class {{ struct.name }} {

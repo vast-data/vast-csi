@@ -2,4 +2,6 @@ $import test.vproto
 
 struct ContactList {
     @0 people Person[128];
+    @1 active flag;
+    @2 default_profession Profession;
 };
