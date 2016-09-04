@@ -37,10 +37,10 @@ void NfsServer::destroy()
 {
 }
 
-static void free_iovec(P::IOVecs *iovecs, Rpc *rpc)
+static void free_iovec(P::IO::IOVecs *iovecs, Rpc *rpc)
 {
     LOOP(iovecs->count, i) {
-        P::IOVec *vec = &iovecs->iovecs[i];
+        P::IO::IOVec *vec = &iovecs->iovecs[i];
         if (vec->iov_base) {
             rpc->free_data_buffer(vec->iov_base);
             vec->iov_base = nullptr;
@@ -71,7 +71,7 @@ xdr_buffered_WRITE3args(XDR *xdrs, BufferedWRITE3args *objp)
     u_int len = objp->data_len;
     objp->io_vecs.count = 0;
     for (int i = 0; i < ALLOCATION_RETRY && len > 0; ++i) {
-        P::IOVec *vec = &objp->io_vecs.iovecs[objp->io_vecs.count];
+        P::IO::IOVec *vec = &objp->io_vecs.iovecs[objp->io_vecs.count];
         vec->iov_base = rpc->alloc_data_buffer();
         if (vec->iov_base == nullptr) {
             PT_DEBUG(DATA, "no data buffer available");
@@ -197,7 +197,7 @@ void NfsServer::set_xdr_procs(RpcRequest *request)
 
         case NFSPROC3_READ:
             request->args.read.file.data.data_val = request->args_buffer;
-            request->res.read.READ3res_u.resok.io_vecs.iovecs = (P::IOVec *)request->res_buffer;
+            request->res.read.READ3res_u.resok.io_vecs.iovecs = (P::IO::IOVec *)request->res_buffer;
             request->args_proc = (xdrproc_t)xdr_READ3args;
             request->res_proc = (xdrproc_t)xdr_buffered_READ3res;
             request->free_proc = (xdrproc_t)xdr_READ3free;
@@ -205,7 +205,7 @@ void NfsServer::set_xdr_procs(RpcRequest *request)
 
         case NFSPROC3_WRITE:
             request->args.write.file.data.data_val = request->args_buffer_nfs_with_4k.fh;
-            request->args.write.io_vecs.iovecs = (P::IOVec *)(request->args_buffer_nfs_with_4k._4k);
+            request->args.write.io_vecs.iovecs = (P::IO::IOVec *)(request->args_buffer_nfs_with_4k._4k);
             request->args_proc = (xdrproc_t)xdr_buffered_WRITE3args;
             request->res_proc = (xdrproc_t)xdr_WRITE3res;
             break;
@@ -736,7 +736,7 @@ void NfsServer::read(RpcRequest *request, READ3args *args, BufferedREAD3res *res
     nfs_handle_to_ehandle(&args->file, &handle);
     PT_DEBUG(DATA, "read from handle=%lx offset=%lu count=%u", handle, args->offset, args->count);
 
-    P::IOVecs *io_vecs = &res->READ3res_u.resok.io_vecs;
+    P::IO::IOVecs *io_vecs = &res->READ3res_u.resok.io_vecs;
     io_vecs->count = (uint32_t)ceil((double)args->count / EStore::DATA_BUFFER_SIZE);
     uint32_t count = args->count;
     LOOP(io_vecs->count, i) {

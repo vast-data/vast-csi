@@ -1,7 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 
 /*!
- * \file test_common_scheduler.chpp
+ * \file test_common_scheduler.hpp
  * \brief A collection of useful scheduler related definitions for tests
  */
 

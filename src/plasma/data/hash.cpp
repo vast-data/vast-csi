@@ -7,7 +7,7 @@
 
 namespace P {
 
-void Hash::init_custom(size_t n_buckets, P::Index n_values, MatchFunc match_func, void *match_arg,
+void Hash::init_custom(size_t n_buckets, Index n_values, MatchFunc match_func, void *match_arg,
                        HashFunc hash_func)
 {
     ASSERT(is_power_of_two(n_buckets), "n_buckets should be power of 2");

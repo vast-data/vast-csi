@@ -47,7 +47,7 @@ void Future::wait_subset(Future *futures[], uint32_t total_count, uint32_t subse
     auto this_fiber = Fiber::get_current();
 
     LOOP(total_count, i) {
-        ASSERT(futures[i]->_owner == this_fiber);
+        ASSERT_EQUAL(futures[i]->_owner ,this_fiber);
         if (futures[i]->is_set()) {
             set_count++;
         }

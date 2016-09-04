@@ -4,6 +4,7 @@
 #include "plasma/fiber/fiber.hpp"
 
 namespace P {
+namespace IO {
 
 void IOProvider::init(DevIO devices[], size_t device_count)
 {
@@ -12,9 +13,7 @@ void IOProvider::init(DevIO devices[], size_t device_count)
     _fiber = nullptr;
     _was_suspended = false;
 
-    _active_devices_anchor.init();
-    _active_devices_pool.init((Index)device_count);
-    _active_devices.init(&_active_devices_anchor, & _active_devices_pool);
+    _active_devices.init((Index)device_count);
 
     LOOP(device_count, i) {
         _devices[i].set_ioprovider(this);
@@ -47,7 +46,7 @@ void IOProvider::start()
 
 void IOProvider::poll()
 {
-    ITER_SAFE_EACH(&_active_devices, index,
+    ITER_SAFE_EACH(_active_devices.list(), index,
         _devices[index].poll_events();
     )
 }
@@ -55,8 +54,8 @@ void IOProvider::poll()
 void IOProvider::enable_polling(DevIO *device)
 {
     Index index = PTR2IDX(device, _devices);
-    bool should_resume = _active_devices.is_empty();
-    _active_devices.append(index);
+    bool should_resume = _active_devices.list()->is_empty();
+    _active_devices.list()->append(index);
     if (should_resume) {
         DEBUG_ASSERT(_was_suspended);
         _fiber->resume();
@@ -66,8 +65,8 @@ void IOProvider::enable_polling(DevIO *device)
 void IOProvider::disable_polling(DevIO *device)
 {
     Index index = PTR2IDX(device, _devices);
-    _active_devices.remove(index);
-    if (_active_devices.is_empty()) {
+    _active_devices.list()->remove(index);
+    if (_active_devices.list()->is_empty()) {
         suspend();
     }
 }
@@ -75,7 +74,6 @@ void IOProvider::disable_polling(DevIO *device)
 void IOProvider::destroy()
 {
     _active_devices.destroy();
-    _active_devices_pool.destroy();
     LOOP_TYPE(Index, _device_count, index) {
         _devices[index].destroy();
     }
@@ -89,4 +87,5 @@ void IOProvider::suspend()
     Fiber::suspend();
 }
 
-}  // namespace P
+}   // namespace IO
+}   // namespace P

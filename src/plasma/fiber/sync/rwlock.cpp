@@ -37,7 +37,7 @@ void RWlock::lock_read()
     case Type::READ:
         ASSERT(_read_count > 0);
         // if there are waiters, there's a writer before us and we should suspend
-        if (_wait_anchor.is_empty()) {
+        if (!_wait_anchor.is_empty()) {
             Fiber::suspend_and_queue(&_wait_anchor);
         } else { // otherwise, we join the current readers
             _read_count++;
@@ -74,10 +74,7 @@ void RWlock::lock_write()
 
 void RWlock::unlock()
 {
-    auto fiber = Fiber::get_current();
-    auto suspend_state = fiber->get_suspend_state();
-    ASSERT(_state == suspend_state->rw_lock_type);
-    switch(suspend_state->rw_lock_type) {
+    switch(_state) {
     case Type::FREE:
         PANIC();
     case Type::READ:
@@ -87,7 +84,7 @@ void RWlock::unlock()
             _state = Type::FREE;
         break;
     case Type::WRITE:
-        ASSERT(_writer == fiber);
+        ASSERT(_writer == Fiber::get_current());
         _writer = nullptr;
         _state = Type::FREE;
         break;
@@ -96,16 +93,17 @@ void RWlock::unlock()
     // give the lock to the next pending fiber
     if (_state == Type::FREE) {
         do {
-            fiber = Fiber::queue_peek(&_wait_anchor);
+            auto fiber = Fiber::queue_peek(&_wait_anchor);
             if (fiber == nullptr)
                 break;
-            suspend_state = fiber->get_suspend_state();
+            auto suspend_state = fiber->get_suspend_state();
             if (suspend_state->rw_lock_type == Type::WRITE) {
                 // already locked for read
                 if (_state == Type::READ) {
                     break;
                 } else { // lock is free. lock and return
                     _state = Type::WRITE;
+                    _writer = fiber;
                     Fiber::pop_and_resume(&_wait_anchor);
                     break;
                 }

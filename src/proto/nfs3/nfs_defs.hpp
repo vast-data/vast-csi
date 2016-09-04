@@ -42,7 +42,7 @@ struct BufferedWRITE3args {
     count3 count;
     stable_how stable;
     u_int data_len;
-    P::IOVecs io_vecs;
+    P::IO::IOVecs io_vecs;
 };
 
 struct BufferedREAD3resok {
@@ -50,7 +50,7 @@ struct BufferedREAD3resok {
     count3 count;
     bool_t eof;
     u_int data_len;
-    P::IOVecs io_vecs;
+    P::IO::IOVecs io_vecs;
 };
 
 struct BufferedREAD3res {

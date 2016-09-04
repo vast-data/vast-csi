@@ -215,7 +215,7 @@ cpp_sources.append('tests/test_module.cpp')
 cpp_sources.extend([murmur, rpc_xdr, mnt_xdr, nfs_xdr, nlm_xdr])
 cpp_lib = cpp_env.Library(target='dist/orion_cpp', source=cpp_sources)
 cpp_env.Depends(cpp_lib, LINKER_SCRIPT)
-cpp_env.Append(LIBS=[cpp_lib, 'unwind', 'config', 'libaio', 'rdmacm', 'ibverbs', 'uuid'])
+cpp_env.Append(LIBS=[cpp_lib, 'unwind', 'config', 'libaio', 'rdmacm', 'ibverbs', 'uuid', 'z'])
 env_program = cpp_env.Program(target='dist/env', source=['src/plasma/execution/main.cpp'])
 
 def AddCppTest(target, source, wrap=[], group_alias='cpptest'):
@@ -265,6 +265,7 @@ AddCppTest(target='dist/tests/box', source=['tests/test_box.cpp'])
 AddCppTest(target='dist/tests/imdb', source=['tests/test_imdb.cpp'])
 AddCppTest(target='dist/tests/cluster', source=['tests/test_cluster.cpp'])
 AddCppTest(target='dist/tests/env_config', source=['tests/test_env_config.cpp'])
+AddCppTest(target='dist/tests/mio', source=['tests/test_mio.cpp'])
 
 cpp_env.AlwaysBuild('nfstest')
 cpp_env.AlwaysBuild('cpptest')

@@ -11,6 +11,8 @@
 
 namespace P {
 
+namespace IO {
+
 static const RetryParams io_submit_retry_params = { .max_spinning_attempts = 100, .attempts_per_yield = 5, .max_attempts = 1000 };
 static const RetryParams io_poll_retry_params = { .max_spinning_attempts = 100, .attempts_per_yield = 5, .max_attempts = 1000 };
 
@@ -127,7 +129,7 @@ void DevIO::validate_io_event(struct io_event *event)
         PT_ERROR(DATA, "IO error: res=%ld, res2=%ld nbytes = %ld, opcode = %d\n",
                (long)event->res, (long)event->res2,
                (long)event->obj->u.c.nbytes, event->obj->aio_lio_opcode);
-        io->io_future->res = ReturnCode::ERROR;
+        io->io_future->res = false;
     }
 }
 
@@ -139,7 +141,7 @@ void DevIO::poll_events()
     ASSERT(active_ios > 0);
 
     int ios_done;
-    RETRY_LOOP(io_poll_retry_params, P::Fiber::yield,
+    RETRY_LOOP_TILL_PANIC(io_poll_retry_params, P::Fiber::yield,
         ios_done = io_getevents(_ctx, 0, active_ios, events, nullptr);
         if (ios_done >= 0) {
             break;
@@ -167,9 +169,10 @@ void DevIO::poll_events()
     }
 }
 
-void DevIO::submit_ios(struct iocb **ios_ptr, uint32_t io_count)
+bool DevIO::submit_ios(struct iocb **ios_ptr, uint32_t io_count)
 {
-    RETRY_LOOP(io_submit_retry_params, P::Fiber::yield,
+    bool too_many_retries;
+    RETRY_LOOP(too_many_retries, io_submit_retry_params, P::Fiber::yield,
         int submit_ret = io_submit(_ctx, io_count, ios_ptr);
         if (submit_ret == (int) io_count) {
             break;
@@ -186,14 +189,24 @@ void DevIO::submit_ios(struct iocb **ios_ptr, uint32_t io_count)
             }
         }
     )
+
+    if (too_many_retries) {
+        // Failure to perform IO submit. Need to discard all remaining io structures.
+        LOOP(io_count, i) {
+            handle_io_done(ios_ptr[i]);
+        }
+    }
+
+    return !too_many_retries;
 }
 
 void DevIO::validate_io(IOVecs buffers[], Baddrs *dev_offsets)
 {
     LOOP(dev_offsets->count, baddr_idx) {
         size_t io_size = 0;
+        // O_DIRECT limitations
+        ASSERT(dev_offsets->baddrs[baddr_idx] % O_DIRECT_ALIGNMENT == 0);
         LOOP (buffers[baddr_idx].count, iovec_idx) {
-            // O_DIRECT limitations
             ASSERT(buffers[baddr_idx].iovecs[iovec_idx].iov_len % O_DIRECT_ALIGNMENT == 0);
             ASSERT((size_t)buffers[baddr_idx].iovecs[iovec_idx].iov_base % O_DIRECT_ALIGNMENT == 0);
 
@@ -205,7 +218,7 @@ void DevIO::validate_io(IOVecs buffers[], Baddrs *dev_offsets)
     }
 }
 
-DevIO::ReturnCode DevIO::perform_scattered_io(IOVecs buffers[], Baddrs *dev_offsets, bool is_write, DevIO::Future *io_future)
+bool DevIO::perform_scattered_io(IOVecs buffers[], Baddrs *dev_offsets, bool is_write, DevIO::Future *io_future)
 {
     validate_io(buffers, dev_offsets);
 
@@ -220,7 +233,7 @@ DevIO::ReturnCode DevIO::perform_scattered_io(IOVecs buffers[], Baddrs *dev_offs
     }
 
     io_future->init();
-    io_future->res = ReturnCode::SUCCESS;
+    io_future->res = true;
     io_future->io_count = io_count;
 
     allocate_ios(ios, io_count, io_future);
@@ -228,52 +241,11 @@ DevIO::ReturnCode DevIO::perform_scattered_io(IOVecs buffers[], Baddrs *dev_offs
         io_prep(ios[io_index], &buffers[io_index], dev_offsets->baddrs[io_index], is_write);
     }
 
-    submit_ios(ios, io_count);
+    io_future->res &= submit_ios(ios, io_count);
 
     if (blocking) {
         return wait(io_future);
     }
-
-    return ReturnCode::SUCCESS;
-}
-
-DevIO::ReturnCode DevIO::write_scatter(IOVecs buffers[], Baddrs *target_baddrs, DevIO::Future *io_future)
-{
-    return perform_scattered_io(buffers, target_baddrs, true, io_future);
-}
-
-DevIO::ReturnCode DevIO::read_scatter(IOVecs buffers[], Baddrs *source_baddrs, DevIO::Future *io_future)
-{
-    return perform_scattered_io(buffers, source_baddrs, false, io_future);
-}
-
-DevIO::ReturnCode DevIO::perform_io(IOVec *buffer, Baddr target_baddr, bool is_write, DevIO::Future *io_future)
-{
-    IOVecs iovecs;
-    iovecs.count = 1;
-    iovecs.iovecs = buffer;
-
-    Baddrs baddrs;
-    baddrs.count = 1;
-    baddrs.baddrs = &target_baddr;
-
-    return perform_scattered_io(&iovecs, &baddrs, is_write, io_future);
-}
-
-DevIO::ReturnCode DevIO::write(IOVec *buffer, Baddr target_baddr, DevIO::Future *io_future)
-{
-    return perform_io(buffer, target_baddr, true, io_future);
-}
-
-DevIO::ReturnCode DevIO::read(IOVec *buffer, Baddr source_baddr, DevIO::Future *io_future)
-{
-    return perform_io(buffer, source_baddr, false, io_future);
-}
-
-DevIO::ReturnCode DevIO::wait(DevIO::Future *io_future)
-{
-    io_future->wait();
-    ASSERT(io_future->io_count == 0);
 
     return io_future->res;
 }
@@ -287,7 +259,7 @@ void DevIO::destroy()
 
 // Still not operational, yet it should be in the future...
 
-//DevIO::ReturnCode DevIO::trim(Baddr base_offset, size_t block_count)
+//bool DevIO::trim(Baddr base_offset, size_t block_count)
 //{
 //
 //    off_t trim_ext[2];
@@ -309,4 +281,6 @@ void DevIO::destroy()
 //        PANIC();
 //    }
 //}
+
+}
 }

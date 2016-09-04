@@ -122,29 +122,48 @@ struct RetryParams {
 // Performs loop_body until it breaks.
 // Spins for max_spinning_attempts iterations, than performs yield every attempts_per_yield iterations
 // and eventually panics if we've reached max_attempts iterations.
-#define INNER_RETRY_LOOP(var_attempt_count, var_max_spinning_attempts, var_attempts_per_yield, var_max_attempts, max_spinning_attempts, attempts_per_yield, max_attempts, yield_fcn, ...)  \
-    do { uint64_t var_attempt_count = 0;                                                \
-    static const uint32_t var_max_spinning_attempts = max_spinning_attempts;            \
-    static const uint32_t var_attempts_per_yield = attempts_per_yield;                  \
-    static const uint32_t var_max_attempts = max_attempts;                              \
-                                                                                        \
-    while (true) {                                                                      \
-        var_attempt_count++;                                                            \
-        if (var_attempt_count > var_max_spinning_attempts) {                            \
-            if (unlikely(var_attempt_count > var_max_attempts)) {                       \
-                PANIC("maximum retries reached: " << var_attempt_count << "attempts");  \
-            }                                                                           \
-            if (var_attempt_count % var_attempts_per_yield == 0) {                      \
-                yield_fcn();                                                            \
-            }                                                                           \
-        }                                                                               \
-        __VA_ARGS__                                                                     \
-    } } while (false);
+#define INNER_RETRY_LOOP(too_many_retries, var_attempt_count, var_max_spinning_attempts, var_attempts_per_yield, var_max_attempts, max_spinning_attempts, attempts_per_yield, max_attempts, yield_fcn, ...)  \
+    do {                                                                                        \
+        too_many_retries = false;                                                               \
+        uint64_t var_attempt_count = 0;                                                         \
+        static const uint32_t var_max_spinning_attempts = max_spinning_attempts;                \
+        static const uint32_t var_attempts_per_yield = attempts_per_yield;                      \
+        static const uint32_t var_max_attempts = max_attempts;                                  \
+                                                                                                \
+        while (true) {                                                                          \
+            var_attempt_count++;                                                                \
+            if (var_attempt_count > var_max_spinning_attempts) {                                \
+                if (unlikely(var_attempt_count > var_max_attempts)) {                           \
+                    PT_WARN(DATA, "maximum retries reached: %lu attempts", var_attempt_count);  \
+                    too_many_retries = true;                                                    \
+                    break;                                                                      \
+                }                                                                               \
+                if (var_attempt_count % var_attempts_per_yield == 0) {                          \
+                    yield_fcn();                                                                \
+                }                                                                               \
+            }                                                                                   \
+            __VA_ARGS__                                                                         \
+        }                                                                                       \
+    } while (false);
 
-#define RETRY_LOOP_PARAMS(max_spinning_attempts, attempts_per_yield, max_attempts, yield_fcn, ...)                      \
-        INNER_RETRY_LOOP(MACRO_CONCAT(attempt_count_, __COUNTER__) , MACRO_CONCAT(max_spinning_attempts_, __COUNTER__), \
+#define RETRY_LOOP_PARAMS(too_many_retries, max_spinning_attempts, attempts_per_yield, max_attempts, yield_fcn, ...)       \
+        INNER_RETRY_LOOP(too_many_retries, MACRO_CONCAT(attempt_count_, __COUNTER__) ,                                     \
+                         MACRO_CONCAT(max_spinning_attempts_, __COUNTER__),                                             \
                          MACRO_CONCAT(attempts_per_yield_, __COUNTER__), MACRO_CONCAT(max_attempts_, __COUNTER__),      \
                          max_spinning_attempts, attempts_per_yield, max_attempts, yield_fcn, __VA_ARGS__)
 
-#define RETRY_LOOP(retry_params, yield_fcn, ...)                        \
-        RETRY_LOOP_PARAMS(retry_params.max_spinning_attempts, retry_params.attempts_per_yield, retry_params.max_attempts, yield_fcn, __VA_ARGS__)
+#define RETRY_LOOP(too_many_retries, retry_params, yield_fcn, ...)                                                 \
+        RETRY_LOOP_PARAMS(too_many_retries, retry_params.max_spinning_attempts,                                    \
+                          retry_params.attempts_per_yield, retry_params.max_attempts, yield_fcn, __VA_ARGS__)
+
+#define INNER_RETRY_LOOP_TILL_PANIC(var_too_many_retries, retry_params, yield_fcn, ...)        \
+        do {                                                                                \
+            bool var_too_many_retries;                                                         \
+            RETRY_LOOP(var_too_many_retries, retry_params, yield_fcn, __VA_ARGS__);            \
+            ASSERT(!var_too_many_retries, "Too many retries!");                                 \
+        } while (false);
+
+#define RETRY_LOOP_TILL_PANIC(retry_params, yield_fcn, ...)     \
+        INNER_RETRY_LOOP_TILL_PANIC(MACRO_CONCAT(too_many_retries_, __COUNTER__), retry_params, yield_fcn, __VA_ARGS__)
+
+

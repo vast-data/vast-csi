@@ -30,6 +30,7 @@ static const char LEADER_ENV_GUID[] = "12345678-9abc-def1-aaaa-bbbbccccdddd";
     X(PLASMA),                                  \
     X(NFS),                                     \
     X(CLUSTER),                                 \
+	X(IO_MIRRORING),                            \
     X(COUNT)
 
 DEFINE_LOOKUP_PROTOTYPES(COMPONENT_LIST,

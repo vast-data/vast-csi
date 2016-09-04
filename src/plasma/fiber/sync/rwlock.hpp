@@ -55,6 +55,8 @@ public:
 
     void destroy();
 
+    bool is_locked() const { return _state == Type::FREE; }
+
 private:
 
     Fiber *_writer; // isn't required, used for debugging

@@ -5,7 +5,7 @@ set -o xtrace
 
 yum -y groupinstall 'Development Tools'
 yum -y install epel-release
-yum -y install net-tools time nfstest which clang lldb scons libunwind-devel libconfig-devel install doxygen xorg-x11-xauth vim-enhanced zsh centos-release-scl libaio-devel python34 gtest-devel libuuid-devel
+yum -y install net-tools time nfstest which clang lldb scons libunwind-devel libconfig-devel install doxygen xorg-x11-xauth vim-enhanced zsh centos-release-scl libaio-devel python34 gtest-devel libuuid-devel zlib-devel
 yum -y install devtoolset-3-gcc
 
 curl https://bootstrap.pypa.io/get-pip.py | python3.4

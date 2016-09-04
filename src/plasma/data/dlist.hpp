@@ -167,4 +167,19 @@ private:
     Pool *_list_pool;
 };
 
+// Todo: this should be unified with SingleList to a single templated code
+class SingleDList {
+public:
+    void init(Index size) { _list_pool.init(size); _anchor.init(); _list.init(&_anchor, &_list_pool); }
+    void destroy() { _list.destroy(); /* _anchor.destroy(); */_list_pool.destroy(); }
+
+    DList* list() { return &_list; }
+
+private:
+    DList _list;
+    DList::Anchor _anchor;
+    DList::Pool _list_pool;
+
+};
+
 }

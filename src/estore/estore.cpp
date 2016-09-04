@@ -607,7 +607,7 @@ static EStoreRes io_start(EHandle handle, SystemAttr *pre_attr, int *fd)
     return EStoreRes::OK;
 }
 
-EStoreRes EStore::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, P::IOVecs *io_vecs,
+EStoreRes EStore::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, P::IO::IOVecs *io_vecs,
                         SystemAttr *pre_attr, SystemAttr *post_attr)
 {
     int fd;
@@ -652,7 +652,7 @@ EStoreRes EStore::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
 }
 
 
-EStoreRes EStore::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, P::IOVecs *io_vecs,
+EStoreRes EStore::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, P::IO::IOVecs *io_vecs,
                        uint32_t *bytes_read, bool *eof, SystemAttr *pre_attr, SystemAttr *post_attr)
 {
     int fd;

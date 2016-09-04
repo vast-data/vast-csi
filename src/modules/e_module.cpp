@@ -36,8 +36,8 @@ static constexpr int32_t IO_POOL_COUNT = 100;
     vmsg_module_resources->num_recv_buffers = DEFAULT_NUM_RECV_BUFFERS;
 }
 
-/* static */ void EModule::init_io_from_settings(ConfigSetting *io_setting, DevIO **devices,
-                                                 AtomicPool<DevIO::IO> *iopool, IOProvider *io_provider)
+/* static */ void EModule::init_io_from_settings(ConfigSetting *io_setting, IO::DevIO **devices,
+                                                 AtomicPool<IO::DevIO::IO> *iopool, IO::IOProvider *io_provider)
 {
     ConfigSetting *iopool_count_setting = Conf::conf_setting_lookup_required(io_setting, "io_pool_count");
     size_t iopool_count = Conf::conf_setting_get_int32(iopool_count_setting);
@@ -46,7 +46,7 @@ static constexpr int32_t IO_POOL_COUNT = 100;
     ConfigSetting *io_provider_setting = Conf::conf_setting_lookup_required(io_setting, "io_provider");
     ConfigSetting *devices_setting = Conf::conf_setting_lookup_required(io_provider_setting, "devices");
     const size_t device_count = (size_t)Conf::conf_setting_length(devices_setting);
-    *devices = new DevIO[device_count];
+    *devices = new IO::DevIO[device_count];
 
     LOOP(device_count, i) {
         ConfigSetting *device_setting = Conf::conf_setting_get_element(devices_setting, (uint32_t) i);
@@ -65,10 +65,10 @@ static constexpr int32_t IO_POOL_COUNT = 100;
     io_provider->init(*devices, device_count);
 }
 
-void EModule::init(Silo *silo, ConfigSetting *module_setting)
+void EModule::init(Silo *silo UNUSED, ConfigSetting *module_setting)
 {
     ConfigSetting *io_setting = Conf::conf_setting_lookup_required(module_setting, "io");
-    init_io_from_settings(io_setting, &devices, &iopool, &io_provider);
+    init_io_from_settings(io_setting, &_devices, &_iopool, &io_provider);
     _agent.init(silo->get_id(), get_id());
 }
 

@@ -336,7 +336,7 @@ public:
      * \note A write operation of more than 0 bytes updates the element mtime.
      * \note A write operation that changes the element size updates the element ctime.
      */
-    EStoreRes write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, P::IOVecs *io_vecs,
+    EStoreRes write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, P::IO::IOVecs *io_vecs,
                     SystemAttr *pre_attr OUT, SystemAttr *post_attr OUT);
 
     /*!
@@ -358,7 +358,7 @@ public:
      *
      * \note A read operation updates the element access time.
      */
-    EStoreRes read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, P::IOVecs *io_vecs,
+    EStoreRes read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, P::IO::IOVecs *io_vecs,
                    uint32_t *bytes_read OUT, bool *eof OUT, SystemAttr *pre_attr OUT, SystemAttr *post_attr OUT);
 
     /*!

@@ -1,4 +1,5 @@
 #include "rw_spinlock.hpp"
+#include "plasma/internal.hpp"
 #include "plasma/fiber/fiber.hpp"
 
 namespace P {
@@ -8,8 +9,8 @@ namespace Sync {
 void RWSpinLock::retry_until_wlock()
 {
     uint32_t current_state;
-    RETRY_LOOP(write_retry, Fiber::thread_or_fiber_yield,
-        RETRY_LOOP(write_retry, Fiber::thread_or_fiber_yield,
+    RETRY_LOOP_TILL_PANIC(write_retry, Fiber::thread_or_fiber_yield,
+        RETRY_LOOP_TILL_PANIC(write_retry, Fiber::thread_or_fiber_yield,
             current_state = _state.load();
             if (!has_writer((State)current_state)) {
                 break;
@@ -25,7 +26,7 @@ void RWSpinLock::retry_until_wlock()
         }
 
         // pending write
-        RETRY_LOOP(write_retry, Fiber::thread_or_fiber_yield,
+    RETRY_LOOP_TILL_PANIC(write_retry, Fiber::thread_or_fiber_yield,
             current_state = _state.load();
 
             if (no_lockers((State)current_state)) {
@@ -44,7 +45,7 @@ void RWSpinLock::retry_until_wlock()
 
 void RWSpinLock::retry_until_rlock()
 {
-    RETRY_LOOP(read_retry, Fiber::thread_or_fiber_yield,
+    RETRY_LOOP_TILL_PANIC(read_retry, Fiber::thread_or_fiber_yield,
         if(rtrylock()) {
             break;
         }

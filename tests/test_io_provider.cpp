@@ -1,5 +1,4 @@
 /* Copyright (C) Vast Data Ltd. */
-#include <fcntl.h>
 #include <gtest/gtest.h>
 
 #include "../src/globals.hpp"
@@ -13,20 +12,20 @@
 #include "../src/plasma/memory/alloc.hpp"
 
 #include "test_common_scheduler.hpp"
+#include "test_common_io.hpp"
 
 using namespace P::Conf;
+using namespace P::IO;
 
-#define DEVICE_FILE_SIZE (20<<10) // 20K
-
-static void generate_scatters(P::IOVec write_buffers[] OUT, size_t buffer_count, P::IOVecs scatter[] OUT, uint32_t scatter_sizes[], size_t scatter_count,
-                              const size_t buff_len, P::IOVecs* scatter_per_io[] OUT, uint32_t io_batches[], size_t io_submission_count)
+static void generate_scatters(IOVec write_buffers[] OUT, size_t buffer_count, IOVecs scatter[] OUT, uint32_t scatter_sizes[], size_t scatter_count,
+                              const size_t buff_len, IOVecs* scatter_per_io[] OUT, uint32_t io_batches[], size_t io_submission_count)
 {
     LOOP(buffer_count, i) {
-        write_buffers[i].iov_base = P::aligned_new_arr<P::byte>(P::DevIO::O_DIRECT_ALIGNMENT, buff_len);
+        write_buffers[i].iov_base = P::aligned_new_arr<P::byte>(P::IO::DevIO::O_DIRECT_ALIGNMENT, buff_len);
         write_buffers[i].iov_len = buff_len;
     }
     // initialize scatters (pointing at the buffers)
-    P::IOVec* buff_ptr = write_buffers;
+    P::IO::IOVec* buff_ptr = write_buffers;
     LOOP(scatter_count, i)
     {
         scatter[i].count = scatter_sizes[i];
@@ -34,7 +33,7 @@ static void generate_scatters(P::IOVec write_buffers[] OUT, size_t buffer_count,
 
         buff_ptr += scatter[i].count;
     }
-    P::IOVecs* scatter_ptr = scatter;
+    P::IO::IOVecs* scatter_ptr = scatter;
     LOOP(io_submission_count, i)
     {
         scatter_per_io[i] = scatter_ptr;
@@ -42,11 +41,11 @@ static void generate_scatters(P::IOVec write_buffers[] OUT, size_t buffer_count,
     }
 }
 
-static void generate_baddrs(P::Baddr baddrs[] OUT, uint32_t scatter_sizes[], size_t scatter_count, const size_t buff_len,
-        P::Baddrs target_baddrs[] OUT, uint32_t io_batches[], size_t io_submission_count)
+static void generate_baddrs(Baddr baddrs[] OUT, uint32_t scatter_sizes[], size_t scatter_count, const size_t buff_len,
+        Baddrs target_baddrs[] OUT, uint32_t io_batches[], size_t io_submission_count)
 {
     // initialize target baddrs
-    P::Baddr baddr = 0;
+    Baddr baddr = 0;
     LOOP(scatter_count, i)
     {
         baddrs[i] = baddr;
@@ -54,7 +53,7 @@ static void generate_baddrs(P::Baddr baddrs[] OUT, uint32_t scatter_sizes[], siz
         baddr += scatter_sizes[i] * buff_len;
     }
     // initialize target_baddrs according to amount of io submission batches.
-    P::Baddr* baddr_ptr = baddrs;
+    Baddr* baddr_ptr = baddrs;
     LOOP(io_submission_count, i)
     {
         target_baddrs[i].count = io_batches[i];
@@ -63,12 +62,12 @@ static void generate_baddrs(P::Baddr baddrs[] OUT, uint32_t scatter_sizes[], siz
     }
 }
 
-static void multiple_async_rw(P::DevIO *device)
+static void multiple_async_rw(DevIO *device)
 {
     uint32_t scatter_sizes[] = {3 , 1, 5};
     uint32_t io_batches[] = {2, 1}; // this should sum up to NUM_ELEMENTS(scatter_sizes) - asserted later on
 
-    static const size_t buff_len = P::DevIO::O_DIRECT_ALIGNMENT;
+    static const size_t buff_len = DevIO::O_DIRECT_ALIGNMENT;
 
     size_t buffer_count = 0;
     size_t scatter_count = NUM_ELEMENTS(scatter_sizes);
@@ -87,16 +86,16 @@ static void multiple_async_rw(P::DevIO *device)
     }
 
     // initialize write buffers scatter
-    P::IOVec write_buffers[buffer_count];
-    P::IOVecs write_scatter[scatter_count];
-    P::IOVecs *write_scatter_per_io[io_submission_count];
+    IOVec write_buffers[buffer_count];
+    IOVecs write_scatter[scatter_count];
+    IOVecs *write_scatter_per_io[io_submission_count];
     generate_scatters(write_buffers, buffer_count, write_scatter, scatter_sizes, scatter_count,
                       buff_len, write_scatter_per_io, io_batches, io_submission_count);
 
     // initialize read buffers scatter
-    P::IOVec read_buffers[buffer_count];
-    P::IOVecs read_scatter[scatter_count];
-    P::IOVecs *read_scatter_per_io[io_submission_count];
+    IOVec read_buffers[buffer_count];
+    IOVecs read_scatter[scatter_count];
+    IOVecs *read_scatter_per_io[io_submission_count];
     generate_scatters(read_buffers, buffer_count, read_scatter, scatter_sizes, scatter_count,
                       buff_len, read_scatter_per_io, io_batches, io_submission_count);
 
@@ -106,29 +105,28 @@ static void multiple_async_rw(P::DevIO *device)
     }
 
     // initialize  baddrs
-    P::Baddr baddrs[scatter_count];
-    P::Baddrs io_submission_baddrs[io_submission_count];
+    Baddr baddrs[scatter_count];
+    Baddrs io_submission_baddrs[io_submission_count];
     generate_baddrs(baddrs, scatter_sizes, scatter_count, buff_len, io_submission_baddrs, io_batches, io_submission_count);
 
     // submit all write ios
-    P::DevIO::Future write_futures[io_submission_count];
-    P::DevIO::ReturnCode io_ret;
+    BaseIO::Future write_futures[io_submission_count];
+    bool io_ret;
     LOOP(io_submission_count, i) {
 //        printf("sumitting write to %u addresses:\n", io_submission_baddrs[i].count);
 //        LOOP(io_submission_baddrs[i].count, j) {
 //            printf("%lu: scatter of %u buffers\n", j, write_scatter_per_io[i][j].count);
 //        }
         io_ret = device->write_scatter(write_scatter_per_io[i], &io_submission_baddrs[i], &write_futures[i]);
-        ASSERT_EQ(io_ret, P::DevIO::ReturnCode::SUCCESS);
+        ASSERT_TRUE(io_ret);
     }
 
     // wait & read every io
-    P::DevIO::Future read_futures[io_submission_count];
+    DevIO::Future read_futures[io_submission_count];
     LOOP(io_submission_count, i) {
         io_ret = device->wait(&write_futures[i]);
-        ASSERT_EQ(io_ret, P::DevIO::ReturnCode::SUCCESS);
-        ASSERT_EQ(write_futures[i].res, P::DevIO::ReturnCode::SUCCESS);
-
+        ASSERT_TRUE(io_ret);
+        ASSERT_TRUE(write_futures[i].res);
 
 //        printf("sumitting read to %u addresses:\n", io_submission_baddrs[i].count);
 //        LOOP(io_submission_baddrs[i].count, j) {
@@ -136,14 +134,14 @@ static void multiple_async_rw(P::DevIO *device)
 //        }
 
         io_ret = device->read_scatter(read_scatter_per_io[i], &io_submission_baddrs[i], &read_futures[i]);
-        ASSERT_EQ(io_ret, P::DevIO::ReturnCode::SUCCESS);
+        ASSERT_TRUE(io_ret);
     }
 
     // wait for all read operations
     LOOP(io_submission_count, i) {
         io_ret = device->wait(&read_futures[i]);
-        ASSERT_EQ(io_ret, P::DevIO::ReturnCode::SUCCESS);
-        ASSERT_EQ(read_futures[i].res, P::DevIO::ReturnCode::SUCCESS);
+        ASSERT_TRUE(io_ret);
+        ASSERT_TRUE(read_futures[i].res);
     }
 
     // once this is operational- uncomment
@@ -157,30 +155,30 @@ static void multiple_async_rw(P::DevIO *device)
     }
 }
 
-static void simple_rw(P::DevIO *device)
+static void simple_rw(DevIO *device)
 {
     char data[] = "Avi Nimni is the king";
 
-    static const size_t buff_len = P::DevIO::O_DIRECT_ALIGNMENT;
+    static const size_t buff_len = DevIO::O_DIRECT_ALIGNMENT;
 
-    char* write_buffer = P::aligned_new_arr<char>(P::DevIO::O_DIRECT_ALIGNMENT, buff_len);
+    char* write_buffer = P::aligned_new_arr<char>(DevIO::O_DIRECT_ALIGNMENT, buff_len);
 
     strncpy(write_buffer, data, sizeof(data));
 
-    P::IOVec io;
+    IOVec io;
     io.iov_base = write_buffer;
     io.iov_len = buff_len;
 
-    P::DevIO::ReturnCode io_ret = device->write(&io, 0, nullptr);
-    ASSERT_EQ(io_ret, P::DevIO::ReturnCode::SUCCESS);
+    bool io_ret = device->write(&io, 0, nullptr);
+    ASSERT_TRUE(io_ret);
 
-    char* read_buffer = P::aligned_new_arr<char>(P::DevIO::O_DIRECT_ALIGNMENT, buff_len);
+    char* read_buffer = P::aligned_new_arr<char>(DevIO::O_DIRECT_ALIGNMENT, buff_len);
 
     io.iov_base = read_buffer;
     io.iov_len = buff_len;
 
     io_ret = device->read(&io, 0, nullptr);
-    ASSERT_EQ(io_ret, P::DevIO::ReturnCode::SUCCESS);
+    ASSERT_TRUE(io_ret);
 
     size_t len = strnlen(read_buffer, buff_len);
     ASSERT_LT(len, sizeof(data));
@@ -196,35 +194,13 @@ static void simple_rw(P::DevIO *device)
 
 static void io_submitter(void *arg)
 {
-    P::IOProvider *io_provider = (P::IOProvider*) arg;
-
-    P::DevIO *device = &io_provider->_devices[0];
+    DevIO *device = (DevIO*) arg;
 
     simple_rw(device);
 
     multiple_async_rw(device);
 
     env_stop = true;
-}
-
-static const char *create_device_file(ConfigSetting *io_module)
-{
-    ConfigSetting *devices_setting = conf_setting_lookup_required(io_module, "io_provider.devices");
-
-    EXPECT_EQ(1, conf_setting_length(devices_setting));
-
-    ConfigSetting *device_setting = conf_setting_get_element(devices_setting, 0);
-    ConfigSetting *dev_path_setting = conf_setting_lookup_required(device_setting, "dev_path");
-    const char *dev_path = conf_setting_get_string(dev_path_setting);
-
-    int fd = open(dev_path,  O_CREAT, S_IRUSR | S_IWUSR);
-
-    ftruncate(fd, DEVICE_FILE_SIZE);
-
-    int ret = close(fd);
-    EXPECT_EQ(0, ret);
-
-    return dev_path;
 }
 
 TEST(TestIOProvider, test)
@@ -236,23 +212,23 @@ TEST(TestIOProvider, test)
 
     ConfigSetting *io_module = conf_lookup(config, "io_module");
 
-    const char *dev_path = create_device_file(io_module);
+    devices_test_files(io_module, true);
 
-    P::DevIO *devices;
-    P::AtomicPool<P::DevIO::IO> iopool;
+    DevIO *devices;
+    P::AtomicPool<DevIO::IO> iopool;
 
-    P::IOProvider io_provider;
+    IOProvider io_provider;
 
     P::EModule::init_io_from_settings(io_module, &devices, &iopool, &io_provider);
 
     P::Scheduler::init(&scheduler_config);
 
     io_provider.start();
-    P::Fiber::init(FG_A, io_submitter, &io_provider, false);
+    P::Fiber::init(FG_A, io_submitter, &devices[0], false);
 
     P::Scheduler::run();
 
-    remove(dev_path);
+    devices_test_files(io_module, false);
 
     P::Scheduler::destroy();
 

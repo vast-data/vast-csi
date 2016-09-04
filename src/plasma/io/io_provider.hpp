@@ -14,6 +14,8 @@
 
 namespace P {
 
+namespace IO {
+
 class DevIO;
 
 class IOProvider {
@@ -64,15 +66,16 @@ public:
         return false;
     }
 
+    size_t device_count() const { return _device_count; }
+
 private:
 
-    // Todo: create a DList holding actual anchor and pool (and not reference)
-    DList _active_devices;
-    DList::Anchor _active_devices_anchor;
-    DList::Pool _active_devices_pool;
+    SingleDList _active_devices;
+
     size_t _device_count;
     Fiber *_fiber;  // Provider fiber.
     bool _was_suspended;  // Indicates whether the provider fiber was suspended.
 };  // class IOProvider
 
-};  // namespace P
+}   // namespace IO
+}   // namespace P

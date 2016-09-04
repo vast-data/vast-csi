@@ -104,20 +104,20 @@ static void write_locker(void *lock_arg)
 {
     RWlock *lock = (RWlock*)lock_arg;
 
-    EXPECT_EQ(0, rwlock_state);
+    EXPECT_EQ(1, rwlock_state);
     rwlock_state++;
 
     lock->lock_write();
 
-    EXPECT_EQ(1, rwlock_state);
+    EXPECT_EQ(6, rwlock_state);
     rwlock_state++;
 
-    LOOP(100, i)
+    LOOP(10, i)
         P::Fiber::yield();
 
     lock->unlock();
 
-    EXPECT_EQ(5, rwlock_state);
+    EXPECT_EQ(7, rwlock_state);
     rwlock_state++;
 }
 
@@ -131,8 +131,32 @@ static void read_locker(void *lock_arg)
 
     lock->lock_read();
 
-    ASSERT_GE(rwlock_state, 6);
-    ASSERT_LE(rwlock_state, 8); // 3 fibers
+    ASSERT_GE(rwlock_state, 8);
+    ASSERT_LE(rwlock_state, 10); // 3 fibers
+    rwlock_state++;
+
+    lock->unlock();
+}
+
+static void first_read_locker(void *lock_arg)
+{
+    RWlock *lock = (RWlock*)lock_arg;
+
+    EXPECT_EQ(0, rwlock_state);
+    rwlock_state++;
+
+    lock->lock_read();
+
+    P::Fiber::yield();
+
+    EXPECT_EQ(5, rwlock_state);
+    rwlock_state++;
+
+    lock->unlock();
+
+    lock->lock_read();
+
+    EXPECT_EQ(11, rwlock_state);
     rwlock_state++;
 
     lock->unlock();
@@ -145,6 +169,7 @@ TEST(TestFiberSync, test_rwlock_barrier)
 
     P::Scheduler::init(&scheduler_config);
 
+    P::Fiber::init(FG_A, first_read_locker, &lock, false);
     P::Fiber::init(FG_A, write_locker, &lock, false);
     P::Fiber::init(FG_A, read_locker, &lock, false);
     P::Fiber::init(FG_A, read_locker, &lock, false);
@@ -153,6 +178,8 @@ TEST(TestFiberSync, test_rwlock_barrier)
     P::Scheduler::run();
 
     lock.destroy();
+
+    EXPECT_EQ(12, rwlock_state);
 
     P::Scheduler::destroy();
 }
