@@ -478,10 +478,39 @@ public:
      */
     EStoreRes get_stats(OpCallback op_cb, void *cb_ctx, EHandle handle, EStoreStats *stats OUT, SystemAttr *attr OUT);
     
-    EStoreRes lock(OpCallback op_cb, void *cb_ctx, EHandle handle, LockInfo *lock);
+    /*!
+     * Get element store statistics
+     * \param op_cb - operation callback, called with the provided handle attributes
+     * \param cb_ctx - callback context
+     * \param handle - handle of an element within the element store
+     * \param lock - information needed to to uniquely specify a lock
+     * \param block - flag to indicate blocking behaviour
+     * \return OK on successes
+     *         LOCKED in case there is an existing lock that can't be removed
+     */
+    EStoreRes lock(OpCallback op_cb, void *cb_ctx, EHandle handle, bool block, LockInfo *lock);
 
+    /*!
+     * Get element store statistics
+     * \param op_cb - operation callback, called with the provided handle attributes
+     * \param cb_ctx - callback context
+     * \param handle - handle of an element within the element store
+     * \param lock - information needed to remove a previously established lock
+     * \return OK on successes
+     *         LOCKED in case there is an existing lock that can't be removed
+     */
     EStoreRes unlock(OpCallback op_cb, void *cb_ctx, EHandle handle, LockInfo *lock);
 
+    /*!
+     * Get element store statistics
+     * \param op_cb - operation callback, called with the provided handle attributes
+     * \param cb_ctx - callback context
+     * \param handle - handle of an element within the element store
+     * \param lock - information needed to remove a previously established lock
+     * \param existing_lock - output existing lock and lock owner info (in case return value is LOCKED)
+     * \return OK on successes
+     *         LOCKED in case there is an existing lock
+     */
     EStoreRes test_lock(OpCallback op_cb, void *cb_ctx, EHandle handle, LockInfo *lock, LockInfo *existing_lock OUT);
 
 private:

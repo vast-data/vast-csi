@@ -155,7 +155,7 @@ struct NlmArgsBuffer {
     char netobj0[MAXNETOBJ_SZ];
     char netobj1[MAXNETOBJ_SZ];
     char netobj2[MAXNETOBJ_SZ];
-    char caller_name[LM_MAXSTRLEN];
+    char caller_name[LM_MAXSTRLEN+1];
 };
 
 // biggest reply is readlink
@@ -169,7 +169,7 @@ struct RpcRequest {
     // buffers for storing auth data
     char auth_cred_buffer[AUTH_SIZE];
     char auth_verf_buffer[AUTH_SIZE];
-    char machine_name[MACHINE_NAME_LEN];
+    char machine_name[MACHINE_NAME_LEN+1];
     u_int gids[MAX_GIDS];
     // auth unix data
     bool unix_auth_set;

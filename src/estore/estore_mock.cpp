@@ -3,7 +3,6 @@
 // it is recommended to start from a clean directory
 
 #include <cstdlib>
-#include <limits>
 #include <vector>
 #include <cstring>
 #include "plasma/utils/assert.hpp"
@@ -17,6 +16,7 @@
 #include <dirent.h>
 #include <set>
 
+#define MAX_OWNER_SIZE 1024+1
 // TODO use correct component once its defined
 #define CURRENT_COMPONENT ComponentId::NFS
 // no reason to really sync writes in the mock, enable this if we'll want to do crash tests on top of the mock
@@ -60,7 +60,7 @@ public:
     
 private:
     LockInfo _lock_info;
-    char _owner[1024];
+    char _owner[MAX_OWNER_SIZE]; // MAXNETOBJ_SZ+1
     int32_t _owner_len;
 };
 
@@ -201,14 +201,27 @@ public:
         _handle_to_paths[handle].insert(path);
     }
 
+    LocksVector *get_locks(EHandle handle)
+    {
+        LocksMap::iterator it = _handle_to_locks.find(handle);
+        if (it == _handle_to_locks.end())
+        {
+            return nullptr;
+        }
+        return &it->second;
+    }
+
+    LocksVector *add_locks(EHandle handle)
+    {
+        return &_handle_to_locks.insert(std::pair<EHandle, LocksVector>(handle, LocksVector())).first->second;
+    }
+
 private:
     static const int MAX_FD = 128;
     uint64_t _current_handle = 2;
     std::map<string, EHandle> _path_to_handle;
     std::map<EHandle, std::set<string> > _handle_to_paths;
     std::map<EHandle, int> _handle_to_fd;
-
-public:
     LocksMap _handle_to_locks;
 };
 
@@ -911,56 +924,53 @@ EStoreRes EStore::get_stats(OpCallback op_cb, void *cb_ctx, EHandle handle, ESto
     return EStoreRes::OK;
 }
 
-EStoreRes EStore::lock(OpCallback op_cb, void *cb_ctx, EHandle handle, LockInfo *lock)
+EStoreRes EStore::lock(OpCallback op_cb, void *cb_ctx, EHandle handle, bool block, LockInfo *lock)
 {
     Lock new_lock;
-    LocksMap* locks = &_handle_container._handle_to_locks;
-    LocksMap::iterator it = locks->find(handle);
-    if (it == locks->end()) {
-        new_lock.init(lock);
-        LocksVector v(1, new_lock);
-        locks->insert(std::pair<EHandle, LocksVector>(handle, v));
-        return EStoreRes::OK;
-    }
-
-    for(LocksVector::iterator l = it->second.begin(); l != it->second.end(); ++l) {
-        if (not l->can_be_taken_by(lock))
-        {
-            return EStoreRes::LOCKED;
-        }
-    }
+    LocksVector *locks = _handle_container.get_locks(handle);
     
-    for(LocksVector::iterator l = it->second.begin(); l != it->second.end(); ++l) {
-        if (l->overlaps(lock))
-        {
-            it->second.erase(l);
+    if (locks == nullptr) {
+        locks = _handle_container.add_locks(handle);
+    }
+    else {
+        for(LocksVector::iterator l = locks->begin(); l != locks->end(); ++l) {
+            if (!l->can_be_taken_by(lock))
+            {
+                return EStoreRes::LOCKED;
+            }
+        }
+
+        for(LocksVector::iterator l = locks->begin(); l != locks->end(); ++l) {
+            if (l->overlaps(lock))
+            {
+                locks->erase(l);
+            }
         }
     }
     
     new_lock.init(lock);
-    it->second.push_back(new_lock);
+    locks->push_back(new_lock);
     return EStoreRes::OK;
 }
 
 EStoreRes EStore::unlock(OpCallback op_cb, void *cb_ctx, EHandle handle, LockInfo *lock)
 {
-    LocksMap* locks = &_handle_container._handle_to_locks;
-    LocksMap::iterator it = locks->find(handle);
-    if (it == locks->end()) {
+    LocksVector* locks = _handle_container.get_locks(handle);
+    if (locks == nullptr) {
         return EStoreRes::OK;
     }
 
-    for(LocksVector::iterator l = it->second.begin(); l != it->second.end(); ++l) {
-        if (not l->can_be_taken_by(lock))
+    for(LocksVector::iterator l = locks->begin(); l != locks->end(); ++l) {
+        if (!l->can_be_taken_by(lock))
         {
             return EStoreRes::LOCKED;
         }
     }
 
-    for(LocksVector::iterator l = it->second.begin(); l != it->second.end(); ++l) {
+    for(LocksVector::iterator l = locks->begin(); l != locks->end(); ++l) {
         if (l->overlaps(lock))
         {
-            it->second.erase(l);
+            locks->erase(l);
         }
     }
     return EStoreRes::OK;
@@ -968,14 +978,13 @@ EStoreRes EStore::unlock(OpCallback op_cb, void *cb_ctx, EHandle handle, LockInf
 
 EStoreRes EStore::test_lock(OpCallback op_cb, void *cb_ctx, EHandle handle, LockInfo *lock, LockInfo *existing_lock OUT)
 {
-    LocksMap* locks = &_handle_container._handle_to_locks;
-    LocksMap::iterator it = locks->find(handle);
-    if (it == locks->end()) {
+    LocksVector* locks = _handle_container.get_locks(handle);
+    if (locks == nullptr) {
         return EStoreRes::OK;
     }
 
-    for(LocksVector::iterator l = it->second.begin(); l != it->second.end(); ++l) {
-        if (not l->can_be_taken_by(lock))
+    for(LocksVector::iterator l = locks->begin(); l != locks->end(); ++l) {
+        if (!l->can_be_taken_by(lock))
         {
             *existing_lock = *l->get_info();
             return EStoreRes::LOCKED;

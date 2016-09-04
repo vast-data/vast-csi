@@ -1,4 +1,3 @@
-#include <limits>
 #include "nfs_utils.hpp"
 #include "plasma/trace/emitter.hpp"
 
@@ -38,7 +37,7 @@ void nlm4_lock_to_lock_info(bool exclusive, const nlm4_lock *lock, EStore::LockI
     lock_info->owner = owner->n_bytes;
     lock_info->owner_len = owner->n_len;
     lock_info->start = lock->l_offset;
-    lock_info->end = lock->l_len == 0 ? std::numeric_limits<uint64_t>::max() : lock->l_offset + lock->l_len;
+    lock_info->end = lock->l_len == 0 ? UINT64_MAX : lock->l_offset + lock->l_len;
 }
 
 }
