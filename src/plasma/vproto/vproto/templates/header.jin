@@ -241,7 +241,7 @@ public:
             }
         }
         {% else %}
-        void get_{{ field.name }}({{ get_fqn(field) }}::Reader *{{ field.name }}{% if field.elements %}, uint16_t index=0{% endif %})
+        void get_{{ field.name }}({{ get_fqn(field) }}::Reader *{{ field.name }}{% if field.elements %}, uint16_t index{% endif %})
         {
             if ({{ field.index }} < _next_index) {
                 {% if field.elements %}
