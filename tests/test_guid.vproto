@@ -1,0 +1,6 @@
+struct GUIDTest {
+    @0 bar uint64_t;
+    @1 first char;
+    @2 guid GUID;
+    @3 last char;
+};

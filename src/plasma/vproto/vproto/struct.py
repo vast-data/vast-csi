@@ -7,7 +7,7 @@ MAX_ARRAY_ELEMENTS = 2**16
 
 class SchemaError(Exception): pass
 
-VProtoType = namedtuple('VProtoType', ['name', 'size', 'is_primitive', 'module'])
+VProtoType = namedtuple('VProtoType', ['name', 'size', 'alignment', 'is_primitive', 'module'])
 
 class VProtoBuiltinsModule(object):
     def get_namespace(self):
@@ -32,9 +32,10 @@ class TypeRegistry(object):
                 'uint64_t': 8,
                 'float': 4,
                 'double': 8}
-    VPROTO_BUILTINS = [VProtoType('byte', 1, True, vproto_builtins_module),
-                       VProtoType('Index', 4, True, vproto_builtins_module),
-                       VProtoType('VProto::ArrayPtr', 8, True, vproto_builtins_module)]
+    VPROTO_BUILTINS = [VProtoType('byte', 1, 1, True, vproto_builtins_module),
+                       VProtoType('Index', 4, 4, True, vproto_builtins_module),
+                       VProtoType('GUID', 16, 8, True, vproto_builtins_module),
+                       VProtoType('VProto::ArrayPtr', 8, 8, True, vproto_builtins_module)]
     BUILTINS_NAMES = list(BUILTINS.keys()) + [i.name for i in VPROTO_BUILTINS]
 
     def __init__(self):
@@ -43,7 +44,7 @@ class TypeRegistry(object):
         self._consts = {}
 
         for name, size in self.BUILTINS.items():
-            self.add(VProtoType(name, size, True, builtins_module))
+            self.add(VProtoType(name, size, size, True, builtins_module))
         for builtin in self.VPROTO_BUILTINS:
             self.add(builtin)
 
@@ -76,7 +77,8 @@ class TypeRegistry(object):
 
     DEFAULT_ENUM_SIZE = 4
     def add_enum(self, enum):
-        self.add(VProtoType(enum.name, self.DEFAULT_ENUM_SIZE if enum.type is None else enum.type.size, True, enum.module))
+        size = self.DEFAULT_ENUM_SIZE if enum.type is None else enum.type.size
+        self.add(VProtoType(enum.name, size, size, True, enum.module))
 
     def merge(self, registry, alias=None):
         prefix = '' if alias is None else alias + '.'
@@ -96,6 +98,7 @@ def align_fields(fields, registry=TypeRegistry()):
     for field in sorted(fields, key=lambda field: field.index):
         field_type = registry.get(field.type.name)
         field_size = field_type.size
+        alignment = field_type.alignment
         # find the smallest padding we can fit this field into
         padding_index = None
         for index, thing in enumerate(result):
@@ -107,8 +110,8 @@ def align_fields(fields, registry=TypeRegistry()):
             # replace the padding with the field and new padding if necessary
             padding = result.pop(padding_index)
             pre_padding_size = 0
-            if padding.offset % field_size > 0:
-                pre_padding_size = field_size - padding.offset % field_size
+            if padding.offset % alignment > 0:
+                pre_padding_size = alignment - padding.offset % alignment
                 result.insert(padding_index, Padding(pre_padding_size, padding.offset))
                 padding_index += 1
             result.insert(padding_index, VProtoField(name=field.name, index=field.index, type=field_type,
@@ -119,8 +122,8 @@ def align_fields(fields, registry=TypeRegistry()):
                 result.insert(padding_index + 1, Padding(size=leftover, offset=padding.offset + pre_padding_size + field_size))
         else:
             # append the field in the end
-            if offset % field_size > 0:
-                padding_size = field_size - offset % field_size
+            if offset % alignment > 0:
+                padding_size = alignment - offset % alignment
                 result.append(Padding(size=padding_size, offset=offset))
                 offset += padding_size
             result.append(VProtoField(name=field.name, index=field.index, type=field_type,
@@ -138,7 +141,7 @@ class VProtoStruct(object):
         self.module = module
         self.name = struct_ast.name
         self.is_primitive = False
-        self.largest_field = 0
+        self.alignment = 0
 
         variable_fields = []
         primitive_fields = []
@@ -148,11 +151,11 @@ class VProtoStruct(object):
                 field = Field(name=field.name + '_ptr', index=field.index, default=None,
                               type=FieldType(name='VProto::ArrayPtr', elements=None))
             primitive_fields.append(field)
-            self.largest_field = max(self.largest_field, registry.get(field.type.name).size)
+            self.alignment = max(self.alignment, registry.get(field.type.name).alignment)
 
         self.primitive_fields = [i for i in align_fields(primitive_fields, registry) if not isinstance(i, Padding)]
         if self.primitive_fields:
-            self.next_index = self.primitive_fields[-1].index + 1
+            self.next_index = max(field.index for field in self.primitive_fields) + 1
             self.size = self.primitive_fields[-1].offset + self.primitive_fields[-1].type.size
         else:
             self.next_index = 0
@@ -162,10 +165,10 @@ class VProtoStruct(object):
 
         for field in variable_fields:
             field_type = registry.get(field.type.name)
-            largest_field = field_type.size if field_type.is_primitive else field_type.largest_field
+            alignment = field_type.alignment
             padding = 0
-            if largest_field > 0 and self.size % largest_field > 0:
-                padding = largest_field - self.size % largest_field
+            if alignment > 0 and self.size % alignment > 0:
+                padding = alignment - self.size % alignment
 
             elements = field.type.elements
             if elements is not None:
@@ -187,11 +190,11 @@ class VProtoStruct(object):
                 raise SchemaError('Field cannot be of size 0: {}.{}'.format(self.name, field.name))
             self.size += field_type.size * (1 if elements is None else elements)
             # each variable length field should be aligned on the size of its largest member.
-            self.largest_field = max(self.largest_field, largest_field)
+            self.alignment = max(self.alignment, alignment)
 
         # the entire struct should be aligned on the size of its largest member (simplifies array stride)
-        if self.size > 0 and self.size % self.largest_field > 0:
-            self.size += self.largest_field - self.size % self.largest_field
+        if self.size > 0 and self.size % self.alignment > 0:
+            self.size += self.alignment - self.size % self.alignment
 
         if self.size > MAX_STRUCT_SIZE:
             raise SchemaError('Struct {} is larger than allowed maximum ({}): {}'.format(self.name, MAX_STRUCT_SIZE, self.size))

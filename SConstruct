@@ -221,7 +221,7 @@ cpp_sources.append(build_dir + '/tests/test_module.cpp')
 cpp_sources.extend([murmur, rpc_xdr, mnt_xdr, nfs_xdr, nlm_xdr])
 cpp_lib = cpp_env.Library(target='dist/orion_cpp', source=cpp_sources)
 cpp_env.Depends(cpp_lib, LINKER_SCRIPT)
-cpp_env.Append(LIBS=[cpp_lib, 'unwind', 'config', 'libaio', 'rdmacm', 'ibverbs'])
+cpp_env.Append(LIBS=[cpp_lib, 'unwind', 'config', 'libaio', 'rdmacm', 'ibverbs', 'uuid'])
 cpp_env.Program(target='dist/env', source=[build_dir + '/src/plasma/execution/main.cpp'])
 
 def AddCppTest(target, source, wrap=[], group_alias='cpptest'):

@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include "test.vproto.hpp"
 #include "test_older.vproto.hpp"
+#include "test_guid.vproto.hpp"
 
 // this following includes exist purely to make sure the code compiles
 #include "test_import.vproto.hpp"
@@ -128,6 +129,25 @@ TEST(TestVProto, test_to_from_builder)
     root_builder.init_from_reader(&reader);
 
     ASSERT_EQ(root_builder.get_age(), 120);
+}
+
+TEST(TestVProto, test_guid)
+{
+    GUIDTest::RootBuilder builder;
+    builder.init();
+    P::GUID guid;
+    guid.init();
+    builder.set_guid(guid);
+    builder.set_bar(123);
+    builder.set_first('a');
+    builder.set_last('b');
+
+    auto reader = builder.as_reader();
+    P::GUID reader_guid = reader->get_guid();
+    ASSERT_TRUE(guid.equals(&reader_guid));
+    ASSERT_EQ(reader->get_bar(), 123);
+    ASSERT_EQ(reader->get_first(), 'a');
+    ASSERT_EQ(reader->get_last(), 'b');
 }
 
 int main(int argc, char **argv)
