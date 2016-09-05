@@ -12,7 +12,7 @@ TEST(TestNfs, test)
 {
     debugging = true;
     P::Env *env = P::Env::get();
-    std::thread env_thread(&P::Env::run, env, "tests/nfs_test.config");
+    std::thread env_thread(&P::Env::run, env, "" /* binary_path */, "tests/nfs_test.config");
     // wait for the env to start
     while (env->get_state() != P::EnvState::RUN) {
         usleep(100);

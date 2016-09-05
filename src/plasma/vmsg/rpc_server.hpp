@@ -10,6 +10,7 @@ namespace VMsg {
 enum class RpcServerId: uint8_t {
     TestRpc,
     MetricsAgent,
+    PModuleAgent,
     EModuleAgent,
 
     COUNT

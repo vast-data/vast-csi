@@ -255,8 +255,11 @@ static void register_signals()
     signal(SIGPIPE, SIG_IGN);
 }
 
-void Env::run(const char *config_path)
+void Env::run(const char *binary_path, const char *config_path)
 {
+    ASSERT_OP(strlen(binary_path), <, PATH_MAX, "binary path is too long");
+    strcpy(_binary_path, binary_path);
+
     register_signals();
     Config *config = parse_config(config_path);
 

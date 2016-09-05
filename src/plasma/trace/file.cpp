@@ -5,6 +5,7 @@
 #include <limits.h>
 #include <dirent.h>
 #include "record.hpp"
+#include "plasma/utils/os.hpp"
 #include "plasma/utils/units.hpp"
 #include "plasma/utils/assert.hpp"
 #include "plasma/utils/time.hpp"
@@ -97,6 +98,7 @@ void TraceFile::create_file()
     ASSERT_EQUAL(access(path, F_OK), -1);
     _file = fopen(path, "w");
     ASSERT_NOT_NULL(_file);
+    set_cloexec_flag(_file);
     _file_offset = 0;
     _bytes_left_in_chunk = CHUNK_SIZE;
     write_header();

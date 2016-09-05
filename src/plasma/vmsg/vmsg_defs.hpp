@@ -11,6 +11,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "defs.hpp"
 #include "plasma/vmsg/vmsg.vproto.hpp"
 #include "plasma/fiber/sync/future.hpp"
 #include "plasma/data/spsc_queue.hpp"
@@ -24,7 +25,6 @@ static const int RESOLVE_TIMEOUT_MS = 1000;
 static const uint8_t MAX_PRIVATE_DATA = 255;
 static const uint16_t RPC_BUFFER_SIZE = 4096;
 static const uint16_t MAX_CONCURRENT_RPC_REQUESTS = 1024;
-static const uint16_t MAX_ENVS = 32;
 static const uint64_t DEFUALT_MSG_TIMEOUT_USEC = SEC_TO_MICRO(60);
 
 typedef uint8_t SiloId;

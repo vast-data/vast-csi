@@ -8,7 +8,7 @@
 
 TEST(TestEnv, test)
 {
-    P::Env::get()->run("tests/env_test.config");
+    P::Env::get()->run("" /* binary_path */, "tests/env_test.config");
     ASSERT(TestModule::is_init(), "test module expected to be init");
     ASSERT(TestModule::is_started(), "test module expected to be started");
 }

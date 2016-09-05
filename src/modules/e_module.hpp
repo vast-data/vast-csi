@@ -31,15 +31,14 @@ public:
 
     static const char *get_name() { return "E"; }
 
-    static void
-    init_io_from_settings(Conf::ConfigSetting *io_module, DevIO **devices, AtomicPool<DevIO::IO> *iopool,
-                          IOProvider *io_provider);
+    static void init_io_from_settings(Conf::ConfigSetting *io_module, DevIO **devices, AtomicPool<DevIO::IO> *iopool,
+                                      IOProvider *io_provider);
 
     IOProvider io_provider;
 private:
     AtomicPool<DevIO::IO> iopool;
     DevIO *devices;
     EModuleAgent _agent;
-};
+};  // class EModule
 
 }  // namespace P

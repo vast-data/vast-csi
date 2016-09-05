@@ -1,0 +1,20 @@
+class: PModuleAgent
+include: ["p_module.vproto.hpp", "plasma/vproto/empty.vproto.hpp"]
+api_version: 1
+namespaces: ["P"]
+methods:
+- method: set_local_env_id
+  op_id: 1
+  fiber_group: P
+  arg: SetLocalEnvIdParams
+  res: VProto::Empty
+- method: env_start
+  op_id: 2
+  fiber_group: P
+  arg: EnvStartParams
+  res: EnvStartResult
+- method: env_stop
+  op_id: 3
+  fiber_group: P
+  arg: EnvStopParams
+  res: EnvStopResult

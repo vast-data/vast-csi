@@ -98,7 +98,7 @@ void VMsgTest::run_test()
 
 void VMsgTest::run_env(const char *config_file)
 {
-    Env::get()->run(config_file);
+    Env::get()->run("" /* binary_path */, config_file);
 }
 
 #define WAIT_LOOPS 10000

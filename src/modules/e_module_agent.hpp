@@ -13,7 +13,7 @@ public:
         Control::Agent::init(silo_id, module_id);
 
         // Env-related functionality should run only on the first silo.
-        if (Silo::get_current_silo_id() == 0) {
+        if (silo_id == 0) {
             _rpc_server.init(silo_id, module_id);
         }
     }

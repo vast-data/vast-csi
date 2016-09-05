@@ -8,6 +8,12 @@
 
 #include "plasma/utils/macros.hpp"
 
+namespace P {
+
+static const uint16_t MAX_ENVS = 32;
+
+}
+
 #define COMPONENT_LIST(X)                       \
     X(PLASMA),                                  \
     X(NFS),                                     \
@@ -22,6 +28,7 @@ DEFINE_LOOKUP_PROTOTYPES(COMPONENT_LIST,
     X(E),                                    \
     X(E_IO_POLLING),                         \
     X(E_VMSG_POLLING),                       \
+    X(P),                                    \
     X(NFS_POLLING),                          \
     X(PROTO),                                \
     X(TEST),                                 \
@@ -34,6 +41,7 @@ DEFINE_LOOKUP_PROTOTYPES(FIBER_GROUP_LIST,
                          fiber_group_id_from_string)
 
 #define MODULES_LIST(X) \
+    X(P),               \
     X(E),               \
     X(I),               \
     X(TEST),            \

@@ -52,10 +52,14 @@ public:
     void wait_for_run_state(void);
 
     /*!
-    * This function gets a path for a configuration file and runs the environment.
-    * Most modules wait for input forever, therefore this function runs forever.
-    */
-    void run(const char *config_path);
+     * Run the environment.
+     * Most modules wait for input forever, therefore this function runs forever.
+     *
+     * \param binary_path path to the running binary, to be used for spawning another env by the platform module. Can be
+     * an empty string when used in tests.
+     * \param config_path path for a configuration file.
+     */
+    void run(const char *binary_path, const char *config_path);
 
     /*!
     * Called when an error happens and the env and it silos should be stopped.
@@ -72,6 +76,9 @@ public:
     void register_module(ModuleId id, ModuleFactory *factory);
     ModuleInterface *create_module(const char *name, ModuleId *id OUT);
 
+    const char *get_data_dir() { return _data_dir; }
+    const char *get_binary_path() { return _binary_path; }
+
 private:
 
     void init(Conf::Config *config);
@@ -82,6 +89,7 @@ private:
     void init_nfs(Conf::Config *config);
 
     ModuleFactory *_module_factory[(int)ModuleId::COUNT];
+    char _binary_path[PATH_MAX];
     char _data_dir[PATH_MAX];
     char _trace_dir[PATH_MAX];
     Silo **_silos;

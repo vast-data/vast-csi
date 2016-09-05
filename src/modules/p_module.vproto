@@ -1,0 +1,38 @@
+$import plasma/vmsg/vmsg.vproto as VMsg
+
+$namespace P
+
+struct SetLocalEnvIdParams {
+    @0 env_id VMsg.EnvId;
+};
+
+struct EnvStartParams {
+    @0 env_guid GUID;
+    @1 config char[2048];
+};
+
+enum EnvStartResultCode : uint8_t {
+    SUCCESS,
+    GUID_ALREADY_EXISTS,
+    MAX_ENVS_CREATED,
+    WRITE_FAILED,
+    FORK_FAILED
+};
+
+struct EnvStartResult {
+    @0 code EnvStartResultCode;
+};
+
+struct EnvStopParams {
+    @0 env_guid GUID;
+};
+
+enum EnvStopResultCode : uint8_t {
+    SUCCESS,
+    GUID_NOT_FOUND,
+    KILL_FAILED
+};
+
+struct EnvStopResult {
+    @0 code EnvStopResultCode;
+};
