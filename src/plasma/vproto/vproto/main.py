@@ -65,7 +65,7 @@ class VProtoModule(object):
         self.options = parse_directives(directives)
         for path, label in self.options['imports'].items():
             module_registry = TypeRegistry()
-            VProtoModule(path, module_registry, import_path)
+            VProtoModule(path, module_registry, import_path + ':' + os.path.dirname(self.path))
             registry.merge(module_registry, label)
 
         for alias, type_name in self.options['typedefs'].items():
