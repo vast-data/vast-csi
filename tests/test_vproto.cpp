@@ -91,12 +91,12 @@ TEST(TestVProto, test_backward_compat)
     ASSERT_DEATH(person_reader->get_weight(), "PANIC: No default value assigned to field 'weight' of struct 'Person'");
 
     // new fields
-    ASSERT_DEATH(person_reader->get_name(), "Array index out of bounds: Person.name");
+    NS::Phone::Reader phone_reader;
+    ASSERT_DEATH(person_reader->get_emergency_phones(&phone_reader, 0), "Array did not exist in older version: Person.emergency_phones");
 
     ASSERT_EQ(person_reader->get_active(), true);
     ASSERT_EQ(person_reader->get_profession(), NS::Profession::PILOT);
 
-    NS::Phone::Reader phone_reader;
     person_reader->get_phones(&phone_reader, 0);
     ASSERT_EQ(phone_reader.get_number(), 144);
     ASSERT_TRUE(phone_reader.get_active());

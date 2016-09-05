@@ -145,12 +145,12 @@ public:
         }
 
         {% endif %}
-        {{ get_fqn(field) }}{% if not field.type.is_primitive %}::Builder{% endif %} *get_{{ field.name }}({% if field.elements %}uint16_t index=0{% endif %})
+        {{ get_fqn(field) }}{% if not field.type.is_primitive %}::Builder{% endif %} *get_{{ field.name }}({% if field.elements and field.type.name not in ['byte', 'char'] %}uint16_t index{% endif %})
         {
-            {% if field.elements %}
+            {% if field.elements and field.type.name not in ['byte', 'char'] %}
             ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
             {% endif %}
-            return &_{{ field.name }}{% if field.elements %}[index]{% endif %};
+            return {% if not field.elements or field.type.name not in ['byte', 'char'] %}&{% endif %}_{{ field.name }}{% if field.elements and field.type.name not in ['byte', 'char'] %}[index]{% endif %};
         }
         {% endfor %}
 
@@ -232,25 +232,25 @@ public:
 
         {% endif %}
         {% if field.type.is_primitive %}
-        {{ get_fqn(field) }} *get_{{ field.name }}(uint16_t index=0)
+        {{ get_fqn(field) }} *get_{{ field.name }}({% if field.type.name not in ['byte', 'char'] %}uint16_t index{% endif %})
         {
-            {% if field.elements %}
+            {% if field.type.name not in ['byte', 'char'] %}
             ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
             {% endif %}
             if ({{ field.index }} < _next_index) {
-                return ({{ get_fqn(field) }}*) ((P::byte*) _object + _object->_{{ field.name }}_ptr.get_offset() + index * _object->_{{ field.name }}_ptr.get_size());
+                return ({{ get_fqn(field) }}*) ((P::byte*) _object + _object->_{{ field.name }}_ptr.get_offset(){% if field.type.name not in ['byte', 'char'] %} + index * _object->_{{ field.name }}_ptr.get_size(){% endif %});
             } else {
                 return nullptr;
             }
         }
         {% else %}
-        void get_{{ field.name }}({{ get_fqn(field) }}::Reader *{{ field.name }}{% if field.elements %}, uint16_t index{% endif %})
+        void get_{{ field.name }}({{ get_fqn(field) }}::Reader *{{ field.name }}{% if field.elements and field.type not in ['byte', 'char']%}, uint16_t index{% endif %})
         {
             if ({{ field.index }} < _next_index) {
-                {% if field.elements %}
+                {% if field.elements and field.type not in ['byte', 'char']%}
                 ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
                 {% endif %}
-                {{ field.name }}->init(({{ get_fqn(field) }}::FixedData*) ((P::byte*) _object + (_object->_{{ field.name }}_ptr.get_offset(){% if field.elements %} + index * _object->_{{ field.name }}_ptr.get_size(){% endif %})), _object->_{{ field.name }}_ptr.get_next_index());
+                {{ field.name }}->init(({{ get_fqn(field) }}::FixedData*) ((P::byte*) _object + (_object->_{{ field.name }}_ptr.get_offset(){% if field.elements and field.type not in ['byte', 'char']%} + index * _object->_{{ field.name }}_ptr.get_size(){% endif %})), _object->_{{ field.name }}_ptr.get_next_index());
             } else {
                 {% if field.elements %}
                 PANIC("Array did not exist in older version: {{ struct.name }}.{{ field.name }}");
@@ -297,13 +297,13 @@ public:
 
         {% endif %}
         {% if field.type.is_primitive %}
-        {{ get_fqn(field) }} *get_{{ field.name }}(uint16_t index=0)
+        {{ get_fqn(field) }} *get_{{ field.name }}({% if field.type.name not in ['byte', 'char'] %}uint16_t index{% endif %})
         {
-            {% if field.elements %}
+            {% if field.type.name not in ['byte', 'char'] %}
             ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
             {% endif %}
             if ({{ field.index }} < _vproto_header.get_next_index()) {
-                return ({{ get_fqn(field) }}*) ((P::byte*) this + _{{ field.name }}_ptr.get_offset() + index * _{{ field.name }}_ptr.get_size());
+                return ({{ get_fqn(field) }}*) ((P::byte*) this + _{{ field.name }}_ptr.get_offset(){% if field.type.name not in ['byte', 'char'] %} + index * _{{ field.name }}_ptr.get_size(){% endif %});
             } else {
                 return nullptr;
             }

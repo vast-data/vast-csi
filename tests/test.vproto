@@ -35,5 +35,6 @@ struct Person {
 
     @2 phones Phone[2];
     @6 address Address;
+    @8 emergency_phones Phone[2];
 };
 
