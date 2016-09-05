@@ -1,3 +1,8 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o nounset
+set -o xtrace
+
 yum -y groupinstall 'Development Tools'
 yum -y install epel-release
 yum -y install net-tools time nfstest which clang lldb scons libunwind-devel libconfig-devel install doxygen xorg-x11-xauth vim-enhanced zsh centos-release-scl libaio-devel python34 gtest-devel libuuid-devel
@@ -28,3 +33,5 @@ rm -rf ./softiwarp
 sudo sed -i "s/ not in ('127.0.0.1', '::1'):/:/g" /usr/lib/python2.7/site-packages/nfstest/host.py
 # disable lock testing in nfs test until NLM is ready
 sudo sed -i "s/ 'fcntl'/#'fcntl'/g" /usr/bin/nfstest_posix
+
+echo "Bootstrap script has finished successfully!"
