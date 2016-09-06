@@ -25,7 +25,7 @@ public:
 
     virtual void start();
 
-    virtual Control::Agent *get_control_agent() { return &_agent; }
+    virtual Control::BaseAgent *get_control_agent() { return &_agent; }
 
     static ModuleId get_id() { return ModuleId::E; }
 

@@ -32,6 +32,7 @@ DEFINE_LOOKUP_PROTOTYPES(COMPONENT_LIST,
     X(E_IO_POLLING),                         \
     X(E_VMSG_POLLING),                       \
     X(P),                                    \
+    X(C),                                    \
     X(B),                                    \
     X(I_NFS_POLLING),                        \
     X(I_PROTO),                              \
@@ -47,6 +48,7 @@ DEFINE_LOOKUP_PROTOTYPES(FIBER_GROUP_LIST,
 #define MODULES_LIST(X) \
     X(P),               \
     X(E),               \
+    X(C),               \
     X(I),               \
     X(B),               \
     X(TEST),            \

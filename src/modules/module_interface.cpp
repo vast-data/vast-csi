@@ -1,5 +1,6 @@
 #include "module_interface.hpp"
 #include "e_module.hpp"
+#include "c_module.hpp"
 #include "i_module.hpp"
 #include "p_module.hpp"
 #include "b_module.hpp"
@@ -16,10 +17,11 @@ class ModuleFactoryImpl : public ModuleFactory {
 ModuleFactoryImpl<TestModule> t;
 ModuleFactoryImpl<P::PModule> p;
 ModuleFactoryImpl<P::EModule> e;
+ModuleFactoryImpl<Control::CModule> c;
 ModuleFactoryImpl<BModule> b;
 ModuleFactoryImpl<IModule> i;
 
-ModuleFactory *factories[] = { &t, &p, &e, &b, &i };
+ModuleFactory *factories[] = { &t, &p, &e, &c, &b, &i };
 
 void register_modules()
 {

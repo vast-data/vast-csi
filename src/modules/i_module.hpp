@@ -17,12 +17,12 @@ class IModule : public ModuleInterface {
 public:
     virtual void init(P::Silo *silo, P::Conf::ConfigSetting *setting);
     virtual void start();
-    virtual P::Control::Agent* get_control_agent() { return &_agent; }
+    virtual Control::BaseAgent* get_control_agent() { return &_agent; }
     static ModuleId get_id() { return ModuleId::I; }
     static const char *get_name() { return "I"; }
 
 private:
     Nfs::NfsProto _nfs;
     EStore::EStore _estore;
-    P::Control::Agent _agent;
+    Control::BaseAgent _agent;
 };

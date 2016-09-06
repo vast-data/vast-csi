@@ -13,10 +13,10 @@
 
 namespace P {
     class Silo;
+}
 
-    namespace Control {
-        class Agent;
-    }
+namespace Control {
+    class BaseAgent;
 }
 
 class ModuleInterface {
@@ -25,7 +25,7 @@ public:
     virtual void init(P::Silo *silo, P::Conf::ConfigSetting *setting) = 0;
     virtual void start() = 0;
 
-    virtual P::Control::Agent* get_control_agent() = 0;
+    virtual Control::BaseAgent* get_control_agent() = 0;
 };
 
 /*!
