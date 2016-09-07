@@ -1,0 +1,74 @@
+$namespace Control
+
+$import control/imdb/cnode.vproto as cnode
+$import control/imdb/env.vproto as env
+
+struct SystemInitParams {
+    @0 guid GUID;
+};
+
+enum SystemInitResultCode {
+    SUCCESS
+};
+
+struct SystemInitResult {
+    @0 code SystemInitResultCode;
+};
+
+$const size_t CNODE_MAX_DATA_ENVS = 2;
+$const size_t SILO_MAX_MODULES = 16; // TODO: this should be ModuleId::COUNT in the future.
+
+struct SiloConfig {
+    @0 module_enabled bool[SILO_MAX_MODULES];
+    @1 affinity int8_t; // core index or -1 for no affinity
+};
+
+struct EnvConfig {
+    @0 silo_config SiloConfig[env.ENV_MAX_SILOS];
+    @1 silo_count byte;
+};
+
+struct CNodeAddParams {
+    @0 env_configs EnvConfig[CNODE_MAX_DATA_ENVS];
+    @1 env_count byte;
+    @2 guid GUID;
+    @3 addresses cnode.IPv4[2];
+};
+
+enum CNodeAddResultCode {
+    SUCCESS,
+    NO_MEM,
+    ALREADY_EXISTS
+};
+
+struct CNodeAddResult {
+    @0 code CNodeAddResultCode;
+};
+
+struct CNodeModifyParams {
+    @0 guid GUID;
+    @1 enabled bool;
+};
+
+enum CNodeModifyResultCode {
+    SUCCESS,
+    NOT_FOUND
+};
+
+struct CNodeModifyResult {
+    @0 code CNodeModifyResultCode;
+};
+
+struct CNodeRemoveParams {
+    @0 guid GUID;
+};
+
+enum CNodeRemoveResultCode {
+    SUCCESS,
+    NOT_FOUND,
+    NOT_DISABLED
+};
+
+struct CNodeRemoveResult {
+    @0 code CNodeRemoveResultCode;
+};

@@ -87,6 +87,8 @@ class TypeRegistry(object):
                 self._types[prefix + name] = type
         for type_alias, type_name in registry._aliases.items():
             self._aliases[prefix + type_alias] = type_name
+        for (name, (type,value)) in registry._consts.items():
+            self._consts[prefix + name] = (type, value)
 
 Padding = namedtuple('Padding', ['size', 'offset'])
 VProtoField = namedtuple('VProtoField', ['name', 'index', 'type', 'elements', 'default', 'offset'])

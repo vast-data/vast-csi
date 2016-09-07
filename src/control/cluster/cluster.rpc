@@ -1,0 +1,22 @@
+class: Cluster
+include: cluster.vproto.hpp
+api_version: 1
+namespaces: ["Control"]
+default_fiber_group: C
+methods:
+- method: system_init
+  op_id: 1
+  arg: SystemInitParams
+  res: SystemInitResult
+- method: cnode_add
+  op_id: 2
+  arg: CNodeAddParams
+  res: CNodeAddResult
+- method: cnode_modify
+  op_id: 3
+  arg: CNodeModifyParams
+  res: CNodeModifyResult
+- method: cnode_remove
+  op_id: 4
+  arg: CNodeRemoveParams
+  res: CNodeRemoveResult

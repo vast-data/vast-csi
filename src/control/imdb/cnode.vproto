@@ -1,6 +1,10 @@
 $import object.vproto
 
+$typedef uint32_t IPv4
+
 struct CNodeProto {
     @0 base_proto ObjectBaseProto;
-    @1 version uint32_t;
+    @1 addresses IPv4[2];
+    @2 version uint32_t;
+    @3 enabled bool;
 };

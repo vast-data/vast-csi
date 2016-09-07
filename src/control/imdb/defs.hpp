@@ -9,6 +9,7 @@
 #include "plasma/utils/types.hpp"
 #include "system.hpp"
 #include "cnode.hpp"
+#include "env.hpp"
 #include "drive.hpp"
 
 namespace Control {
@@ -19,6 +20,9 @@ struct TypeConfig {
 };
 
 // this array should be coordinated with the TypeId enum in object.hpp
-TypeConfig type_configs[(P::byte)TypeId::COUNT] = {{sizeof(System), 64}, {sizeof(CNode), 2048}, {sizeof(Drive), 4096}};
+const TypeConfig TYPE_CONFIGS[(P::byte)TypeId::COUNT] = {{sizeof(System), 1},
+                                                         {sizeof(CNode), 1024},
+                                                         {sizeof(EnvObj), 4096},
+                                                         {sizeof(Drive), 4096}};
 
 }

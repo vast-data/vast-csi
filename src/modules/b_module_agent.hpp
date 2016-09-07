@@ -2,14 +2,13 @@
 
 #pragma once
 
-#include "plasma/control/agent.hpp"
+#include "control/agent.hpp"
 
-class BModuleAgent : public P::Control::Agent {
+class BModuleAgent : public Control::BaseAgent {
 public:
     void init(P::SiloId silo_id, ModuleId module_id) {
-        P::Control::Agent::init(silo_id, module_id, FiberGroupId::B);
+        Control::BaseAgent::init(silo_id, module_id, FiberGroupId::B);
     }
 
 private:
 };  // class BModuleAgent
-

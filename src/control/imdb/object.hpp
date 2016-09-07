@@ -11,10 +11,11 @@
 
 namespace Control {
 
-// this enum should be coordinated with the type_configs array in defs.hpp.
+// this enum should be coordinated with the TYPE_CONFIGS array in defs.hpp.
 enum class TypeId : P::byte {
     System,
     CNode,
+    Env,
     Drive,
     COUNT
 };
@@ -52,6 +53,12 @@ public:
     {
         child->get_base_proto()->set_parent_guid(get_base()->get_guid());
         _children.append(&child->child_node);
+    }
+
+    template <class Child>
+    void remove_child(Child *child)
+    {
+        child->child_node.remove();
     }
 
     P::IList *get_children()

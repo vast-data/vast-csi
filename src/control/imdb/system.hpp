@@ -13,7 +13,19 @@ namespace Control {
 
 class System : public Object<SystemProto, TypeId::System> {
 public:
+    uint16_t allocate_env_id()
+    {
+        uint16_t result = get_next_env_id();
+        set_next_env_id(result + 1);
+        return result;
+    }
 
+    uint16_t allocate_cnode_id()
+    {
+        uint16_t result = get_next_cnode_id();
+        set_next_cnode_id(result + 1);
+        return result;
+    }
 };
 
 }

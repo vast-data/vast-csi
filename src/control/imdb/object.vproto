@@ -1,7 +1,9 @@
 $namespace Control;
 
+$const size_t NAME_SIZE = 64;
+
 struct ObjectBaseProto {
     @0 guid GUID;
     @1 parent_guid GUID;
-    @2 name char[64];
+    @2 name char[NAME_SIZE];
 };

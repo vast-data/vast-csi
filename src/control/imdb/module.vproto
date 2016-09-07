@@ -1,0 +1,21 @@
+$typedef byte SiloId;
+
+enum ModuleState : byte {
+    ONLINE,
+    OFFLINE
+}
+
+struct ModuleBaseProto {
+    @0 silo_id SiloId;
+    @1 state ModuleState;
+};
+
+struct EModule {
+    @0 base_proto ObjectBaseProto;
+    @1 base_module_proto ModuleBaseProto;
+};
+
+struct PModule {
+    @0 base_proto ObjectBaseProto;
+    @1 base_module_proto ModuleBaseProto;
+};

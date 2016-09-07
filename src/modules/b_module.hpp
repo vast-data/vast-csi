@@ -21,7 +21,7 @@ public:
 
     virtual void start();
 
-    virtual P::Control::Agent *get_control_agent() { return &_agent; }
+    virtual Control::BaseAgent *get_control_agent() { return &_agent; }
 
     static ModuleId get_id() { return ModuleId::B; }
 
@@ -31,4 +31,3 @@ private:
     BModuleAgent _agent;
     LockManager::LockManagerServerImpl _lock_manager_server;
 };
-

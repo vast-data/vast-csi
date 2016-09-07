@@ -54,7 +54,7 @@ TEST(TestIMDB, test_tree)
     int cnode_version_sum = 0;
     CNode *cnode;
     Drive *drive;
-    ILIST_ITER(sys->get_children(), i) {
+    ILIST_ITER_SAFE(sys->get_children(), i) {
         ObjectBase *child = p_container_of(i, ObjectBase, child_node);
         switch (child->get_type_id()) {
         case TypeId::CNode:
@@ -70,10 +70,21 @@ TEST(TestIMDB, test_tree)
         default:
             break;
         }
+        sys->remove_child(child);
+        db.remove(child);
     }
 
     ASSERT_EQ(cnode_version_sum, 3);
     ASSERT_EQ(drive_version_sum, 7);
+
+    int child_count = 0;
+    ILIST_ITER(sys->get_children(), i) {
+        child_count++;
+    }
+    ASSERT_EQ(child_count, 0);
+
+    db.remove(sys);
+    db.destroy();
 }
 
 int main(int argc, char **argv)

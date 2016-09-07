@@ -10,6 +10,9 @@
 
 #include "c_module.hpp"
 #include "control/agent.hpp"
+#include "control/imdb/system.hpp"
+#include "control/imdb/component.hpp"
+#include "control/cluster/component.hpp"
 #include "plasma/execution/silo.hpp"
 
 namespace Control {
@@ -28,6 +31,9 @@ public:
 
 private:
     BaseAgent _agent;
+    Cluster _cluster;
+    IMDB _imdb;
+    System *_system;
 };
 
 } // namespace Control

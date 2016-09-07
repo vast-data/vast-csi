@@ -8,7 +8,7 @@
 
 #include "module_interface.hpp"
 #include "p_module_agent.hpp"
-#include "plasma/control/agent.hpp"
+#include "control/agent.hpp"
 
 namespace P {
 
@@ -18,7 +18,7 @@ public:
 
     virtual void start() {}
 
-    virtual Control::Agent *get_control_agent() { return &_agent; }
+    virtual Control::BaseAgent *get_control_agent() { return &_agent; }
 
     static ModuleId get_id() { return ModuleId::P; }
 

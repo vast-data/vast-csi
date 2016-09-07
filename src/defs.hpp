@@ -20,6 +20,7 @@ static const uint16_t MAX_ENVS_PER_SYSTEM = MAX_CNODES_PER_SYSTEM * MAX_ENVS_PER
     X(TEST),                                    \
     X(PLASMA),                                  \
     X(NFS),                                     \
+    X(CLUSTER),                                 \
     X(COUNT)
 
 DEFINE_LOOKUP_PROTOTYPES(COMPONENT_LIST,

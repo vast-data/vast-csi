@@ -33,6 +33,9 @@ tokens = [
 literals = '{}[]@:=;,$'
 t_ignore  = ' \t'
 
+def t_COMMENT(t):
+    r'//.*'
+
 def t_newline(t):
     r'\n+'
     t.lexer.lineno += len(t.value)
@@ -43,15 +46,12 @@ def t_NUMBER(t):
     return t
 
 def t_DIRECTIVE(t):
-    r'\$.+;?'
+    r'\$[^;\n]*'
     directive = t.value[1:]
     if directive.endswith(';'):
         directive = directive[:-1]
     t.value = Directive(value=directive)
     return t
-
-def t_COMMENT(t):
-    r'//.*'
 
 def t_NAME(t):
     r'[a-zA-Z][a-zA-Z0-9:_.]*'
@@ -75,17 +75,25 @@ def p_definitions_single(p):
     p[0] = [p[1]]
 
 def p_definition(p):
-    r'''definition : struct
-                   | enum
-                   | DIRECTIVE'''
+    r'''definition : struct ";"
+                   | enum ";"
+                   | directive'''
+    p[0] = p[1]
+
+def p_directive_semicolon(p):
+    r'directive : DIRECTIVE ";"'
+    p[0] = p[1]
+
+def p_directive(p):
+    r'directive : DIRECTIVE'
     p[0] = p[1]
 
 def p_struct(p):
-    r'struct : STRUCT NAME "{" struct_fields "}" ";"'
+    r'struct : STRUCT NAME "{" struct_fields "}"'
     p[0] = Struct(name=p[2].value, fields=p[4])
 
 def p_struct_empty(p):
-    r'struct : STRUCT NAME "{" "}" ";"'
+    r'struct : STRUCT NAME "{" "}"'
     p[0] = Struct(name=p[2].value, fields=[])
 
 def p_fields_multiple(p):
@@ -113,11 +121,11 @@ def p_field_type_array(p):
     p[0] = FieldType(name=p[1].value, elements=p[3])
 
 def p_enum_type(p):
-    r'enum : ENUM NAME ":" NAME "{" enum_values "}" ";"'
+    r'enum : ENUM NAME ":" NAME "{" enum_values "}"'
     p[0] = Enum(name=p[2].value, values=p[6], type=p[4].value)
 
 def p_enum(p):
-    r'enum : ENUM NAME "{" enum_values "}" ";"'
+    r'enum : ENUM NAME "{" enum_values "}"'
     p[0] = Enum(name=p[2].value, values=p[4], type=None)
 
 def p_enum_values_multiple(p):

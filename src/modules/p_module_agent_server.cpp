@@ -42,7 +42,7 @@ void PModuleAgentServerImpl::env_start(EnvStartParams::RootReader *args, EnvStar
 
     GUID env_guid = args->get_env_guid();
     for (Index i = 0; i < _n_envs; ++i) {
-        if (_envs[i].env_guid.equals(&env_guid)) {
+        if (_envs[i].env_guid.equals(env_guid)) {
             PT_ERROR(CONTROL, "Can't start env because GUID %lx%lx already exists",
                      env_guid.get_first_half(), env_guid.get_second_half());
             res->set_code(EnvStartResultCode::GUID_ALREADY_EXISTS);
@@ -88,7 +88,7 @@ void PModuleAgentServerImpl::env_stop(EnvStopParams::RootReader *args, EnvStopRe
     GUID env_guid = args->get_env_guid();
     Index found = -1;
     for (Index i = 0; i < _n_envs; ++i) {
-        if (_envs[i].env_guid.equals(&env_guid)) {
+        if (_envs[i].env_guid.equals(env_guid)) {
             found = i;
             break;
         }

@@ -3,14 +3,14 @@
 #pragma once
 
 #include "p_module_agent_server.hpp"
-#include "plasma/control/agent.hpp"
+#include "control/agent.hpp"
 
 namespace P {
 
-class PModuleAgent : public Control::Agent {
+class PModuleAgent : public Control::BaseAgent {
 public:
     void init(SiloId silo_id, ModuleId module_id) {
-        Control::Agent::init(silo_id, module_id, FiberGroupId::P);
+        Control::BaseAgent::init(silo_id, module_id, FiberGroupId::P);
         _rpc_server.init(silo_id, module_id);
     }
 

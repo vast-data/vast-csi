@@ -94,6 +94,7 @@ private:
 
 /*!
  * Iterate over nodes of an intrinsic list from a given node.
+ * See ILIST_ITER_SAFE_FROM for a deletion-safe variant.
  * Example usage:
  *
  \code{.c}
@@ -113,3 +114,13 @@ private:
  \endcode
 */
 #define ILIST_ITER(list, element) ILIST_ITER_FROM(list, element, (list)->get_first())
+
+/*!
+ * Same as ILIST_ITER_FROM but allows deletion during iteration.
+*/
+#define ILIST_ITER_SAFE_FROM(list, element, from) for (P::IList::Node *element = from, *next = from->next(); !(list)->is_end(element); element = next, next = element->next())
+
+/*!
+ * Same as ILIST_ITER but allows deletion during iteration.
+ */
+#define ILIST_ITER_SAFE(list, element) ILIST_ITER_SAFE_FROM(list, element, (list)->get_first())

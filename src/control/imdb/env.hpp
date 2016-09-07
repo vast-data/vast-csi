@@ -1,0 +1,19 @@
+/* Copyright (C) Vast Data Ltd. */
+
+/*!
+ * \file env.hpp
+ * \brief Env object implementation.
+ */
+#pragma once
+
+#include "env.vproto.hpp"
+#include "object.hpp"
+
+namespace Control {
+
+class EnvObj : public Object<EnvProto, TypeId::Env> {
+public:
+
+};
+
+}

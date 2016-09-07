@@ -21,9 +21,35 @@ using std::size_t;
 
 class GUID {
 public:
+    static const size_t STRING_LENGTH = 37; // includes null termination
+
     void init()
     {
         uuid_generate(_value);
+    }
+
+    bool init_from_string(char *string)
+    {
+        // returns -1 on failure and 0 on success
+        return uuid_parse(string, _value) == 0;
+    }
+
+    static const size_t STRING_SIZE = 37;
+
+    /*!
+     * Prints 37 characters to given buffer.
+     * Example output: "1b4e28ba-2fa1-11d2-883f-0016d3cca427" + "\0"
+     */
+    void to_string(char *string)
+    {
+        uuid_unparse(_value, string);
+    }
+
+    static GUID create()
+    {
+        GUID guid;
+        guid.init();
+        return guid;
     }
 
     bool equals(GUID other) const { return uuid_compare(_value, other._value) == 0; }
@@ -48,5 +74,7 @@ static_assert(sizeof(GUID) == 16, "sizeof(GUID) should be 16 bytes");
 template<class C, class T>
 std::basic_ostream<C, T>& operator<<(std::basic_ostream<C, T>& os, P::GUID guid)
 {
-    return os << std::hex << guid.get_first_half() << guid.get_second_half();
+    char string[P::GUID::STRING_SIZE];
+    guid.to_string(string);
+    return os << string;
 }
