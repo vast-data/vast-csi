@@ -177,9 +177,9 @@ def vproto_scan(node, env, path):
     contents = node.get_contents()
     imports = []
     for i in import_re.findall(contents):
-        for d in VPROTO_INCLUDE_DIRS + [os.path.dirname(i)]:
+        for d in VPROTO_INCLUDE_DIRS + [os.path.dirname(str(node))]:
             full_path = os.path.join(d, i)
-            if os.path.exists(full_path):
+            if os.path.exists(full_path.replace(build_dir + '/', '')):
                 # the '#' prefix makes scons look for the file from the root of the project (vs. relatively to the file).
                 imports.append('#' + full_path)
     return imports
