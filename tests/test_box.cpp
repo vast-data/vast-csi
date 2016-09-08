@@ -18,6 +18,8 @@ using P::Env;
 using P::SiloId;
 using P::Silo;
 
+// TODO(ido): once I'm done with this file, remove the commit to which it belongs from my branch (but some of it is a fix for vmsg..)
+
 static void test_lock(void *arg)
 {
     TestRpcServerImpl *server = new TestRpcServerImpl();

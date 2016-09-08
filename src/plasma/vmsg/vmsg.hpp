@@ -36,6 +36,8 @@ public:
     */
     void set_local_env_id(EnvId env_id) { _vmsg_configuration.local_env_id = env_id; }
 
+    EnvId get_local_env_id() const { return _vmsg_configuration.local_env_id; }
+
     /*!
      * Set the addresses for the specified env
     */

@@ -122,6 +122,13 @@ public:
      */
     int tpoll(TransportEvent *events OUT, uint32_t max_events IN);
 
+    /*!
+     * Prepare RDMA data structures so that fork() may be used safely.
+     *
+     * /return success/failure.
+     */
+    static bool fork_init();
+
 private:
     // event processing methods
     static void *event_loop_func(void *arg);

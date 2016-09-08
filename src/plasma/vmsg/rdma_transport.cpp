@@ -563,6 +563,11 @@ int RDMATransport::tpoll(TransportEvent *events, uint32_t max_events)
     return n_events;
 }
 
+/* static */ bool RDMATransport::fork_init()
+{
+    return ibv_fork_init() == 0;
+}
+
 void RDMATransport::handle_connection_requests()
 {
     ConnectionRequest *request;
