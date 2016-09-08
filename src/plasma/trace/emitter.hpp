@@ -165,8 +165,12 @@ private:
     template<typename T>
     void trace_emit_param(T arg)
     {
+        emit_param(&arg, sizeof(T));
         // temporary workaround for ORION-35
-        emit_param(&arg, P_MAX(4, sizeof(T)));
+        if (sizeof(T) < 4) {
+            int zero = 0;
+            emit_param(&zero, (uint16_t) (4 - sizeof(T)));
+        }
     }
 
     void trace_emit()
