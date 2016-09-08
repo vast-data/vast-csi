@@ -265,6 +265,7 @@ AddCppTest(target='dist/tests/vproto', source=[build_dir + '/tests/test_vproto.c
 AddCppTest(target='dist/tests/nfs_rpc', source=[build_dir + '/tests/test_nfs_rpc.cpp'])
 AddCppTest(target='dist/tests/nfs', source=[build_dir + '/tests/test_nfs.cpp'], group_alias='nfstest')
 AddCppTest(target='dist/tests/os', source=[build_dir + '/tests/os_test.cpp'])
+AddCppTest(target='dist/tests/box', source=[build_dir + '/tests/test_box.cpp'])
 
 cpp_env.AlwaysBuild('nfstest')
 cpp_env.AlwaysBuild('cpptest')

@@ -2,6 +2,7 @@
 #include "e_module.hpp"
 #include "i_module.hpp"
 #include "p_module.hpp"
+#include "b_module.hpp"
 #include "../tests/test_module.hpp"
 #include "plasma/execution/env.hpp"
 
@@ -15,9 +16,10 @@ class ModuleFactoryImpl : public ModuleFactory {
 ModuleFactoryImpl<TestModule> t;
 ModuleFactoryImpl<P::PModule> p;
 ModuleFactoryImpl<P::EModule> e;
+ModuleFactoryImpl<BModule> b;
 ModuleFactoryImpl<IModule> i;
 
-ModuleFactory *factories[] = { &t, &p, &e, &i };
+ModuleFactory *factories[] = { &t, &p, &e, &b, &i };
 
 void register_modules()
 {

@@ -1,0 +1,111 @@
+/* Copyright (C) Vast Data Ltd. */
+#include <gtest/gtest.h>
+#include "plasma/execution/env.hpp"
+#include "plasma/fiber/sleep.hpp"
+#include "globals.hpp"
+#include "test_module.hpp"
+#include "lock_manager/lock_manager.rpc.client.hpp"
+
+#define CURRENT_COMPONENT ComponentId::TEST
+#define STEP(var) ASSERT_EQUAL(++step, var)
+static int step = 0;
+
+using namespace P::VMsg;
+using P::Env;
+
+ModuleGUID dest = {
+    0,
+    0, //reserved
+    (uint8_t) ModuleId::B,
+    0,
+};
+    
+static void lock(LockManager::LockManagerClient *client, size_t lock_id)
+{
+    LockManager::LockParams::RootBuilder *args;
+    P::VProto::Empty::RootReader *res;
+
+    args = client->alloc_lock();
+    args->set_lock_id(lock_id);
+    client->lock_sync(dest, args, &res);
+    client->free_lock(res);
+}
+
+static void unlock(LockManager::LockManagerClient *client, size_t lock_id)
+{
+    LockManager::LockParams::RootBuilder *args;
+    P::VProto::Empty::RootReader *res;
+
+    args = client->alloc_unlock();
+    args->set_lock_id(lock_id);
+    client->unlock_sync(dest, args, &res);
+    client->free_unlock(res);
+}
+
+static bool try_lock(LockManager::LockManagerClient *client, size_t lock_id)
+{
+    bool ret;
+    LockManager::LockParams::RootBuilder *args;
+    LockManager::TryLockRes::RootReader *res;
+
+    args = client->alloc_try_lock();
+    args->set_lock_id(lock_id);
+    client->try_lock_sync(dest, args, &res);
+    ret = res->get_success();
+    client->free_try_lock(res);
+    return ret;
+}
+
+static void fiber_lock(void *value)
+{
+    LockManager::LockManagerClient *client = (LockManager::LockManagerClient *)value;
+    STEP(2);
+    ASSERT_FALSE(try_lock(client, 10));
+    STEP(3);
+    lock(client, 10);
+    STEP(5);
+    unlock(client, 10);
+    STEP(6);
+}
+
+static void test_lock_manager(void *arg)
+{
+    VMsg *vmsg = Env::get()->get_vmsg();
+    vmsg->add_module_pair(ModuleId::TEST, ModuleId::B, TransportType::RDMA);
+    P::TimerQueues::fast_sleep(300000);
+    vmsg->add_module_pair(ModuleId::B, ModuleId::TEST, TransportType::RDMA);
+    P::TimerQueues::fast_sleep(100000);
+
+    LockManager::LockManagerClient client;
+    client.init(vmsg);
+    
+    // simple tests
+    lock(&client, 0);
+    lock(&client, 1);
+    ASSERT_FALSE(try_lock(&client, 0));
+    unlock(&client, 0);
+    ASSERT_TRUE(try_lock(&client, 0));
+
+    // double fiber test
+    lock(&client, 10);
+    STEP(1);
+    P::Fiber::init(0, fiber_lock, &client, false);
+    P::TimerQueues::fast_sleep(100000);
+    STEP(4);
+    unlock(&client, 10);
+    while (step < 6)
+        P::TimerQueues::fast_sleep(1000);
+
+    env_stop = true;
+}
+
+TEST(TestBox, lock_manager)
+{
+    TestModule::set_start_func(test_lock_manager, this);
+    Env::get()->run("", "tests/test_box.config");
+}
+
+int main(int argc, char **argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+}

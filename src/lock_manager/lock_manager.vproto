@@ -1,0 +1,10 @@
+$namespace LockManager
+
+struct LockParams {
+    @0 lock_id uint64_t;
+};
+
+struct TryLockRes {
+    @0 success bool;
+};
+

@@ -64,7 +64,7 @@ TEST(TestRDMATransport, test)
         TestMsg *msg = (TestMsg *) (send_buff + (sizeof(TestMsg) * i));
         msg->idx = i;
         expected_sum += i;
-        snprintf(msg->msg, sizeof(send_buff), "Hello-%d", i);
+        snprintf(msg->msg, sizeof(TestMsg::msg), "Hello-%d", i);
         MsgId send_msg_id = {i, 1, 0};
         VMsgRes res = transport->send_request(guid, send_mr, send_msg_id,
                                               send_buff + (sizeof(TestMsg) * i), sizeof(TestMsg));

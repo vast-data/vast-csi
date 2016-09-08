@@ -1,0 +1,18 @@
+class: LockManager
+include: ["lock_manager.vproto.hpp", "plasma/vproto/empty.vproto.hpp"]
+api_version: 1
+namespaces: ["LockManager"]
+default_fiber_group: B
+methods:
+- method: lock
+  op_id: 1
+  arg: LockParams
+  res: P::VProto::Empty
+- method: unlock
+  op_id: 2
+  arg: LockParams
+  res: P::VProto::Empty
+- method: try_lock
+  op_id: 3
+  arg: LockParams
+  res: TryLockRes

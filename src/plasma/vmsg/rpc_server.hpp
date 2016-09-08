@@ -11,7 +11,9 @@ enum class RpcServerId: uint8_t {
     TestRpc,
     MetricsAgent,
     PModuleAgent,
+    BModuleAgent,
     EModuleAgent,
+    LockManager,
 
     COUNT
 };

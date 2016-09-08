@@ -15,6 +15,7 @@ static const uint16_t MAX_ENVS = 32;
 }
 
 #define COMPONENT_LIST(X)                       \
+    X(TEST),                                    \
     X(PLASMA),                                  \
     X(NFS),                                     \
     X(COUNT)
@@ -29,6 +30,7 @@ DEFINE_LOOKUP_PROTOTYPES(COMPONENT_LIST,
     X(E_IO_POLLING),                         \
     X(E_VMSG_POLLING),                       \
     X(P),                                    \
+    X(B),                                    \
     X(I_NFS_POLLING),                        \
     X(I_PROTO),                              \
     X(I_CONTROL),                            \
@@ -44,6 +46,7 @@ DEFINE_LOOKUP_PROTOTYPES(FIBER_GROUP_LIST,
     X(P),               \
     X(E),               \
     X(I),               \
+    X(B),               \
     X(TEST),            \
     X(COUNT)
 

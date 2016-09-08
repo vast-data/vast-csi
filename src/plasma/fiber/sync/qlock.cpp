@@ -37,7 +37,6 @@ bool Qlock::trylock()
 
 void Qlock::unlock()
 {
-    ASSERT(_owner == Fiber::get_current());
     _owner = Fiber::pop_and_resume(&_anchor);
 }
 
