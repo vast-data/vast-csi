@@ -34,8 +34,8 @@ public:
 
     //---RPC-functions---
     void get_generations(GetGenerationsParams::RootReader *params, GetGenerationsResult::RootBuilder *result);
-    void get_modified(GetModifiedParams::RootReader *params, GetModifiedResult::RootBuilder *result, uint16_t *res_len);
-    void get_deletions(GetDeletionsParams::RootReader *params, GetDeletionsResult::RootBuilder *result, uint16_t *res_len);
+    void get_modified(GetModifiedParams::RootReader *params, GetModifiedResult::RootBuilder *result);
+    void get_deletions(GetDeletionsParams::RootReader *params, GetDeletionsResult::RootBuilder *result);
 
 private:
     uint64_t _update_generation; // updated on every metric change or addition of an object.

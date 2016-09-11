@@ -43,7 +43,7 @@ void {{ server.name }}Server::run_op(uint8_t op_id, void *request, uint16_t requ
             {{ method.res }}::RootBuilder *{{ method.name }}_reply = ({{ method.res }}::RootBuilder*) reply;
             {{ method.name }}_reply->init();
             *reply_len = sizeof({{ method.res }}::RootBuilder);
-            {{ method.name }}(({{ method.arg }}::RootReader *)request, request_len, {{ method.name }}_reply, reply_len);
+            {{ method.name }}(({{ method.arg }}::RootReader *)request, {{ method.name }}_reply);
             break;
         }
         {% endfor %}

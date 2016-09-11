@@ -25,19 +25,15 @@ using P::Silo;
 
 class TestRpcServerImpl : public TestRpcServer {
 public:
-    virtual void add(AddArgs::RootReader *args, uint16_t request_len, AddRes::RootBuilder *res, uint16_t *reply_len) override
+    virtual void add(AddArgs::RootReader *args, AddRes::RootBuilder *res) override
     {
-        ASSERT_EQUAL((size_t)request_len, sizeof(AddArgs::RootBuilder));
-        ASSERT_EQUAL((size_t)*reply_len, sizeof(AddRes::RootBuilder));
         auto sum = args->get_a() + args->get_b();
         res->set_sum(sum);
         PT_DEBUG(DATA, "%lu + %lu = %lu", args->get_a(), args->get_b(), sum);
     }
 
-    virtual void multiply(MultiplyArgs::RootReader *args, uint16_t request_len, MultiplyRes::RootBuilder *res, uint16_t *reply_len) override
+    virtual void multiply(MultiplyArgs::RootReader *args, MultiplyRes::RootBuilder *res) override
     {
-        ASSERT_EQUAL((size_t)request_len, sizeof(MultiplyArgs::RootBuilder));
-        ASSERT_EQUAL((size_t)*reply_len, sizeof(MultiplyRes::RootBuilder));
         auto sum = args->get_a() * args->get_b() * args->get_c();
         res->set_sum(sum);
         PT_DEBUG(DATA, "%lu * %lu * %lu = %lu", args->get_a(), args->get_b(), args->get_c(), sum);

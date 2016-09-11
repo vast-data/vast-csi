@@ -18,12 +18,9 @@ public:
     Metrics::Tracker tracker;
 
 private:
-    void get_generations(Metrics::GetGenerationsParams::RootReader *args, uint16_t request_len,
-                         Metrics::GetGenerationsResult::RootBuilder *res, uint16_t *reply_len);
-    void get_modified(Metrics::GetModifiedParams::RootReader *args, uint16_t request_len,
-                      Metrics::GetModifiedResult::RootBuilder *res, uint16_t *reply_len);
-    void get_deletions(Metrics::GetDeletionsParams::RootReader *args, uint16_t request_len,
-                       Metrics::GetDeletionsResult::RootBuilder *res, uint16_t *reply_len);
+    void get_generations(Metrics::GetGenerationsParams::RootReader *args, Metrics::GetGenerationsResult::RootBuilder *res);
+    void get_modified(Metrics::GetModifiedParams::RootReader *args, Metrics::GetModifiedResult::RootBuilder *res);
+    void get_deletions(Metrics::GetDeletionsParams::RootReader *args, Metrics::GetDeletionsResult::RootBuilder *res);
 };
 
 }}

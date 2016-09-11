@@ -53,10 +53,9 @@ void Tracker::get_generations(GetGenerationsParams::RootReader *params, GetGener
  * If all objects don't fit in a single RPC call, consecutive calls should be made.
  * The first call can pass a from_generation of 0 in order to get all objects.
  */
-void Tracker::get_modified(GetModifiedParams::RootReader *params, GetModifiedResult::RootBuilder *result, uint16_t *res_len)
+void Tracker::get_modified(GetModifiedParams::RootReader *params, GetModifiedResult::RootBuilder *result)
 {
     PT_INFO(CONTROL, "Getting objects modified from generation=%ld", params->get_from_generation());
-    *res_len = sizeof(GetModifiedResult::RootBuilder);
     if (params->get_delete_generation() != _delete_generation ||
         params->get_from_generation() > _update_generation) {
         result->set_success(false);
@@ -92,10 +91,9 @@ void Tracker::get_modified(GetModifiedParams::RootReader *params, GetModifiedRes
         }
     }
     result->set_count(count);
-    *res_len = (uintptr_t) write_ptr - (uintptr_t) result;
 }
 
-void Tracker::get_deletions(GetDeletionsParams::RootReader *params, GetDeletionsResult::RootBuilder *result, uint16_t *res_len)
+void Tracker::get_deletions(GetDeletionsParams::RootReader *params, GetDeletionsResult::RootBuilder *result)
 {
     uint64_t start_generation = params->get_from_generation();
     if (_delete_generation - start_generation > DELETED_OBJECTS_LOG_SIZE ||
@@ -117,7 +115,6 @@ void Tracker::get_deletions(GetDeletionsParams::RootReader *params, GetDeletions
     result->set_count(i);
     result->set_has_more(has_more);
     PT_INFO(CONTROL, "Returned %zu objects. Has more: %c", i, has_more);
-    *res_len = sizeof(GetDeletionsResult::RootBuilder);
 }
 
 Tracker *Tracker::get_current()

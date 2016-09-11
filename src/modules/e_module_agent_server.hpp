@@ -12,10 +12,8 @@ public:
     void init(SiloId silo_id, ModuleId module_id) { register_server(silo_id, module_id); }
 
 private:
-    void connect(ConnectParams::RootReader *args, uint16_t request_len,
-                 VProto::Empty::RootBuilder *res, uint16_t *reply_len);
-    void disconnect(DisconnectParams::RootReader *args, uint16_t request_len,
-                    VProto::Empty::RootBuilder *res, uint16_t *reply_len);
+    void connect(ConnectParams::RootReader *args, VProto::Empty::RootBuilder *res);
+    void disconnect(DisconnectParams::RootReader *args, VProto::Empty::RootBuilder *res);
 };  // class EModuleAgentServerImpl
 
 }  // namespace P

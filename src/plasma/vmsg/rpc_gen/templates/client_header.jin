@@ -29,8 +29,8 @@ public:
     void init(P::VMsg::VMsg *vmsg);
 {% for method in server.methods %}
     {{ method.arg }}::RootBuilder *alloc_{{ method.name }}();
-    P::VMsg::VMsgRes {{ method.name }}_sync(P::VMsg::ModuleGUID dest, {{ method.arg }}::RootBuilder *args, {{ method.res }}::RootReader **reply, uint64_t timeout_usec = P::VMsg::DEFUALT_MSG_TIMEOUT_USEC, uint16_t request_len = sizeof({{ method.arg }}::RootBuilder), uint32_t *reply_len = nullptr);
-    P::VMsg::VMsgRes {{ method.name }}_async(P::VMsg::ModuleGUID dest, {{ method.arg }}::RootBuilder *args, P::VMsg::VMsgFutureRes<{{ method.res }}::RootReader> **future, uint64_t timeout_usec = P::VMsg::DEFUALT_MSG_TIMEOUT_USEC, uint16_t request_len = sizeof({{ method.arg }}::RootBuilder));
+    P::VMsg::VMsgRes {{ method.name }}_sync(P::VMsg::ModuleGUID dest, {{ method.arg }}::RootBuilder *args, {{ method.res }}::RootReader **reply, uint64_t timeout_usec = P::VMsg::DEFUALT_MSG_TIMEOUT_USEC);
+    P::VMsg::VMsgRes {{ method.name }}_async(P::VMsg::ModuleGUID dest, {{ method.arg }}::RootBuilder *args, P::VMsg::VMsgFutureRes<{{ method.res }}::RootReader> **future, uint64_t timeout_usec = P::VMsg::DEFUALT_MSG_TIMEOUT_USEC);
     void free_{{ method.name }}({{ method.res }}::RootReader *res);
 {% endfor %}
 private:

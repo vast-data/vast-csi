@@ -155,12 +155,11 @@ TEST(TestMetricsTracker, test_get_modified)
     GetModifiedResult::RootBuilder result;
     result.init();
     GetModifiedResult::RootReader *result_reader = result.as_reader();
-    uint16_t res_len;
-    tracker.get_modified(params.as_reader(), &result, &res_len);
+    tracker.get_modified(params.as_reader(), &result);
     ASSERT_EQ(result_reader->get_success(), false);
 
     params.set_delete_generation(0);
-    tracker.get_modified(params.as_reader(), &result, &res_len);
+    tracker.get_modified(params.as_reader(), &result);
     ASSERT_EQ(result_reader->get_success(), true);
     ASSERT_EQ(result_reader->get_cookie(), 0);
     ASSERT_EQ(result_reader->get_count(), 2);
@@ -181,7 +180,7 @@ TEST(TestMetricsTracker, test_get_modified)
 
     drive2.set_reads(5);
     params.set_from_generation(gen_result_reader->get_update_generation());
-    tracker.get_modified(params.as_reader(), &result, &res_len);
+    tracker.get_modified(params.as_reader(), &result);
     ASSERT_EQ(result_reader->get_success(), true);
     ASSERT_EQ(result_reader->get_count(), 1);
     drive2clone = (NS1::NS2::TestDriveMetricsClone*) result_reader->get_data();
@@ -203,7 +202,7 @@ TEST(TestMetricsTracker, test_get_modified)
     NS1::NS2::TestDriveMetricsClone* driveXclone;
 
     do {
-        tracker.get_modified(params.as_reader(), &result, &res_len);
+        tracker.get_modified(params.as_reader(), &result);
         if (result_reader->get_cookie() != 0)
             ASSERT_EQ(result_reader->get_count(), drives_per_msg);
         ASSERT_EQ(result_reader->get_success(), true);
@@ -242,22 +241,21 @@ TEST(TestMetricsTracker, test_get_deletions)
     GetDeletionsResult::RootBuilder result;
     result.init();
     auto result_reader = result.as_reader();
-    uint16_t res_len;
-    tracker.get_deletions(params.as_reader(), &result, &res_len);
+    tracker.get_deletions(params.as_reader(), &result);
     ASSERT_EQ(result_reader->get_success(), true);
     ASSERT_EQ(result_reader->get_has_more(), false);
     ASSERT_EQ(result_reader->get_count(), 0);
 
     drive1.destroy();
     drive2.destroy();
-    tracker.get_deletions(params.as_reader(), &result, &res_len);
+    tracker.get_deletions(params.as_reader(), &result);
     ASSERT_EQ(result_reader->get_success(), true);
     ASSERT_EQ(result_reader->get_has_more(), false);
     ASSERT_EQ(result_reader->get_count(), 2);
 
     drive3.destroy();
     params.set_from_generation(2);
-    tracker.get_deletions(params.as_reader(), &result, &res_len);
+    tracker.get_deletions(params.as_reader(), &result);
     ASSERT_EQ(result_reader->get_success(), true);
     ASSERT_EQ(result_reader->get_has_more(), false);
     ASSERT_EQ(result_reader->get_count(), 1);

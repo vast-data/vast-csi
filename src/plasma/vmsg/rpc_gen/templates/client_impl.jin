@@ -36,14 +36,14 @@ static_assert(!std::is_polymorphic<{{ method.res }}::RootBuilder>::value, "metho
     return arg;
 }
 
-VMsgRes {{ server.name }}Client::{{ method.name }}_sync(ModuleGUID dest, {{ method.arg }}::RootBuilder *args, {{ method.res }}::RootReader **reply, uint64_t timeout_usec, uint16_t request_len, uint32_t *reply_len)
+VMsgRes {{ server.name }}Client::{{ method.name }}_sync(ModuleGUID dest, {{ method.arg }}::RootBuilder *args, {{ method.res }}::RootReader **reply, uint64_t timeout_usec)
 {
-    return _vmsg->send_sync(dest, RpcServerId::{{ server.name }}, {{ method.op_id }}, timeout_usec, args, request_len, (void **)reply, reply_len);
+    return _vmsg->send_sync(dest, RpcServerId::{{ server.name }}, {{ method.op_id }}, timeout_usec, args, sizeof({{ method.arg }}::RootBuilder), (void **)reply, nullptr);
 }
 
-VMsgRes {{ server.name }}Client::{{ method.name }}_async(ModuleGUID dest, {{ method.arg }}::RootBuilder *args, VMsgFutureRes<{{ method.res }}::RootReader> **future, uint64_t timeout_usec, uint16_t request_len)
+VMsgRes {{ server.name }}Client::{{ method.name }}_async(ModuleGUID dest, {{ method.arg }}::RootBuilder *args, VMsgFutureRes<{{ method.res }}::RootReader> **future, uint64_t timeout_usec)
 {
-    return _vmsg->send_async(dest, RpcServerId::{{ server.name }}, {{ method.op_id }}, timeout_usec, args, request_len, (VMsgFuture **)future);
+    return _vmsg->send_async(dest, RpcServerId::{{ server.name }}, {{ method.op_id }}, timeout_usec, args, sizeof({{ method.arg }}::RootBuilder), (VMsgFuture **)future);
 }
 
 void {{ server.name }}Client::free_{{ method.name }}({{ method.res }}::RootReader *res)

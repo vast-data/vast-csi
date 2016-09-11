@@ -22,12 +22,9 @@ private:
 
     // TODO: once the P-module's agent supports more functionality (leader election, monitoring, etc.), consider
     // splitting this class to several classes (launcher, monitoring, etc.). PModuleAgent will hold one object of each.
-    void set_local_env_id(SetLocalEnvIdParams::RootReader *args, uint16_t request_len,
-                          VProto::Empty::RootBuilder *res, uint16_t *reply_len);
-    void env_start(EnvStartParams::RootReader *args, uint16_t request_len,
-                   EnvStartResult::RootBuilder *res, uint16_t *reply_len);
-    void env_stop(EnvStopParams::RootReader *args, uint16_t request_len,
-                  EnvStopResult::RootBuilder *res, uint16_t *reply_len);
+    void set_local_env_id(SetLocalEnvIdParams::RootReader *args, VProto::Empty::RootBuilder *res);
+    void env_start(EnvStartParams::RootReader *args, EnvStartResult::RootBuilder *res);
+    void env_stop(EnvStopParams::RootReader *args, EnvStopResult::RootBuilder *res);
 
     char _config_dir[PATH_MAX];
 
