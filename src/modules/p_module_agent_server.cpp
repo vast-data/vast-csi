@@ -20,6 +20,8 @@ void PModuleAgentServerImpl::init(SiloId silo_id, ModuleId module_id)
 
     _n_envs = 0;
     register_server(silo_id, module_id, FiberGroupId::P);
+
+    ASSERT(VMsg::RDMATransport::fork_init());
 }
 
 void PModuleAgentServerImpl::set_local_env_id(SetLocalEnvIdParams::RootReader *args, VProto::Empty::RootBuilder *res)
@@ -66,7 +68,9 @@ void PModuleAgentServerImpl::env_start(EnvStartParams::RootReader *args, EnvStar
         }
         PANIC("Not supposed to get here..");
     } else if (pid > 0) {  // parent process
-        EnvData *env = &_envs[_n_envs++];
+        EnvData *env = &_envs[_n_envs];
+        PT_DEBUG(CONTROL, "Added env #%d, GUID %lx%lx", _n_envs, env_guid.get_first_half(), env_guid.get_second_half());
+        ++_n_envs;
         env->env_guid = env_guid;
         env->pid = pid;
         res->set_code(EnvStartResultCode::SUCCESS);
@@ -97,7 +101,8 @@ void PModuleAgentServerImpl::env_stop(EnvStopParams::RootReader *args, EnvStopRe
 
     pid_t pid = _envs[found].pid;
     --_n_envs;
-    if (found > _n_envs) {
+    PT_DEBUG(CONTROL, "Removed env #%d, GUID %lx%lx", found, env_guid.get_first_half(), env_guid.get_second_half());
+    if (found < _n_envs) {
         _envs[found].env_guid = _envs[_n_envs].env_guid;
         _envs[found].pid = _envs[_n_envs].pid;
     }

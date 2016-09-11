@@ -31,7 +31,7 @@ private:
     // Used for maintaining env data in a compact, efficient way.
     // TODO: currently, the functionality of adding/removing envs is explicitly implemented in this class. Consider
     // generalizing it (by creating a template data structure) if it seems like it will be reused.
-    EnvData _envs[MAX_ENVS];
+    EnvData _envs[MAX_ENVS_PER_CNODE - 1];  // We don't need an entry for our own env.
     uint16_t _n_envs = 0;
 };  // class PModuleAgentServerImpl
 

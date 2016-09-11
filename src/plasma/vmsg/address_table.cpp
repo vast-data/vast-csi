@@ -13,7 +13,7 @@ namespace VMsg {
 void AddressTable::init()
 {
     _lock.init();
-    LOOP(MAX_ENVS, i) {
+    LOOP(MAX_ENVS_PER_SYSTEM, i) {
         _addresses[i].set_n_addr(0);
     }
 }
@@ -25,7 +25,7 @@ void AddressTable::destroy()
 
 void AddressTable::set(EnvId env_id, EnvAddresses::RootBuilder *addresses)
 {
-    ASSERT(env_id < MAX_ENVS);
+    ASSERT(env_id < MAX_ENVS_PER_SYSTEM);
     _lock.wlock();
     PT_DEBUG(DATA, "set addresses for env_id=%hu", env_id);
     LOOP(addresses->get_n_addr(), i) {
@@ -37,7 +37,7 @@ void AddressTable::set(EnvId env_id, EnvAddresses::RootBuilder *addresses)
 
 EnvAddresses::RootBuilder *AddressTable::get(EnvId env_id)
 {
-    ASSERT(env_id < MAX_ENVS);
+    ASSERT(env_id < MAX_ENVS_PER_SYSTEM);
     // verify that the lock is taken
     DEBUG_ASSERT(!_lock.wtrylock());
     return &_addresses[env_id];

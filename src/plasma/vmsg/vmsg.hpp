@@ -36,6 +36,8 @@ public:
     */
     void set_local_env_id(EnvId env_id) { _vmsg_configuration.local_env_id = env_id; }
 
+    EnvId get_local_env_id() const { return _vmsg_configuration.local_env_id; }
+
     /*!
      * Set the addresses for the specified env
     */
@@ -119,9 +121,9 @@ private:
 
         // lists for pending acks
         List::Pool pending_acks_list_pool;
-        List::Anchor pending_acks_anchors[MAX_ENVS];
-        List pending_acks_lists[MAX_ENVS];
-        uint32_t n_acks[MAX_ENVS];
+        List::Anchor pending_acks_anchors[MAX_ENVS_PER_SYSTEM];
+        List pending_acks_lists[MAX_ENVS_PER_SYSTEM];
+        uint32_t n_acks[MAX_ENVS_PER_SYSTEM];
 
         Pool acks_pool;
 

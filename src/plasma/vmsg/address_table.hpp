@@ -30,7 +30,7 @@ public:
     { _lock.runlock(); }
 
 public:
-    EnvAddresses::RootBuilder _addresses[MAX_ENVS];
+    EnvAddresses::RootBuilder _addresses[MAX_ENVS_PER_SYSTEM];
     P::Sync::RWSpinLock _lock;
 };
 

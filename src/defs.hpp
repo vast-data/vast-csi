@@ -10,7 +10,9 @@
 
 namespace P {
 
-static const uint16_t MAX_ENVS = 32;
+static const uint16_t MAX_ENVS_PER_CNODE = 4;
+static const uint16_t MAX_CNODES_PER_SYSTEM = 1024;
+static const uint16_t MAX_ENVS_PER_SYSTEM = MAX_CNODES_PER_SYSTEM * MAX_ENVS_PER_CNODE;
 
 }
 

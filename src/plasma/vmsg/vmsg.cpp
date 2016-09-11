@@ -48,7 +48,7 @@ void VMsg::init(VMsgConfiguration *vmsg_configuration)
         ctx->pending_acks_list_pool.init(n_acks);
         ctx->fiber = nullptr;
         ctx->n_pending_requests = 0;
-        LOOP(MAX_ENVS, i) {
+        LOOP(MAX_ENVS_PER_SYSTEM, i) {
             ctx->pending_acks_anchors[i].init();
             ctx->pending_acks_lists[i].init(&ctx->pending_acks_anchors[i], &ctx->pending_acks_list_pool);
             ctx->n_acks[i] = 0;
@@ -84,7 +84,7 @@ void VMsg::destroy()
     LOOP(_vmsg_configuration.n_silos, i) {
         SiloContext *ctx = &_silos_context[i];
         // not calling destroy since it is legit to go down with pending acks
-        LOOP(MAX_ENVS, i) {
+        LOOP(MAX_ENVS_PER_SYSTEM, i) {
             // ctx->pending_acks_lists[i].destroy();
             // ctx->pending_acks_anchors[i].destroy();
         }
@@ -160,7 +160,7 @@ void VMsg::add_module_pair(ModuleId client, ModuleId server, TransportType trans
 
 void VMsg::connect_to_peers()
 {
-    LOOP(MAX_ENVS, env_id) {
+    LOOP(MAX_ENVS_PER_SYSTEM, env_id) {
         if (_address_table.has_addresses(env_id)) {
             PT_INFO(DATA, "connecting to env_id=%lu", env_id);
             connect_to_peer_modules(env_id);

@@ -122,6 +122,13 @@ public:
      */
     int tpoll(TransportEvent *events OUT, uint32_t max_events IN);
 
+    /*!
+     * Prepare RDMA data structures so that fork() may be used safely.
+     *
+     * /return success/failure.
+     */
+    static bool fork_init();
+
 private:
     // event processing methods
     static void *event_loop_func(void *arg);
@@ -153,9 +160,9 @@ private:
     // listen link per each address on this node
     RDMALink _listen_links[MAX_ADDR_PER_ENV];
     // outgoing connection per env / module
-    Connection _client_connections[MAX_ENVS][MODULES_COUNT];
+    Connection _client_connections[MAX_ENVS_PER_SYSTEM][MODULES_COUNT];
     // incoming connection per env / module
-    Connection _server_connections[MAX_ENVS][MODULES_COUNT];
+    Connection _server_connections[MAX_ENVS_PER_SYSTEM][MODULES_COUNT];
 
     // messages are received on shared receive queue that are partitioned per module in order to avoid deadlocks
     // shared receive queue per client module for receiving replies

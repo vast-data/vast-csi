@@ -35,7 +35,7 @@ void RDMATransport::init(const VMsgConfiguration *vmsg_configuration, AddressTab
 
     for (int k = 0; k < NUM_ELEMENTS(_listen_links); ++k) {
         // listen links are for all envs/modules
-        _listen_links[k].init(MAX_ENVS, ModuleId::COUNT);
+        _listen_links[k].init(MAX_ENVS_PER_SYSTEM, ModuleId::COUNT);
     }
     for (int k = 0; k < NUM_ELEMENTS(_client_srqs); ++k) {
         _client_srqs[k] = nullptr;
@@ -385,7 +385,7 @@ void RDMATransport::handle_event(rdma_cm_event *event)
 
 VMsgRes RDMATransport::request_connection(EnvId env_id, ModuleId module_id)
 {
-    ASSERT(env_id < MAX_ENVS);
+    ASSERT(env_id < MAX_ENVS_PER_SYSTEM);
     ASSERT(module_id < ModuleId::COUNT);
 
     LockGuard<SpinLock> guard(&_conn_lock);
@@ -561,6 +561,11 @@ int RDMATransport::tpoll(TransportEvent *events, uint32_t max_events)
     }
 
     return n_events;
+}
+
+/* static */ bool RDMATransport::fork_init()
+{
+    return ibv_fork_init() == 0;
 }
 
 void RDMATransport::handle_connection_requests()
