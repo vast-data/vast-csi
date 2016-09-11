@@ -67,8 +67,8 @@ public:
     // Return value indicates the number of events (negative in case of an error).
     int poll();
 
-    void *alloc_data_buffer() { return _estore->alloc_data_buffer(); }
-    void free_data_buffer(void *data_buffer) { _estore->free_data_buffer(data_buffer); }
+    void alloc_data_buffers(P::IO::IOVecs *iovecs INOUT) { return _estore->alloc_data_buffers(iovecs); }
+    void free_data_buffers(P::IO::IOVecs *iovecs) { _estore->free_data_buffers(iovecs); }
 
     void encode_msg(Rpc::Connection *conn, RpcRequest *request);
     void execute_request(RpcRequest *request);

@@ -35,6 +35,7 @@ static const char LEADER_ENV_GUID[] = "12345678-9abc-def1-aaaa-bbbbccccdddd";
     X(PLASMA),                                  \
     X(NFS),                                     \
     X(CLUSTER),                                 \
+    X(ESTORE),                                  \
 	X(IO_MIRRORING),                            \
     X(COUNT)
 

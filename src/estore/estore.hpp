@@ -8,182 +8,14 @@
 #pragma once
 
 #include <stdint.h>
-#include "plasma/utils/units.hpp"
 #include "plasma/utils/io.hpp"
 #include "plasma/memory/pool.hpp"
 #include "plasma/utils/compiler.hpp"
 #include "plasma/utils/types.hpp"
+#include "estore/defs/estore_defs.hpp"
+#include "ingest.hpp"
 
 namespace EStore {
-
-// TODO move to configuration file
-static const uint32_t N_DATA_BUFFERS = 4 * UNIT_KiB;
-static const uint32_t DATA_BUFFER_SIZE = 64 * UNIT_KiB;
-// Element store limits
-static const uint32_t MAX_LINKS = UINT32_MAX;
-static const uint64_t MAX_ELEMENT_SIZE = UINT64_MAX;
-// As long as we support only one this define will do
-static const uint64_t ELEMENT_STORE_ID = 1;
-
-// Protocol defined element flags, the meaning of these flags is opaque to the element store
-enum class ElementFlags : uint64_t {
-    NONE = 0,
-    FILE = 0x1,
-    DIR = 0x2,
-    SYMLINK = 0x4,
-    // dos attributes
-    SPARSE = 0x8,
-    SYSTEM = 0x10,
-    HIDDEN = 0x20,
-    ARCHIVE = 0x40,
-    READONLY = 0x80,
-};
-
-// Well defined element attributes (in contrast to extended attributes)
-struct SystemAttr {
-    // Protection mode bits (see NFS V3 spec for details)
-    uint32_t mode;
-    //  Number of hard links
-    uint32_t nlink;
-    // User id of the element owner
-    uint32_t uid;
-    // Group id of the of the element group
-    uint32_t gid;
-    // element size in bytes
-    uint64_t size;
-    // Number of bytes taken on disk
-    uint64_t used;
-    // Unique file identifier on the element store
-    uint64_t fileid;
-    // Last time element data was accessed
-    uint64_t atime;
-    // Last time element data was modified
-    uint64_t mtime;
-    // Last time element attributes were modified
-    uint64_t ctime;
-    // Used to support exclusive create semantics
-    uint64_t create_verifier;
-    // element expiration time
-    uint64_t expires;
-    // The object version when S3 versioning is enabled (might be derived from the handle)
-    uint64_t element_version;
-    // MD5 hash of the element
-    P::byte md5_hash[16];
-    // various element flags
-    uint64_t element_flags;
-};
-
-enum AttrFlag {
-    NONE = 0,
-    MODE = 0x1,
-    UID = 0x2,
-    GID = 0x4,
-    SIZE = 0x8,
-    ATIME = 0x10,
-    MTIME = 0x20,
-    ELEMENT_FLAGS = 0x40
-};
-// The subset of system attributes that can be externally set, used as an argument to set attributes
-struct SettableAttr {
-    AttrFlag flags;
-    uint32_t mode;
-    uint32_t uid;
-    uint32_t gid;
-    uint64_t size;
-    uint64_t atime;
-    uint64_t mtime;
-    uint64_t element_flags;
-};
-
-// A named attribute whose contents os opaque to the element store
-struct ExtendedAttr {
-    // null terminated attribute name
-    char *name;
-    // pointer to attribute contents
-    void *val;
-    // attribute contents size
-    uint32_t val_size;
-};
-
-static const uint32_t MAX_XATTR = 32;
-// container for extended attributes
-struct ExtendedAttrs {
-    // when passed as an output parameter buff points to a user allocated buffer with the size buff_size
-    char *buff;
-    uint32_t buff_size;
-    uint32_t n_attrs;
-    ExtendedAttr attrs[MAX_XATTR];
-};
-
-enum class EStoreRes {
-    OK,
-    PERM_ERROR,              // access to the request element is not permitted
-    STALE,                   // invalid / stale handle
-    NOENT,                   // name / path not found
-    EXIST,                   // element already exist
-    IO_ERROR,                // IO Error
-    NOT_SYNC,                // update synchronization mismatch was detected during a set_attr operation
-    NO_MEM,                  // out of memory
-    INVAL,                   // invalid argument
-    NOT_EMPTY,               // attempt to delete a non empty directory
-    INVALID_ELEMENT_VERSION, // element version given to readdir does not match the current element version
-    NOT_A_CONTAINER,         // request to readdir from an element that is not allowed to have children
-    LOCKED,                  // operation is prohibited by locks held by other owner
-};
-
-typedef uint64_t EHandle;
-static const uint64_t INVALID_EHANDLE = (uint64_t)-1;
-
-// Operation callback function, provided as a parameter for most operations.
-// In case the callback return code is not OK the operation fails and returns the status code returned
-// by the callback.
-typedef EStoreRes (*OpCallback)(SystemAttr *attr, void *ctx);
-
-// Element creation flags
-enum CreateFlags {
-    NONE_CREATE_FLAGS = 0,
-    // don't overwrite existing elements
-    DONT_OVERWRITE = 0x1,
-    // if set the new element will be allowed to contain children
-    HAS_CHILDREN = 0x2,
-    // if set the new element will be allowed to contain data
-    HAS_DATA = 0x4
-};
-
-// Structure describing an element passed to the ReaddirCallback
-struct ReaddirEntry {
-    EHandle handle;
-    const char *name;
-    uint64_t offset;
-    // when set to true this entry represents a common prefix
-    bool is_common_prefix;
-};
-// Callback to provide to the read dir operation
-typedef bool (*ReaddirCallback)(ReaddirEntry *entry, void *ctx);
-
-// Container for the element store statistics
-struct EStoreStats {
-    // The total size, in bytes, of the file system.
-    uint64_t total_bytes;
-    // The amount of free space, in bytes, in the file system.
-    uint64_t free_bytes;
-    // The total number of element slots in the element store.
-    uint64_t total_elements;
-    // The number of free element slots in the element store.
-    uint64_t free_elements;
-};
-
-
-struct LockInfo {
-    bool exclusive;
-    int32_t svid;
-    char *owner;
-    int32_t owner_len;
-    uint64_t start;
-    uint64_t end;
-};
-typedef struct LockInfo LockInfo;
-
 
 class EStore {
 public:
@@ -191,17 +23,24 @@ public:
     void destroy();
 
     /*!
-     * Allocate a data buffer from the element store, the buffer size is DATA_BUFFER_SIZE.
-     *
-     * \return A pointer to the allocate buffer or nullptr in case no buffer is avaliable
+     * Intialize the element store on disk structures, may be called only once in the system life.
      */
-    void *alloc_data_buffer() { return _data_pool.alloc_address(); }
+    void create_estore();
+    /*!
+     * Load the element store from disk.
+     */
+    void load();
 
     /*!
-     * Return a data buffer to the element store.
-     * \param data_buffer pointer of the buffer to return.
+     * Allocate a data buffer iovec from the element store, the buffer size is DATA_BUFFER_SIZE.
+     * In case no memory is avaliable iovecs->count will be set to 0
      */
-    void free_data_buffer(void *data_buffer) { _data_pool.free_address(data_buffer); }
+    void alloc_data_buffers(P::IO::IOVecs *iovecs INOUT);
+
+    /*!
+     * Return the data buffers to the element store.
+     */
+    void free_data_buffers(P::IO::IOVecs *iovecs);
 
     /*!
      * Returns a handle to the root of the element store
@@ -342,12 +181,17 @@ public:
     /*!
      * Read data from an element, the call alloctes data buffers and the ownership of these buffers is passed to the
      * caller. The caller must eventually return the buffers to the element store by calling free_data_buffer().
+     * A read call may return less bytes than the requested count in case there are not enough resources to serve the
+     * request.
      *
      * \param op_cb - operation callback, called with the provided handle attributes
      * \param cb_ctx - callback context
      * \param handle - handle of the element to read from
      * \param offset - offset to read the data from
-     * \param io_vecs - io vec structure containing the data buffers and their sizes
+     * \param len - amount of data to read
+     * \param res_vecs - input / output io vec structure containing the data buffers and their sizes
+     * \param alloc_vecs - output io vec structure containing the data buffers that should be freed once the read
+     *                     operation completes. Utilizes the memory passed by the io_vecs.
      * \param bytes_read - output parameter containing how much data was actually read
      * \param eof - output parameter specifying if the read operation have reached to end of the element data
      * \param pre_attr - element attributes prior the operation
@@ -358,8 +202,9 @@ public:
      *
      * \note A read operation updates the element access time.
      */
-    EStoreRes read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, P::IO::IOVecs *io_vecs,
-                   uint32_t *bytes_read OUT, bool *eof OUT, SystemAttr *pre_attr OUT, SystemAttr *post_attr OUT);
+    EStoreRes read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, uint64_t len,
+                   P::IO::IOVecs *res_vecs INOUT, P::IO::IOVecs *alloc_vecs OUT, uint32_t *bytes_read OUT, bool *eof OUT,
+                   SystemAttr *pre_attr OUT, SystemAttr *post_attr OUT);
 
     /*!
      * Read a container element contents.
@@ -390,9 +235,9 @@ public:
      *                                 element_version
      *         NOT_A_CONTAINER in case the provided handle points to an element that is not allowed to contain children
      */
-    EStoreRes readdir(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, uint64_t element_version,
-                      ReaddirCallback rd_cb, void *rd_ctx, const char *prefix, char delimiter,
-                      uint64_t *current_element_version, SystemAttr *post_attr OUT);
+    EStoreRes list_elements(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, uint64_t element_version,
+                            ListCallback rd_cb, void *rd_ctx, const char *prefix, char delimiter,
+                            uint64_t *current_element_version, SystemAttr *post_attr OUT);
 
     /*!
      * Creates a link (i.e. an additional name) to an existing element.
@@ -514,7 +359,10 @@ public:
     EStoreRes test_lock(OpCallback op_cb, void *cb_ctx, EHandle handle, LockInfo *lock, LockInfo *existing_lock OUT);
 
 private:
-    P::Pool _data_pool;
+    Ingest _ingest;
+    EStoreIO _eio;
+    ShardMd _shard_md;
+    HandlesTable _handles_table;
 };
 
 }

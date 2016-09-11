@@ -13,8 +13,6 @@
 #include "plasma/memory/object_pool.hpp"
 #include "plasma/memory/atomic_pool.hpp"
 
-#define CURRENT_COMPONENT ComponentId::IO_MIRRORING
-
 namespace MirroredIO {
 
 typedef uint64_t WorkerID;
@@ -37,6 +35,7 @@ public:
         void init(P::byte buffer[], size_t len);
         P::byte *get_data() { return (P::byte*)_vec.iov_base + MIO::get_header_size(); }
         size_t get_data_size() { return _vec.iov_len - MIO::get_header_size(); }
+        size_t get_raw_size() { return _vec.iov_len; }
         P::IO::IOVec *get_mio_vec() { return &_vec; }
 
     protected:

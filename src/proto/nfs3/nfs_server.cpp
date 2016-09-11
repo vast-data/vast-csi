@@ -23,7 +23,9 @@ using EStore::AttrFlag;
 using EStore::ElementFlags;
 using EStore::CreateFlags;
 using EStore::OpCallback;
-using EStore::ReaddirCallback;
+using EStore::ListCallback;
+using P::IO::IOVec;
+using P::IO::IOVecs;
 
 namespace Nfs {
 
@@ -39,14 +41,7 @@ void NfsServer::destroy()
 
 static void free_iovec(P::IO::IOVecs *iovecs, Rpc *rpc)
 {
-    LOOP(iovecs->count, i) {
-        P::IO::IOVec *vec = &iovecs->iovecs[i];
-        if (vec->iov_base) {
-            rpc->free_data_buffer(vec->iov_base);
-            vec->iov_base = nullptr;
-        }
-    }
-    iovecs->count = 0;
+    rpc->free_data_buffers(iovecs);
 }
 
 // This is an optimized version of the auto generated xdr_WRITE3args function.
@@ -69,16 +64,18 @@ xdr_buffered_WRITE3args(XDR *xdrs, BufferedWRITE3args *objp)
 
     Rpc *rpc = (Rpc *)xdrs->x_public;
     u_int len = objp->data_len;
+    uint32_t n_buffers = (len / EStore::DATA_BUFFER_SIZE) + (len % EStore::DATA_BUFFER_SIZE ? 1 : 0);
     objp->io_vecs.count = 0;
-    for (int i = 0; i < ALLOCATION_RETRY && len > 0; ++i) {
-        P::IO::IOVec *vec = &objp->io_vecs.iovecs[objp->io_vecs.count];
-        vec->iov_base = rpc->alloc_data_buffer();
-        if (vec->iov_base == nullptr) {
-            PT_DEBUG(DATA, "no data buffer available");
+    for (int i = 0; i < ALLOCATION_RETRY && objp->io_vecs.count == 0; ++i) {
+        objp->io_vecs.count = n_buffers;
+        rpc->alloc_data_buffers(&objp->io_vecs);
+        if (objp->io_vecs.count == 0) {
             P::Fiber::yield();
-            continue;
         }
-        objp->io_vecs.count++;
+    }
+
+    for (int i = 0; i < n_buffers && len > 0; ++i) {
+        IOVec *vec = &objp->io_vecs.iovecs[i];
         vec->iov_len = P_MIN(len, EStore::DATA_BUFFER_SIZE);
         if (!xdrdrec_direct_read(xdrs, (caddr_t)vec->iov_base, vec->iov_len)) {
             PT_ERROR(DATA, "xdrdrec_direct_read failed");
@@ -142,7 +139,7 @@ bool_t
 xdr_READ3free(XDR *xdrs, READ3args *args, BufferedREAD3res *res)
 {
     Rpc *rpc = (Rpc *)xdrs->x_public;
-    free_iovec(&res->READ3res_u.resok.io_vecs, rpc);
+    free_iovec(&res->READ3res_u.resok.alloc_vecs, rpc);
     return TRUE;
 }
 
@@ -738,13 +735,6 @@ void NfsServer::read(RpcRequest *request, READ3args *args, BufferedREAD3res *res
 
     P::IO::IOVecs *io_vecs = &res->READ3res_u.resok.io_vecs;
     io_vecs->count = (uint32_t)ceil((double)args->count / EStore::DATA_BUFFER_SIZE);
-    uint32_t count = args->count;
-    LOOP(io_vecs->count, i) {
-        io_vecs->iovecs[i].iov_len = P_MIN(count, EStore::DATA_BUFFER_SIZE);
-        io_vecs->iovecs[i].iov_base = nullptr;
-        count -= io_vecs->iovecs[i].iov_len;
-    }
-    DEBUG_ASSERT(count == 0);
 
     AccessCheckCtx check_ctx = {
         .request = request,
@@ -753,12 +743,13 @@ void NfsServer::read(RpcRequest *request, READ3args *args, BufferedREAD3res *res
     SystemAttr pre_attr;
     SystemAttr post_attr;
     res->status = NFS3_OK;
-    EStoreRes eres = _estore->read(read_check_cb, &check_ctx, handle, args->offset, &res->READ3res_u.resok.io_vecs,
+    EStoreRes eres = _estore->read(read_check_cb, &check_ctx, handle, args->offset, args->count,
+                                   &res->READ3res_u.resok.io_vecs, &res->READ3res_u.resok.alloc_vecs,
                                    &res->READ3res_u.resok.count, (bool *)&res->READ3res_u.resok.eof,
                                    &pre_attr, &post_attr);
     if (eres != EStoreRes::OK) {
         res->status = eres_to_nfs_status(eres);
-        PT_DEBUG(DATA, "read from handle=%lx offset=%lu count=%u failed res->status=%d",
+        PT_ERROR(DATA, "read from handle=%lx offset=%lu count=%u failed res->status=%d",
                  handle, args->offset, args->count, res->status);
         res->READ3res_u.resfail.file_attributes.attributes_follow = FALSE;
         return;
@@ -810,7 +801,6 @@ void NfsServer::create(RpcRequest *request, CREATE3args *args, CREATE3res *res)
     
     CreateFlags flags = CreateFlags::HAS_DATA;
     if (args->how.mode == GUARDED || args->how.mode == EXCLUSIVE) {
-//        flags = (CreateFlags)(flags | CreateFlags::DONT_OVERWRITE);
         SET_ENUM_FLAG(flags, CreateFlags, DONT_OVERWRITE);
     }
     uint64_t verifier = 0;
@@ -823,7 +813,7 @@ void NfsServer::create(RpcRequest *request, CREATE3args *args, CREATE3res *res)
     }
     set_owner_from_auth(&settable_attr, request);
     SET_ENUM_FLAG(settable_attr.flags, AttrFlag, ELEMENT_FLAGS);
-    settable_attr.element_flags |= (uint64_t)ElementFlags::FILE;
+    settable_attr.element_flags = (uint64_t)ElementFlags::FILE;
 
     AccessCheckCtx check_ctx = {
         .request = request,
@@ -858,7 +848,7 @@ void NfsServer::mkdir(RpcRequest *request, MKDIR3args *args, MKDIR3res *res)
     nfs_sattr_to_settable_attr(&args->attributes, &settable_attr);
     set_owner_from_auth(&settable_attr, request);
     SET_ENUM_FLAG(settable_attr.flags, AttrFlag, ELEMENT_FLAGS);
-    settable_attr.element_flags |= (uint64_t)ElementFlags::DIR;
+    settable_attr.element_flags = (uint64_t)ElementFlags::DIR;
 
     AccessCheckCtx check_ctx = {
         .request = request,
@@ -895,7 +885,7 @@ void NfsServer::symlink(RpcRequest *request, SYMLINK3args *args, SYMLINK3res *re
     nfs_sattr_to_settable_attr(&args->symlink.symlink_attributes, &settable_attr);
     set_owner_from_auth(&settable_attr, request);
     SET_ENUM_FLAG(settable_attr.flags, AttrFlag, ELEMENT_FLAGS);
-    settable_attr.element_flags |= (uint64_t)ElementFlags::SYMLINK;
+    settable_attr.element_flags = (uint64_t)ElementFlags::SYMLINK;
 
     ExtendedAttrs xattrs;
     xattrs.n_attrs = 1;
@@ -1166,7 +1156,7 @@ void NfsServer::readdir(RpcRequest *request, READDIR3args *args, READDIR3res *re
 {
     EHandle handle;
     nfs_handle_to_ehandle(&args->dir, &handle);
-    PT_DEBUG(DATA, "readdir handle=%lx offset=%ld", handle, args->cookie);
+    PT_DEBUG(DATA, "list_elements handle=%lx offset=%ld", handle, args->cookie);
 
     res->READDIR3res_u.resok.reply.entries->fileid = EStore::INVALID_EHANDLE;
     ReaddirState rd_state = {
@@ -1190,11 +1180,11 @@ void NfsServer::readdir(RpcRequest *request, READDIR3args *args, READDIR3res *re
 
     EStoreRes eres = add_dot_files(handle, args->cookie, &rd_state, readdir_cb);
     if (eres == EStoreRes::OK) {
-        eres = _estore->readdir(access_check_cb, &check_ctx, handle, args->cookie, dir_ver, readdir_cb, &rd_state,
-                                nullptr, 0, &current_dir_version, &post_attr);
+        eres = _estore->list_elements(access_check_cb, &check_ctx, handle, args->cookie, dir_ver, readdir_cb, &rd_state,
+                                      nullptr, 0, &current_dir_version, &post_attr);
     }
     if (eres != EStoreRes::OK) {
-        PT_ERROR(DATA, "readdir handle=%lx offset=%ld failed res=%d", handle, args->cookie, eres);
+        PT_ERROR(DATA, "list_elements handle=%lx offset=%ld failed res=%d", handle, args->cookie, eres);
         res->status = eres_to_nfs_status(eres);
         res->READDIR3res_u.resfail.dir_attributes.attributes_follow = FALSE;
         return;
@@ -1238,11 +1228,11 @@ void NfsServer::readdir_plus(RpcRequest *request, READDIRPLUS3args *args, READDI
 
     EStoreRes eres = add_dot_files(handle, args->cookie, &rd_state, readdir_plus_cb_func);
     if (eres == EStoreRes::OK) {
-        eres = _estore->readdir(access_check_cb, &check_ctx, handle, args->cookie, dir_ver, readdir_plus_cb_func,
-                                &rd_state, nullptr, 0, &current_dir_version, &post_attr);
+        eres = _estore->list_elements(access_check_cb, &check_ctx, handle, args->cookie, dir_ver, readdir_plus_cb_func,
+                                      &rd_state, nullptr, 0, &current_dir_version, &post_attr);
     }
     if (eres != EStoreRes::OK) {
-        PT_ERROR(DATA, "readdir handle=%lx offset=%ld failed res=%d", handle, args->cookie, eres);
+        PT_ERROR(DATA, "list_elements handle=%lx offset=%ld failed res=%d", handle, args->cookie, eres);
         res->status = eres_to_nfs_status(eres);
         res->READDIRPLUS3res_u.resfail.dir_attributes.attributes_follow = FALSE;
         return;
@@ -1417,7 +1407,11 @@ nfsstat3 NfsServer::eres_to_nfs_status(EStore::EStoreRes res)
             return NFS3ERR_BAD_COOKIE;
         case EStoreRes::NOT_A_CONTAINER:
             return NFS3ERR_NOTDIR;
+        case EStoreRes::NOT_A_DATA_ELEMENT:
+            return NFS3ERR_ISDIR;
         case EStoreRes::LOCKED:
+            return NFS3ERR_SERVERFAULT;
+        case EStoreRes::NOT_IN_INGEST:
             return NFS3ERR_SERVERFAULT;
     }
 }
@@ -1499,7 +1493,7 @@ void NfsServer::sys_attr_to_wcc_attr(EStore::SystemAttr *attr, wcc_attr *wcc_att
 }
 
 EStore::EStoreRes NfsServer::add_dot_files(EStore::EHandle handle, uint64_t offset,
-                                           ReaddirState *rd_state, ReaddirCallback cb)
+                                           ReaddirState *rd_state, ListCallback cb)
 {
     EStore::ReaddirEntry entry = {
         .handle = handle,

@@ -24,8 +24,9 @@ void Backtracer::print_location(void *p) {
     snprintf(cmd, sizeof(cmd), "addr2line -afpC -e %s %p", _path , p);
     FILE *fp = popen(cmd, "r");
     if (fp) {
-        char buf[128];
+        char buf[512];
         fgets(buf, sizeof(buf), fp);
+        buf[511] = '\0';
         printf("%s", buf);
         // TODO: TRACE as well
     }

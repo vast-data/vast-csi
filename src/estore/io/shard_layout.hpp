@@ -6,41 +6,11 @@
  */
 #pragma once
 
+#include <estore/defs/estore_defs.hpp>
 #include "plasma/utils/io.hpp"
 
-////////////////////////////////////////////////////////////////////////////////////
-// TODO: copy from Asaf Estore code: remove this!
 
-enum class EAddrType : uint64_t {
-    NONE                = 0,
-    HANDLE_TABLE        = 1,
-    SHARD_MD            = 2, // a single block
-    MD_BLOCKS           = 3,
-    WRITE_BUFFER        = 4,
-    TOKEN_MAPPER        = 5, // ?
-    CONTAINED           = 6,
-    FLASH               = 7,
-
-    COUNT
-};
-static_assert((uint64_t)EAddrType::COUNT < 16, "EAddrType cannot take more than 4 bits");
-
-typedef uint64_t VirtualBucketId;
-
-// TODO might need to support flash addr here
-struct EAddress {
-    EAddrType addr_type:4;
-    uint64_t shard_id:16;
-    uint64_t offset:44; // SHOULD DETERMINE IF THIS IS IN BS OR BYTES
-
-    uint64_t as_number() { return *(uint64_t *)this; }
-};
-
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-namespace Phys {
-namespace Layout {
+namespace EStore {
 
 // This implements a translation according to the XPoint layout.
 // There is still no RDMA layout translation.
@@ -51,6 +21,7 @@ public:
     static size_t get_bs(EAddrType addr_type) { return EADDR_TYPE_BS[(int)addr_type]; };
     // len is for assert purposes. we don't allow access to a range that exceeds an allocation unit boundaries.
     P::IO::MirroredAddressToken translate(EAddress eaddr, size_t len);
+    void get_addr_type_info(P::ShardId shard_id, EAddrType type, uint64_t *size_bytes);
 
 protected:
 
@@ -69,7 +40,7 @@ protected:
     uint64_t _allocation_unit_size;
 };
 
-}
+
 }
 
 

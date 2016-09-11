@@ -1,4 +1,4 @@
-#include "../layout/shard_layout.hpp"
+#include "shard_layout.hpp"
 
 #include "plasma/utils/macros.hpp"
 #include "plasma/utils/assert.hpp"
@@ -25,9 +25,10 @@
  *          =========================================
  */
 
-namespace Phys {
+namespace EStore {
 
-namespace Layout {
+constexpr size_t ShardLayout::EADDR_TYPE_BS[];
+constexpr size_t ShardLayout::EADDR_TYPE_BLOCK_COUNT[];
 
 void ShardLayout::init()
 {
@@ -52,9 +53,14 @@ P::IO::MirroredAddressToken ShardLayout::translate(EAddress eaddr, size_t len)
     ASSERT_OP(ret_addr.section_id, <, SECTIONS_IN_DBOX * DBOX_COUNT);
 
     ret_addr.byte_offset = _EAddrType_base_offset[(int)eaddr.addr_type] + offset_in_curr_unit;
+    ret_addr.byte_offset += eaddr.shard_id * _allocation_unit_size; // TODO replace it with real shard->AUs mapping
 
     return ret_addr;
 }
 
+void ShardLayout::get_addr_type_info(P::ShardId shard_id, EAddrType type, uint64_t *size_bytes)
+{
+    *size_bytes = _EAddrType_size_in_unit[(int)type] * SECTIONS_IN_DBOX; // TODO number of sections in shard
 }
+
 }

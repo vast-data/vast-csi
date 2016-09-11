@@ -7,6 +7,8 @@
 
 #include <zlib.h>
 
+#define CURRENT_COMPONENT ComponentId::IO_MIRRORING
+
 static const RetryParams read_retry_params = { .max_spinning_attempts = 2, .attempts_per_yield = 1, .max_attempts = 20 };
 static const RetryParams write_retry_params = { .max_spinning_attempts = 2, .attempts_per_yield = 1, .max_attempts = 20 };
 static const useconds_t wait_interval = 10;
@@ -268,8 +270,10 @@ void MIO::unlock(MirroredAddressToken address, WorkerID worker_id)
 
 void MIO::Buffer::init(P::byte buffer[], size_t len)
 {
-    ASSERT_EQUAL((size_t)buffer % DevIO::O_DIRECT_ALIGNMENT, 0, "MIOBuffer must be aligned");
-    ASSERT_EQUAL(len % DevIO::O_DIRECT_ALIGNMENT, 0, "MIOBuffer size must be aligned");
+    // not checking for alignment in the buffer init since in some cases the buffer is used for memory operations
+    // which does not require alignment
+//    ASSERT_EQUAL((size_t)buffer % DevIO::O_DIRECT_ALIGNMENT, 0, "MIOBuffer must be aligned");
+//    ASSERT_EQUAL(len % DevIO::O_DIRECT_ALIGNMENT, 0, "MIOBuffer size must be aligned");
     ASSERT_OP(len, >, MIO::get_header_size(), "MIOBuffer must be bigger than MIO header");
 
     _vec.iov_base = buffer;

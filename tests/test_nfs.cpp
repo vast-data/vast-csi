@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <gtest/gtest.h>
 #include <thread>
+#include "estore/estore.hpp"
 #include "plasma/execution/env.hpp"
 #include "globals.hpp"
 
@@ -10,6 +11,12 @@ static bool server_mode = false;
 
 TEST(TestNfs, test)
 {
+    // create the element store
+    EStore::EStore estore;
+    estore.init();
+    estore.create_estore();
+    estore.destroy();
+
     debugging = true;
     P::Env *env = P::Env::get();
     std::thread env_thread(&P::Env::run, env, "" /* binary_path */, "tests/nfs_test.config");

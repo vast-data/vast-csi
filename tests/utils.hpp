@@ -22,6 +22,7 @@ static __attribute__ ((destructor)) void finalize_traces()
 
 void error_handler(int sig)
 {
+    printf("===ERROR SIGNAL (%s)===\n", strsignal(sig));
     P::Backtracer::show_backtrace();
     finalize_traces();
     exit(sig);

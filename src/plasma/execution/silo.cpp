@@ -97,7 +97,7 @@ static void pin_to_core(int32_t core_id)
 
 void Silo::maintenance()
 {
-    while (!debugging) {
+    while (true) {
         P::TimerQueues::sleep(P::SleepInterval::SLEEP_1_SECOND);
         if (get_id() == 0)
             Trace::Emitter::get_global()->flush();

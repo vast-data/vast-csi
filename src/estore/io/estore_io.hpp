@@ -1,0 +1,65 @@
+#/* Copyright (C) Vast Data Ltd. */
+
+#pragma once
+
+#include <phys/mirrored_io/mio.hpp>
+#include "shard_layout.hpp"
+#include "plasma/utils/io.hpp"
+#include "plasma/utils/types.hpp"
+#include "plasma/fiber/sync/future.hpp"
+#include "estore/defs/estore_defs.hpp"
+
+namespace EStore {
+
+#define IO_ALIGN_UP(LEN)    POW2_ROUND_UP(LEN, IO_ALIGNMENT)
+#define IO_ALIGN_DOWN(LEN)  POW2_ROUND_DOWN(LEN, IO_ALIGNMENT)
+
+typedef MirroredIO::MIO::Buffer MIOBuffer;
+
+class EStoreIO {
+public:
+    void init();
+    void destroy();
+
+    // All IO operations must be aligned to P::DevIO::O_DIRECT_ALIGNMENT size
+
+    // read metadata (protected) from the given address, buffer must be pre allocated
+    EStoreRes WARN_UNUSED read_md(EAddress addr, MIOBuffer *buff, bool locked = false,
+                                  P::FiberSync::FutureRes<MirroredIO::MIO::ReadRet> *future = nullptr);
+    // read data (unprotected) from the given address, buffer must be pre allocated
+    EStoreRes WARN_UNUSED read_data(EAddress addr, P::IO::IOVecs *iovecs, P::FiberSync::FutureRes<bool> *future);
+
+    // write metadata (protected) from the given address, buffer must be pre allocated
+    EStoreRes WARN_UNUSED write_md(EAddress addr, MIOBuffer *buff, P::FiberSync::FutureRes<bool> *future = nullptr);
+    // write data (unprotected) to the given address, buffer must be pre allocated
+    EStoreRes WARN_UNUSED write_data(EAddress addr, P::IO::IOVecs *iovecs, P::FiberSync::FutureRes<bool> *future = nullptr);
+
+    // blocking allocation of multiple MIO buffers
+    void alloc_md_buffers(uint16_t n_buffers, MIOBuffer *buffers OUT);
+    // free multiple MIO buffers
+    void free_md_buffers(uint16_t n_buffers, MIOBuffer *buffers);
+    // blocking allocation of multiple data buffers (will allocate iovecs->count buffers)
+    void alloc_data_buffers(P::IO::IOVecs *iovecs INOUT);
+    // free data buffers
+    void free_data_buffers(P::IO::IOVecs *iovecs);
+
+    // returns to address to a NVRAM_MD_BLOCK_SIZE sized block, out of which only NVRAM_USABLE_BLOCK_SIZE may be used
+    EAddress WARN_UNUSED alloc_md_block(P::ShardId shard_id, EAddrType type, VirtualBucketId virt_bucket);
+    // free a previously allocated md block
+    void free_md_block(EAddress addr);
+
+    // returns the start of the write buffers area and its size for the specified shard
+    void get_addr_type_info(P::ShardId shard_id, EAddrType type, uint64_t *size_bytes);
+
+private:
+    EStoreRes mio_to_estore_res(MirroredIO::MIO::ReadRet res);
+    EStoreRes bool_to_estore_res(bool res);
+
+    MirroredIO::MIO *_mio;
+    ShardLayout *_shard_layout;
+    P::Pool _md_pool;
+    P::Pool _data_pool;
+};
+
+}
+

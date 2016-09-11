@@ -1,0 +1,194 @@
+#include <map>
+#include <fstream>
+#include <fcntl.h>
+#include <sys/uio.h>
+#include <unistd.h>
+#include "plasma/utils/assert.hpp"
+#include "estore/io/estore_io.hpp"
+#include "estore/metadata/write_buffer.hpp"
+
+#define CURRENT_COMPONENT ComponentId::TEST
+
+namespace EStore {
+
+#define N_WRITE_BUFFERS 4
+std::map<uint64_t, char *> data_map;
+std::map<std::string, int> fd_map;
+uint64_t current_addr = 2 + N_WRITE_BUFFERS;
+
+using EStoreRes::OK;
+using P::IO::IOVec;
+using P::IO::IOVecs;
+using P::FiberSync::FutureRes;
+using MirroredIO::MIO;
+
+void EStoreIO::init()
+{
+    system("rm -rf /tmp/eio_mock_data");
+    system("mkdir /tmp/eio_mock_data");
+}
+
+void EStoreIO::destroy()
+{
+    // TODO free mem
+}
+
+static int get_mock_fd(EAddress addr)
+{
+    if (fd_map.size() > 500) {
+        for (auto fd_iter : fd_map) {
+            close(fd_iter.second);
+        }
+        fd_map.clear();
+    }
+    char filename[64];
+    sprintf(filename, "/tmp/eio_mock_data/eio_mock_file_%lu_%lu", addr.addr_type, addr.shard_id);
+    auto iter = fd_map.find(filename);
+    int fd;
+    if (iter == fd_map.end()) {
+        fd = open(filename, O_RDWR | O_CREAT /*| O_DIRECT*/, 0777);
+        ASSERT_ERRNO(fd > 0);
+        fd_map[filename] = fd;
+    } else {
+        fd = iter->second;
+    }
+    ASSERT_ERRNO(fd > 0);
+    return fd;
+}
+
+EStoreRes WARN_UNUSED EStoreIO::read_md(EAddress addr, MIOBuffer *buff, bool locked, FutureRes<MIO::ReadRet> *future)
+{
+    PT_DEBUG(DATA, "read addr=0x%lx", addr.as_number());
+    int fd = get_mock_fd(addr);
+    ASSERT(buff->get_raw_size() == NVRAM_MD_BLOCK_SIZE);
+    ASSERT((size_t)buff->get_mio_vec()->iov_base % IO_ALIGNMENT == 0);
+    ssize_t res = pread(fd, buff->get_mio_vec()->iov_base, buff->get_raw_size(), addr.offset);
+    ASSERT_ERRNO(res == buff->get_raw_size());
+    if (future) {
+        future->set();
+    }
+    return OK;
+}
+
+EStoreRes EStoreIO::write_md(EAddress addr, MIOBuffer *buff, FutureRes<bool> *future)
+{
+    PT_DEBUG(DATA, "write addr=0x%lx", addr.as_number());
+    int fd = get_mock_fd(addr);
+    ASSERT(buff->get_raw_size() == NVRAM_MD_BLOCK_SIZE);
+    ASSERT((size_t)buff->get_mio_vec()->iov_base % IO_ALIGNMENT == 0);
+    memset(buff->get_mio_vec()->iov_base, 0xff, MIO_OVERHEAD);
+    ssize_t res = pwrite(fd, buff->get_mio_vec()->iov_base, buff->get_raw_size(), addr.offset);
+    ASSERT_ERRNO(res == buff->get_raw_size());
+    if (future) {
+        future->set();
+    }
+    return OK;
+}
+
+
+EStoreRes WARN_UNUSED EStoreIO::read_data(EAddress addr, IOVecs *iovecs, FutureRes<bool> *future)
+{
+    int fd = get_mock_fd(addr);
+    LOOP(iovecs->count, i) {
+        printf("iov_len=%lu iov_base=%lu\n", iovecs->iovecs[i].iov_len, (size_t)iovecs->iovecs[i].iov_base);
+        ASSERT(iovecs->iovecs[i].iov_len % IO_ALIGNMENT == 0);
+        ASSERT((size_t)iovecs->iovecs[i].iov_base % IO_ALIGNMENT == 0);
+//        PT_DEBUG(DATA, "vec(%lu) len=%lu", i, iovecs->iovecs[i].iov_len);
+    }
+    ASSERT(addr.offset % IO_ALIGNMENT == 0);
+    PT_DEBUG(DATA, "read from fd=%d offset=%lu len=%lu", fd, addr.offset, iovecs->total_length());
+    ssize_t res = preadv(fd, iovecs->iovecs, iovecs->count, addr.offset);;
+    ASSERT_ERRNO(res > 0);
+    if (future) {
+        future->set();
+    }
+    return OK;
+}
+
+EStoreRes EStoreIO::write_data(EAddress addr, P::IO::IOVecs *iovecs, FutureRes<bool> *future)
+{
+    int fd = get_mock_fd(addr);
+    LOOP(iovecs->count, i) {
+        printf("iov_len=%lu iov_base=%lu\n", iovecs->iovecs[i].iov_len, (size_t)iovecs->iovecs[i].iov_base);
+        ASSERT(iovecs->iovecs[i].iov_len % IO_ALIGNMENT == 0);
+        ASSERT((size_t)iovecs->iovecs[i].iov_base % IO_ALIGNMENT == 0);
+//        PT_DEBUG(DATA, "vec(%lu) len=%lu", i, iovecs->iovecs[i].iov_len);
+    }
+    PT_DEBUG(DATA, "write to fd=%d offset=%lu len=%lu", fd, addr.offset, iovecs->total_length());
+    ASSERT(addr.offset % IO_ALIGNMENT == 0);
+    ssize_t res = pwritev(fd, iovecs->iovecs, iovecs->count, addr.offset);
+    ASSERT_ERRNO(res > 0);
+
+    if (future) {
+        future->set();
+    }
+    return OK;
+}
+
+void EStoreIO::alloc_md_buffers(uint16_t n_buffers, MIOBuffer *buffers)
+{
+    ASSERT(n_buffers > 0);
+    PT_DEBUG(DATA, "alloc %hu buffers", n_buffers);
+    LOOP(n_buffers, i) {
+        buffers[i].init((P::byte *)aligned_alloc(IO_ALIGNMENT, NVRAM_MD_BLOCK_SIZE), NVRAM_MD_BLOCK_SIZE);
+    }
+}
+
+void EStoreIO::free_md_buffers(uint16_t n_buffers, MIOBuffer *buffers)
+{
+    ASSERT(n_buffers > 0);
+    LOOP(n_buffers, i) {
+        memset(buffers[i].get_mio_vec()->iov_base, 0xff, buffers[i].get_mio_vec()->iov_len);
+        free(buffers[i].get_mio_vec()->iov_base);
+        buffers[i].get_mio_vec()->iov_base = nullptr;
+    }
+    PT_DEBUG(DATA, "free %hu buffers", n_buffers);
+}
+
+
+void EStoreIO::alloc_data_buffers(IOVecs *iovecs)
+{
+    ASSERT(iovecs->count > 0);
+    LOOP(iovecs->count, i) {
+        iovecs->iovecs[i].iov_base = (char *)aligned_alloc(IO_ALIGNMENT, ALLOCATED_DATA_BUFFER_SIZE);
+        memset(iovecs->iovecs[i].iov_base, 0, ALLOCATED_DATA_BUFFER_SIZE);
+        iovecs->iovecs[i].iov_len = DATA_BUFFER_SIZE;
+    }
+}
+
+void EStoreIO::free_data_buffers(IOVecs *iovecs)
+{
+    ASSERT(iovecs->count > 0);
+    LOOP(iovecs->count, i) {
+        if (iovecs->iovecs[i].iov_base) {
+            free(iovecs->iovecs[i].iov_base);
+        }
+    }
+    iovecs->count = 0;
+}
+
+EAddress EStoreIO::alloc_md_block(P::ShardId shard_id, EAddrType type, VirtualBucketId virt_bucket)
+{
+    EAddress addr;
+    addr.shard_id = shard_id;
+    addr.addr_type = type;
+    addr.offset = current_addr;
+    current_addr += 1;
+    return addr;
+}
+
+void EStoreIO::free_md_block(EAddress addr)
+{
+
+}
+
+void EStoreIO::get_addr_type_info(P::ShardId shard_id, EAddrType type, uint64_t *size_bytes)
+{
+    if (type == EAddrType::WRITE_BUFFER) {
+        *size_bytes = WRITE_BUFFER_SIZE * N_WRITE_BUFFERS;
+    } else {
+        *size_bytes = NVRAM_MD_BLOCK_SIZE * 256;
+    }
+}
+
+}

@@ -64,7 +64,7 @@ private:
     // helper methods
     void unlink(RpcRequest *request, diropargs3 *args, nfsstat3 *status, wcc_data *resok, wcc_data *resfail);
     EStore::EStoreRes add_dot_files(EStore::EHandle handle, uint64_t offset,
-                                    ReaddirState *rd_state, EStore::ReaddirCallback cb);
+                                    ReaddirState *rd_state, EStore::ListCallback cb);
     void sys_attr_to_nfs_attr(EStore::SystemAttr *attr, fattr3 *nfs_attr);
     EStore::EStoreRes fill_post_op_attr(nfs_fh3 *fh3, post_op_attr *po_attr);
     EStore::EStoreRes get_attr_from_fh3(nfs_fh3 *fh3, fattr3 *attr);

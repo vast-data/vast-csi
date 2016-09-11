@@ -33,7 +33,7 @@ static void native_cpuid(uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *
 
 static float get_cycles_per_nano()
 {
-    uint32_t brand[4 * 3];
+    static uint32_t brand[4 * 3];
     for (size_t i = 0; i < 3; i++) {
         brand[i * 4] = 0x80000002 + (uint32_t) i;
         native_cpuid (&brand[i * 4], &brand[i * 4 + 1], &brand[i * 4 + 2], &brand[i * 4 + 3]);

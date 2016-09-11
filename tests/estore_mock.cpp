@@ -17,21 +17,21 @@
 #include <set>
 
 #define MAX_OWNER_SIZE 1024+1
-// TODO use correct component once its defined
-#define CURRENT_COMPONENT ComponentId::NFS
+#define CURRENT_COMPONENT ComponentId::TEST
 // no reason to really sync writes in the mock, enable this if we'll want to do crash tests on top of the mock
 static bool do_sync = false;
 // enable to drop writes in order to the protocol server performance
 static bool drop_writes = false;
 // enable to drop reads in order to the protocol server performance
 static bool drop_reads = false;
+static P::Pool _data_pool;
 
 namespace EStore {
 
 using std::string;
+using P::IO::IOVec;
+using P::IO::IOVecs;
 
-// 0 is reserved
-static uint64_t ROOT_HANDLE = 1;
 #define ESTORE_PATH "/tmp/estore"
 
 class Lock {
@@ -246,6 +246,36 @@ void EStore::destroy()
 {
     _data_pool.destroy();
     _handle_container.destroy();
+}
+
+void EStore::create_estore()
+{
+
+}
+
+void EStore::load()
+{
+
+}
+
+void EStore::alloc_data_buffers(IOVecs *iovecs)
+{
+    LOOP(iovecs->count, i) {
+        iovecs->iovecs[i].iov_base = _data_pool.alloc_address();
+        if (iovecs->iovecs[i].iov_base == nullptr) {
+            iovecs->count = i;
+            free_data_buffers(iovecs);
+            return;
+        }
+    }
+}
+
+void EStore::free_data_buffers(IOVecs *iovecs)
+{
+    LOOP(iovecs->count, i) {
+        _data_pool.free_address(iovecs->iovecs[i].iov_base);
+    }
+    iovecs->count = 0;
 }
 
 static EStoreRes errno_to_estore_res()
@@ -634,9 +664,7 @@ EStoreRes EStore::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
         }
         current_offset += io_vecs->iovecs[i].iov_len;
     }
-    LOOP(io_vecs->count, i) {
-        free_data_buffer(io_vecs->iovecs[i].iov_base);
-    }
+    free_data_buffers(io_vecs);
     if (do_sync) {
         int ret = fsync(fd);
         if (ret != 0) {
@@ -652,8 +680,9 @@ EStoreRes EStore::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
 }
 
 
-EStoreRes EStore::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, P::IO::IOVecs *io_vecs,
-                       uint32_t *bytes_read, bool *eof, SystemAttr *pre_attr, SystemAttr *post_attr)
+EStoreRes EStore::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, uint64_t len, 
+                       P::IO::IOVecs *res_vecs, P::IO::IOVecs *alloc_vecs, uint32_t *bytes_read, bool *eof, 
+                       SystemAttr *pre_attr, SystemAttr *post_attr)
 {
     int fd;
     EStoreRes res = io_start(handle, pre_attr, &fd);
@@ -666,41 +695,50 @@ EStoreRes EStore::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t 
             return res;
         }
     }
-
     *eof = false;
     *bytes_read = 0;
     uint64_t current_offset = offset;
 
-    LOOP(io_vecs->count, i) {
-        io_vecs->iovecs[i].iov_base = alloc_data_buffer();
-        if (io_vecs->iovecs[i].iov_base == nullptr) {
-            return EStoreRes::NO_MEM;
-        }
-        ssize_t ret = io_vecs->iovecs[i].iov_len;
+    res_vecs->count = (len / DATA_BUFFER_SIZE) + (len % DATA_BUFFER_SIZE ? 1 : 0);
+    alloc_data_buffers(res_vecs);
+    if (res_vecs->count == 0) {
+        return EStoreRes::NO_MEM;
+    }
+
+    for (int i = 0; len > 0; ++i) {
+        res_vecs->iovecs[i].iov_len = P_MIN(len, DATA_BUFFER_SIZE);
+        len -= res_vecs->iovecs[i].iov_len;
+    }
+
+    LOOP(res_vecs->count, i) {
+        ssize_t ret = res_vecs->iovecs[i].iov_len;
         if (!drop_reads) {
-            ret = pread(fd, io_vecs->iovecs[i].iov_base, io_vecs->iovecs[i].iov_len, current_offset);
+            ret = pread(fd, res_vecs->iovecs[i].iov_base, res_vecs->iovecs[i].iov_len, current_offset);
         }
         if (ret < 0) {
             return errno_to_estore_res();
         }
         *bytes_read += ret;
-        if (ret < io_vecs->iovecs[i].iov_len) {
+        if (ret < res_vecs->iovecs[i].iov_len) {
             *eof = true;
             break;
         }
-        current_offset += io_vecs->iovecs[i].iov_len;
+        current_offset += res_vecs->iovecs[i].iov_len;
     }
 
     res = fill_attr(_handle_container.get_path(handle), post_attr);
     if (res != EStoreRes::OK) {
         return res;
     }
+    alloc_vecs->count = res_vecs->count;
+    alloc_vecs->iovecs = res_vecs->iovecs;
     return EStoreRes::OK;
 }
 
-EStoreRes EStore::readdir(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, uint64_t element_version,
-                          ReaddirCallback rd_cb, void *rd_ctx, const char *prefix, char delimiter,
-                          uint64_t *current_element_version, SystemAttr *post_attr)
+EStoreRes EStore::list_elements(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset,
+                                uint64_t element_version,
+                                ListCallback rd_cb, void *rd_ctx, const char *prefix, char delimiter,
+                                uint64_t *current_element_version, SystemAttr *post_attr)
 {
     string path = _handle_container.get_path(handle);
     if (path.empty()) {

@@ -51,6 +51,7 @@ struct BufferedREAD3resok {
     bool_t eof;
     u_int data_len;
     P::IO::IOVecs io_vecs;
+    P::IO::IOVecs alloc_vecs;
 };
 
 struct BufferedREAD3res {

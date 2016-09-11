@@ -35,6 +35,7 @@ components = {0: 'TEST',
               1: 'PLAS',
               2: 'NFS ',
               3: 'CLUS',
+              4: 'ESTR',
              }
 
 TIME_FORMAT = '%y/%m/%d %H:%M:%S.%f'

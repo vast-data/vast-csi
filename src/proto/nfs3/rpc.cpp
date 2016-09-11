@@ -54,6 +54,7 @@ int writeit(char *handle, char *buff, int len)
     int fd = ((Rpc::Connection *)handle)->fd;
 //    PT_DEBUG(DATA, "request to write %d", len);
     int written = 0;
+    int retry = 0;
     for (int i = 0; i < SEND_RETRY && written < len; ++i) {
         // its seems redundant to check if the socket is writable since it is non blocking
         // however for some obscure reason when we write to a full socket it gets disconnected by the peer (SIGPIPE)
@@ -68,7 +69,8 @@ int writeit(char *handle, char *buff, int len)
             }
         }
         if (!can_write) {
-            PT_DEBUG(DATA, "socket full, waiting");
+            retry++;
+            PT_DEV(DATA, "socket full, waiting");
             P::Fiber::yield();
             continue;
         }
@@ -84,7 +86,11 @@ int writeit(char *handle, char *buff, int len)
         }
         written += len;
     }
-    PT_DEV(DATA, "written %d bytes", written);
+    if (retry > 0) {
+        PT_DEBUG(DATA, "written %d bytes retry=%d", written, retry);
+    } else {
+        PT_DEV(DATA, "written %d bytes", written);
+    }
     if (written < len) {
         PT_ERROR(DATA, "write attempt passed max retries, managed to write %d bytes", written);
     }
@@ -377,6 +383,7 @@ void Rpc::handle_msg(Connection *conn, RpcRequest *request)
         request->rpc = this;
         P::Fiber *fiber = P::Fiber::init((P::Index)FiberGroupId::I_PROTO, fiber_handle_msg, request, false);
         for (int i = 0; fiber == nullptr && i < ALLOCATION_RETRY; ++i) {
+            PT_DEBUG(DATA, "fiber not available yield and retry fiber allocation");
             P::Fiber::yield();
             fiber = P::Fiber::init((P::Index)FiberGroupId::I_PROTO, fiber_handle_msg, request, false);
         }

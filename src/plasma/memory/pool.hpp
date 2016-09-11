@@ -41,7 +41,7 @@ public:
     * \param blocks the number of blocks the pool is expected to hold.
     * \param block_size the size of each block in bytes (minimum of 4 bytes).
     */
-    void init(Index blocks, size_t block_size);
+    void init(Index blocks, size_t block_size, size_t alignment = CACHE_LINE_BYTES);
 
     /*!
     * Allocate a block from a partition within the pool.

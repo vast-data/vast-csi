@@ -36,10 +36,10 @@ void Pool::partitioned_init(size_t block_size, Index num_partitions, Index parti
     INDEX_TO_VALUE(_blocks - 1) = INVALID_INDEX;
 }
 
-void Pool::init(Index blocks, size_t block_size)
+void Pool::init(Index blocks, size_t block_size, size_t alignment)
 {
     Index partitions[1] = {blocks};
-    return partitioned_init(block_size, 1, partitions);
+    return partitioned_init(block_size, 1, partitions, alignment);
 }
 
 Index Pool::partitioned_alloc(Index partition)
@@ -51,7 +51,7 @@ Index Pool::partitioned_alloc(Index partition)
     _partitions[partition]--;
 
     Index free = _free_head;
-    ASSERT_OP(free, !=, INVALID_INDEX, "free list should have an avaliable block");
+    ASSERT_OP(free, !=, INVALID_INDEX, "free list should have an available block");
     _free_head = INDEX_TO_VALUE(free);
     return free;
 }
@@ -103,6 +103,7 @@ void Pool::free_address(void *address)
 
 Index Pool::address_to_index(void *block)
 {
+    DEBUG_ASSERT(((uintptr_t) block - (uintptr_t) _mem) % _block_size == 0);
     return (Index) (((uintptr_t) block - (uintptr_t) _mem) / _block_size);
 }
 

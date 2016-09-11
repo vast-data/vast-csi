@@ -31,6 +31,11 @@ public:
             _next = node;
         }
 
+        void prepend(Node *node)
+        {
+            _prev->append(node);
+        }
+
         void remove()
         {
             _prev->_next = _next;

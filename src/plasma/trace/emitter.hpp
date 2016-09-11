@@ -43,6 +43,12 @@
 #define PT_WARN(channel, ...) PT_HELPER(channel, WARN, __VA_ARGS__)
 #define PT_ERROR(channel, ...) PT_HELPER(channel, ERROR, __VA_ARGS__)
 
+#define PT_RETURN(COND, RETVAL, FMT, ...)    \
+    if (COND) {                         \
+        PT_ERROR(DATA, FMT " - retval=%lu", ##__VA_ARGS__, (uint64_t)RETVAL);    \
+        return RETVAL;                  \
+    }
+
 #define P_TRACE_MAX_STR_LEN 4096
 #define P_TRACE_STR_LEN_TYPE uint16_t
 
