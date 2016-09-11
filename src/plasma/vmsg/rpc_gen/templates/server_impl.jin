@@ -28,7 +28,7 @@ FiberGroupId {{ server.name }}Server::get_op_fiber_group(uint8_t op_id)
 {
     switch ((ops)op_id) {
         {% for method in server.methods %}
-            case {{ method.name.upper() }}: return {% if method.fiber_group %}return FiberGroupId::{{ method.fiber_group }}{% else %}_default_fiber_group{% endif %};
+            case {{ method.name.upper() }}: return {% if method.fiber_group %}FiberGroupId::{{ method.fiber_group }}{% else %}_default_fiber_group{% endif %};
         {% endfor %}
         default:
             PANIC("invalid op id " << op_id);
