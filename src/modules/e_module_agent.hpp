@@ -10,7 +10,7 @@ namespace P {
 class EModuleAgent : public Control::Agent {
 public:
     void init(SiloId silo_id, ModuleId module_id) {
-        Control::Agent::init(silo_id, module_id);
+        Control::Agent::init(silo_id, module_id, FiberGroupId::E);
 
         // Env-related functionality should run only on the first silo.
         if (silo_id == 0) {

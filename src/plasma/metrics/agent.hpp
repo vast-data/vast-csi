@@ -9,10 +9,10 @@ namespace P { namespace Metrics {
 
 class MetricsAgent : public MetricsAgentServer {
 public:
-    void init(SiloId silo_id, ModuleId module_id)
+    void init(SiloId silo_id, ModuleId module_id, FiberGroupId fiber_group_id)
     {
         tracker.init();
-        register_server(silo_id, module_id);
+        register_server(silo_id, module_id, fiber_group_id);
     }
 
     Metrics::Tracker tracker;

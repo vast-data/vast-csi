@@ -26,15 +26,17 @@ public:
             {{ method.name.upper() }} = {{ method.op_id }},
         {% endfor -%}
         COUNT
-     };
+    };
 
-    void register_server(P::SiloId silo_id, ModuleId module_id);
+    void register_server(P::SiloId silo_id, ModuleId module_id, FiberGroupId default_fiber_group{% if server.default_fiber_group %}=FiberGroupId::{{ server.default_fiber_group }}{% endif %});
     virtual P::VMsg::RpcServerId get_server_id() override;
     virtual FiberGroupId get_op_fiber_group(uint8_t op_id) override;
     virtual void run_op(uint8_t op_id, void *request, uint16_t request_len, void *reply, uint16_t *reply_len) override;
 {% for method in server.methods %}
     virtual void {{ method.name }}({{ method.arg }}::RootReader *args, uint16_t request_len, {{ method.res }}::RootBuilder *res, uint16_t *reply_len) = 0;
 {% endfor %}
+private:
+    FiberGroupId _default_fiber_group;
 };
 
 {% for namespace in server.namespaces -%}

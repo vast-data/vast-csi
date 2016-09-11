@@ -29,10 +29,10 @@ DEFINE_LOOKUP_PROTOTYPES(COMPONENT_LIST,
     X(E_IO_POLLING),                         \
     X(E_VMSG_POLLING),                       \
     X(P),                                    \
-    X(NFS_POLLING),                          \
-    X(PROTO),                                \
+    X(I_NFS_POLLING),                        \
+    X(I_PROTO),                              \
+    X(I_CONTROL),                            \
     X(TEST),                                 \
-    X(I_TEST),                               \
     X(COUNT)
 
 DEFINE_LOOKUP_PROTOTYPES(FIBER_GROUP_LIST,

@@ -15,7 +15,7 @@ void IModule::init(Silo *silo, ConfigSetting *setting)
 
     _estore.init();
     _nfs.init(&_estore, P::Env::get()->get_tcp_acceptor(), first_init);
-    _agent.init(silo->get_id(), get_id());
+    _agent.init(silo->get_id(), get_id(), FiberGroupId::I_CONTROL);
     first_init = false;
 }
 
@@ -33,6 +33,5 @@ static void nfs_poll_fiber(void *nfs_proto)
 
 void IModule::start()
 {
-    P::Fiber::init((P::Index)FiberGroupId::NFS_POLLING, nfs_poll_fiber, &_nfs, false);
+    P::Fiber::init((P::Index)FiberGroupId::I_NFS_POLLING, nfs_poll_fiber, &_nfs, false);
 }
-

@@ -2,14 +2,13 @@ class: TestRpc
 include: ["test_rpc.vproto.hpp"]
 api_version: 1
 namespaces: []
+default_fiber_group: TEST
 methods:
 - method: add
   op_id: 1
-  fiber_group: TEST
   arg: AddArgs
   res: AddRes
 - method: multiply
   op_id: 2
-  fiber_group: TEST
   arg: MultiplyArgs
   res: MultiplyRes

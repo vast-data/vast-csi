@@ -26,7 +26,5 @@ enum test_fiber_group {
     FG_A,
     FG_B,
     FG_C,
-    FG_D,
+    FG_D
 };
-
-

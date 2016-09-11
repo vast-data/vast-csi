@@ -26,7 +26,7 @@ class Method(object):
         self.res = method_dict['res']
         self.res_snake_case = camel_case_to_snake_case(self.res)
         self.op_id = method_dict['op_id']
-        self.fiber_group = method_dict['fiber_group']
+        self.fiber_group = method_dict.get('fiber_group')
 
 
 class Server(object):
@@ -38,6 +38,7 @@ class Server(object):
         self.methods = [Method(method) for method in server_dict['methods']]
         self.name_snake_case = camel_case_to_snake_case(self.name)
         self.includes = server_dict.get('include', [])
+        self.default_fiber_group = server_dict.get('default_fiber_group')
         if not isinstance(self.includes, list):
             self.includes = [self.includes]
 

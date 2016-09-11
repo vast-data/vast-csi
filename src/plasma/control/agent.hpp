@@ -13,9 +13,9 @@ namespace P { namespace Control {
 
 class Agent {
 public:
-    void init(SiloId silo_id, ModuleId module_id) {
+    void init(SiloId silo_id, ModuleId module_id, FiberGroupId metrics_fiber_group_id) {
         _is_initialized = true;
-        _metrics_agent.init(silo_id, module_id);
+        _metrics_agent.init(silo_id, module_id, metrics_fiber_group_id);
     }
 
     Metrics::MetricsAgent* get_metrics_agent() { return &_metrics_agent; }

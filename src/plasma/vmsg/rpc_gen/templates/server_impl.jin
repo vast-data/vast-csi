@@ -9,12 +9,13 @@
 #include "plasma/execution/silo.hpp"
 #include "plasma/execution/env.hpp"
 
-{% for namespace in server.namespaces -%}
+{% for namespace in server.namespaces %}
 namespace {{ namespace }} {
 {% endfor %}
 
-void {{ server.name }}Server::register_server(P::SiloId silo_id, ModuleId module_id)
+void {{ server.name }}Server::register_server(P::SiloId silo_id, ModuleId module_id, FiberGroupId default_fiber_group)
 {
+    _default_fiber_group = default_fiber_group;
     P::Env::get()->get_vmsg()->register_server(this, silo_id, module_id);
 }
 
@@ -26,9 +27,9 @@ P::VMsg::RpcServerId {{ server.name }}Server::get_server_id()
 FiberGroupId {{ server.name }}Server::get_op_fiber_group(uint8_t op_id)
 {
     switch ((ops)op_id) {
-        {% for method in server.methods -%}
-            case {{ method.name.upper() }}: return FiberGroupId::{{ method.fiber_group }};
-        {% endfor -%}
+        {% for method in server.methods %}
+            case {{ method.name.upper() }}: return {% if method.fiber_group %}return FiberGroupId::{{ method.fiber_group }}{% else %}_default_fiber_group{% endif %};
+        {% endfor %}
         default:
             PANIC("invalid op id " << op_id);
     }
@@ -37,7 +38,7 @@ FiberGroupId {{ server.name }}Server::get_op_fiber_group(uint8_t op_id)
 void {{ server.name }}Server::run_op(uint8_t op_id, void *request, uint16_t request_len, void *reply, uint16_t *reply_len)
 {
     switch ((ops)op_id) {
-        {% for method in server.methods -%}
+        {% for method in server.methods %}
         case {{ method.name.upper() }}: {
             {{ method.res }}::RootBuilder *{{ method.name }}_reply = ({{ method.res }}::RootBuilder*) reply;
             {{ method.name }}_reply->init();
@@ -45,12 +46,12 @@ void {{ server.name }}Server::run_op(uint8_t op_id, void *request, uint16_t requ
             {{ method.name }}(({{ method.arg }}::RootReader *)request, request_len, {{ method.name }}_reply, reply_len);
             break;
         }
-        {% endfor -%}
+        {% endfor %}
         default:
             PANIC("invalid op id " << op_id);
     }
 }
 
-{% for namespace in server.namespaces -%}
+{% for namespace in server.namespaces %}
 }
 {% endfor %}

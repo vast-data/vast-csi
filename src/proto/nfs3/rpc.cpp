@@ -375,10 +375,10 @@ void Rpc::handle_msg(Connection *conn, RpcRequest *request)
     if (request->status == RpcStatus::OK) {
         request->conn = conn;
         request->rpc = this;
-        P::Fiber *fiber = P::Fiber::init((P::Index)FiberGroupId::PROTO, fiber_handle_msg, request, false);
+        P::Fiber *fiber = P::Fiber::init((P::Index)FiberGroupId::I_PROTO, fiber_handle_msg, request, false);
         for (int i = 0; fiber == nullptr && i < ALLOCATION_RETRY; ++i) {
             P::Fiber::yield();
-            fiber = P::Fiber::init((P::Index)FiberGroupId::PROTO, fiber_handle_msg, request, false);
+            fiber = P::Fiber::init((P::Index)FiberGroupId::I_PROTO, fiber_handle_msg, request, false);
         }
         if (fiber == nullptr) {
             PT_WARN(DATA, "failed to allocate fiber, running operation on the poll fiber");

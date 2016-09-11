@@ -19,7 +19,7 @@ void PModuleAgentServerImpl::init(SiloId silo_id, ModuleId module_id)
     ensure_directory_exists(_config_dir);
 
     _n_envs = 0;
-    register_server(silo_id, module_id);
+    register_server(silo_id, module_id, FiberGroupId::P);
 }
 
 void PModuleAgentServerImpl::set_local_env_id(SetLocalEnvIdParams::RootReader *args, uint16_t request_len,

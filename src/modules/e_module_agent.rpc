@@ -2,14 +2,13 @@ class: EModuleAgent
 include: ["e_module.vproto.hpp", "plasma/vproto/empty.vproto.hpp"]
 api_version: 1
 namespaces: ["P"]
+default_fiber_group: E
 methods:
 - method: connect
   op_id: 1
-  fiber_group: E
   arg: ConnectParams
   res: VProto::Empty
 - method: disconnect
   op_id: 2
-  fiber_group: E
   arg: DisconnectParams
   res: VProto::Empty
