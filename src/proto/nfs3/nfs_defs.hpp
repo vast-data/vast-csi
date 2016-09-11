@@ -126,7 +126,7 @@ union NfsRes {
 
     // nlm4
     nlm4_testres nlm4_test_res;
-    nlm4_res nlm4_res;
+    struct nlm4_res nlm4_res;
 };
 
 enum class RpcStatus {
