@@ -35,7 +35,7 @@ TEST(TestCPool, test)
     P::CPool pool;
     TestModule::set_init_func(init_cpool, &pool);
     TestModule::set_start_func(test_cpool, &pool);
-    P::Env::get()->run("" /* binary_path */, "tests/cpool_test.config");
+    P::Env::get()->run("" /* binary_path */, "tests/env_test.config");
     uint32_t num_silos = P::Env::get()->get_num_silos();
     ASSERT_EQ(pool.get_shared_count(), (num_silos * N_BUFFERS_PER_SILO) - (num_silos * CACHE_SIZE));
     pool.destroy(true);

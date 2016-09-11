@@ -188,9 +188,7 @@ void RDMALink::set_cm_id(rdma_cm_id *cm_id)
 
 VMsgRes RDMALink::send(struct ibv_mr *mr, MsgId msg_id, void *buff, uint32_t len)
 {
-    LinkState state = get_state();
-    if (state != LinkState::CONNECTED) {
-        PT_DEBUG(DATA, "Link state is %d", state);
+    if (get_state() != LinkState::CONNECTED) {
         return VMsgRes::NOT_CONNECTED;
     }
 

@@ -20,8 +20,6 @@ void PModuleAgentServerImpl::init(SiloId silo_id, ModuleId module_id)
 
     _n_envs = 0;
     register_server(silo_id, module_id);
-
-    ASSERT(VMsg::RDMATransport::fork_init());
 }
 
 void PModuleAgentServerImpl::set_local_env_id(SetLocalEnvIdParams::RootReader *args, uint16_t request_len,
@@ -29,14 +27,14 @@ void PModuleAgentServerImpl::set_local_env_id(SetLocalEnvIdParams::RootReader *a
 {
     VMsg::EnvId env_id = args->get_env_id();
     Env::get()->get_vmsg()->set_local_env_id(env_id);
-    *reply_len = sizeof(VProto::Empty::RootBuilder);
+    *reply_len = sizeof(VProto::Empty);
 }
 
 void PModuleAgentServerImpl::env_start(EnvStartParams::RootReader *args, uint16_t request_len,
                                        EnvStartResult::RootBuilder *res, uint16_t *reply_len)
 {
     ASSERT_OP(strlen(Env::get()->get_binary_path()), >, 0, "No binary path");
-    *reply_len = sizeof(EnvStartResult::RootBuilder);
+    *reply_len = sizeof(EnvStartResult);
 
     if (_n_envs >= NUM_ELEMENTS(_envs)) {
         PT_ERROR(CONTROL, "Can't start env because %d envs already exist", _n_envs);
@@ -88,7 +86,7 @@ void PModuleAgentServerImpl::env_start(EnvStartParams::RootReader *args, uint16_
 void PModuleAgentServerImpl::env_stop(EnvStopParams::RootReader *args, uint16_t request_len,
                                       EnvStopResult::RootBuilder *res, uint16_t *reply_len)
 {
-    *reply_len = sizeof(EnvStopResult::RootBuilder);
+    *reply_len = sizeof(EnvStopResult);
 
     GUID env_guid = args->get_env_guid();
     Index found = -1;
