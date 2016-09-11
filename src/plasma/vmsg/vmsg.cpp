@@ -293,7 +293,7 @@ void VMsg::handle_piggyback_data(VMsgHeader *header, SiloId silo_id)
 VMsgRes VMsg::send_request(VMsgHeader *header, uint64_t timeout_usec)
 {
     const ModuleGUID dest = header->dest;
-    MemRegion *region = _vmsg_pool.get_region(BufferType::REQUEST, (ModuleId) header->sender.module_id);
+    MemRegion *region = _vmsg_pool.get_region(BufferType::REQUEST, (ModuleId) dest.module_id);
     VMsgRes res = _rdma_transport.send_request(dest, region, header->sender_msg_id, header, msg_len(header));
     if (res == VMsgRes::NOT_CONNECTED && timeout_usec > 0) {
         PT_INFO(DATA, "no connection to destination env_id=%hu module_id=%hhu retrying send", dest.env_id, dest.module_id);
