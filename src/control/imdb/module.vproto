@@ -1,9 +1,11 @@
+$import object.vproto
+
 $typedef byte SiloId;
 
 enum ModuleState : byte {
     ONLINE,
     OFFLINE
-}
+};
 
 struct ModuleBaseProto {
     @0 silo_id SiloId;
