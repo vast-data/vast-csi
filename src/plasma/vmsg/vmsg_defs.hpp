@@ -62,14 +62,14 @@ static_assert(sizeof(ModuleGUID) == 4, "ModuleGUID size should be 4 bytes");
              GUID.module_id, GUID.silo_id)
 
 enum class BufferType {
-    // request buffer - used for sending RPC requests by clients
-    REQUEST,
-    // reply buffer - used for receiving replies for the RPC request sent by the client
-    REPLY,
-    // server buffer - used for accepting RPC requests by the server
-    SERVER,
-    // response buffer - used for responding to RPC requests by the server
-    RESPONSE,
+    // used for sending RPC requests by clients
+    SEND_REQUEST,
+    // used for receiving RPC requests by the server
+    RECV_REQUEST,
+    // used for responding to RPC requests by the server
+    SEND_RESPONSE,
+    // used for receiving responses for the RPC request sent by the client
+    RECV_RESPONSE,
 
     COUNT
 };
@@ -113,11 +113,11 @@ struct VMsgHeader {
 };
 static_assert(sizeof(VMsgHeader) == 32, "VMsgHeader size should be 32 bytes");
 #define TRACE_VMSG_HEADER(MSG, HDR) \
-    PT_DEBUG(DATA, MSG " header=%p silo_id=%hhu seq_num=%hu server_id=%hhu op_id=%hhu", HDR, \
+    PT_DEBUG(DATA, MSG ": header=%p silo_id=%hhu seq_num=%hu server_id=%hhu op_id=%hhu", HDR, \
              HDR->sender.silo_id, HDR->seq_num, HDR->server_id, HDR->op_id); \
-    TRACE_GUID("sender guid", HDR->sender); \
-    TRACE_GUID("dest guid", HDR->dest); \
-    TRACE_MSG_ID("sender msg_id", HDR->sender_msg_id)
+    TRACE_GUID(MSG ": sender guid", HDR->sender); \
+    TRACE_GUID(MSG ": dest guid", HDR->dest); \
+    TRACE_MSG_ID(MSG ": sender msg_id", HDR->sender_msg_id)
 
 // types of information that can be piggybacked
 enum class PiggybackType : uint32_t {
@@ -166,10 +166,18 @@ enum class TransportType {
     NONE
 };
 
+enum class ConnDir {
+    CLIENT_TO_SERVER,
+    SERVER_TO_CLIENT,
+
+    COUNT
+};
+
 // connection request information
 struct ConnectionRequest {
     EnvId env_id;
     ModuleId module_id;
+    ConnDir conn_dir;
 };
 
 // handshake message passed between 2 envs when establishing a connection
@@ -178,7 +186,7 @@ struct Handshake {
     uint32_t module_ver;
     EnvId env_id;
     ModuleId module_id;
-    byte padding[5];
+    ConnDir conn_dir;
 };
 static_assert(sizeof(Handshake) == 16, "Handshake size should be 16 bytes");
 static_assert(sizeof(Handshake) <= MAX_PRIVATE_DATA, "Handshake must fit into the max allowed private data");

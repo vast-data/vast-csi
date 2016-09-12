@@ -37,7 +37,7 @@ public:
     /*!
      * Request to connect to the given module at the given env
      */
-    VMsgRes request_connection(EnvId env_id, ModuleId module_id);
+    VMsgRes request_connection(EnvId env_id, ModuleId module_id, ConnDir conn_dir);
 
     /*!
      * Returns true if there is a client connection to the specified module at the specified env
@@ -83,7 +83,7 @@ public:
      * /param buff a pointer to the buffer address
      * /param len the buffer length
      */
-    VMsgRes recv_reply(ModuleId module_id, MemRegion *region, MsgId msg_id, void *buff, uint32_t len);
+    VMsgRes recv_response(ModuleId module_id, MemRegion *region, MsgId msg_id, void *buff, uint32_t len);
 
     /*!
      * Send a request to the env/module/silo as specified in module_guid. The given buffer must be placed inside the
@@ -160,15 +160,17 @@ private:
     // listen link per each address on this node
     RDMALink _listen_links[MAX_ADDR_PER_ENV];
     // outgoing connection per env / module
-    Connection _client_connections[MAX_ENVS_PER_SYSTEM][MODULES_COUNT];
+    Connection _send_request_connections[MAX_ENVS_PER_SYSTEM][MODULES_COUNT];
+    Connection _send_response_connections[MAX_ENVS_PER_SYSTEM][MODULES_COUNT];
     // incoming connection per env / module
-    Connection _server_connections[MAX_ENVS_PER_SYSTEM][MODULES_COUNT];
+    Connection _recv_request_connections[MAX_ENVS_PER_SYSTEM][MODULES_COUNT];
+    Connection _recv_response_connections[MAX_ENVS_PER_SYSTEM][MODULES_COUNT];
 
     // messages are received on shared receive queue that are partitioned per module in order to avoid deadlocks
     // shared receive queue per client module for receiving replies
-    struct ibv_srq *_client_srqs[MODULES_COUNT];
+    struct ibv_srq *_recv_response_srqs[MODULES_COUNT];
     // shared receive queue per server module for accepting requests
-    struct ibv_srq *_server_srqs[MODULES_COUNT];
+    struct ibv_srq *_recv_request_srqs[MODULES_COUNT];
     // event handling thread
     pthread_t _events_thread;
 

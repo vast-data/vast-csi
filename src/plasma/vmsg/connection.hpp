@@ -16,7 +16,7 @@ namespace VMsg {
 
 class Connection {
 public:
-    void init(EnvId env_id, ModuleId module_id);
+    void init(EnvId env_id, ModuleId module_id, LinkType link_type);
     void destroy();
 
     RDMALink *get_free_link();

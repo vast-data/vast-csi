@@ -12,13 +12,13 @@ namespace VMsg {
 static uint32_t calc_buffer_size(BufferType buffer_type)
 {
     switch (buffer_type) {
-        case BufferType::REPLY:
+        case BufferType::RECV_RESPONSE:
             /* fall throu */
-        case BufferType::SERVER:
+        case BufferType::RECV_REQUEST:
             return RPC_BUFFER_SIZE + sizeof(VMsgHeader) + sizeof(QueuedEvent);
-        case BufferType::REQUEST:
+        case BufferType::SEND_REQUEST:
             /* fall throu */
-        case BufferType::RESPONSE:
+        case BufferType::SEND_RESPONSE:
             // request and response buffer also need room for the pending message struct
             return RPC_BUFFER_SIZE + sizeof(VMsgHeader) + sizeof(QueuedEvent) + sizeof(PendingMsg);
         default:
@@ -31,13 +31,13 @@ static uint32_t calc_n_buffers(BufferType buffer_type, ModuleResources *module_r
     ASSERT(module_resources->num_send_buffers <= std::numeric_limits<uint16_t>::max());
     ASSERT(module_resources->num_recv_buffers <= std::numeric_limits<uint16_t>::max());
     switch (buffer_type) {
-        case BufferType::REPLY:
+        case BufferType::RECV_RESPONSE:
             return module_resources->num_send_buffers;
-        case BufferType::SERVER:
+        case BufferType::RECV_REQUEST:
             return module_resources->num_recv_buffers;
-        case BufferType::REQUEST:
+        case BufferType::SEND_REQUEST:
             return module_resources->num_send_buffers;
-        case BufferType::RESPONSE:
+        case BufferType::SEND_RESPONSE:
             return module_resources->num_recv_buffers;
         default:
             PANIC();

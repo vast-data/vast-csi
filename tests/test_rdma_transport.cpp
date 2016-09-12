@@ -38,7 +38,7 @@ TEST(TestRDMATransport, test)
     ASSERT(res == VMsgRes::OK);
 
     ModuleGUID guid = {0, 0, (uint8_t) ModuleId::TEST, 0};
-    transport->request_connection(guid.env_id, ModuleId::TEST);
+    transport->request_connection(guid.env_id, ModuleId::TEST, ConnDir::CLIENT_TO_SERVER);
     while (!transport->is_client_connected(guid.env_id, ModuleId::TEST)) {
         usleep(1);
     }

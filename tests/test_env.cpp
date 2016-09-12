@@ -33,7 +33,6 @@ static P::EnvStartResultCode send_env_start(VMsg *vmsg, P::GUID env_guid, const 
     env_start_params->set_env_guid(env_guid);
     strcpy(env_start_params->get_config(), config);
     P::EnvStartResult::RootReader *env_start_reply;
-    P::TimerQueues::sleep(P::SleepInterval::SLEEP_1_SECOND);
     EXPECT_EQ(VMsgRes::OK, client.env_start_sync(dest, env_start_params, &env_start_reply));
     P::EnvStartResultCode res = env_start_reply->get_code();
     client.free_env_start(env_start_reply);
@@ -48,7 +47,6 @@ static P::EnvStopResultCode send_env_stop(VMsg *vmsg, P::GUID env_guid)
     P::EnvStopParams::RootBuilder *env_stop_params = client.alloc_env_stop();
     env_stop_params->set_env_guid(env_guid);
     P::EnvStopResult::RootReader *env_stop_reply;
-    P::TimerQueues::sleep(P::SleepInterval::SLEEP_1_SECOND);
     EXPECT_EQ(VMsgRes::OK, client.env_stop_sync(dest, env_stop_params, &env_stop_reply));
     P::EnvStopResultCode res = env_stop_reply->get_code();
     client.free_env_stop(env_stop_reply);
@@ -63,10 +61,8 @@ static void send_set_local_env_id(VMsg *vmsg, uint16_t env_id)
     P::SetLocalEnvIdParams::RootBuilder *set_local_env_id_params = client.alloc_set_local_env_id();
     set_local_env_id_params->set_env_id(env_id);
     P::VProto::Empty::RootReader *set_local_env_id_reply;
-    P::TimerQueues::sleep(P::SleepInterval::SLEEP_1_SECOND);
     EXPECT_EQ(VMsgRes::OK, client.set_local_env_id_sync(dest, set_local_env_id_params, &set_local_env_id_reply));
     client.free_set_local_env_id(set_local_env_id_reply);
-    P::TimerQueues::sleep(P::SleepInterval::SLEEP_1_SECOND);
 }
 
 static void update_config_port(char *config, uint16_t port)
@@ -84,10 +80,6 @@ static void update_config_port(char *config, uint16_t port)
     }
 }
 
-// TODO: there are currently 2 hacks in these tests, due to VMsg issues:
-// 1) sleep calls
-// 2) second add_module_pair call
-// Once these VMsg issues are fixed, these hacks should be removed.
 static void env_start_stop_start_func(void *ctx)
 {
     env_stop = false;
@@ -98,8 +90,6 @@ static void env_start_stop_start_func(void *ctx)
 
     VMsg *vmsg = P::Env::get()->get_vmsg();
     vmsg->add_module_pair(ModuleId::TEST, ModuleId::P, TransportType::RDMA);
-    P::TimerQueues::sleep(P::SleepInterval::SLEEP_1_SECOND);
-    vmsg->add_module_pair(ModuleId::P, ModuleId::TEST, TransportType::RDMA);
 
     P::GUID env_guid;
     env_guid.init();
@@ -132,8 +122,6 @@ static void env_start_stop_start_func(void *ctx)
         EXPECT_EQ(P::EnvStopResultCode::SUCCESS, send_env_stop(vmsg, env_guids[i]));
     }
 
-    P::TimerQueues::sleep(P::SleepInterval::SLEEP_1_SECOND);
-
     env_stop = true;
 }
 
@@ -150,8 +138,6 @@ static void set_local_env_id_start_func(void *ctx)
 
     VMsg *vmsg = P::Env::get()->get_vmsg();
     vmsg->add_module_pair(ModuleId::TEST, ModuleId::P, TransportType::RDMA);
-    P::TimerQueues::sleep(P::SleepInterval::SLEEP_1_SECOND);
-    vmsg->add_module_pair(ModuleId::P, ModuleId::TEST, TransportType::RDMA);
 
     EXPECT_EQ(0, vmsg->get_local_env_id());
     send_set_local_env_id(vmsg, 123);

@@ -48,7 +48,7 @@ VMsgRes {{ server.name }}Client::{{ method.name }}_async(ModuleGUID dest, {{ met
 
 void {{ server.name }}Client::free_{{ method.name }}({{ method.res }}::RootReader *res)
 {
-   _vmsg->free_reply((void *)res);
+   _vmsg->free_received_response((void *)res);
 }
 
 {% endfor -%}

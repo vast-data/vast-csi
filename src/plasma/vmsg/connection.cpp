@@ -4,9 +4,9 @@
 namespace P {
 namespace VMsg {
 
-void Connection::init(EnvId env_id, ModuleId module_id)
+void Connection::init(EnvId env_id, ModuleId module_id, LinkType link_type)
 {
-    _link.init(env_id, module_id);
+    _link.init(env_id, module_id, link_type);
 }
 
 void Connection::destroy()

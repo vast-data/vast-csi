@@ -78,7 +78,7 @@ public:
      * Low level API for freeing message replies allocated by the messaging infrastructure.
      * In the common case this API should only be used by auto generated code.
      */
-    void free_reply(void *reply_buffer);
+    void free_received_response(void *response_buffer);
 
     // handle messaging events, should only be called by the poll fiber
     void poll();
@@ -92,15 +92,16 @@ private:
     void connect_to_peers();
     void connect_to_peer_modules(EnvId env_id);
     // Request to connect to the given module at the given env
-    VMsgRes request_connection(EnvId env_id, ModuleId module_id, TransportType transport_type);
+    VMsgRes request_connection(EnvId env_id, ModuleId module_id, TransportType transport_type, ConnDir conn_dir);
     VMsgRes send_request(VMsgHeader *header, uint64_t timeout_usec);
+    VMsgRes send_response(VMsgHeader *header, SiloId silo_id);
     void handle_event(TransportEvent *event);
     void on_write_complete(TransportEvent *event);
     void on_read_complete(TransportEvent *event);
     void on_send_complete(TransportEvent *event);
     void on_msg_recv(TransportEvent *event);
     void handle_incoming_msg(VMsgHeader *header);
-    void handle_reply(VMsgHeader *header, SiloId silo_id);
+    void handle_received_response(VMsgHeader *header, SiloId silo_id);
     void handle_transport_events();
     void handle_silo_events();
     void free_msg(SiloId silo_id, MsgId id);
@@ -110,7 +111,7 @@ private:
     RpcServer *get_rpc_server(VMsgHeader *header);
 
 private:
-    static const uint64_t RESPONSE_TIMEOUT_USEC = MICRO_TO_SEC(60);
+    static const uint64_t RESPONSE_TIMEOUT_USEC = SEC_TO_MICRO(60);
 
     struct SiloContext {
         // modules RPC servers

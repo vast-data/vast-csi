@@ -72,9 +72,6 @@ static void test_lock_manager(void *arg)
 {
     VMsg *vmsg = Env::get()->get_vmsg();
     vmsg->add_module_pair(ModuleId::TEST, ModuleId::B, TransportType::RDMA);
-    P::TimerQueues::fast_sleep(300000);
-    vmsg->add_module_pair(ModuleId::B, ModuleId::TEST, TransportType::RDMA);
-    P::TimerQueues::fast_sleep(100000);
 
     LockManager::LockManagerClient client;
     client.init(vmsg);
@@ -89,7 +86,7 @@ static void test_lock_manager(void *arg)
     // double fiber test
     lock(&client, 10);
     STEP(1);
-    P::Fiber::init(0, fiber_lock, &client, false);
+    P::Fiber::init((P::Index)FiberGroupId::TEST, fiber_lock, &client, false);
     P::TimerQueues::fast_sleep(100000);
     STEP(4);
     unlock(&client, 10);

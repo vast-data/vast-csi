@@ -8,13 +8,13 @@
 namespace P {
 namespace VMsg {
 
-void RDMALink::init(EnvId env_id, ModuleId module_id)
+void RDMALink::init(EnvId env_id, ModuleId module_id, LinkType link_type)
 {
     _env_id = env_id;
     _module_id = module_id;
     _state = LinkState::IDLE;
     _cm_id = nullptr;
-    _client_link = false;
+    _link_type = link_type;
 }
 
 void RDMALink::destroy()
@@ -32,7 +32,7 @@ void RDMALink::destroy()
 void RDMALink::reset()
 {
     destroy();
-    init(_env_id, _module_id);
+    init(_env_id, _module_id, _link_type);
 }
 
 static struct addrinfo *get_addr(const char *host, uint16_t port)
@@ -84,8 +84,6 @@ VMsgRes RDMALink::initiate_connection(rdma_event_channel *channel, const char *h
 {
     ASSERT(_state == LinkState::IDLE);
 
-    _client_link = true;
-
     int ret = rdma_create_id(channel, &_cm_id, this, RDMA_PS_TCP);
     if (ret) {
         PT_ERROR(DATA, "rdma_create_id failed errno=%d", errno);
@@ -113,10 +111,9 @@ VMsgRes RDMALink::establish_connection(EnvId local_env_id, struct ibv_cq *cq, st
 {
     DEBUG_ASSERT(cq != NULL);
     DEBUG_ASSERT(pd != NULL);
-    DEBUG_ASSERT(srq != NULL);
 
-    PT_DEBUG(DATA, "src_port=%hu dst_port=%hu client=%c",
-             ntohs(rdma_get_src_port(_cm_id)), ntohs(rdma_get_dst_port(_cm_id)), _client_link);
+    PT_DEBUG(DATA, "src_port=%hu dst_port=%hu type=%d",
+             ntohs(rdma_get_src_port(_cm_id)), ntohs(rdma_get_dst_port(_cm_id)), _link_type);
 
     PT_DEBUG(DATA, "creating qp pd=%p cm_id=%p srq=%p cm_device=%p cm_device_name='%s'",
              pd, _cm_id, srq, _cm_id->verbs, ibv_get_device_name(_cm_id->verbs->device));
@@ -147,7 +144,7 @@ VMsgRes RDMALink::establish_connection(EnvId local_env_id, struct ibv_cq *cq, st
         .module_ver = 0,
         .env_id = local_env_id,
         .module_id = _module_id,
-        .padding = {},
+        .conn_dir = get_link_direction(),
     };
     cm_params.private_data = &handshake;
     cm_params.private_data_len = sizeof(Handshake);
@@ -155,7 +152,7 @@ VMsgRes RDMALink::establish_connection(EnvId local_env_id, struct ibv_cq *cq, st
     cm_params.responder_resources = CONN_RECV_DEPTH;
     cm_params.retry_count = SEND_ERROR_RETRY_COUNT;
     cm_params.rnr_retry_count = SEND_RNR_RETRY_COUNT;
-    if (_client_link) {
+    if (is_client_link()) {
         PT_DEBUG(DATA, "calling rdma_connect");
         ret = rdma_connect(_cm_id, &cm_params);
         if (ret) {
@@ -179,10 +176,23 @@ VMsgRes RDMALink::establish_connection(EnvId local_env_id, struct ibv_cq *cq, st
     return VMsgRes::OK;
 }
 
+ConnDir RDMALink::get_link_direction() const {
+    switch (_link_type)
+    {
+        case LinkType::SEND_REQUEST:
+        case LinkType::RECV_REQUEST:
+            return ConnDir::CLIENT_TO_SERVER;
+        case LinkType::SEND_RESPONSE:
+        case LinkType::RECV_RESPONSE:
+            return ConnDir::SERVER_TO_CLIENT;
+        default:
+            PANIC();
+    }
+}
+
 void RDMALink::set_cm_id(rdma_cm_id *cm_id)
 {
     ASSERT(_cm_id == NULL);
-    _client_link = false;
     _cm_id = cm_id;
 }
 

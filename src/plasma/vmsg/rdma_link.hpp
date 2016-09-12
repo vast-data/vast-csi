@@ -28,9 +28,19 @@ enum class LinkState {
     COUNT
 };
 
+enum class LinkType {
+    SEND_REQUEST,
+    RECV_REQUEST,
+    SEND_RESPONSE,
+    RECV_RESPONSE,
+    LISTEN,
+
+    COUNT
+};
+
 class RDMALink {
 public:
-    void init(EnvId env_id, ModuleId module_id);
+    void init(EnvId env_id, ModuleId module_id, LinkType link_type);
     void destroy();
     void reset();
 
@@ -64,7 +74,8 @@ public:
     }
 
     LinkState get_state() const { return _state; }
-    bool is_client_link() const { return _client_link; }
+    bool is_client_link() const { return _link_type == LinkType::SEND_REQUEST || _link_type == LinkType::SEND_RESPONSE; }
+    ConnDir get_link_direction() const;
     void set_cm_id(struct rdma_cm_id *cm_id);
     ModuleId get_module_id() const { return _module_id; }
     EnvId get_env_id() const { return _env_id; }
@@ -99,7 +110,7 @@ private:
 
     struct rdma_cm_id *_cm_id;
     LinkState _state;
-    bool _client_link;
+    LinkType _link_type;
     ModuleId _module_id;
     EnvId _env_id;
 };

@@ -26,20 +26,22 @@ void RDMATransport::init(const VMsgConfiguration *vmsg_configuration, AddressTab
     _conn_lock.init();
     _conn_queue.init(MAX_CONN_REQUESTS);
 
-    for (int i = 0; i < NUM_ELEMENTS(_client_connections); ++i) {
-        for (int j = 0; j < NUM_ELEMENTS(_client_connections[0]); ++j) {
-            _client_connections[i][j].init(i, (ModuleId)j);
-            _server_connections[i][j].init(i, (ModuleId)j);
+    for (int i = 0; i < NUM_ELEMENTS(_send_request_connections); ++i) {
+        for (int j = 0; j < NUM_ELEMENTS(_send_request_connections[0]); ++j) {
+            _send_request_connections[i][j].init(i, (ModuleId)j, LinkType::SEND_REQUEST);
+            _recv_request_connections[i][j].init(i, (ModuleId)j, LinkType::RECV_REQUEST);
+            _send_response_connections[i][j].init(i, (ModuleId)j, LinkType::SEND_RESPONSE);
+            _recv_response_connections[i][j].init(i, (ModuleId)j, LinkType::RECV_RESPONSE);
         }
     }
 
     for (int k = 0; k < NUM_ELEMENTS(_listen_links); ++k) {
         // listen links are for all envs/modules
-        _listen_links[k].init(MAX_ENVS_PER_SYSTEM, ModuleId::COUNT);
+        _listen_links[k].init(MAX_ENVS_PER_SYSTEM, ModuleId::COUNT, LinkType::LISTEN);
     }
-    for (int k = 0; k < NUM_ELEMENTS(_client_srqs); ++k) {
-        _client_srqs[k] = nullptr;
-        _server_srqs[k] = nullptr;
+    for (int k = 0; k < NUM_ELEMENTS(_recv_response_srqs); ++k) {
+        _recv_response_srqs[k] = nullptr;
+        _recv_request_srqs[k] = nullptr;
     }
 
     _event_channel = nullptr;
@@ -55,10 +57,12 @@ void RDMATransport::destroy()
     _conn_queue.destroy();
     _conn_lock.destroy();
 
-    for (int i = 0; i < NUM_ELEMENTS(_client_connections); ++i) {
-        for (int j = 0; j < NUM_ELEMENTS(_client_connections[0]); ++j) {
-            _client_connections[i][j].destroy();
-            _server_connections[i][j].destroy();
+    for (int i = 0; i < NUM_ELEMENTS(_send_request_connections); ++i) {
+        for (int j = 0; j < NUM_ELEMENTS(_send_request_connections[0]); ++j) {
+            _send_request_connections[i][j].destroy();
+            _recv_request_connections[i][j].destroy();
+            _send_response_connections[i][j].destroy();
+            _recv_response_connections[i][j].destroy();
         }
     }
 
@@ -66,9 +70,9 @@ void RDMATransport::destroy()
         _listen_links[k].destroy();
     }
 
-    for (int k = 0; k < NUM_ELEMENTS(_client_srqs); ++k) {
-        SAFE_DESTROY(_client_srqs[k], ibv_destroy_srq);
-        SAFE_DESTROY(_server_srqs[k], ibv_destroy_srq);
+    for (int k = 0; k < NUM_ELEMENTS(_recv_response_srqs); ++k) {
+        SAFE_DESTROY(_recv_response_srqs[k], ibv_destroy_srq);
+        SAFE_DESTROY(_recv_request_srqs[k], ibv_destroy_srq);
     }
     SAFE_DESTROY(_cq, ibv_destroy_cq);
     SAFE_DESTROY(_comp_channel, ibv_destroy_comp_channel);
@@ -111,7 +115,7 @@ VMsgRes RDMATransport::start()
     }
 
     // fake a self connection request in order to get the shared resources initialized
-    request_connection(_vmsg_configuration->local_env_id, ModuleId::E);
+    request_connection(_vmsg_configuration->local_env_id, ModuleId::E, ConnDir::CLIENT_TO_SERVER);
     PT_DEBUG(DATA, "waiting for shared resource allocation");
     sem_wait(&_start_sem);
     PT_DEBUG(DATA, "wait for shared resource allocation done");
@@ -202,14 +206,14 @@ VMsgRes RDMATransport::create_device_resources(ibv_context *ibv_ctx)
     srq_attr.attr.max_sge = 1;
     LOOP(MODULES_COUNT, i) {
         srq_attr.attr.max_wr = _vmsg_configuration->modules[i].num_send_buffers;
-        _client_srqs[i] = ibv_create_srq(_pd, &srq_attr);
-        if (!_client_srqs[i]) {
+        _recv_response_srqs[i] = ibv_create_srq(_pd, &srq_attr);
+        if (!_recv_response_srqs[i]) {
             PT_ERROR(DATA, "ibv_create_srq  failed errno=%d", errno);
             return VMsgRes::SYS_ERR;
         }
         srq_attr.attr.max_wr = _vmsg_configuration->modules[i].num_recv_buffers;
-        _server_srqs[i] = ibv_create_srq(_pd, &srq_attr);
-        if (!_server_srqs[i]) {
+        _recv_request_srqs[i] = ibv_create_srq(_pd, &srq_attr);
+        if (!_recv_request_srqs[i]) {
             PT_ERROR(DATA, "ibv_create_srq  failed errno=%d", errno);
             return VMsgRes::SYS_ERR;
         }
@@ -288,13 +292,12 @@ void RDMATransport::on_route_resolved(struct rdma_cm_event *event)
         _ibv_ctx = event->id->verbs;
     }
     link->set_state(LinkState::ROUTE_RESOLVED);
-    VMsgRes res = link->establish_connection(_vmsg_configuration->local_env_id, _cq, _pd,
-                                             _client_srqs[(uint8_t)link->get_module_id()]);
+    VMsgRes res = link->establish_connection(_vmsg_configuration->local_env_id, _cq, _pd, NULL);
     if (res == VMsgRes::CONNECTION_REFUSED) {
         PT_WARN(DATA, "failed to connect to env_id=%u module_id=%hhu, retrying connection",
                 link->get_env_id(), link->get_module_id());
         link->reset();
-        request_connection(link->get_env_id(), link->get_module_id());
+        request_connection(link->get_env_id(), link->get_module_id(), link->get_link_direction());
     }
 }
 
@@ -313,12 +316,16 @@ void RDMATransport::on_connect_request(struct rdma_cm_event *event)
     Handshake *handshake = (Handshake *)event->param.conn.private_data;
     ASSERT_EQUAL(event->param.conn.private_data_len, sizeof(Handshake));
     ModuleId module_id = handshake->module_id;
-    PT_DEBUG(DATA, "connect request cm_id=%p dev=%p env_id=%hu module_id=%hhu module_ver=%u vmsg_ver=%u",
-             event->id, event->id->verbs, handshake->env_id, module_id, handshake->module_ver, handshake->vmsg_ver);
-    RDMALink *srv_link = _server_connections[handshake->env_id][(uint8_t)module_id].get_free_link();
+    ConnDir conn_dir = handshake->conn_dir;
+    auto connections = conn_dir == ConnDir::CLIENT_TO_SERVER ? _recv_request_connections : _recv_response_connections;
+    auto srqs = conn_dir == ConnDir::CLIENT_TO_SERVER ? _recv_request_srqs : _recv_response_srqs;
+    static_assert((int)ConnDir::COUNT == 2, "you have to convert if to switch");
+    PT_DEBUG(DATA, "connect request cm_id=%p dev=%p env_id=%hu module_id=%hhu client_to_server=%d module_ver=%u vmsg_ver=%u",
+             event->id, event->id->verbs, handshake->env_id, module_id, conn_dir, handshake->module_ver, handshake->vmsg_ver);
+    RDMALink *srv_link = connections[handshake->env_id][(uint8_t)module_id].get_free_link();
     srv_link->set_state(LinkState::CONNECT_REQUEST);
     srv_link->set_cm_id(event->id);
-    srv_link->establish_connection(_vmsg_configuration->local_env_id, _cq, _pd, _server_srqs[(uint8_t)module_id]);
+    srv_link->establish_connection(_vmsg_configuration->local_env_id, _cq, _pd, srqs[(uint8_t)module_id]);
 }
 
 void RDMATransport::on_connection_established(struct rdma_cm_event *event)
@@ -383,7 +390,7 @@ void RDMATransport::handle_event(rdma_cm_event *event)
     }
 }
 
-VMsgRes RDMATransport::request_connection(EnvId env_id, ModuleId module_id)
+VMsgRes RDMATransport::request_connection(EnvId env_id, ModuleId module_id, ConnDir conn_dir)
 {
     ASSERT(env_id < MAX_ENVS_PER_SYSTEM);
     ASSERT(module_id < ModuleId::COUNT);
@@ -396,19 +403,14 @@ VMsgRes RDMATransport::request_connection(EnvId env_id, ModuleId module_id)
     }
     request->env_id = env_id;
     request->module_id = module_id;
+    request->conn_dir = conn_dir;
     _conn_queue.push(request);
     return VMsgRes::OK;
 }
 
 bool RDMATransport::is_client_connected(EnvId env_id, ModuleId module_id)
 {
-    RDMALink *link = _client_connections[env_id][(int)module_id].get_next_link();
-    return link->get_state() == LinkState::CONNECTED;
-}
-
-bool RDMATransport::is_server_connected(EnvId env_id, ModuleId module_id)
-{
-    RDMALink *link = _server_connections[env_id][(int)module_id].get_next_link();
+    RDMALink *link = _send_request_connections[env_id][(int)module_id].get_next_link();
     return link->get_state() == LinkState::CONNECTED;
 }
 
@@ -456,30 +458,30 @@ VMsgRes RDMATransport::recv(struct ibv_srq *srq, struct ibv_mr *mr, MsgId msg_id
     return VMsgRes::OK;
 }
 
-VMsgRes RDMATransport::recv_reply(ModuleId module_id, MemRegion *region, MsgId msg_id, void *buff, uint32_t len)
+VMsgRes RDMATransport::recv_response(ModuleId module_id, MemRegion *region, MsgId msg_id, void *buff, uint32_t len)
 {
     struct ibv_mr *mr = (struct ibv_mr *)region;
-    struct ibv_srq *srq = _client_srqs[(uint8_t)module_id];
+    struct ibv_srq *srq = _recv_response_srqs[(uint8_t)module_id];
     return recv(srq, mr, msg_id, buff, len);
 }
 
 VMsgRes RDMATransport::recv_request(ModuleId module_id, MemRegion *region, MsgId msg_id, void *buff, uint32_t len)
 {
     struct ibv_mr *mr = (struct ibv_mr *)region;
-    struct ibv_srq *srq = _server_srqs[(uint8_t)module_id];
+    struct ibv_srq *srq = _recv_request_srqs[(uint8_t)module_id];
     return recv(srq, mr, msg_id, buff, len);
 }
 
 VMsgRes RDMATransport::send_request(ModuleGUID module_guid, MemRegion *region, MsgId msg_id, void *buff, uint32_t len)
 {
-    RDMALink *link = _client_connections[module_guid.env_id][(int)module_guid.module_id].get_next_link();
+    RDMALink *link = _send_request_connections[module_guid.env_id][(int)module_guid.module_id].get_next_link();
     struct ibv_mr *mr = (struct ibv_mr *)region;
     return link->send(mr, msg_id, buff, len);
 }
 
 VMsgRes RDMATransport::send_response(ModuleGUID module_guid, MemRegion *region, MsgId msg_id, void *buff, uint32_t len)
 {
-    RDMALink *link = _server_connections[module_guid.env_id][(int)module_guid.module_id].get_next_link();
+    RDMALink *link = _send_response_connections[module_guid.env_id][(int)module_guid.module_id].get_next_link();
     struct ibv_mr *mr = (struct ibv_mr *)region;
     return link->send(mr, msg_id, buff, len);
 }
@@ -578,7 +580,7 @@ void RDMATransport::handle_connection_requests()
         return;
     }
 
-    PT_DEBUG(DATA, "handling connection request to env_id=%hu module_id=%hhu", request->env_id, request->module_id);
+    PT_DEBUG(DATA, "handling connection request to env_id=%hu module_id=%hhu conn_dir=%d", request->env_id, request->module_id, request->conn_dir);
 
     _addr_table->lock();
     EnvAddresses::RootBuilder *addresses = _addr_table->get(request->env_id);
@@ -586,8 +588,11 @@ void RDMATransport::handle_connection_requests()
     EnvAddress::Builder *addr = addresses->get_addresses(0);
     _addr_table->unlock();
 
-    RDMALink *link = _client_connections[request->env_id][(int)request->module_id].get_free_link();
-    link->initiate_connection(_event_channel, addr->get_host(), addr->get_port());
+    auto connections = request->conn_dir == ConnDir::CLIENT_TO_SERVER ? _send_request_connections : _send_response_connections;
+    static_assert((int)ConnDir::COUNT == 2, "you have to convert if to switch");
+    RDMALink *link = connections[request->env_id][(int)request->module_id].get_next_link();
+    if (link->get_state() == LinkState::IDLE)
+        link->initiate_connection(_event_channel, addr->get_host(), addr->get_port());
 
     _conn_lock.lock();
     _conn_queue.free(request);
