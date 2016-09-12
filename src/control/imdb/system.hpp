@@ -1,8 +1,8 @@
 /* Copyright (C) Vast Data Ltd. */
 
 /*!
- * \file cnode.hpp
- * \brief CNode object implementation.
+ * \file system.hpp
+ * \brief System object implementation.
  */
 #pragma once
 

@@ -66,7 +66,7 @@ public:
      * \return a pointer to an object of type T.
      */
     template<class T>
-    T* get_or_create(P::GUID guid, OUT bool *exists)
+    T* get_or_create(P::GUID guid, bool *exists OUT)
     {
         T* object = get<T>(guid);
 

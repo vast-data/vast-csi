@@ -267,7 +267,7 @@ AddCppTest(target='dist/tests/rdma_transport', source=[build_dir + '/tests/test_
 AddCppTest(target='dist/tests/vmsg', source=[build_dir + '/tests/vmsg_test.cpp', test_rpc_sources])
 AddCppTest(target='dist/tests/vproto', source=[build_dir + '/tests/test_vproto.cpp'])
 AddCppTest(target='dist/tests/nfs_rpc', source=[build_dir + '/tests/test_nfs_rpc.cpp'])
-AddCppTest(target='dist/tests/nfs', source=[build_dir + '/tests/test_nfs.cpp'], group_alias='nfstest')
+AddCppTest(target='dist/tests/nfs', source=[build_dir + '/tests/test_nfs.cpp', build_dir + '/tests/estore_mock.cpp'], group_alias='nfstest')
 AddCppTest(target='dist/tests/os', source=[build_dir + '/tests/os_test.cpp'])
 AddCppTest(target='dist/tests/box', source=[build_dir + '/tests/test_box.cpp'])
 AddCppTest(target='dist/tests/imdb', source=[build_dir + '/tests/test_imdb.cpp'])
