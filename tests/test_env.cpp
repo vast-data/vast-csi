@@ -156,23 +156,6 @@ static void set_local_env_id_start_func(void *ctx)
     EXPECT_EQ(0, vmsg->get_local_env_id());
     send_set_local_env_id(vmsg, 123);
     EXPECT_EQ(123, vmsg->get_local_env_id());
-    /*
-    P::GUID env_guid;
-    env_guid.init();
-
-    P::PModuleAgentClient client;
-    client.init(vmsg);
-
-    P::SetLocalEnvIdParams::RootBuilder *set_local_env_id_params = client.alloc_set_local_env_id();
-    set_local_env_id_params->set_env_id(123);
-    P::VProto::Empty::RootReader *set_local_env_id_reply;
-    P::TimerQueues::sleep(P::SleepInterval::SLEEP_1_SECOND);
-    EXPECT_EQ(0, vmsg->get_local_env_id());
-    EXPECT_EQ(VMsgRes::OK, client.set_local_env_id_sync(dest, set_local_env_id_params, &set_local_env_id_reply));
-    client.free_set_local_env_id(set_local_env_id_reply);
-    EXPECT_EQ(123, vmsg->get_local_env_id());
-
-    P::TimerQueues::sleep(P::SleepInterval::SLEEP_1_SECOND);*/
 
     env_stop = true;
 }
