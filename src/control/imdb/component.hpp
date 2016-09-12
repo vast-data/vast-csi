@@ -2,7 +2,7 @@
 
 /*!
  * \file component.hpp
- * \brief An in-memory database for objects The in memory DB component (used by the state module).
+ * \brief The-in memory DB component (used by the controller module).
  */
 #pragma once
 
@@ -11,6 +11,9 @@
 #include "defs.hpp"
 
 namespace Control {
+
+// the following functions are used by the hash table.
+// the length of the key is ignored as it's a GUID and has a fixed size.
 
 static size_t object_hash_func(void *key, size_t length)
 {
