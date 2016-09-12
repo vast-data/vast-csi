@@ -27,11 +27,12 @@ void AddressTable::set(EnvId env_id, EnvAddresses::RootBuilder *addresses)
 {
     ASSERT(env_id < MAX_ENVS_PER_SYSTEM);
     _lock.wlock();
-    PT_DEBUG(DATA, "set addresses for env_id=%hu", env_id);
     LOOP(addresses->get_n_addr(), i) {
 //        PT_DEBUG(DATA, "addr[%lu] host=%s port=%u", i, addresses->get_addresses(i)->get_host(), addresses->get_addresses(i)->get_port());
     }
     _addresses[env_id] = *addresses;
+    PT_DEBUG(DATA, "set addresses for env_id=%hu port %d host %s", env_id, addresses->get_addresses(0)->get_port(),
+             addresses->get_addresses(0)->get_host());
     _lock.wunlock();
 }
 

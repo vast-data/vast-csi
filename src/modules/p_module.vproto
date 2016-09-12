@@ -1,9 +1,11 @@
+$import e_module.vproto
 $import plasma/vmsg/vmsg.vproto as VMsg
 
 $namespace P
 
 struct SetLocalEnvIdParams {
     @0 env_id VMsg.EnvId;
+    @1 connect_params ConnectParams;
 };
 
 struct EnvStartParams {

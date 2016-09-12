@@ -92,7 +92,7 @@ VMsgRes RDMALink::initiate_connection(rdma_event_channel *channel, const char *h
 
     struct addrinfo *addr = get_addr(host, port);
     if (addr == NULL) {
-        PT_ERROR(DATA, "get_addr  failed errno=%d", errno);
+        PT_ERROR(DATA, "get_addr failed errno=%d host=%s port=%d", errno, host, port);
         return VMsgRes::SYS_ERR;
     }
 
@@ -200,7 +200,6 @@ VMsgRes RDMALink::send(struct ibv_mr *mr, MsgId msg_id, void *buff, uint32_t len
 {
     LinkState state = get_state();
     if (state != LinkState::CONNECTED) {
-        PT_DEBUG(DATA, "Link state is %d", state);
         return VMsgRes::NOT_CONNECTED;
     }
 

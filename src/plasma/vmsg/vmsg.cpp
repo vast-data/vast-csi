@@ -153,6 +153,7 @@ VMsgRes VMsg::request_connection(EnvId env_id, ModuleId module_id, TransportType
 
 void VMsg::add_module_pair(ModuleId client, ModuleId server, TransportType transport_type)
 {
+    PT_DEBUG(DATA, "add_module_pair: client = %hhu, server = %hhu", client, server);
     ASSERT(transport_type == TransportType::RDMA, "RDMA is currently the only supported transport type");
     _module_pairs[(int)client][(int)server] = transport_type;
     connect_to_peers();

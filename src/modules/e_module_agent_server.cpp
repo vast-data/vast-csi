@@ -5,13 +5,20 @@
 
 namespace P {
 
-void EModuleAgentServerImpl::connect(ConnectParams::RootReader *args, VProto::Empty::RootBuilder *res)
+/* static */ void EModuleAgentServerImpl::do_connect(ConnectParams::Reader *args)
 {
     VMsg::EnvAddresses::Reader addresses_reader;
     args->get_addresses(&addresses_reader);
     VMsg::EnvAddresses::RootBuilder addresses;
     addresses.init_from_reader(&addresses_reader);
     Env::get()->get_vmsg()->set_env_addresses(args->get_env_id(), &addresses);
+}
+
+void EModuleAgentServerImpl::connect(ConnectParams::RootReader *args, VProto::Empty::RootBuilder *res)
+{
+    ConnectParams::Reader connect_params;
+    connect_params.init_from_root(args);
+    do_connect(&connect_params);
 }
 
 void EModuleAgentServerImpl::disconnect(DisconnectParams::RootReader *args, VProto::Empty::RootBuilder *res)

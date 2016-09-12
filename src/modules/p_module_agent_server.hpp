@@ -22,9 +22,21 @@ private:
 
     // TODO: once the P-module's agent supports more functionality (leader election, monitoring, etc.), consider
     // splitting this class to several classes (launcher, monitoring, etc.). PModuleAgent will hold one object of each.
+
+    // RPC functions:
     void set_local_env_id(SetLocalEnvIdParams::RootReader *args, VProto::Empty::RootBuilder *res);
     void env_start(EnvStartParams::RootReader *args, EnvStartResult::RootBuilder *res);
     void env_stop(EnvStopParams::RootReader *args, EnvStopResult::RootBuilder *res);
+    void run_leader(VProto::Empty::RootReader *args, EnvStartResult::RootBuilder *res);
+
+    /*!
+     * Helper function, used by env_start and run_leader to start an env.
+     *
+     * \param env_guid GUID for the env to start.
+     * \param config config string - will be written to file. If nullptr (for the case of run_leader) - ignored.
+     * \param res result.
+     */
+    void do_env_start(GUID env_guid, const char *config, EnvStartResult::RootBuilder *res);
 
     char _config_dir[PATH_MAX];
 

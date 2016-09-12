@@ -31,7 +31,7 @@ void Backtracer::print_location(void *p) {
     }
 }
 
-void Backtracer::show_backtrace() {
+/* static */ void Backtracer::show_backtrace() {
     unw_cursor_t cursor; unw_context_t uc;
     unw_word_t ip, sp;
 

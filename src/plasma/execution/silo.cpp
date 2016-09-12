@@ -45,7 +45,7 @@ void Silo::init(ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, co
         _module_descriptors[(int)module_id].defined = true;
         _module_descriptors[(int)module_id].module = module;
         module->init(this, module_setting);
-        // Each module is responsible for calling allocating its agent and calling Agent::init() on it.
+        // Each module is responsible for allocating its agent and calling Agent::init() on it.
         if (module->get_control_agent() != nullptr)
             ASSERT(module->get_control_agent()->is_initialized());
 

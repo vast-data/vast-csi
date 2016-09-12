@@ -1,10 +1,9 @@
 /* Copyright (C) Vast Data Ltd. */
 
 #include <gtest/gtest.h>
+#include "test_cluster.hpp"
 #include "globals.hpp"
 #include "plasma/execution/env.hpp"
-#include "plasma/utils/types.hpp"
-#include "plasma/utils/os.hpp"
 #include "plasma/vmsg/vmsg.hpp"
 #include "test_module.hpp"
 #include "control/cluster/cluster.rpc.client.hpp"
@@ -19,15 +18,6 @@ static const VMsg::ModuleGUID dest = {
     (uint8_t) ModuleId::C,  // module_id : 4
     0  // silo_id
 };
-
-static void create_system_guid()
-{
-    ensure_directory_exists("data");
-    GUID guid = GUID::create();
-    char guid_string[GUID::STRING_SIZE];
-    guid.to_string(guid_string);
-    ASSERT_TRUE(string_to_file("data/system.guid", guid_string));
-}
 
 static void init_func(P::Silo *silo, void *ctx)
 {
@@ -126,7 +116,7 @@ static void cnode_activation_start_func(void *ctx)
 
 void cluster_test(StartFunc start_func)
 {
-    create_system_guid();
+    Test::create_system_guid();
 
     TestModule::set_init_func(init_func, nullptr);
     TestModule::set_start_func(start_func, nullptr);

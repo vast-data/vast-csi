@@ -16,3 +16,7 @@ methods:
   op_id: 3
   arg: EnvStopParams
   res: EnvStopResult
+- method: run_leader
+  op_id: 4
+  arg: VProto::Empty
+  res: EnvStartResult

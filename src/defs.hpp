@@ -14,6 +14,8 @@ static const uint16_t MAX_ENVS_PER_CNODE = 4;
 static const uint16_t MAX_CNODES_PER_SYSTEM = 1024;
 static const uint16_t MAX_ENVS_PER_SYSTEM = MAX_CNODES_PER_SYSTEM * MAX_ENVS_PER_CNODE;
 
+static const char LEADER_ENV_GUID[] = "12345678-9abc-def1-aaaa-bbbbccccdddd";
+
 }
 
 // update src/plasma/trace/reader/tracereader/ui.py:~34

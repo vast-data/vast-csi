@@ -1,6 +1,7 @@
 #include <signal.h>
 
 #include "p_module_agent_server.hpp"
+#include "e_module_agent_server.hpp"
 #include "plasma/execution/env.hpp"
 #include "plasma/trace/emitter.hpp"
 #include "plasma/utils/os.hpp"
@@ -14,7 +15,7 @@ void PModuleAgentServerImpl::init(SiloId silo_id, ModuleId module_id)
     int res = snprintf(_config_dir, PATH_MAX, "%s/config", Env::get()->get_data_dir());
     ASSERT_OP(res, >, 0, "Error writing config dir");
     ASSERT_OP(res, <, PATH_MAX, "data dir path is too long for creating a config dir");
-    ASSERT_OP(res + strlen("/") + 2 * sizeof(GUID) + strlen(".config"), <, PATH_MAX,
+    ASSERT_OP(res + strlen("/") + GUID::STRING_LENGTH + strlen(".config"), <, PATH_MAX,
               "data dir path is too long for keeping config files");
     ensure_directory_exists(_config_dir);
 
@@ -26,11 +27,17 @@ void PModuleAgentServerImpl::init(SiloId silo_id, ModuleId module_id)
 
 void PModuleAgentServerImpl::set_local_env_id(SetLocalEnvIdParams::RootReader *args, VProto::Empty::RootBuilder *res)
 {
+    // 1. Set local env ID:
     VMsg::EnvId env_id = args->get_env_id();
     Env::get()->get_vmsg()->set_local_env_id(env_id);
+
+    // 2. Set env addresses (of the caller, which is the Leader env):
+    ConnectParams::Reader connect_params_reader;
+    args->get_connect_params(&connect_params_reader);
+    EModuleAgentServerImpl::do_connect(&connect_params_reader);
 }
 
-void PModuleAgentServerImpl::env_start(EnvStartParams::RootReader *args, EnvStartResult::RootBuilder *res)
+void PModuleAgentServerImpl::do_env_start(GUID env_guid, const char *config, EnvStartResult::RootBuilder *res)
 {
     ASSERT_OP(strlen(Env::get()->get_binary_path()), >, 0, "No binary path");
 
@@ -40,19 +47,20 @@ void PModuleAgentServerImpl::env_start(EnvStartParams::RootReader *args, EnvStar
         return;
     }
 
-    GUID env_guid = args->get_env_guid();
+    char env_guid_str[GUID::STRING_SIZE];
+    env_guid.to_string(env_guid_str);
+
     for (Index i = 0; i < _n_envs; ++i) {
         if (_envs[i].env_guid.equals(env_guid)) {
-            PT_ERROR(CONTROL, "Can't start env because GUID %lx%lx already exists",
-                     env_guid.get_first_half(), env_guid.get_second_half());
+            PT_ERROR(CONTROL, "Can't start env because GUID %s already exists", env_guid_str);
             res->set_code(EnvStartResultCode::GUID_ALREADY_EXISTS);
             return;
         }
     }
 
     char config_file_path[PATH_MAX];
-    sprintf(config_file_path, "%s/%lx%lx.config", _config_dir, env_guid.get_first_half(), env_guid.get_second_half());
-    if (!string_to_file(config_file_path, args->get_config())) {
+    sprintf(config_file_path, "%s/%s.config", _config_dir, env_guid_str);
+    if (config != nullptr && !string_to_file(config_file_path, config)) {
         PT_ERROR(CONTROL, "Failed to write config file %s", config_file_path);
         res->set_code(EnvStartResultCode::WRITE_FAILED);
         return;
@@ -69,7 +77,7 @@ void PModuleAgentServerImpl::env_start(EnvStartParams::RootReader *args, EnvStar
         PANIC("Not supposed to get here..");
     } else if (pid > 0) {  // parent process
         EnvData *env = &_envs[_n_envs];
-        PT_DEBUG(CONTROL, "Added env #%d, GUID %lx%lx", _n_envs, env_guid.get_first_half(), env_guid.get_second_half());
+        PT_DEBUG(CONTROL, "Added env #%d, GUID %s", _n_envs, env_guid_str);
         ++_n_envs;
         env->env_guid = env_guid;
         env->pid = pid;
@@ -83,9 +91,17 @@ void PModuleAgentServerImpl::env_start(EnvStartParams::RootReader *args, EnvStar
     PANIC("Not supposed to get here..");
 }
 
+void PModuleAgentServerImpl::env_start(EnvStartParams::RootReader *args, EnvStartResult::RootBuilder *res)
+{
+    do_env_start(args->get_env_guid(), args->get_config(), res);
+}
+
 void PModuleAgentServerImpl::env_stop(EnvStopParams::RootReader *args, EnvStopResult::RootBuilder *res)
 {
     GUID env_guid = args->get_env_guid();
+    char env_guid_str[GUID::STRING_SIZE];
+    env_guid.to_string(env_guid_str);
+
     Index found = -1;
     for (Index i = 0; i < _n_envs; ++i) {
         if (_envs[i].env_guid.equals(env_guid)) {
@@ -94,14 +110,14 @@ void PModuleAgentServerImpl::env_stop(EnvStopParams::RootReader *args, EnvStopRe
         }
     }
     if (found == -1) {
-        PT_ERROR(CONTROL, "GUID %lx%lx not found", env_guid.get_first_half(), env_guid.get_second_half());
+        PT_ERROR(CONTROL, "GUID %s not found", env_guid_str);
         res->set_code(EnvStopResultCode::GUID_NOT_FOUND);
         return;
     }
 
     pid_t pid = _envs[found].pid;
     --_n_envs;
-    PT_DEBUG(CONTROL, "Removed env #%d, GUID %lx%lx", found, env_guid.get_first_half(), env_guid.get_second_half());
+    PT_DEBUG(CONTROL, "Removed env #%d, GUID %s", found, env_guid_str);
     if (found < _n_envs) {
         _envs[found].env_guid = _envs[_n_envs].env_guid;
         _envs[found].pid = _envs[_n_envs].pid;
@@ -114,6 +130,15 @@ void PModuleAgentServerImpl::env_stop(EnvStopParams::RootReader *args, EnvStopRe
     }
 
     res->set_code(EnvStopResultCode::SUCCESS);
+}
+
+void PModuleAgentServerImpl::run_leader(VProto::Empty::RootReader *args, EnvStartResult::RootBuilder *res)
+{
+    GUID env_guid;
+    ASSERT(env_guid.init_from_string(LEADER_ENV_GUID));
+
+    // The config file for the leader env already exists, so we don't need to create it.
+    do_env_start(env_guid, nullptr, res);
 }
 
 }  // namespace P

@@ -28,7 +28,7 @@ public:
         uuid_generate(_value);
     }
 
-    bool init_from_string(char *string)
+    bool init_from_string(const char *string)
     {
         // returns -1 on failure and 0 on success
         return uuid_parse(string, _value) == 0;
