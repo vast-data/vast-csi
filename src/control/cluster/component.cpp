@@ -167,7 +167,6 @@ ObjectBase *Cluster::create_module(EnvObj *env, ModuleId module_id, SiloId silo_
     BaseModuleLogic *module = (BaseModuleLogic*) object;
     module->get_base_module()->set_state(ModuleState::OFFLINE);
     module->get_base_module()->set_silo_id(silo_id);
-    strcpy(module->get_base()->get_name(), module_id_to_string(module_id));
     return object;
 }
 

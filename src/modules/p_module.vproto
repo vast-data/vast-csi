@@ -3,6 +3,8 @@ $import plasma/vmsg/vmsg.vproto as VMsg
 
 $namespace P
 
+$const size_t MAX_CONFIG_SIZE = 3584;
+
 struct SetLocalEnvIdParams {
     @0 env_id VMsg.EnvId;
     @1 connect_params ConnectParams;
@@ -10,7 +12,7 @@ struct SetLocalEnvIdParams {
 
 struct EnvStartParams {
     @0 env_guid GUID;
-    @1 config char[2048];
+    @1 config char[MAX_CONFIG_SIZE];
 };
 
 enum EnvStartResultCode : uint8_t {

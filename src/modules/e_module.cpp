@@ -9,6 +9,33 @@ namespace P {
 
 using Conf::ConfigSetting;
 
+namespace {
+
+static constexpr int32_t IO_POOL_COUNT = 100;
+
+}  // namespace
+
+/* static */ void EModule::generate_config(P::Conf::ConfigSetting *module_config)
+{
+    // TODO: put this (io) under "components".
+    ConfigSetting *io = P::Conf::conf_setting_add_group(module_config, "io");
+    P::Conf::ConfigSetting *io_pool_count = P::Conf::conf_setting_add(io, "io_pool_count", CONFIG_TYPE_INT32);
+    P::Conf::conf_setting_set_int32(io_pool_count, IO_POOL_COUNT);
+    P::Conf::ConfigSetting *io_provider = P::Conf::conf_setting_add_group(io, "io_provider");
+    P::Conf::ConfigSetting *devices = P::Conf::conf_setting_add(io_provider, "devices", CONFIG_TYPE_LIST);
+
+    // TODO: this will later be part of the fixed config (see ORION-63), so it's OK that it's hard-coded for now:
+    add_fiber_group_config(module_config, 50, "E");
+    add_fiber_group_config(module_config, 1, "E_IO_POLLING");
+    add_fiber_group_config(module_config, 1, "E_VMSG_POLLING");
+}
+
+/* static */ void EModule::get_vmsg_module_resources(P::VMsg::ModuleResources *vmsg_module_resources)
+{
+    vmsg_module_resources->num_send_buffers = DEFAULT_NUM_SEND_BUFFERS;
+    vmsg_module_resources->num_recv_buffers = DEFAULT_NUM_RECV_BUFFERS;
+}
+
 /* static */ void EModule::init_io_from_settings(ConfigSetting *io_setting, DevIO **devices,
                                                  AtomicPool<DevIO::IO> *iopool, IOProvider *io_provider)
 {

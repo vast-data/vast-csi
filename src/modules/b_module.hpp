@@ -25,7 +25,8 @@ public:
 
     static ModuleId get_id() { return ModuleId::B; }
 
-    static const char *get_name() { return "B"; }
+    static void generate_config(P::Conf::ConfigSetting *module_config);
+    static void get_vmsg_module_resources(P::VMsg::ModuleResources *vmsg_module_resources);
 
 private:
     BModuleAgent _agent;

@@ -19,7 +19,9 @@ public:
     virtual void start();
     virtual Control::BaseAgent* get_control_agent() { return &_agent; }
     static ModuleId get_id() { return ModuleId::I; }
-    static const char *get_name() { return "I"; }
+
+    static void generate_config(P::Conf::ConfigSetting *module_config);
+    static void get_vmsg_module_resources(P::VMsg::ModuleResources *vmsg_module_resources);
 
 private:
     Nfs::NfsProto _nfs;

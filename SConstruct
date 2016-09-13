@@ -274,6 +274,7 @@ AddCppTest(target='dist/tests/os', source=[build_dir + '/tests/os_test.cpp'])
 AddCppTest(target='dist/tests/box', source=[build_dir + '/tests/test_box.cpp'])
 AddCppTest(target='dist/tests/imdb', source=[build_dir + '/tests/test_imdb.cpp'])
 AddCppTest(target='dist/tests/cluster', source=[build_dir + '/tests/test_cluster.cpp'])
+AddCppTest(target='dist/tests/env_config', source=[build_dir + '/tests/test_env_config.cpp'])
 
 cpp_env.AlwaysBuild('nfstest')
 cpp_env.AlwaysBuild('cpptest')

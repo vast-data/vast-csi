@@ -22,7 +22,7 @@ ConfigSetting *conf_setting_lookup_required(ConfigSetting *setting, const char *
 
 int32_t conf_setting_get_int32(ConfigSetting *setting)
 {
-    ASSERT_EQUAL(config_setting_type(setting), CONFIG_TYPE_INT);
+    ASSERT_EQUAL(config_setting_type(setting), CONFIG_TYPE_INT32);
     return config_setting_get_int(setting);
 }
 
@@ -91,6 +91,11 @@ int32_t conf_read_string(Config *config, const char *string)
     return config_read_string(config, string);
 }
 
+int32_t conf_write_file(Config *config, const char *path)
+{
+    return config_write_file(config, path);
+}
+
 const char *conf_error_file(Config *config)
 {
     return config_error_file(config);
@@ -111,6 +116,53 @@ ConfigSetting *conf_lookup(Config *config, const char *key)
     return config_lookup(config, key);
 }
 
+ConfigSetting *conf_root_setting(const Config *config)
+{
+    return config_root_setting(config);
 }
 
+ConfigSetting *conf_setting_add(ConfigSetting *parent, const char *name, int type)
+{
+    ConfigSetting *res = config_setting_add(parent, name, type);
+    ASSERT_NOT_NULL(res);
+    return res;
 }
+
+ConfigSetting *conf_setting_add_group(ConfigSetting *parent, const char *name)
+{
+    return conf_setting_add(parent, name, CONFIG_TYPE_GROUP);
+}
+
+void conf_setting_set_int32(ConfigSetting *setting, int32_t value)
+{
+    ASSERT_EQUAL(config_setting_type(setting), CONFIG_TYPE_INT32);
+    config_setting_set_int(setting, value);
+}
+
+void conf_setting_set_int64(ConfigSetting *setting, int64_t value)
+{
+    ASSERT_EQUAL(config_setting_type(setting), CONFIG_TYPE_INT64);
+    config_setting_set_int64(setting, value);
+}
+
+void conf_setting_set_float(ConfigSetting *setting, double value)
+{
+    ASSERT_EQUAL(config_setting_type(setting), CONFIG_TYPE_FLOAT);
+    config_setting_set_float(setting, value);
+}
+
+void conf_setting_set_bool(ConfigSetting *setting, bool value)
+{
+    ASSERT_EQUAL(config_setting_type(setting), CONFIG_TYPE_BOOL);
+    config_setting_set_bool(setting, value);
+}
+
+void conf_setting_set_string(ConfigSetting *setting, const char* value)
+{
+    ASSERT_EQUAL(config_setting_type(setting), CONFIG_TYPE_STRING);
+    config_setting_set_string(setting, value);
+}
+
+}  // namespace Conf
+
+}  // namespace P

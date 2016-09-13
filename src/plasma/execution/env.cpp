@@ -105,7 +105,7 @@ void Env::init(Config *config)
     ASSERT_NOT_NULL(data_dir_setting);
     const char *data_dir = conf_setting_get_string(data_dir_setting);
     ASSERT_OP(strlen(data_dir), <, PATH_MAX, "data dir is too long");
-    strcpy(_data_dir, data_dir);
+    set_data_dir(data_dir);
     ensure_directory_exists(data_dir);
 
     snprintf(_trace_dir, PATH_MAX, "%s/traces", data_dir);

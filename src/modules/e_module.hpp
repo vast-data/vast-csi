@@ -29,7 +29,8 @@ public:
 
     static ModuleId get_id() { return ModuleId::E; }
 
-    static const char *get_name() { return "E"; }
+    static void generate_config(P::Conf::ConfigSetting *module_config);
+    static void get_vmsg_module_resources(P::VMsg::ModuleResources *vmsg_module_resources);
 
     static void init_io_from_settings(Conf::ConfigSetting *io_module, DevIO **devices, AtomicPool<DevIO::IO> *iopool,
                                       IOProvider *io_provider);

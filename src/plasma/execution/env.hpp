@@ -77,6 +77,8 @@ public:
     ModuleInterface *create_module(const char *name, ModuleId *id OUT);
 
     const char *get_data_dir() { return _data_dir; }
+    void set_data_dir(const char *data_dir) { strcpy(_data_dir, data_dir); }
+
     const char *get_binary_path() { return _binary_path; }
 
 private:

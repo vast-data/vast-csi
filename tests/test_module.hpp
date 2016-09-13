@@ -23,7 +23,8 @@ public:
     virtual void start();
     virtual Control::BaseAgent* get_control_agent() { return &_agent; }
     static ModuleId get_id() { return ModuleId::TEST; }
-    static const char *get_name() { return "TEST"; }
+    static void generate_config(P::Conf::ConfigSetting *module_config);
+    static void get_vmsg_module_resources(P::VMsg::ModuleResources *vmsg_module_resources);
 
     static bool is_init();
     static bool is_started();

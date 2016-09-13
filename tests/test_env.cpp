@@ -150,8 +150,8 @@ static void env_start_stop_start_func(void *ctx)
     P::GUID env_guid;
     env_guid.init();
 
-    char config[2048];
-    ASSERT(P::file_to_string("tests/env_test.config", 2048, config));
+    char config[P::MAX_CONFIG_SIZE];
+    ASSERT(P::file_to_string("tests/env_test.config", P::MAX_CONFIG_SIZE, config));
     uint16_t port = 5000;
 
     EXPECT_EQ(P::EnvStopResultCode::GUID_NOT_FOUND, send_env_stop(env_guid));
