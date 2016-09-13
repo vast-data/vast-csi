@@ -29,7 +29,8 @@ void Env::error()
     LOOP(_num_silos, i)
     {
         if (current_silo != _silos[i])
-            _silos[i]->halt();
+            _silos[i]->quit();
+        _silos[i]->finalize();
     }
 
     _dumper.stop();
@@ -212,34 +213,35 @@ void Env::wait_for_run_state()
 
 static void error_handler(int sig)
 {
-    int exit_code = 0;
+    Silo *current_silo = Silo::get();
+    if (current_silo != nullptr && current_silo->is_quitting()) {
+        return;
+    }
+
     switch(sig) {
     case SIGTERM:
-        exit_code = 0;
         printf("===TERMINATED===\n");
         break;
     case SIGSEGV:
-        exit_code = 1;
         printf("===SEGFAULT===\n");
         break;
     case SIGABRT:
-        exit_code = 2;
         printf("===PANIC===\n");
         break;
     case SIGINT:
-        exit_code = 3;
         printf("===INTERRUPT===\n");
         break;
     default:
+        printf("===UNKNOWN===\n");
         PANIC();
     }
 
-    P::Backtracer::show_backtrace();
-
-    P::Env::get()->error();
+    if (sig != SIGABRT && sig != SIGINT) // assertions already print tracebacks. interrupt doesn't require it.
+        P::Backtracer::show_backtrace();
 
     printf("===FINISH===\n");
-    exit(exit_code);
+    P::Env::get()->error();
+    exit(sig);
 }
 
 /*!

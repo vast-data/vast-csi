@@ -29,6 +29,7 @@ static thread_local Silo *current_silo = nullptr;
 
 void Silo::init(ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, const char *data_dir, const char *trace_dir)
 {
+    _quitting = false;
     _affinity = affinity;
     _silo_id = silo_id;
 
@@ -188,13 +189,18 @@ void *Silo::get_component_state(ComponentId component_id)
     return get_module_descriptor()->components[(int)component_id];
 }
 
-void Silo::halt()
+void Silo::finalize()
 {
     _trace_dumper.stop();
     _trace_dumper.wait();
+}
 
-    if (_pthread)
-        pthread_kill(_pthread, SIGTERM);
+void Silo::quit()
+{
+    if (_quitting)
+        return;
+    _quitting = true;
+    pthread_kill(_pthread, SIGTERM);
 }
 
 void Silo::destroy()

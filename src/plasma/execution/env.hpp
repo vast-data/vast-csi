@@ -65,7 +65,7 @@ public:
     * Called when an error happens and the env and it silos should be stopped.
     * Can be called by signal handlers or other error conditions.
     */
-    void error(void);
+    void error();
 
     EnvState get_state() const { return _state; }
     void set_state(EnvState state) { _state = state; }

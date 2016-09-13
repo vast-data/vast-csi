@@ -177,6 +177,10 @@ void Dumper::stop()
 #define WAIT_SLEEP_MICROS 100
 void Dumper::wait()
 {
+    // pardoxically, a thread cannot wait for itself to finish
+    if (pthread_self() == _pthread)
+        return;
+
     while (_running)
         usleep(WAIT_SLEEP_MICROS);
 }
