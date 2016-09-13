@@ -22,10 +22,14 @@ public:
 
 private:
     EnvObj *create_env(const char *name);
+    template <class ModuleObj>
+    ModuleObj *create_module(SiloId silo_id);
+
     void cnode_activate(CNode *cnode);
     void cnode_deactivate(CNode *cnode);
 
     // RPC functions
+    void system_status(SystemStatusParams::RootReader *args, SystemStatusResult::RootBuilder *res);
     void system_init(SystemInitParams::RootReader *args, SystemInitResult::RootBuilder *res);
     void cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBuilder *res);
     void cnode_modify(CNodeModifyParams::RootReader *args, CNodeModifyResult::RootBuilder *res);

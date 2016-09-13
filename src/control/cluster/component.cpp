@@ -5,8 +5,15 @@
 #include "plasma/utils/macros.hpp"
 #include "control/imdb/cnode.hpp"
 #include "control/imdb/env.hpp"
+#include "control/imdb/module.hpp"
+
 
 namespace Control {
+
+void Cluster::system_status(SystemStatusParams::RootReader *args, SystemStatusResult::RootBuilder *res)
+{
+    res->get_system()->init_from_reader(_system->as_reader());
+}
 
 void Cluster::system_init(SystemInitParams::RootReader *args, SystemInitResult::RootBuilder *res)
 {
@@ -20,9 +27,19 @@ EnvObj *Cluster::create_env(const char *name)
     EnvObj *env = _imdb->create<EnvObj>(P::GUID::create());
     strcpy(env->get_base_proto()->get_name(), name);
 
+
     env->set_connected(false);
     env->set_id(_system->allocate_env_id());
     return env;
+}
+
+template <class ModuleObj>
+ModuleObj *Cluster::create_module(SiloId silo_id)
+{
+    ModuleObj *module = _imdb->create<ModuleObj>(P::GUID::create());
+    module->get_base_module_proto()->set_state(ModuleState::OFFLINE);
+    module->get_base_module_proto()->set_silo_id(silo_id);
+    return module;
 }
 
 void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBuilder *res)
@@ -42,16 +59,39 @@ void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBu
     _system->add_child(cnode);
     sprintf(cnode->get_base_proto()->get_name(), "cnode-%03d", _system->allocate_cnode_id());
 
-    LOOP(cnode->get_addresses_count(), i)
-        *cnode->get_addresses(i) = *args->get_addresses(i);
+    LOOP(cnode->get_address_count(), i)
+        *cnode->get_address(i) = *args->get_address(i);
     cnode->set_enabled(false);
 
     // create the child platform env
-    cnode->add_child(create_env("platform"));
+    EnvObj *env = create_env("platform");
+    cnode->add_child(env);
+    env->add_child(create_module<EModuleObj>(0));
+    env->add_child(create_module<PModuleObj>(0));
 
     // create the child data EnvObjs
-    LOOP(args->get_env_count(), i) {
-        cnode->add_child(create_env("data"));
+    EnvConfig::Reader env_config;
+    SiloConfig::Reader silo_config;
+    LOOP(args->get_env_count(), env_index) {
+        env = create_env("data");
+        cnode->add_child(env);
+        args->get_env_config(&env_config, env_index);
+        LOOP(env_config.get_silo_count(), silo_index) {
+            env_config.get_silo_config(&silo_config, silo_index);
+            LOOP(silo_config.get_module_enabled_count(), module_index) {
+                if (silo_config.get_module_enabled(module_index))
+                    switch ((ModuleId) module_index) {
+                    case ModuleId::E:
+                        env->add_child(create_module<EModuleObj>(silo_index));
+                        break;
+                    case ModuleId::P:
+                        env->add_child(create_module<PModuleObj>(silo_index));
+                        break;
+                    default:
+                        PANIC("Unknown module configured: " << module_id_to_string((ModuleId) module_index));
+                    }
+            }
+        }
     }
 
     char guid_string[P::GUID::STRING_SIZE];
@@ -82,6 +122,11 @@ void Cluster::cnode_remove(CNodeRemoveParams::RootReader *args, CNodeRemoveResul
         res->set_code(CNodeRemoveResultCode::NOT_DISABLED);
         return;
     }
+
+    char guid_string[P::GUID::STRING_SIZE];
+    args->get_guid().to_string(guid_string);
+    PT_INFO(CONTROL, "removing CNode %s:%s .", cnode->get_base_proto()->get_name(), guid_string);
+
     _imdb->remove(cnode);
 
     res->set_code(CNodeRemoveResultCode::SUCCESS);

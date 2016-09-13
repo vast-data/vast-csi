@@ -16,6 +16,8 @@ enum class TypeId : P::byte {
     System,
     CNode,
     Env,
+    EModule,
+    PModule,
     Drive,
     COUNT
 };

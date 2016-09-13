@@ -4,6 +4,10 @@ api_version: 1
 namespaces: ["Control"]
 default_fiber_group: C
 methods:
+- method: system_status
+  op_id: 0
+  arg: SystemStatusParams
+  res: SystemStatusResult
 - method: system_init
   op_id: 1
   arg: SystemInitParams

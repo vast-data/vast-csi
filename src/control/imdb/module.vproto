@@ -1,6 +1,6 @@
 $import object.vproto
 
-$typedef byte SiloId;
+$typedef uint8_t SiloId;
 
 enum ModuleState : byte {
     ONLINE,
@@ -12,12 +12,12 @@ struct ModuleBaseProto {
     @1 state ModuleState;
 };
 
-struct EModule {
+struct EModuleProto {
     @0 base_proto ObjectBaseProto;
     @1 base_module_proto ModuleBaseProto;
 };
 
-struct PModule {
+struct PModuleProto {
     @0 base_proto ObjectBaseProto;
     @1 base_module_proto ModuleBaseProto;
 };

@@ -29,10 +29,10 @@ struct EnvConfig {
 };
 
 struct CNodeAddParams {
-    @0 env_configs EnvConfig[CNODE_MAX_DATA_ENVS];
+    @0 env_config EnvConfig[CNODE_MAX_DATA_ENVS];
     @1 env_count byte;
     @2 guid GUID;
-    @3 addresses cnode.IPv4[2];
+    @3 address cnode.IPv4[2];
 };
 
 enum CNodeAddResultCode {
@@ -71,4 +71,14 @@ enum CNodeRemoveResultCode {
 
 struct CNodeRemoveResult {
     @0 code CNodeRemoveResultCode;
+};
+
+struct SystemStatusParams {
+
+};
+
+$import control/imdb/system.vproto as system
+
+struct SystemStatusResult {
+    @0 system system.SystemProto;
 };

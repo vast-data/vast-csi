@@ -10,6 +10,7 @@
 #include "system.hpp"
 #include "cnode.hpp"
 #include "env.hpp"
+#include "module.hpp"
 #include "drive.hpp"
 
 namespace Control {
@@ -23,6 +24,8 @@ struct TypeConfig {
 const TypeConfig TYPE_CONFIGS[(P::byte)TypeId::COUNT] = {{sizeof(System), 1},
                                                          {sizeof(CNode), 1024},
                                                          {sizeof(EnvObj), 4096},
+                                                         {sizeof(EModuleObj), 65536},
+                                                         {sizeof(PModuleObj), 4096},
                                                          {sizeof(Drive), 4096}};
 
 }
