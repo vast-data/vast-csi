@@ -22,12 +22,12 @@ void Cluster::system_init(SystemInitParams::RootReader *args, SystemInitResult::
     res->set_code(SystemInitResultCode::SUCCESS);
 }
 
-EnvObj *Cluster::create_env(const char *name)
+EnvObj *Cluster::create_env(const char *name, P::byte silo_count)
 {
     EnvObj *env = _imdb->create<EnvObj>(P::GUID::create());
     strcpy(env->get_base_proto()->get_name(), name);
 
-
+    env->set_silo_count(silo_count);
     env->set_connected(false);
     env->set_id(_system->allocate_env_id());
     return env;
@@ -64,7 +64,7 @@ void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBu
     cnode->set_enabled(false);
 
     // create the child platform env
-    EnvObj *env = create_env("platform");
+    EnvObj *env = create_env("platform", 1);
     cnode->add_child(env);
     env->add_child(create_module<EModuleObj>(0));
     env->add_child(create_module<PModuleObj>(0));
@@ -73,9 +73,9 @@ void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBu
     EnvConfig::Reader env_config;
     SiloConfig::Reader silo_config;
     LOOP(args->get_env_count(), env_index) {
-        env = create_env("data");
-        cnode->add_child(env);
         args->get_env_config(&env_config, env_index);
+        env = create_env("data", env_config.get_silo_count());
+        cnode->add_child(env);
         LOOP(env_config.get_silo_count(), silo_index) {
             env_config.get_silo_config(&silo_config, silo_index);
             LOOP(silo_config.get_module_enabled_count(), module_index) {

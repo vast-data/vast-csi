@@ -1,5 +1,7 @@
 $import object.vproto
 
+$namespace Control
+
 $typedef uint32_t IPv4
 
 struct CNodeProto {

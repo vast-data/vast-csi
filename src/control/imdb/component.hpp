@@ -83,7 +83,7 @@ public:
             return nullptr;
 
         object->init();
-        object->get_base_proto()->set_guid(guid);
+        object->get_base()->set_guid(guid);
 
         _hashes[(size_t)T::get_type_id_static()].set(&guid,
                                                       sizeof(P::GUID),

@@ -1,5 +1,7 @@
 $import object.vproto
 
+$namespace Control
+
 struct DriveProto {
     @0 base_proto ObjectBaseProto;
     @1 version uint32_t;

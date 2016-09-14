@@ -1,5 +1,7 @@
 $import object.vproto
 
+$namespace Control
+
 enum SystemState : byte {
     INIT,
     ONLINE,

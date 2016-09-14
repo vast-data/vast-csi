@@ -53,7 +53,7 @@ public:
     template <class Child>
     void add_child(Child *child)
     {
-        child->get_base_proto()->set_parent_guid(get_base()->get_guid());
+        child->get_base()->set_parent_guid(get_base()->get_guid());
         _children.append(&child->child_node);
     }
 

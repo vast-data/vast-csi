@@ -21,7 +21,7 @@ public:
     }
 
 private:
-    EnvObj *create_env(const char *name);
+    EnvObj *create_env(const char *name, P::byte silo_count);
     template <class ModuleObj>
     ModuleObj *create_module(SiloId silo_id);
 
