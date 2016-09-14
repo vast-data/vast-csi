@@ -56,10 +56,8 @@ public:
     public:
         void init()
         {
-            // parent size can be 8 or 1. 8 when it's the root or 1 for an empty class (which is actually 0).
-            auto parent_size = sizeof(Parent) == 1 ? 0 : sizeof(Parent);
             {% for field in struct.variable_fields %}
-            _{{ field.name }}_ptr.init(parent_size + {{ field.offset}}, {{ field.type.size }}, {{ field.elements if field.elements else 1 }}, {{ field.type.next_index if not field.type.is_primitive else 0 }});
+            _{{ field.name }}_ptr.init({{ field.offset}}, {{ field.type.size }}, {{ field.elements if field.elements else 1 }}, {{ field.type.next_index if not field.type.is_primitive else 0 }});
                 {% if not field.type.is_primitive %}
                     {% if field.elements %}
             for (size_t i = 0; i < {{ field.elements }}; i++)
@@ -309,7 +307,7 @@ public:
             ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
             {% endif %}
             if ({{ field.index }} < _vproto_header.get_next_index()) {
-                return ({{ get_fqn(field) }}*) ((P::byte*) this + _{{ field.name }}_ptr.get_offset(){% if field.type.name not in ['byte', 'char'] %} + index * _{{ field.name }}_ptr.get_size(){% endif %});
+                return ({{ get_fqn(field) }}*) ((P::byte*) this + _{{ field.name }}_ptr.get_offset() + sizeof(P::VProto::RootStruct){% if field.type.name not in ['byte', 'char'] %} + index * _{{ field.name }}_ptr.get_size(){% endif %});
             } else {
                 return nullptr;
             }
@@ -321,7 +319,7 @@ public:
                 {% if field.elements %}
                 ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
                 {% endif %}
-                {{ field.name }}->init(({{ get_fqn(field) }}::FixedData*) ((P::byte*) this + _{{ field.name }}_ptr.get_offset(){% if field.elements %} + index * _{{ field.name }}_ptr.get_size() {% endif %}), _{{ field.name }}_ptr.get_next_index());
+                {{ field.name }}->init(({{ get_fqn(field) }}::FixedData*) ((P::byte*) this + _{{ field.name }}_ptr.get_offset() + sizeof(P::VProto::RootStruct){% if field.elements %} + index * _{{ field.name }}_ptr.get_size() {% endif %}), _{{ field.name }}_ptr.get_next_index());
             } else {
                 {% if field.elements %}
                 PANIC("Array did not exist in older version: {{ struct.name }}.{{ field.name }}");

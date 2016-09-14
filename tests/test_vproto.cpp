@@ -158,13 +158,20 @@ TEST(TestVProto, test_root_reader_to_reader)
     person_builder.set_age(120);
     person_builder.set_gender(NS::OldGender::FEMALE);
 
+    NS::OldPhone::Builder *phone_builder = person_builder.get_phones(0);
+    phone_builder->set_number(144);
+
     NS::Person::RootReader *person_root_reader = (NS::Person::RootReader*) &person_builder;
 
     NS::Person::Reader person_reader;
     person_reader.init_from_root(person_root_reader);
 
+    NS::Phone::Reader phone_reader;
+    person_reader.get_phones(&phone_reader, 0);
+
     // validate a field that exists in the builder
     ASSERT_EQ(person_reader.get_age(), 120);
+    ASSERT_EQ(phone_reader.get_number(), 144);
     // validate a field that doesn't exist returns a default
     ASSERT_EQ(person_reader.get_active(), true);
 }
