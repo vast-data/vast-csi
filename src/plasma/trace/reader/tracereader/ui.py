@@ -31,8 +31,11 @@ severities = {0: term.red + 'DEV' + term.normal,
               2: term.cyan + 'INF' + term.normal,
               3: term.yellow + 'WRN' + term.normal,
               4: term.red + 'ERR' + term.normal}
-components = {0: 'PLASMA',
-              1: 'NFS'}
+components = {0: 'TEST',
+              1: 'PLAS',
+              2: 'NFS ',
+              3: 'CLUS',
+             }
 
 TIME_FORMAT = '%y/%m/%d %H:%M:%S.%f'
 LOCATION_FORMAT = ' [{channel}:{file}:{func}:{line}]'

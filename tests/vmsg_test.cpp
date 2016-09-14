@@ -17,11 +17,16 @@ using P::Env;
 using P::SiloId;
 using P::Silo;
 
-#define CURRENT_COMPONENT ComponentId::PLASMA
+#define CURRENT_COMPONENT ComponentId::TEST
 
 #define TEST_CONFIG_FILE   "tests/vmsg_test.config.in"
 #define CLIENT_CONFIG_FILE "tests/vmsg_test_client.config"
 #define SERVER_CONFIG_FILE "tests/vmsg_test_server.config"
+
+typedef struct {
+    uint32_t n_silos;
+    Future future;
+} FiberArgs;
 
 class TestRpcServerImpl : public TestRpcServer {
 public:
@@ -117,6 +122,7 @@ void VMsgTest::add_addresses(EnvId id, uint16_t port)
     _lock.lock();
     if (_first_silo) {
         vmsg->add_module_pair(ModuleId::TEST, ModuleId::TEST, TransportType::RDMA);
+        vmsg->add_module_pair(ModuleId::E, ModuleId::TEST, TransportType::RDMA);
         EnvAddresses::RootBuilder addresses;
         addresses.set_n_addr(1);
         strcpy(addresses.get_addresses(0)->get_host(), "127.0.0.1");
@@ -185,6 +191,22 @@ static void async_call(TestRpcClient *client, uint64_t i, uint32_t n_silos, EnvI
     }
 }
 
+static void client_test_fiber(void *ctx)
+{
+    FiberArgs * args= (FiberArgs*)ctx;
+    TestRpcClient client;
+    client.init(Env::get()->get_vmsg());
+
+    static const uint64_t LOOPS = 50;
+    LOOP(LOOPS, i) {
+        sync_call(&client, i, args->n_silos, SERVER_ENV_ID);
+        sync_call(&client, i, args->n_silos, CLIENT_ENV_ID);
+        async_call(&client, i, args->n_silos, CLIENT_ENV_ID);
+        async_call(&client, i, args->n_silos, SERVER_ENV_ID);
+    }
+    args->future.set();
+}
+
 void VMsgTest::client_test()
 {
     printf("CLIENT SILO %hhu starting\n", Silo::get_current_silo_id());
@@ -192,17 +214,19 @@ void VMsgTest::client_test()
     add_addresses(SERVER_ENV_ID, SERVER_PORT);
     uint32_t n_silos = Env::get()->get_num_silos();
 
-    TestRpcClient client;
-    client.init(Env::get()->get_vmsg());
+    FiberArgs args[2];
+    args[0].n_silos = n_silos;
+    args[0].future.init();
+    args[1].n_silos = n_silos;
+    args[1].future.init();
 
-    static const uint64_t LOOPS = 50;
-    LOOP(LOOPS, i) {
-        sync_call(&client, i, n_silos, SERVER_ENV_ID);
-        sync_call(&client, i, n_silos, CLIENT_ENV_ID);
-        async_call(&client, i, n_silos, CLIENT_ENV_ID);
-        async_call(&client, i, n_silos, SERVER_ENV_ID);
+    P::Fiber::init((P::Index)FiberGroupId::TEST, client_test_fiber, &args[0], false);
+    P::Fiber::init((P::Index)FiberGroupId::E, client_test_fiber, &args[1], false);
 
-    }
+    args[0].future.wait();
+    args[0].future.destroy();
+    args[1].future.wait();
+    args[1].future.destroy();
     printf("CLIENT SILO %hhu done\n", Silo::get_current_silo_id());
 
     if (_finished_silos.fetch_add(1) == (n_silos - 1)) {

@@ -16,6 +16,7 @@ static const uint16_t MAX_ENVS_PER_SYSTEM = MAX_CNODES_PER_SYSTEM * MAX_ENVS_PER
 
 }
 
+// update src/plasma/trace/reader/tracereader/ui.py:~34
 #define COMPONENT_LIST(X)                       \
     X(TEST),                                    \
     X(PLASMA),                                  \
