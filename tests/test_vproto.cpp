@@ -150,6 +150,25 @@ TEST(TestVProto, test_guid)
     ASSERT_EQ(reader->get_last(), 'b');
 }
 
+TEST(TestVProto, test_root_reader_to_reader)
+{
+    NS::OldPerson::RootBuilder person_builder;
+    person_builder.init();
+
+    person_builder.set_age(120);
+    person_builder.set_gender(NS::OldGender::FEMALE);
+
+    NS::Person::RootReader *person_root_reader = (NS::Person::RootReader*) &person_builder;
+
+    NS::Person::Reader person_reader;
+    person_reader.init_from_root(person_root_reader);
+
+    // validate a field that exists in the builder
+    ASSERT_EQ(person_reader.get_age(), 120);
+    // validate a field that doesn't exist returns a default
+    ASSERT_EQ(person_reader.get_active(), true);
+}
+
 int main(int argc, char **argv)
 {
     ::testing::FLAGS_gtest_death_test_style = "threadsafe";

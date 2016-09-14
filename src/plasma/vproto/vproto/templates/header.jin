@@ -202,6 +202,11 @@ public:
             init(builder, {{ struct.next_index }});
         }
 
+        void init_from_root(RootReader *reader)
+        {
+            init(reader, reader->_vproto_header.get_next_index());
+        }
+
         {% for field in struct.primitive_fields %}
         {% if field.type.name != 'VProto::ArrayPtr' %}
         {{ get_fqn(field) }} get_{{ field.name }}()
@@ -265,6 +270,7 @@ public:
     };
 
     class RootReader : public P::VProto::RootStruct, public FixedData {
+          friend class Reader; // required by init_from_root
     public:
 
         {% for field in struct.primitive_fields %}
