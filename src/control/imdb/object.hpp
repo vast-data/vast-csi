@@ -68,7 +68,7 @@ public:
         return &_children;
     }
 
-    P::IList::Node child_node;
+    P::IList::Node child_node; // IList iteration requires this node to be public
 
 private:
     ObjectBaseProto::Builder *_base;
@@ -89,3 +89,17 @@ public:
 };
 
 }
+
+#define IMDB_ITER_CHILDREN(parent, var, child_type, body)               \
+    ILIST_ITER_SAFE(parent->get_children(), i) {                        \
+        ObjectBase *child = p_container_of(i, ObjectBase, child_node);  \
+        child_type *var;                                                \
+        switch (child->get_type_id()) {                                 \
+        case TypeId::child_type:                                        \
+            var = child->cast<child_type>();                            \
+            { body }                                                    \
+            break;                                                      \
+        default:                                                        \
+            break;                                                      \
+        }                                                               \
+    }

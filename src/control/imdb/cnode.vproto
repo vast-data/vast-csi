@@ -4,9 +4,16 @@ $namespace Control
 
 $typedef uint32_t IPv4
 
+enum CNodeState : byte {
+    ACTIVE,
+    INACTIVE,
+    FAILED
+};
+
 struct CNodeProto {
     @0 base_proto ObjectBaseProto;
     @1 address IPv4[2];
     @2 version uint32_t;
     @3 enabled bool;
+    @4 state CNodeState;
 };

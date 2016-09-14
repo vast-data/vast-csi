@@ -15,6 +15,16 @@ struct SystemInitResult {
     @0 code SystemInitResultCode;
 };
 
+struct SystemStatusParams {
+
+};
+
+$import control/imdb/system.vproto as system
+
+struct SystemStatusResult {
+    @0 system system.SystemProto;
+};
+
 $const size_t CNODE_MAX_DATA_ENVS = 2;
 $const size_t SILO_MAX_MODULES = 16; // TODO: this should be ModuleId::COUNT in the future.
 
@@ -73,12 +83,16 @@ struct CNodeRemoveResult {
     @0 code CNodeRemoveResultCode;
 };
 
-struct SystemStatusParams {
-
+struct CNodeGetParams {
+    @0 guid GUID;
 };
 
-$import control/imdb/system.vproto as system
+enum CNodeGetResultCode {
+    SUCCESS,
+    NOT_FOUND
+};
 
-struct SystemStatusResult {
-    @0 system system.SystemProto;
+struct CNodeGetResult {
+    @0 code CNodeGetResultCode;
+    @1 cnode cnode.CNodeProto;
 };

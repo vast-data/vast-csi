@@ -103,7 +103,7 @@ public:
             {% for field in struct.variable_fields %}
                 {% if field.elements %}
                     {% if field.type.is_primitive %}
-            memcpy(get_{{ field.name }}(), reader->get_{{ field.name }}(), std::min(reader->get_{{ field.name }}_count(), get_{{ field.name }}_count()) * {{ field.type.size }});
+            memcpy(get_{{ field.name }}({% if field.type.name not in ['byte', 'char'] %}0{% endif %}), reader->get_{{ field.name }}({% if field.type.name not in ['byte', 'char'] %}0{% endif %}), std::min(reader->get_{{ field.name }}_count(), get_{{ field.name }}_count()) * {{ field.type.size }});
                     {% else %}
             {{ get_fqn(field) }}::Reader {{ field.name }}_reader;
             for (size_t i; i < std::min(reader->get_{{ field.name }}_count(), get_{{ field.name }}_count()); i++) {

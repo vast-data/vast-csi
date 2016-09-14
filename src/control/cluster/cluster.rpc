@@ -1,5 +1,5 @@
 class: Cluster
-include: cluster.vproto.hpp
+include: ["cluster.vproto.hpp"]
 api_version: 1
 namespaces: ["Control"]
 default_fiber_group: C
@@ -24,3 +24,7 @@ methods:
   op_id: 4
   arg: CNodeRemoveParams
   res: CNodeRemoveResult
+- method: cnode_get
+  op_id: 5
+  arg: CNodeGetParams
+  res: CNodeGetResult

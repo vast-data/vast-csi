@@ -24,7 +24,7 @@ private:
     EnvObj *create_env(const char *name, P::byte silo_count);
     template <class ModuleObj>
     ModuleObj *create_module(SiloId silo_id);
-
+    void calc_cnode_state(CNode *cnode);
     void cnode_activate(CNode *cnode);
     void cnode_deactivate(CNode *cnode);
 
@@ -34,6 +34,7 @@ private:
     void cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBuilder *res);
     void cnode_modify(CNodeModifyParams::RootReader *args, CNodeModifyResult::RootBuilder *res);
     void cnode_remove(CNodeRemoveParams::RootReader *args, CNodeRemoveResult::RootBuilder *res);
+    void cnode_get(CNodeGetParams::RootReader *args, CNodeGetResult::RootBuilder *res);
 
     IMDB *_imdb;
     System *_system;

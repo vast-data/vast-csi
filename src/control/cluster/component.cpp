@@ -20,6 +20,12 @@ void Cluster::system_init(SystemInitParams::RootReader *args, SystemInitResult::
     _system->set_state(SystemState::ONLINE);
     PT_INFO(CONTROL, "System initialized. State is now ONLINE.");
     res->set_code(SystemInitResultCode::SUCCESS);
+
+    // potentially activate all cnodes
+    IMDB_ITER_CHILDREN(_system, cnode, CNode,
+    {
+        calc_cnode_state(cnode);
+    });
 }
 
 EnvObj *Cluster::create_env(const char *name, P::byte silo_count)
@@ -40,6 +46,27 @@ ModuleObj *Cluster::create_module(SiloId silo_id)
     module->get_base_module_proto()->set_state(ModuleState::OFFLINE);
     module->get_base_module_proto()->set_silo_id(silo_id);
     return module;
+}
+
+void Cluster::calc_cnode_state(CNode *cnode)
+{
+    if (_system->get_state() == SystemState::ONLINE && cnode->get_enabled()) {
+        if (cnode->get_state() == CNodeState::INACTIVE)
+            cnode_activate(cnode);
+    } else {
+        if (cnode->get_state() == CNodeState::ACTIVE)
+            cnode_deactivate(cnode);
+    }
+}
+
+void Cluster::cnode_activate(CNode *cnode)
+{
+
+}
+
+void Cluster::cnode_deactivate(CNode *cnode)
+{
+
 }
 
 void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBuilder *res)
@@ -109,6 +136,7 @@ void Cluster::cnode_modify(CNodeModifyParams::RootReader *args, CNodeModifyResul
         return;
     }
     cnode->set_enabled(args->get_enabled());
+    calc_cnode_state(cnode);
 }
 
 void Cluster::cnode_remove(CNodeRemoveParams::RootReader *args, CNodeRemoveResult::RootBuilder *res)
@@ -130,6 +158,17 @@ void Cluster::cnode_remove(CNodeRemoveParams::RootReader *args, CNodeRemoveResul
     _imdb->remove(cnode);
 
     res->set_code(CNodeRemoveResultCode::SUCCESS);
+}
+
+void Cluster::cnode_get(CNodeGetParams::RootReader *args, CNodeGetResult::RootBuilder *res)
+{
+    CNode *cnode = _imdb->get<CNode>(args->get_guid());
+    if (cnode == nullptr) {
+        res->set_code(CNodeGetResultCode::NOT_FOUND);
+        return;
+    }
+    res->get_cnode()->init_from_reader(cnode->as_reader());
+    res->set_code(CNodeGetResultCode::SUCCESS);
 }
 
 }
