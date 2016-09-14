@@ -39,13 +39,13 @@ EnvObj *Cluster::create_env(const char *name, P::byte silo_count)
     return env;
 }
 
-template <class ModuleObj>
-ModuleObj *Cluster::create_module(SiloId silo_id)
+ObjectBase *Cluster::create_module(ModuleId module_id, SiloId silo_id)
 {
-    ModuleObj *module = _imdb->create<ModuleObj>(P::GUID::create());
-    module->get_base_module_proto()->set_state(ModuleState::OFFLINE);
-    module->get_base_module_proto()->set_silo_id(silo_id);
-    return module;
+    ObjectBase *object = ModuleRegistry::get(module_id)->create_control_object(_imdb);
+    BaseModuleLogic *module = (BaseModuleLogic*) object;
+    module->get_base_module()->set_state(ModuleState::OFFLINE);
+    module->get_base_module()->set_silo_id(silo_id);
+    return object;
 }
 
 void Cluster::calc_cnode_state(CNode *cnode)
@@ -61,12 +61,12 @@ void Cluster::calc_cnode_state(CNode *cnode)
 
 void Cluster::cnode_activate(CNode *cnode)
 {
-
+    cnode->set_state(CNodeState::ACTIVE);
 }
 
 void Cluster::cnode_deactivate(CNode *cnode)
 {
-
+    cnode->set_state(CNodeState::INACTIVE);
 }
 
 void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBuilder *res)
@@ -93,8 +93,8 @@ void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBu
     // create the child platform env
     EnvObj *env = create_env("platform", 1);
     cnode->add_child(env);
-    env->add_child(create_module<EModuleObj>(0));
-    env->add_child(create_module<PModuleObj>(0));
+    env->add_child(create_module(ModuleId::E, 0));
+    env->add_child(create_module(ModuleId::P, 0));
 
     // create the child data EnvObjs
     EnvConfig::Reader env_config;
@@ -105,18 +105,10 @@ void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBu
         cnode->add_child(env);
         LOOP(env_config.get_silo_count(), silo_index) {
             env_config.get_silo_config(&silo_config, silo_index);
+            env->get_silos(silo_index)->set_affinity(silo_config.get_affinity());
             LOOP(silo_config.get_module_enabled_count(), module_index) {
                 if (silo_config.get_module_enabled(module_index))
-                    switch ((ModuleId) module_index) {
-                    case ModuleId::E:
-                        env->add_child(create_module<EModuleObj>(silo_index));
-                        break;
-                    case ModuleId::P:
-                        env->add_child(create_module<PModuleObj>(silo_index));
-                        break;
-                    default:
-                        PANIC("Unknown module configured: " << module_id_to_string((ModuleId) module_index));
-                    }
+                    env->add_child(create_module((ModuleId) module_index, silo_index));
             }
         }
     }

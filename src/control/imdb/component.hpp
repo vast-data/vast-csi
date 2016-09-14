@@ -78,7 +78,7 @@ public:
         if (exists != nullptr)
             *exists = false;
 
-        object = (T*) _pools[(size_t)T::get_type_id_static()].alloc_address();
+        object = new(_pools[(size_t)T::get_type_id_static()].alloc_address()) T;
         if (object == nullptr)
             return nullptr;
 

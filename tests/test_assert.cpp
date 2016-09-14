@@ -55,7 +55,7 @@ void assert_not_null()
 
 TEST(TestAsserts, test_assert_not_null)
 {
-    ASSERT_DEATH(assert_not_null(), "p1 is NULL");
+    ASSERT_DEATH(assert_not_null(), "p1 != nullptr");
 }
 
 TEST(TestAsserts, test_assert_op_passes)

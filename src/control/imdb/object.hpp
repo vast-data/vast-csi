@@ -18,13 +18,17 @@ enum class TypeId : P::byte {
     Env,
     EModule,
     PModule,
+    BModule,
+    IModule,
+    TModule,
+    CModule,
     Drive,
     COUNT
 };
 
 class ObjectBase {
 public:
-    void init(ObjectBaseProto::Builder *base, TypeId type_id)
+    virtual void init(ObjectBaseProto::Builder *base, TypeId type_id)
     {
         _base = base;
         _type_id = type_id;
@@ -81,7 +85,7 @@ class Object : public ObjectBase, public Proto::RootBuilder {
 public:
     static TypeId get_type_id_static() { return ThisTypeId; };
 
-    void init()
+    virtual void init()
     {
         ObjectBase::init(Proto::RootBuilder::get_base_proto(), ThisTypeId);
         Proto::RootBuilder::init();

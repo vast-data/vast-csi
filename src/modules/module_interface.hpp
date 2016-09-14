@@ -10,6 +10,8 @@
 #include "defs.hpp"
 #include "plasma/utils/types.hpp"
 #include "plasma/execution/config.hpp"
+#include "control/imdb/component.hpp"
+#include "control/imdb/object.hpp"
 
 namespace P {
     class Silo;
@@ -36,6 +38,31 @@ public:
     virtual ModuleInterface *create() = 0;
     virtual const char *get_name() = 0;
     virtual ModuleId get_id() = 0;
+    virtual Control::ObjectBase *create_control_object(Control::IMDB *imdb) = 0;
 };
 
-void register_modules();
+class ModuleRegistry {
+public:
+    ModuleRegistry(ModuleRegistry const&) = delete;
+    void operator=(ModuleRegistry const&) = delete;
+
+    static void init()
+    {
+        LOOP(ModuleId::COUNT, i)
+            get_instance()->_factories[i] = nullptr;
+    }
+
+    static ModuleFactory *get(ModuleId module_id);
+    static void set(ModuleFactory *factory);
+
+private:
+    ModuleRegistry() {}
+
+    ModuleFactory *_factories[(size_t)ModuleId::COUNT];
+
+    static ModuleRegistry *get_instance()
+    {
+        static ModuleRegistry instance;
+        return &instance;
+    }
+};

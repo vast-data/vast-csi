@@ -36,8 +36,8 @@
 #define ASSERT_EQUAL(left, right, ...)          \
     ASSERT_OP(left, ==, right, ##__VA_ARGS__)
 
-#define ASSERT_NOT_NULL(P)                                              \
-    ASSERT(P != nullptr, MACRO_STRINGIFY(P) " is NULL")
+#define ASSERT_NOT_NULL(P, ...)                 \
+    ASSERT(P != nullptr, ##__VA_ARGS__)
 
 // assert for functions that set errno
 #define ASSERT_ERRNO(expr, ...)                                        \

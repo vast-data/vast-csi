@@ -22,8 +22,7 @@ public:
 
 private:
     EnvObj *create_env(const char *name, P::byte silo_count);
-    template <class ModuleObj>
-    ModuleObj *create_module(SiloId silo_id);
+    ObjectBase *create_module(ModuleId module_id, SiloId silo_id);
     void calc_cnode_state(CNode *cnode);
     void cnode_activate(CNode *cnode);
     void cnode_deactivate(CNode *cnode);

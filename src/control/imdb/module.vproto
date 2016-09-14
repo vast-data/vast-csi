@@ -23,3 +23,23 @@ struct PModuleProto {
     @0 base_proto ObjectBaseProto;
     @1 base_module_proto ModuleBaseProto;
 };
+
+struct IModuleProto {
+    @0 base_proto ObjectBaseProto;
+    @1 base_module_proto ModuleBaseProto;
+};
+
+struct BModuleProto {
+    @0 base_proto ObjectBaseProto;
+    @1 base_module_proto ModuleBaseProto;
+};
+
+struct TModuleProto {
+    @0 base_proto ObjectBaseProto;
+    @1 base_module_proto ModuleBaseProto;
+};
+
+struct CModuleProto {
+    @0 base_proto ObjectBaseProto;
+    @1 base_module_proto ModuleBaseProto;
+};

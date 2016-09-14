@@ -26,6 +26,10 @@ const TypeConfig TYPE_CONFIGS[(P::byte)TypeId::COUNT] = {{sizeof(System), 1},
                                                          {sizeof(EnvObj), 4096},
                                                          {sizeof(EModuleObj), 65536},
                                                          {sizeof(PModuleObj), 4096},
+                                                         {sizeof(BModuleObj), 1024},
+                                                         {sizeof(IModuleObj), 2048},
+                                                         {sizeof(TModuleObj), 1},
+                                                         {sizeof(CModuleObj), 1},
                                                          {sizeof(Drive), 4096}};
 
 }

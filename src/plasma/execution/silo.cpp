@@ -41,8 +41,8 @@ void Silo::init(ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, co
         ConfigSetting *module_setting = conf_setting_get_element(modules_setting, (uint32_t) i);
         const char *module_name = conf_setting_name(module_setting);
 
-        ModuleId module_id;
-        ModuleInterface *module = Env::get()->create_module(module_name, &module_id);
+        ModuleId module_id = module_id_from_string(module_name);
+        ModuleInterface *module = ModuleRegistry::get(module_id)->create();
         _module_descriptors[(int)module_id].defined = true;
         _module_descriptors[(int)module_id].module = module;
         module->init(this, module_setting);
