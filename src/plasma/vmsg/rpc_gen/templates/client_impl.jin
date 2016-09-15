@@ -8,6 +8,8 @@
 #include "{{ server.name_snake_case }}.rpc.client.hpp"
 #include "plasma/vmsg/vmsg.hpp"
 #include "plasma/execution/env.hpp"
+#include "plasma/trace/emitter.hpp"
+#include "plasma/internal.hpp"
 
 using P::VMsg::VMsg;
 using P::VMsg::VMsgRes;
@@ -39,11 +41,13 @@ static_assert(!std::is_polymorphic<{{ method.res }}::RootBuilder>::value, "metho
 
 VMsgRes {{ server.name }}Client::{{ method.name }}_sync(ModuleGUID dest, {{ method.arg }}::RootBuilder *args, {{ method.res }}::RootReader **reply, uint64_t timeout_usec)
 {
+    PT_INFO(CONTROL, "RPC Client sync method called: {{ server.name }}.{{ method.name }}");
     return _vmsg->send_sync(dest, RpcServerId::{{ server.name }}, {{ method.op_id }}, timeout_usec, args, sizeof({{ method.arg }}::RootBuilder), (void **)reply, nullptr);
 }
 
 VMsgRes {{ server.name }}Client::{{ method.name }}_async(ModuleGUID dest, {{ method.arg }}::RootBuilder *args, VMsgFutureRes<{{ method.res }}::RootReader> **future, uint64_t timeout_usec)
 {
+    PT_INFO(CONTROL, "RPC Client async method called: {{ server.name }}.{{ method.name }}");
     return _vmsg->send_async(dest, RpcServerId::{{ server.name }}, {{ method.op_id }}, timeout_usec, args, sizeof({{ method.arg }}::RootBuilder), (VMsgFuture **)future);
 }
 

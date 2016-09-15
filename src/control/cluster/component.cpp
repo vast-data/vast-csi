@@ -138,7 +138,7 @@ void Cluster::cnode_modify(CNodeModifyParams::RootReader *args, CNodeModifyResul
 
     char guid_string[P::GUID::STRING_SIZE];
     args->get_guid().to_string(guid_string);
-    PT_INFO(CONTROL, "CNode %s:%s modifed. Enabled: %c", cnode->get_base_proto()->get_name(), guid_string, args->get_enabled());
+    PT_INFO(CONTROL, "CNode %s:%s modifed: enabled: %c", cnode->get_base_proto()->get_name(), guid_string, args->get_enabled());
 
     cnode->set_enabled(args->get_enabled());
     calc_cnode_state(cnode);

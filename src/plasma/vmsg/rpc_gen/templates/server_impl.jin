@@ -8,6 +8,8 @@
 #include "{{ server.name_snake_case }}.rpc.server.hpp"
 #include "plasma/execution/silo.hpp"
 #include "plasma/execution/env.hpp"
+#include "plasma/trace/emitter.hpp"
+#include "plasma/internal.hpp"
 
 {% for namespace in server.namespaces %}
 namespace {{ namespace }} {
@@ -40,10 +42,12 @@ void {{ server.name }}Server::run_op(uint8_t op_id, void *request, uint16_t requ
     switch ((ops)op_id) {
         {% for method in server.methods %}
         case {{ method.name.upper() }}: {
+            PT_INFO(CONTROL, "RPC Server method started: {{ server.name }}.{{ method.name }}");
             {{ method.res }}::RootBuilder *{{ method.name }}_reply = ({{ method.res }}::RootBuilder*) reply;
             {{ method.name }}_reply->init();
             *reply_len = sizeof({{ method.res }}::RootBuilder);
             {{ method.name }}(({{ method.arg }}::RootReader *)request, {{ method.name }}_reply);
+            PT_INFO(CONTROL, "RPC Server method finished: {{ server.name }}.{{ method.name }}");
             break;
         }
         {% endfor %}
