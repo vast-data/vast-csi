@@ -19,7 +19,7 @@ ModuleGUID dest = {
     (uint8_t) ModuleId::B,
     0,
 };
-    
+
 static void lock(LockManager::LockManagerClient *client, size_t lock_id)
 {
     LockManager::LockParams::RootBuilder *args;
@@ -74,8 +74,8 @@ static void test_lock_manager(void *arg)
     vmsg->add_module_pair(ModuleId::TEST, ModuleId::B, TransportType::RDMA);
 
     LockManager::LockManagerClient client;
-    client.init(vmsg);
-    
+    client.init();
+
     // simple tests
     lock(&client, 0);
     lock(&client, 1);

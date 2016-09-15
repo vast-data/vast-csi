@@ -195,7 +195,7 @@ static void client_test_fiber(void *ctx)
 {
     FiberArgs * args= (FiberArgs*)ctx;
     TestRpcClient client;
-    client.init(Env::get()->get_vmsg());
+    client.init();
 
     static const uint64_t LOOPS = 50;
     LOOP(LOOPS, i) {

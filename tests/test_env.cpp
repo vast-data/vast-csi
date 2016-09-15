@@ -24,10 +24,10 @@ static void init_func(P::Silo *silo, void *ctx)
     // Nothing to do for now. Use if/when relevant.
 }
 
-static P::EnvStartResultCode send_env_start(VMsg *vmsg, P::GUID env_guid, const char *config)
+static P::EnvStartResultCode send_env_start(P::GUID env_guid, const char *config)
 {
     P::PModuleAgentClient client;
-    client.init(vmsg);
+    client.init();
 
     P::EnvStartParams::RootBuilder *env_start_params = client.alloc_env_start();
     env_start_params->set_env_guid(env_guid);
@@ -39,10 +39,10 @@ static P::EnvStartResultCode send_env_start(VMsg *vmsg, P::GUID env_guid, const 
     return res;
 }
 
-static P::EnvStopResultCode send_env_stop(VMsg *vmsg, P::GUID env_guid)
+static P::EnvStopResultCode send_env_stop(P::GUID env_guid)
 {
     P::PModuleAgentClient client;
-    client.init(vmsg);
+    client.init();
 
     P::EnvStopParams::RootBuilder *env_stop_params = client.alloc_env_stop();
     env_stop_params->set_env_guid(env_guid);
@@ -53,10 +53,10 @@ static P::EnvStopResultCode send_env_stop(VMsg *vmsg, P::GUID env_guid)
     return res;
 }
 
-static void send_set_local_env_id(VMsg *vmsg, uint16_t env_id)
+static void send_set_local_env_id(uint16_t env_id)
 {
     P::PModuleAgentClient client;
-    client.init(vmsg);
+    client.init();
 
     P::SetLocalEnvIdParams::RootBuilder *set_local_env_id_params = client.alloc_set_local_env_id();
     set_local_env_id_params->set_env_id(env_id);
@@ -98,28 +98,28 @@ static void env_start_stop_start_func(void *ctx)
     ASSERT(P::file_to_string("tests/env_test.config", 2048, config));
     uint16_t port = 5000;
 
-    EXPECT_EQ(P::EnvStopResultCode::GUID_NOT_FOUND, send_env_stop(vmsg, env_guid));
+    EXPECT_EQ(P::EnvStopResultCode::GUID_NOT_FOUND, send_env_stop(env_guid));
     update_config_port(config, port++);
-    EXPECT_EQ(P::EnvStartResultCode::SUCCESS, send_env_start(vmsg, env_guid, config));
-    EXPECT_EQ(P::EnvStartResultCode::GUID_ALREADY_EXISTS, send_env_start(vmsg, env_guid, config));
-    EXPECT_EQ(P::EnvStopResultCode::SUCCESS, send_env_stop(vmsg, env_guid));
-    EXPECT_EQ(P::EnvStopResultCode::GUID_NOT_FOUND, send_env_stop(vmsg, env_guid));
+    EXPECT_EQ(P::EnvStartResultCode::SUCCESS, send_env_start(env_guid, config));
+    EXPECT_EQ(P::EnvStartResultCode::GUID_ALREADY_EXISTS, send_env_start(env_guid, config));
+    EXPECT_EQ(P::EnvStopResultCode::SUCCESS, send_env_stop(env_guid));
+    EXPECT_EQ(P::EnvStopResultCode::GUID_NOT_FOUND, send_env_stop(env_guid));
 
     P::GUID env_guids[P::MAX_ENVS_PER_CNODE - 1];
     for (int i = 0; i < P::MAX_ENVS_PER_CNODE - 1; ++i) {
         env_guids[i].init();
         update_config_port(config, port++);
-        EXPECT_EQ(P::EnvStartResultCode::SUCCESS, send_env_start(vmsg, env_guids[i], config));
+        EXPECT_EQ(P::EnvStartResultCode::SUCCESS, send_env_start(env_guids[i], config));
     }
 
-    EXPECT_EQ(P::EnvStartResultCode::MAX_ENVS_CREATED, send_env_start(vmsg, env_guid, config));
-    EXPECT_EQ(P::EnvStopResultCode::SUCCESS, send_env_stop(vmsg, env_guids[0]));
+    EXPECT_EQ(P::EnvStartResultCode::MAX_ENVS_CREATED, send_env_start(env_guid, config));
+    EXPECT_EQ(P::EnvStopResultCode::SUCCESS, send_env_stop(env_guids[0]));
     update_config_port(config, port++);
-    EXPECT_EQ(P::EnvStartResultCode::SUCCESS, send_env_start(vmsg, env_guid, config));
-    EXPECT_EQ(P::EnvStopResultCode::SUCCESS, send_env_stop(vmsg, env_guid));
+    EXPECT_EQ(P::EnvStartResultCode::SUCCESS, send_env_start(env_guid, config));
+    EXPECT_EQ(P::EnvStopResultCode::SUCCESS, send_env_stop(env_guid));
 
     for (int i = 1; i < P::MAX_ENVS_PER_CNODE - 1; ++i) {
-        EXPECT_EQ(P::EnvStopResultCode::SUCCESS, send_env_stop(vmsg, env_guids[i]));
+        EXPECT_EQ(P::EnvStopResultCode::SUCCESS, send_env_stop(env_guids[i]));
     }
 
     env_stop = true;
@@ -140,7 +140,7 @@ static void set_local_env_id_start_func(void *ctx)
     vmsg->add_module_pair(ModuleId::TEST, ModuleId::P, TransportType::RDMA);
 
     EXPECT_EQ(0, vmsg->get_local_env_id());
-    send_set_local_env_id(vmsg, 123);
+    send_set_local_env_id(123);
     EXPECT_EQ(123, vmsg->get_local_env_id());
 
     env_stop = true;

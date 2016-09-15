@@ -7,6 +7,7 @@
 
 #include "{{ server.name_snake_case }}.rpc.client.hpp"
 #include "plasma/vmsg/vmsg.hpp"
+#include "plasma/execution/env.hpp"
 
 using P::VMsg::VMsg;
 using P::VMsg::VMsgRes;
@@ -19,9 +20,9 @@ using P::VMsg::RpcServerId;
 namespace {{ namespace }} {
 {% endfor %}
 
-void {{ server.name }}Client::init(P::VMsg::VMsg *vmsg)
+void {{ server.name }}Client::init()
 {
-    _vmsg = vmsg;
+    _vmsg = P::Env::get()->get_vmsg();
 }
 
 {% for method in server.methods %}

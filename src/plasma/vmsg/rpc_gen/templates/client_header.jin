@@ -26,7 +26,7 @@ namespace {{ namespace }} {
 
 class {{ server.name }}Client {
 public:
-    void init(P::VMsg::VMsg *vmsg);
+    void init();
 {% for method in server.methods %}
     {{ method.arg }}::RootBuilder *alloc_{{ method.name }}();
     P::VMsg::VMsgRes {{ method.name }}_sync(P::VMsg::ModuleGUID dest, {{ method.arg }}::RootBuilder *args, {{ method.res }}::RootReader **reply, uint64_t timeout_usec = P::VMsg::DEFUALT_MSG_TIMEOUT_USEC);

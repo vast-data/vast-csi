@@ -15,8 +15,8 @@ GUID get_system_guid()
     int res = snprintf(system_guid_path, PATH_MAX, "%s/system.guid", Env::get()->get_data_dir());
     ASSERT(res > 0 && res < PATH_MAX, "Error composing system guid path");
 
-    char content[GUID::STRING_LENGTH];
-    bool success = file_to_string(system_guid_path, GUID::STRING_LENGTH, content);
+    char content[GUID::STRING_LENGTH + 1];
+    bool success = file_to_string(system_guid_path, GUID::STRING_LENGTH + 1, content);
     ASSERT(success == true, "Failed reading system guid from path: " << system_guid_path);
 
     GUID result;
