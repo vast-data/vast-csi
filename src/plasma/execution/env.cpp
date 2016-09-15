@@ -214,7 +214,7 @@ static void error_handler(int sig)
         PANIC();
     }
 
-    if (sig != SIGABRT && sig != SIGINT) // assertions already print tracebacks. interrupt doesn't require it.
+    if (sig != SIGABRT) // assertions already print tracebacks. interrupt doesn't require it.
         P::Backtracer::show_backtrace();
 
     printf("===FINISH===\n");

@@ -19,13 +19,13 @@ void Cluster::system_init(SystemInitParams::RootReader *args, SystemInitResult::
 {
     _system->set_state(SystemState::ONLINE);
     PT_INFO(CONTROL, "System initialized. State is now ONLINE.");
-    res->set_code(SystemInitResultCode::SUCCESS);
 
     // potentially activate all cnodes
     IMDB_ITER_CHILDREN(_system, cnode, CNode,
     {
         calc_cnode_state(cnode);
     });
+    res->set_code(SystemInitResultCode::SUCCESS);
 }
 
 EnvObj *Cluster::create_env(const char *name, P::byte silo_count)
@@ -61,11 +61,18 @@ void Cluster::calc_cnode_state(CNode *cnode)
 
 void Cluster::cnode_activate(CNode *cnode)
 {
+    char guid_string[P::GUID::STRING_SIZE];
+    cnode->get_base()->get_guid().to_string(guid_string);
+    PT_INFO(CONTROL, "CNode %s:%s activated", cnode->get_base_proto()->get_name(), guid_string);
     cnode->set_state(CNodeState::ACTIVE);
 }
 
 void Cluster::cnode_deactivate(CNode *cnode)
 {
+    char guid_string[P::GUID::STRING_SIZE];
+    cnode->get_base()->get_guid().to_string(guid_string);
+    PT_INFO(CONTROL, "CNode %s:%s deactivated", cnode->get_base_proto()->get_name(), guid_string);
+
     cnode->set_state(CNodeState::INACTIVE);
 }
 
@@ -89,6 +96,7 @@ void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBu
     LOOP(cnode->get_address_count(), i)
         *cnode->get_address(i) = *args->get_address(i);
     cnode->set_enabled(false);
+    cnode->set_state(CNodeState::INACTIVE);
 
     // create the child platform env
     EnvObj *env = create_env("platform", 1);
@@ -127,8 +135,15 @@ void Cluster::cnode_modify(CNodeModifyParams::RootReader *args, CNodeModifyResul
         res->set_code(CNodeModifyResultCode::NOT_FOUND);
         return;
     }
+
+    char guid_string[P::GUID::STRING_SIZE];
+    args->get_guid().to_string(guid_string);
+    PT_INFO(CONTROL, "CNode %s:%s modifed. Enabled: %c", cnode->get_base_proto()->get_name(), guid_string, args->get_enabled());
+
     cnode->set_enabled(args->get_enabled());
     calc_cnode_state(cnode);
+
+    res->set_code(CNodeModifyResultCode::SUCCESS);
 }
 
 void Cluster::cnode_remove(CNodeRemoveParams::RootReader *args, CNodeRemoveResult::RootBuilder *res)
