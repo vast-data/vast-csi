@@ -82,7 +82,7 @@ void Dumper::destroy()
 bool Dumper::iteration(bool force)
 {
     static TraceInfo TRACE_SECTION overflow_info = {
-        CURRENT_COMPONENT, "Trace overflow. buffers_lost=%hd", __FILE__, __LINE__, __func__
+        CURRENT_COMPONENT, "Trace overflow. buffers_lost=%hd", __FILE__, __LINE__, {__func__}
     };
     uint16_t overflow_index = get_trace_info_index(&overflow_info);
 
@@ -125,7 +125,7 @@ bool Dumper::iteration(bool force)
 void Dumper::finalize()
 {
     static TraceInfo TRACE_SECTION shutdown_info = {
-        CURRENT_COMPONENT, "Trace dumper shutdown. channel=%d", __FILE__, __LINE__, __func__
+        CURRENT_COMPONENT, "Trace dumper shutdown. channel=%d", __FILE__, __LINE__, {__func__}
     };
     uint16_t shutdown_index = get_trace_info_index(&shutdown_info);
 
@@ -143,7 +143,7 @@ void Dumper::finalize()
     }
 }
 
-void *dumper_main(void *dumper_arg) {
+static void *dumper_main(void *dumper_arg) {
     Dumper *dumper = (Dumper*) dumper_arg;
     dumper->main();
     return nullptr;

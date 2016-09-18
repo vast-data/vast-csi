@@ -5,14 +5,13 @@
 #include "test_module.hpp"
 #include "modules/e_module_agent.rpc.client.hpp"
 
-#define CURRENT_COMPONENT ComponentId::TEST
 #define USAGE "\nUsage:\n\ttest_ping <num. of fibers> <num. of pings>\n\n";
 
 using namespace P::VMsg;
 using P::Env;
 using P::FiberSync::Future;
 
-ModuleAddress dest = {
+static ModuleAddress dest = {
     0,
     0, //reserved
     (uint8_t) ModuleId::E,
@@ -21,8 +20,8 @@ ModuleAddress dest = {
 
 class Guard {
 public:
-    Guard(uint64_t *sum) { _sum = sum; _start = P::get_time_nano(); };
-    ~Guard() { *_sum += P::get_time_nano() - _start; };
+    Guard(uint64_t *sum) { _sum = sum; _start = P::get_time_nano(); }
+    ~Guard() { *_sum += P::get_time_nano() - _start; }
 
     uint64_t *_sum;
     uint64_t _start;
@@ -70,7 +69,7 @@ static void run_vmsg_ping(void *arg)
     vmsg_ping(&client);
     ctx->total_vmsg_time = 0;
 
-    for (int i = 0; i < ctx->n_fibers; i++)
+    for (uint32_t i = 0; i < ctx->n_fibers; i++)
     {
         FiberContext *fiber_ctx = new FiberContext();
         fiber_ctx->future.init();

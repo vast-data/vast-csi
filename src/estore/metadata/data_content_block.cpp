@@ -250,7 +250,7 @@ DataExtent *ExtentsContainer::get_next(DataExtent *extent)
         }
     }
     P::IList::Node *node = extent->_node.next();
-    if (_extents_list.is_end(node)) {
+    if (_extents_list.is_last(node)) {
         return nullptr;
     }
     return p_container_of(node, DataExtent, _node);

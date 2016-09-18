@@ -96,8 +96,8 @@ static void add_dbox(ClusterClient *client, GUID guid, GUID dnode1_guid, GUID dn
         env_conf->set_silo_count(1);
         SiloConfig::Builder *silo_conf = env_conf->get_silo_configs(0);
         silo_conf->set_affinity(P::Silo::NO_AFFINITY);
-        LOOP(ModuleId::COUNT, i)
-            *(silo_conf->get_modules_enabled(i)) = false;
+        LOOP(ModuleId::COUNT, j)
+            *(silo_conf->get_modules_enabled(j)) = false;
         *(silo_conf->get_modules_enabled((uint16_t)ModuleId::E)) = true;
         *(silo_conf->get_modules_enabled((uint16_t)ModuleId::P)) = true;
 
@@ -107,8 +107,8 @@ static void add_dbox(ClusterClient *client, GUID guid, GUID dnode1_guid, GUID dn
         env_conf->set_silo_count(1);
         silo_conf = env_conf->get_silo_configs(0);
         silo_conf->set_affinity(0);
-        LOOP(ModuleId::COUNT, i)
-            *(silo_conf->get_modules_enabled(i)) = false;
+        LOOP(ModuleId::COUNT, j)
+            *(silo_conf->get_modules_enabled(j)) = false;
         *(silo_conf->get_modules_enabled((uint16_t)ModuleId::E)) = true;
     }
 
@@ -153,7 +153,7 @@ static void get_dbox(ClusterClient *client, GUID guid, RpcGuard<DBoxGetResult::R
     ASSERT_EQ((*dbox_get_result)->get_code(), DBoxGetResultCode::SUCCESS);
 }
 
-static void activation_start_func(void *ctx)
+static void activation_start_func(UNUSED void *ctx)
 {
     ClusterClient client;
     client.init();
@@ -278,7 +278,7 @@ static void activation_start_func(void *ctx)
     global_env_stop = true;
 }
 
-static void full_cluster_start_func(void *ctx)
+static void full_cluster_start_func(UNUSED void *ctx)
 {
     ClusterClient client;
     client.init();
@@ -312,8 +312,7 @@ static void full_cluster_start_func(void *ctx)
     global_env_stop = true;
 }
 
-
-void cluster_test(StartFunc start_func)
+static void cluster_test(StartFunc start_func)
 {
     ::Test::create_system_guid();
 

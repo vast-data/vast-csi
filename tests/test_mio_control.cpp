@@ -78,7 +78,7 @@ public:
         builder->init();
         return builder;
     }
-    void config_sync(BaseModuleLogic *module, ConfigParams::RootBuilder *config_params) override  {
+    void config_sync(UNUSED BaseModuleLogic *module, ConfigParams::RootBuilder *config_params) override  {
         EXPECT_FALSE(_activate_called);
         EXPECT_TRUE(_alloc_config_called);
         _alloc_config_called = false;
@@ -88,7 +88,6 @@ public:
             SectionConfig::Reader section_config;
             params->get_section_configs(&section_config, i);
             EXPECT_FALSE(section_config.get_in_rebuild());
-            PhysAddr addresses[MAX_SECTION_CONFIGS_PER_RPC];
             for (uint32_t mapping_idx = 0; mapping_idx < section_config.get_num_mappings(); ++mapping_idx) {
                 MirroredIO::PhysicalAddress::Reader physical_address;
                 section_config.get_mappings(&physical_address, mapping_idx);
@@ -98,7 +97,7 @@ public:
 
         delete config_params;
     }
-    void activate_sync(BaseModuleLogic *module) override  {
+    void activate_sync(UNUSED BaseModuleLogic *module) override  {
         EXPECT_FALSE(_alloc_config_called);
         EXPECT_FALSE(_activate_called);
         _activate_called = true;

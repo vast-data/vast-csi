@@ -30,10 +30,10 @@ void MIOControl::activate()
     // devices have the same size, and we use device_size to assert that.
     uint64_t device_size = 0;
 
-    IMDB_ITER_CHILDREN(_system, dbox, DBox, {
-        IMDB_ITER_CHILDREN(dbox, dnode, DNode, {
+    IMDB_ITER_CHILDREN(_system, dbox, DBox) {
+        IMDB_ITER_CHILDREN(dbox, dnode, DNode) {
             if (dnode->get_base_node()->get_state() == NodeState::ACTIVE) {
-                IMDB_ITER_CHILDREN(dnode, nvram, NVRAM, {
+                IMDB_ITER_CHILDREN(dnode, nvram, NVRAM) {
                     ASSERT_OP(_num_devices, <, MAX_DEVS);
                     if (_num_devices == 0) {
                         device_size = nvram->get_size();
@@ -41,10 +41,10 @@ void MIOControl::activate()
                         ASSERT_EQUAL(device_size, nvram->get_size());
                     }
                     _device_guids[_num_devices++] = nvram->get_guid();
-                });
+                }
             }
-        });
-    });
+        }
+    }
     ASSERT_OP(device_size, >, 0)
 
     static_assert(MAX_DEVS_PER_SECTION == Layout::get_max_replication_factor_value(),
@@ -146,7 +146,7 @@ void MIOControl::activate_module(BaseModuleLogic *module)
     activate_sync(module);
 }
 
-void MIOControl::on_device_activated(NVRAM *nvram)
+void MIOControl::on_device_activated(UNUSED NVRAM *nvram)
 {
     _device_guids[_num_devices++] = nvram->get_guid();
     /* TODO(ido): (in phase 2)
@@ -160,7 +160,7 @@ void MIOControl::on_device_activated(NVRAM *nvram)
      */
 }
 
-void MIOControl::on_device_deactivated(NVRAM *nvram)
+void MIOControl::on_device_deactivated(UNUSED NVRAM *nvram)
 {
     /* TODO(ido): (in phase 2)
      * 1. Remove this device from _device_guids (and move everything to the left), update _num_devices.

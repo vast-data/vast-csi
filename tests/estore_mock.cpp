@@ -149,7 +149,6 @@ public:
 
     void close_handle(EHandle handle)
     {
-        int fd = 0;
         auto fd_iter = _handle_to_fd.find(handle);
         if (fd_iter != _handle_to_fd.end()) {
             int ret = ::close(fd_iter->second);
@@ -231,10 +230,12 @@ typedef std::map<EHandle, std::map<std::string, std::string> > XAttrMap;
 static XAttrMap _handle_to_user_xattrs;
 static XAttrMap _handle_to_proto_xattrs;
 
-static uint64_t _current_handle = 2;
-
-void EStore::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id, MirroredIO::MIO *mio)
+void EStore::init(UNUSED P::SiloId silo_id, UNUSED ModuleId module_id, UNUSED FiberGroupId rpc_fiber_group_id, UNUSED MirroredIO::MIO *mio)
 {
+    (void) _ingest;
+    (void) _shard_md;
+    (void) _handles_table;
+
     _data_pool.init(N_DATA_BUFFERS, DATA_BUFFER_SIZE);
     _handle_container.init();
 
@@ -482,7 +483,7 @@ EStoreRes EStore::set_attr(OpCallback op_cb, void *cb_ctx, EHandle handle, Setta
     return EStoreRes::OK;
 }
 
-EStoreRes EStore::lookup(OpCallback op_cb, void *cb_ctx, EHandle parent, const char *name, bool case_sensitive,
+EStoreRes EStore::lookup(OpCallback op_cb, void *cb_ctx, EHandle parent, const char *name, UNUSED bool case_sensitive,
                          EHandle *element, SystemAttr *element_attr, SystemAttr *parent_attr)
 {
     string parent_path = _handle_container.get_path(parent);
@@ -543,23 +544,23 @@ EStoreRes EStore::lookup_parent(OpCallback op_cb, void *cb_ctx, EHandle handle, 
         return res;
     }
     if (op_cb) {
-        res = op_cb(attr_ptr, cb_ctx);
-        if (res != EStoreRes::OK) {
-            return res;
+        EStoreRes op_res = op_cb(attr_ptr, cb_ctx);
+        if (op_res != EStoreRes::OK) {
+            return op_res;
         }
     }
 
     if (parent_attr) {
-        EStoreRes res = get_attr(nullptr, nullptr, *parent, parent_attr, nullptr, nullptr);
-        if (res != EStoreRes::OK) {
-            return res;
+        EStoreRes get_attr_res = get_attr(nullptr, nullptr, *parent, parent_attr, nullptr, nullptr);
+        if (get_attr_res != EStoreRes::OK) {
+            return get_attr_res;
         }
     }
     return EStoreRes::OK;
 }
 
 EStoreRes EStore::create(OpCallback op_cb, void *cb_ctx, EHandle parent, const char *name, CreateFlags flags,
-                         uint64_t verifier, SettableAttr *sattr, ExtendedAttrs *user_xattr, ExtendedAttrs *proto_xattr,
+                         UNUSED uint64_t verifier, SettableAttr *sattr, ExtendedAttrs *user_xattr, ExtendedAttrs *proto_xattr,
                          EHandle *element_handle, SystemAttr *element_attr, SystemAttr *pre_pattr,
                          SystemAttr *post_pattr)
 {
@@ -657,7 +658,7 @@ EStoreRes EStore::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
     LOOP(io_vecs->count, i) {
         if (!drop_writes) {
             ssize_t ret = pwrite(fd, io_vecs->iovecs[i].iov_base, io_vecs->iovecs[i].iov_len, current_offset);
-            if (ret != io_vecs->iovecs[i].iov_len) {
+            if (ret != (ssize_t) io_vecs->iovecs[i].iov_len) {
                 PT_INFO(DATA, "write failed");
                 return EStoreRes::IO_ERROR;
             }
@@ -719,7 +720,7 @@ EStoreRes EStore::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t 
             return errno_to_estore_res();
         }
         *bytes_read += ret;
-        if (ret < res_vecs->iovecs[i].iov_len) {
+        if (ret < (ssize_t)res_vecs->iovecs[i].iov_len) {
             *eof = true;
             break;
         }
@@ -736,8 +737,8 @@ EStoreRes EStore::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t 
 }
 
 EStoreRes EStore::list_elements(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset,
-                                uint64_t element_version,
-                                ListCallback rd_cb, void *rd_ctx, const char *prefix, char delimiter,
+                                UNUSED uint64_t element_version,
+                                ListCallback rd_cb, void *rd_ctx, UNUSED const char *prefix, UNUSED char delimiter,
                                 uint64_t *current_element_version, SystemAttr *post_attr)
 {
     string path = _handle_container.get_path(handle);
@@ -748,9 +749,9 @@ EStoreRes EStore::list_elements(OpCallback op_cb, void *cb_ctx, EHandle handle, 
     SystemAttr pre_attr;
     EStoreRes res = fill_attr(path, &pre_attr);
     if (op_cb) {
-        EStoreRes res = op_cb(&pre_attr, cb_ctx);
-        if (res != EStoreRes::OK) {
-            return res;
+        EStoreRes op_res = op_cb(&pre_attr, cb_ctx);
+        if (op_res != EStoreRes::OK) {
+            return op_res;
         }
     }
 
@@ -836,7 +837,7 @@ EStoreRes EStore::link(OpCallback op_cb, void *cb_ctx, EHandle link_target, EHan
     return EStoreRes::OK;
 }
 
-EStoreRes EStore::unlink(OpCallback op_cb, void *cb_ctx, EHandle parent, const char *name, bool verify_no_children,
+EStoreRes EStore::unlink(OpCallback op_cb, void *cb_ctx, EHandle parent, const char *name, UNUSED bool verify_no_children,
                          SystemAttr *pre_pattr, SystemAttr *post_pattr)
 {
     string parent_path = _handle_container.get_path(parent);
@@ -963,7 +964,7 @@ EStoreRes EStore::get_stats(OpCallback op_cb, void *cb_ctx, EHandle handle, ESto
     return EStoreRes::OK;
 }
 
-EStoreRes EStore::lock(OpCallback op_cb, void *cb_ctx, EHandle handle, bool block, LockInfo *lock)
+EStoreRes EStore::lock(UNUSED OpCallback op_cb, UNUSED void *cb_ctx, EHandle handle, bool UNUSED block, LockInfo *lock)
 {
     Lock new_lock;
     LocksVector *locks = _handle_container.get_locks(handle);
@@ -992,7 +993,7 @@ EStoreRes EStore::lock(OpCallback op_cb, void *cb_ctx, EHandle handle, bool bloc
     return EStoreRes::OK;
 }
 
-EStoreRes EStore::unlock(OpCallback op_cb, void *cb_ctx, EHandle handle, LockInfo *lock)
+EStoreRes EStore::unlock(UNUSED OpCallback op_cb, UNUSED void *cb_ctx, EHandle handle, LockInfo *lock)
 {
     LocksVector* locks = _handle_container.get_locks(handle);
     if (locks == nullptr) {
@@ -1015,7 +1016,7 @@ EStoreRes EStore::unlock(OpCallback op_cb, void *cb_ctx, EHandle handle, LockInf
     return EStoreRes::OK;
 }
 
-EStoreRes EStore::test_lock(OpCallback op_cb, void *cb_ctx, EHandle handle, LockInfo *lock, LockInfo *existing_lock OUT)
+EStoreRes EStore::test_lock(UNUSED OpCallback op_cb, UNUSED void *cb_ctx, EHandle handle, LockInfo *lock, LockInfo *existing_lock OUT)
 {
     LocksVector* locks = _handle_container.get_locks(handle);
     if (locks == nullptr) {

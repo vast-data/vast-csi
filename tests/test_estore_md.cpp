@@ -266,7 +266,7 @@ TEST(TestDataBitmapBlock, test_md)
 }
 
 
-static EStoreRes name_bitmap_traverse_cb(Layout::Address addr, void *ctx)
+static EStoreRes name_bitmap_traverse_cb(UNUSED Layout::Address addr, void *ctx)
 {
     uint64_t *found_blocks = (uint64_t *)ctx;
     (*found_blocks)++;
@@ -333,7 +333,7 @@ TEST(TestNameHash, test_md)
     }
 }
 
-EStoreRes name_content_cb(const char *name, uint16_t name_len, uint32_t hash, EHandle handle, void *ctx)
+static EStoreRes name_content_cb(UNUSED const char *name, UNUSED uint16_t name_len, UNUSED uint32_t hash, UNUSED EHandle handle, void *ctx)
 {
     uint64_t *n_files = (uint64_t *)ctx;
     (*n_files)++;

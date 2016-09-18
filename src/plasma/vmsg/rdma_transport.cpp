@@ -38,8 +38,8 @@ void RDMATransport::init(const VMsgConfiguration *vmsg_configuration, AddressTab
     _disconn_lock.init();
     _disconn_queue.init(MAX_DISCONN_REQUESTS);
 
-    for (int i = 0; i < NUM_ELEMENTS(_send_request_connections); ++i) {
-        for (int j = 0; j < NUM_ELEMENTS(_send_request_connections[0]); ++j) {
+    for (uint32_t i = 0; i < NUM_ELEMENTS(_send_request_connections); ++i) {
+        for (uint32_t j = 0; j < NUM_ELEMENTS(_send_request_connections[0]); ++j) {
             _send_request_connections[i][j].init(i, (ModuleId)j, LinkType::SEND_REQUEST);
             _recv_request_connections[i][j].init(i, (ModuleId)j, LinkType::RECV_REQUEST);
             _send_response_connections[i][j].init(i, (ModuleId)j, LinkType::SEND_RESPONSE);
@@ -47,11 +47,11 @@ void RDMATransport::init(const VMsgConfiguration *vmsg_configuration, AddressTab
         }
     }
 
-    for (int k = 0; k < NUM_ELEMENTS(_listen_links); ++k) {
+    for (uint32_t k = 0; k < NUM_ELEMENTS(_listen_links); ++k) {
         // listen links are for all envs/modules
         _listen_links[k].init(MAX_ENVS_PER_SYSTEM, ModuleId::COUNT, LinkType::LISTEN);
     }
-    for (int k = 0; k < NUM_ELEMENTS(_recv_response_srqs); ++k) {
+    for (uint32_t k = 0; k < NUM_ELEMENTS(_recv_response_srqs); ++k) {
         _recv_response_srqs[k] = nullptr;
         _recv_request_srqs[k] = nullptr;
     }
@@ -73,8 +73,8 @@ void RDMATransport::destroy()
     _disconn_queue.destroy();
     _disconn_lock.destroy();
 
-    for (int i = 0; i < NUM_ELEMENTS(_send_request_connections); ++i) {
-        for (int j = 0; j < NUM_ELEMENTS(_send_request_connections[0]); ++j) {
+    for (uint32_t i = 0; i < NUM_ELEMENTS(_send_request_connections); ++i) {
+        for (uint32_t j = 0; j < NUM_ELEMENTS(_send_request_connections[0]); ++j) {
             _send_request_connections[i][j].destroy();
             _recv_request_connections[i][j].destroy();
             _send_response_connections[i][j].destroy();
@@ -82,11 +82,11 @@ void RDMATransport::destroy()
         }
     }
 
-    for (int k = 0; k < NUM_ELEMENTS(_listen_links); ++k) {
+    for (uint32_t k = 0; k < NUM_ELEMENTS(_listen_links); ++k) {
         _listen_links[k].destroy();
     }
 
-    for (int k = 0; k < NUM_ELEMENTS(_recv_response_srqs); ++k) {
+    for (uint32_t k = 0; k < NUM_ELEMENTS(_recv_response_srqs); ++k) {
         SAFE_DESTROY(_recv_response_srqs[k], ibv_destroy_srq);
         SAFE_DESTROY(_recv_request_srqs[k], ibv_destroy_srq);
     }
@@ -666,7 +666,7 @@ void RDMATransport::handle_disconnection_requests()
     while (request)
     {
         PT_DEBUG(DATA, "handling disconnection request to env_id=%hu", request->env_id);
-        for (int j = 0; j < NUM_ELEMENTS(_send_request_connections[0]); ++j) {
+        for (uint32_t j = 0; j < NUM_ELEMENTS(_send_request_connections[0]); ++j) {
             _send_request_connections[request->env_id][j].get_next_link()->disconnect();
             _send_request_connections[request->env_id][j].get_next_link()->disconnect();
             _send_request_connections[request->env_id][j].get_next_link()->disconnect();

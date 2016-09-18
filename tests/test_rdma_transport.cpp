@@ -6,7 +6,6 @@
 #include "plasma/vmsg/rdma_transport.hpp"
 
 #define CURRENT_COMPONENT ComponentId::PLASMA
-#define N_BUFFERS 100
 
 #define BUFF_SIZE (1024 * 1024)
 using namespace P::VMsg;
@@ -56,9 +55,9 @@ TEST(TestRDMATransport, test)
     int loops = MAX_CONCURRENT_RPC_REQUESTS;
     LOOP_TYPE(uint16_t, loops, i) {
         MsgId rcv_msg_id = {i, 0, 0};
-        VMsgRes res = transport->recv_request((ModuleId) guid.module_id, recv_mr, rcv_msg_id,
+        VMsgRes recv_res = transport->recv_request((ModuleId) guid.module_id, recv_mr, rcv_msg_id,
                                               recv_buff + (i * sizeof(TestMsg)), sizeof(TestMsg));
-        ASSERT(res == VMsgRes::OK);
+        ASSERT(recv_res == VMsgRes::OK);
     }
 
     uint32_t expected_sum = 0;
@@ -68,9 +67,9 @@ TEST(TestRDMATransport, test)
         expected_sum += i;
         snprintf(msg->msg, sizeof(TestMsg::msg), "Hello-%d", i);
         MsgId send_msg_id = {i, 1, 0};
-        VMsgRes res = transport->send_request(guid, send_mr, send_msg_id,
+        VMsgRes send_res = transport->send_request(guid, send_mr, send_msg_id,
                                               send_buff + (sizeof(TestMsg) * i), sizeof(TestMsg));
-        ASSERT(res == VMsgRes::OK);
+        ASSERT(send_res == VMsgRes::OK);
     }
 
     TransportEvent event;

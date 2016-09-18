@@ -22,11 +22,11 @@ public:
 
     PModuleObj *get_platform_module()
     {
-        IMDB_ITER_CHILDREN(this, env, EnvObj, {
+        IMDB_ITER_CHILDREN(this, env, EnvObj) {
             PModuleObj *module = env->get_only_child<PModuleObj>();
             if (module != nullptr)
                 return module;
-        });
+        }
         return nullptr;
     }
 

@@ -63,7 +63,7 @@ void Env::init_vmsg(Config *config, uint32_t n_silos)
     ConfigSetting *env_id_setting = conf_lookup(config, "vmsg.env_id");
     ASSERT_NOT_NULL(env_id_setting);
     EnvId env_id = (EnvId)conf_setting_get_int32(env_id_setting);
-    EnvModules env_modules = { 0 };
+    EnvModules env_modules = {{ 0 }};
 
     VMsgConfiguration vmsg_configuration;
     memset(&vmsg_configuration, 0, sizeof(vmsg_configuration));

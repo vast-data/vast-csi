@@ -32,7 +32,6 @@ public:
      * \param n_values expected number of values in the hash.
      * \param match_func a match function that converts an index to a key and compares with the given key.
      * \param match_arg a parameter to pass over to match.
-     * \return a pointer to a heap allocated hash table.
      */
     void init(size_t n_buckets, Index n_values, MatchFunc match_func, void *match_arg);
 

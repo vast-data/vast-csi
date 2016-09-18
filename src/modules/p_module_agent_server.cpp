@@ -62,7 +62,7 @@ void PModuleAgentServerImpl::init_test_drives(Conf::ConfigSetting *nvrams_settin
     _nvrams_initialized = true;
 }
 
-void PModuleAgentServerImpl::set_local_env_id(SetLocalEnvIdParams::RootReader *args, VProto::Empty::RootBuilder *res)
+void PModuleAgentServerImpl::set_local_env_id(SetLocalEnvIdParams::RootReader *args, UNUSED VProto::Empty::RootBuilder *res)
 {
     // 1. Set local env ID:
     VMsg::EnvId env_id = args->get_env_id();
@@ -171,7 +171,7 @@ void PModuleAgentServerImpl::env_stop(EnvStopParams::RootReader *args, EnvStopRe
     res->set_code(EnvStopResultCode::SUCCESS);
 }
 
-void PModuleAgentServerImpl::run_leader(VProto::Empty::RootReader *args, EnvStartResult::RootBuilder *res)
+void PModuleAgentServerImpl::run_leader(UNUSED VProto::Empty::RootReader *args, EnvStartResult::RootBuilder *res)
 {
     GUID env_guid;
     ASSERT(env_guid.init_from_string(LEADER_ENV_GUID));
@@ -194,12 +194,12 @@ void PModuleAgentServerImpl::connect_device(ConnectDeviceParams::RootReader *arg
     }
 }
 
-void PModuleAgentServerImpl::disconnect_device(DisconnectDeviceParams::RootReader *args, DisconnectDeviceResult::RootBuilder *res)
+void PModuleAgentServerImpl::disconnect_device(UNUSED DisconnectDeviceParams::RootReader *args, UNUSED DisconnectDeviceResult::RootBuilder *res)
 {
     // TODO: remove the nvme device
 }
 
-void PModuleAgentServerImpl::list_nvrams(VProto::Empty::RootReader *args, ListNVRAMsResult::RootBuilder *res)
+void PModuleAgentServerImpl::list_nvrams(UNUSED VProto::Empty::RootReader *args, ListNVRAMsResult::RootBuilder *res)
 {
     ASSERT(_nvrams_initialized);
     LOOP(res->get_nvrams_count(), i) {

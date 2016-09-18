@@ -37,7 +37,7 @@ FiberGroupId {{ server.name }}Server::get_op_fiber_group(uint8_t op_id)
     }
 }
 
-void {{ server.name }}Server::run_op(uint8_t op_id, void *request, uint16_t request_len, void *reply, uint16_t *reply_len)
+void {{ server.name }}Server::run_op(uint8_t op_id, void *request, uint16_t request_len UNUSED, void *reply, uint16_t *reply_len)
 {
     switch ((ops)op_id) {
         {% for method in server.methods %}

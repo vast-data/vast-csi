@@ -19,7 +19,7 @@ static const P::VMsg::ModuleAddress dest = {
     0  // silo_id
 };
 
-static void start_func(void *ctx)
+static void start_func(UNUSED void *ctx)
 {
     IModuleAgentClient client;
     client.init();

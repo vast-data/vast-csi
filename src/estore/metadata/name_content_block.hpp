@@ -10,7 +10,7 @@ namespace EStore {
 struct NameHandle {
     uint16_t len;
     EHandle handle;
-    char name[0];
+    char name[];
 } PACKED;
 
 class NameContentBlock : public BaseBlock {
@@ -28,6 +28,3 @@ public:
 };
 
 }
-
-
-

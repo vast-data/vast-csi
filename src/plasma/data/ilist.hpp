@@ -71,7 +71,7 @@ public:
         return _head.next() == &_head;
     }
 
-    bool is_end(Node *node)
+    bool is_last(Node *node)
     {
         return node == &_head;
     }
@@ -107,7 +107,7 @@ private:
      Person *person = p_container_of(i, Person, list_node);
  \endcode
 */
-#define ILIST_ITER_FROM(list, element, from) for (P::IList::Node *element = from; !(list)->is_end(element); element = element->next())
+#define ILIST_ITER_FROM(list, element, from) for (P::IList::Node *element = from; !(list)->is_last(element); element = element->next())
 
 /*!
  * Iterate over nodes of an intrinsic list.
@@ -123,7 +123,8 @@ private:
 /*!
  * Same as ILIST_ITER_FROM but allows deletion during iteration.
 */
-#define ILIST_ITER_SAFE_FROM(list, element, from) for (P::IList::Node *element = from, *next = from->next(); !(list)->is_end(element); element = next, next = element->next())
+#define ILIST_ITER_SAFE_FROM(list, element, from) _ILIST_ITER_SAFE_FROM(list, element, from, MACRO_CONCAT(next_, __COUNTER__))
+#define _ILIST_ITER_SAFE_FROM(list, element, from, next_node) for (P::IList::Node *element = from, *next_node = from->next(); !(list)->is_last(element); element = next_node, next_node = element->next())
 
 /*!
  * Same as ILIST_ITER but allows deletion during iteration.

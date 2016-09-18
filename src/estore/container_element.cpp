@@ -148,7 +148,7 @@ struct ListElementsCtx {
     EHandle handle;
 };
 
-EStoreRes name_content_traverse_func(const char *name, uint16_t name_len, uint32_t hash, EHandle handle, void *ctx)
+static EStoreRes name_content_traverse_func(const char *name, uint16_t name_len, uint32_t hash, EHandle handle, void *ctx)
 {
     ListElementsCtx *list_ctx = (ListElementsCtx *)ctx;
     list_ctx->res_offset.name_hash = hash;
@@ -210,7 +210,7 @@ EStoreRes ContainerElement::name_range_traverse(Layout::Address addr, uint16_t i
 }
 
 EStoreRes ContainerElement::list_elements(uint64_t offset, uint64_t element_version, ListCallback list_cb,
-                                          void *list_ctx, const char *prefix, char delimiter,
+                                          void *list_ctx, UNUSED const char *prefix, UNUSED char delimiter,
                                           uint64_t *current_element_version)
 {
     EHandle handle = get_handle();
@@ -252,4 +252,3 @@ EStoreRes ContainerElement::list_elements(uint64_t offset, uint64_t element_vers
 }
 
 }
-

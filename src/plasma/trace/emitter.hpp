@@ -26,10 +26,10 @@
   #define TRACE_SECTION _TRACE_SECTION(__FILE__, MACRO_STRINGIFY(__LINE__))
 #endif
 
-#define P_TRACE(channel, severity, component, fmt, ...) do {                                 \
-        static P::Trace::TraceInfo TRACE_SECTION info = {component, fmt, __FILE__, __LINE__, __func__}; \
-        P::Trace::validate_format(fmt, ##__VA_ARGS__);                              \
-        P::Trace::Emitter::trace(channel, severity, &info, ##__VA_ARGS__);        \
+#define P_TRACE(channel, severity, component, fmt, ...) do {            \
+        static P::Trace::TraceInfo TRACE_SECTION info = {component, fmt, __FILE__, __LINE__, {__func__}}; \
+        P::Trace::validate_format(fmt, ##__VA_ARGS__);                  \
+        P::Trace::Emitter::trace(channel, severity, &info, ##__VA_ARGS__); \
 } while(0)
 
 #define PT_HELPER(channel, severity, ...) \
@@ -131,7 +131,7 @@ private:
     static thread_local Emitter *_local_emitter;
     static Emitter *_global_emitter;
 
-    uint64_t get_fiber_id();
+    uint32_t get_fiber_id();
 
     void record_start(TraceInfo *info, Severity severity)
     {
@@ -203,7 +203,7 @@ private:
 
 static __attribute__ ((format (printf, 1, 2))) void validate_format(const char *format, ...)
 {
-
+    (void) format;
 }
 
 }}

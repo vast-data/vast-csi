@@ -8,7 +8,7 @@ using namespace P;
 
 namespace Control {
 
-GUID get_system_guid()
+static GUID get_system_guid()
 {
     char system_guid_path[PATH_MAX];
 
@@ -27,7 +27,8 @@ GUID get_system_guid()
 
 constexpr TypeConfig CModule::TYPE_CONFIGS[];
 
-void CModule::init(P::Silo *silo, P::Conf::ConfigSetting *module_setting)
+void CModule::init(P::Silo *silo, UNUSED
+                   P::Conf::ConfigSetting *module_setting)
 {
     _tree.init(NUM_ELEMENTS(TYPE_CONFIGS), TYPE_CONFIGS);
 

@@ -82,13 +82,13 @@ static void test_locking_start_func(void *ctx)
     global_env_stop = true;
 }
 
-void allocate_test_buffer(IOVec *buff)
+static void allocate_test_buffer(IOVec *buff)
 {
     buff->iov_base = P::aligned_new_arr<char>(DevIO::O_DIRECT_ALIGNMENT, DevIO::O_DIRECT_ALIGNMENT);
     buff->iov_len = DevIO::O_DIRECT_ALIGNMENT;
 }
 
-void fill_test_buffer(char *buff, size_t len)
+static void fill_test_buffer(char *buff, size_t len)
 {
     strncpy(buff, "Avi Nimni is the king!!!", len);
 }
@@ -106,7 +106,7 @@ static void init_test_data(P::GUID *dev_guids, size_t dev_count, Control::DevAge
     add_params.init();
     add_params.set_device_count(dev_count);
     constexpr size_t dev_size = 100000;
-    for (int i = 0; i < dev_count; ++i) {
+    for (uint32_t i = 0; i < dev_count; ++i) {
         dev_guids[i].init();
         char dev_path[64];
         sprintf(dev_path, "/tmp/io_provider_test_device_file%d.tmp", i);
@@ -125,7 +125,6 @@ static void init_test_data(P::GUID *dev_guids, size_t dev_count, Control::DevAge
 static void test_rw_start_func(void *ctx)
 {
     constexpr size_t dev_count = 3;
-    constexpr size_t dev_size = 100000;
     P::GUID dev_guids[dev_count];
     Control::DevAgent *dev_agent = (Control::DevAgent*)ctx;
     init_test_data(dev_guids, dev_count, dev_agent);
@@ -146,7 +145,7 @@ static void test_rw_start_func(void *ctx)
     config_params->get_section_configs(0)->set_section_id(test_address.section_id);
     config_params->get_section_configs(0)->set_num_mappings(dev_count);
     config_params->get_section_configs(0)->set_in_rebuild(false);
-    for (int i = 0; i < dev_count; ++i) {
+    for (uint32_t i = 0; i < dev_count; ++i) {
         config_params->get_section_configs(0)->get_mappings(i)->set_device_guid(dev_guids[i]);
         config_params->get_section_configs(0)->get_mappings(i)->set_base_offset(i * DevIO::O_DIRECT_ALIGNMENT);
     }
@@ -230,7 +229,7 @@ static void test_agent_start_func(void *ctx)
     config_params.get_section_configs(0)->set_section_id(test_sectionID);
     config_params.get_section_configs(0)->set_num_mappings(mapping_dev_count);
     config_params.get_section_configs(0)->set_in_rebuild(false);
-    for (int i = 0; i < mapping_dev_count; ++i) {
+    for (uint32_t i = 0; i < mapping_dev_count; ++i) {
         config_params.get_section_configs(0)->get_mappings(i)->set_device_guid(dev_guids[i]);
         config_params.get_section_configs(0)->get_mappings(i)->set_base_offset((i + 1) * DevIO::O_DIRECT_ALIGNMENT);
     }
@@ -238,7 +237,7 @@ static void test_agent_start_func(void *ctx)
     config_params.get_section_configs(1)->set_section_id(0);
     config_params.get_section_configs(1)->set_num_mappings(mapping_dev_count);
     config_params.get_section_configs(1)->set_in_rebuild(false);
-    for (int i = 0; i < mapping_dev_count; ++i) {
+    for (uint32_t i = 0; i < mapping_dev_count; ++i) {
         config_params.get_section_configs(1)->get_mappings(i)->set_device_guid(dev_guids[i]);
         config_params.get_section_configs(1)->get_mappings(i)->set_base_offset(0);
     }
@@ -277,7 +276,7 @@ static void test_agent_start_func(void *ctx)
     mio_agent.done_write(section, &phys_addr_set);
 
     section.section_id = test_sectionID;
-    for (P::Index i = 0; i < mapping_dev_count; ++i) {
+    for (uint32_t i = 0; i < mapping_dev_count; ++i) {
         expected_addresses[i].dev = dynamic_cast<BaseIO*>(dev_agent->get_device(dev_guids[i])->get_devio());
         expected_addresses[i].byte_offset = (i + 1) * DevIO::O_DIRECT_ALIGNMENT + test_baddr;
     }
@@ -303,7 +302,7 @@ static void test_agent_start_func(void *ctx)
 
     // Rebuild should fail because this section already has 3 devices:
     EXPECT_DEATH(mio_agent.start_rebuilds(start_rebuilds_params.as_reader(), nullptr),
-                 "assertion failed: \\(section_mapping->mapping_data.num_addresses < max_devs_per_section\\)");
+                 "assertion failed: \\(\\(uint32_t\\)section_mapping->mapping_data.num_addresses < max_devs_per_section\\)");
 
     EndRebuildsParams::RootBuilder end_rebuilds_params;
     end_rebuilds_params.init();
@@ -314,7 +313,7 @@ static void test_agent_start_func(void *ctx)
     remove_device_params.set_device_guid(dev_guids[1]);
     mio_agent.remove_device(remove_device_params.as_reader(), nullptr);
 
-    for (P::Index i = 0; i < mapping_dev_count - 1; ++i) {
+    for (uint32_t i = 0; i < mapping_dev_count - 1; ++i) {
         P::Index dev_idx = i;
         if (dev_idx > 0) {
             ++dev_idx;
@@ -333,7 +332,7 @@ static void test_agent_start_func(void *ctx)
     // After removing one device, rebuild should succeed:
     mio_agent.start_rebuilds(start_rebuilds_params.as_reader(), nullptr);
 
-    for (P::Index i = 0; i < mapping_dev_count; ++i) {
+    for (uint32_t i = 0; i < mapping_dev_count; ++i) {
         P::Index dev_idx = i;
         if (dev_idx > 0) {
             ++dev_idx;

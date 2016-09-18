@@ -25,3 +25,9 @@
 #define SECTIONIZE(name) __attribute__ ((section (name)))
 
 #define PAGE_SIZE_BYTES (4096)
+
+#ifdef DEBUG
+  #define DEBUG_VIRTUAL
+#else
+  #define DEBUG_VIRTUAL
+#endif

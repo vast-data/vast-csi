@@ -16,7 +16,7 @@ namespace Sync {
     public:                             \
         NAME(T *lock): _lock(lock) {    \
             _lock->LOCK();              \
-        };                              \
+        }                               \
                                         \
         ~NAME()                         \
         {                               \

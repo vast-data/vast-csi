@@ -17,7 +17,7 @@ static __attribute__ ((constructor)) void init_section()
 {
     // the following trace is defined in order to force the linker to define the __start/stop_traces variables.
     static TraceInfo SECTIONIZE("traces") __attribute__((used)) t = {
-            CURRENT_COMPONENT, "first trace", __FILE__, __LINE__, __func__
+        CURRENT_COMPONENT, "first trace", __FILE__, __LINE__, {__func__}
     };
 
     for (TraceInfo *trace_info = __start_traces; trace_info != __stop_traces; trace_info++) {

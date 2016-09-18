@@ -69,35 +69,21 @@ TEST(TestIMDB, test_tree)
     int drive_version_sum = 0;
     int cnode_version_sum = 0;
 
-    IMDB_ITER_CHILDREN(sys, cnode, CNode,
+    IMDB_ITER_CHILDREN(sys, cnode, CNode)
     {
         cnode_version_sum += cnode->get_base_node_proto()->get_version();
-    });
-    IMDB_ITER_CHILDREN(sys, drive, Drive,
+    }
+
+    IMDB_ITER_CHILDREN(sys, drive, Drive)
     {
         drive_version_sum += drive->get_version();
-    });
+    }
 
     ASSERT_EQ(cnode_version_sum, 3);
     ASSERT_EQ(drive_version_sum, 7);
 
-    CNode *cnode;
-    Drive *drive;
     ILIST_ITER_SAFE(sys->get_children(), i) {
         BaseTreeObject *child = p_container_of(i, BaseTreeObject, child_node);
-        switch (child->get_type_id()) {
-        case TypeId::CNode:
-            cnode = child->cast<CNode>();
-            ASSERT_DEATH(child->cast<Drive>(), "Invalid cast from base type to child.");
-            break;
-        case TypeId::Drive:
-            drive = child->cast<Drive>();
-            ASSERT_DEATH(child->cast<CNode>(), "Invalid cast from base type to child.");
-            break;
-        default:
-            ASSERT_TRUE(0);
-            break;
-        }
         db.remove(child);
     }
 

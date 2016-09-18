@@ -42,7 +42,7 @@ static const ModuleAddress leader_dest_control = {
         0  // silo_id
 };
 
-static void init_func(P::Silo *silo, void *ctx)
+static void init_func(UNUSED P::Silo *silo, UNUSED void *ctx)
 {
     // Nothing to do for now. Use if/when relevant.
 }
@@ -135,7 +135,7 @@ static void update_config_port(char *config, uint16_t port)
     }
 }
 
-static void env_start_stop_start_func(void *ctx)
+static void env_start_stop_start_func(UNUSED void *ctx)
 {
     global_env_stop = false;
 
@@ -158,7 +158,7 @@ static void env_start_stop_start_func(void *ctx)
     EXPECT_EQ(P::EnvStopResultCode::GUID_NOT_FOUND, send_env_stop(env_guid));
 
     P::GUID env_guids[P::MAX_ENVS_PER_CNODE - 1];
-    for (int i = 0; i < P::MAX_ENVS_PER_CNODE - 1; ++i) {
+    for (uint32_t i = 0; i < P::MAX_ENVS_PER_CNODE - 1; ++i) {
         env_guids[i].init();
         update_config_port(config, port++);
         EXPECT_EQ(P::EnvStartResultCode::SUCCESS, send_env_start(env_guids[i], config));
@@ -170,14 +170,14 @@ static void env_start_stop_start_func(void *ctx)
     EXPECT_EQ(P::EnvStartResultCode::SUCCESS, send_env_start(env_guid, config));
     EXPECT_EQ(P::EnvStopResultCode::SUCCESS, send_env_stop(env_guid));
 
-    for (int i = 1; i < P::MAX_ENVS_PER_CNODE - 1; ++i) {
+    for (uint32_t i = 1; i < P::MAX_ENVS_PER_CNODE - 1; ++i) {
         EXPECT_EQ(P::EnvStopResultCode::SUCCESS, send_env_stop(env_guids[i]));
     }
 
     global_env_stop = true;
 }
 
-static void run_leader_start_func(void *ctx)
+static void run_leader_start_func(UNUSED void *ctx)
 {
     global_env_stop = false;
 

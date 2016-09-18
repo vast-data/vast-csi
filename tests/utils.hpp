@@ -20,7 +20,7 @@ static __attribute__ ((destructor)) void finalize_traces()
     }
 }
 
-void error_handler(int sig)
+NO_RETURN static void error_handler(int sig)
 {
     printf("===ERROR SIGNAL (%s)===\n", strsignal(sig));
     P::Backtracer::show_backtrace();
@@ -28,9 +28,8 @@ void error_handler(int sig)
     exit(sig);
 }
 
-void init_traces()
+static void init_traces()
 {
-
     if (traces_initialized)
         return;
     traces_initialized = true;

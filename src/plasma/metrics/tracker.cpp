@@ -42,7 +42,7 @@ void Tracker::on_object_destroy(Object *object)
     object->list_node.remove();
 }
 
-void Tracker::get_generations(GetGenerationsParams::RootReader *params, GetGenerationsResult::RootBuilder *result)
+void Tracker::get_generations(UNUSED GetGenerationsParams::RootReader *params, GetGenerationsResult::RootBuilder *result)
 {
     result->set_update_generation(_update_generation);
     result->set_delete_generation(_delete_generation);

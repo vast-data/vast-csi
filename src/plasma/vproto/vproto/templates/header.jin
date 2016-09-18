@@ -87,6 +87,7 @@ public:
         template <class T>
         void init_from_reader(T *reader)
         {
+            (void) reader;
             init();
             {% for field in def.primitive_fields %}
                 {% if field.type.name != 'VProto::ArrayPtr' %}

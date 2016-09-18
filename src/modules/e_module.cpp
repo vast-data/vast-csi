@@ -20,7 +20,7 @@ namespace P {
     vmsg_module_resources->num_recv_buffers = DEFAULT_NUM_RECV_BUFFERS;
 }
 
-void EModule::init(Silo *silo, Conf::ConfigSetting *setting)
+void EModule::init(Silo *silo, UNUSED Conf::ConfigSetting *setting)
 {
     _agent.init(silo->get_id(), get_id());
 }

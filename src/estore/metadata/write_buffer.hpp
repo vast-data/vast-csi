@@ -48,7 +48,7 @@ public:
         }
     }
 
-    WBState get_wb_state() { return get_wb_header()->state; };
+    WBState get_wb_state() { return get_wb_header()->state; }
     void move_to_migrate_state() { get_wb_header()->state = WBState::MIGRATE; }
 
 private:
@@ -86,4 +86,3 @@ private:
 };
 
 }
-

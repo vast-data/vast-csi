@@ -47,7 +47,7 @@ static void free_iovec(P::IO::IOVecs *iovecs, Rpc *rpc)
 // This is an optimized version of the auto generated xdr_WRITE3args function.
 // It uses element store data buffers instead of causing XDR to allocate memory and it uses xdrdrec_direct_read
 // in order to avoid mem copy for the write data.
-bool_t
+static bool_t
 xdr_buffered_WRITE3args(XDR *xdrs, BufferedWRITE3args *objp)
 {
     DEBUG_ASSERT(xdrs->x_op == XDR_DECODE);
@@ -66,7 +66,7 @@ xdr_buffered_WRITE3args(XDR *xdrs, BufferedWRITE3args *objp)
     u_int len = objp->data_len;
     uint32_t n_buffers = (len / EStore::DATA_BUFFER_SIZE) + (len % EStore::DATA_BUFFER_SIZE ? 1 : 0);
     objp->io_vecs.count = 0;
-    for (int i = 0; i < ALLOCATION_RETRY && objp->io_vecs.count == 0; ++i) {
+    for (uint32_t i = 0; i < ALLOCATION_RETRY && objp->io_vecs.count == 0; ++i) {
         objp->io_vecs.count = n_buffers;
         rpc->alloc_data_buffers(&objp->io_vecs);
         if (objp->io_vecs.count == 0) {
@@ -74,7 +74,7 @@ xdr_buffered_WRITE3args(XDR *xdrs, BufferedWRITE3args *objp)
         }
     }
 
-    for (int i = 0; i < n_buffers && len > 0; ++i) {
+    for (uint32_t i = 0; i < n_buffers && len > 0; ++i) {
         IOVec *vec = &objp->io_vecs.iovecs[i];
         vec->iov_len = P_MIN(len, EStore::DATA_BUFFER_SIZE);
         if (!xdrdrec_direct_read(xdrs, (caddr_t)vec->iov_base, vec->iov_len)) {
@@ -94,7 +94,7 @@ xdr_buffered_WRITE3args(XDR *xdrs, BufferedWRITE3args *objp)
 // This is an optimized version of the auto generated xdr_READ3args function.
 // It uses element store data buffers instead of causing XDR to allocate memory and it uses xdrdrec_direct_write
 // in order to avoid mem copy for the write data.
-bool_t
+static bool_t
 xdr_buffered_READ3resok(XDR *xdrs, BufferedREAD3resok *objp)
 {
     DEBUG_ASSERT(xdrs->x_op == XDR_ENCODE);
@@ -107,7 +107,7 @@ xdr_buffered_READ3resok(XDR *xdrs, BufferedREAD3resok *objp)
     if (!xdr_u_int(xdrs, &objp->data_len))
         return FALSE;
     u_int len = objp->data_len;
-    for (int i = 0; len > 0 && i < objp->io_vecs.count; ++i) {
+    for (uint32_t i = 0; len > 0 && i < objp->io_vecs.count; ++i) {
         size_t buff_len = P_MIN(len, objp->io_vecs.iovecs[i].iov_len);
         if (!xdrdrec_direct_write(xdrs, (caddr_t)objp->io_vecs.iovecs[i].iov_base, buff_len, buff_len == len)) {
             return FALSE;
@@ -117,7 +117,7 @@ xdr_buffered_READ3resok(XDR *xdrs, BufferedREAD3resok *objp)
     return TRUE;
 }
 
-bool_t
+static bool_t
 xdr_buffered_READ3res(XDR *xdrs, BufferedREAD3res *objp)
 {
     if (!xdr_nfsstat3 (xdrs, &objp->status))
@@ -135,8 +135,8 @@ xdr_buffered_READ3res(XDR *xdrs, BufferedREAD3res *objp)
     return TRUE;
 }
 
-bool_t
-xdr_READ3free(XDR *xdrs, READ3args *args, BufferedREAD3res *res)
+static bool_t
+xdr_READ3free(XDR *xdrs, UNUSED READ3args *args, BufferedREAD3res *res)
 {
     Rpc *rpc = (Rpc *)xdrs->x_public;
     free_iovec(&res->READ3res_u.resok.alloc_vecs, rpc);
@@ -473,7 +473,7 @@ struct AccessCheckCtx {
     uint32_t required_mode;
 };
 
-EStoreRes access_check_cb(SystemAttr *attr, void *ctx)
+static EStoreRes access_check_cb(SystemAttr *attr, void *ctx)
 {
     AccessCheckCtx *check_ctx = (AccessCheckCtx *)ctx;
     uint32_t granted_mode = 0;
@@ -577,7 +577,7 @@ static EStoreRes setattr_check_cb(SystemAttr *attr, void *ctx)
 }
 
 
-void NfsServer::get_attr(RpcRequest *request, GETATTR3args *args, GETATTR3res *res)
+void NfsServer::get_attr(UNUSED RpcRequest *request, GETATTR3args *args, GETATTR3res *res)
 {
     res->status = NFS3_OK;
     // getting an element attributes don't require any permissions
@@ -690,7 +690,7 @@ void NfsServer::access(RpcRequest *request, ACCESS3args *args, ACCESS3res *res)
     sys_attr_to_nfs_attr(&sys_attr, &res->ACCESS3res_u.resok.obj_attributes.post_op_attr_u.attributes);
 }
 
-void NfsServer::readlink(RpcRequest *request, READLINK3args *args, READLINK3res *res)
+void NfsServer::readlink(UNUSED RpcRequest *request, READLINK3args *args, READLINK3res *res)
 {
     EHandle handle;
     nfs_handle_to_ehandle(&args->symlink, &handle);
@@ -798,7 +798,7 @@ void NfsServer::create(RpcRequest *request, CREATE3args *args, CREATE3res *res)
     EHandle phandle;
     nfs_handle_to_ehandle(&args->where.dir, &phandle);
     PT_DEBUG(DATA, "create phandle=%lx name=%s", phandle, args->where.name);
-    
+
     CreateFlags flags = CreateFlags::HAS_DATA;
     if (args->how.mode == GUARDED || args->how.mode == EXCLUSIVE) {
         SET_ENUM_FLAG(flags, CreateFlags, DONT_OVERWRITE);
@@ -917,7 +917,7 @@ void NfsServer::symlink(RpcRequest *request, SYMLINK3args *args, SYMLINK3res *re
     fill_create_resok((CREATE3resok *)&res->SYMLINK3res_u.resok, ehandle, element_attr, pre_pattr, post_pattr);
 }
 
-void NfsServer::mknod(RpcRequest *request, MKNOD3args *args, MKNOD3res *res)
+void NfsServer::mknod(UNUSED RpcRequest *request, MKNOD3args *args, MKNOD3res *res)
 {
     EHandle phandle;
     nfs_handle_to_ehandle(&args->where.dir, &phandle);
@@ -1137,7 +1137,7 @@ bool NfsServer::readdir_plus_cb(EStore::ListEntry *entry, void *ctx)
     rdp_entry->name_handle.handle_follows = TRUE;
     rdp_entry->name_handle.post_op_fh3_u.handle.data.data_val = ((char*)rdp_entry + sizeof(entryplus3));
     ehandle_to_nfs_handle(entry->handle, &rdp_entry->name_handle.post_op_fh3_u.handle);
-    
+
     rdp_entry->name = rdp_entry->name_handle.post_op_fh3_u.handle.data.data_val +
         rdp_entry->name_handle.post_op_fh3_u.handle.data.data_len;
     memcpy(rdp_entry->name, entry->name, name_len);
@@ -1249,7 +1249,7 @@ void NfsServer::readdir_plus(RpcRequest *request, READDIRPLUS3args *args, READDI
     resok->reply.eof = rd_state.last_retval;
 }
 
-void NfsServer::fsstat(RpcRequest *request, FSSTAT3args *args, FSSTAT3res *res)
+void NfsServer::fsstat(UNUSED RpcRequest *request, FSSTAT3args *args, FSSTAT3res *res)
 {
     EHandle handle;
     nfs_handle_to_ehandle(&args->fsroot, &handle);
@@ -1324,7 +1324,7 @@ EStoreRes NfsServer::fill_post_op_attr(nfs_fh3 *fh3, post_op_attr *po_attr)
     return get_attr_from_fh3(fh3, &po_attr->post_op_attr_u.attributes);
 }
 
-void NfsServer::fsinfo(RpcRequest *request, FSINFO3args *args, FSINFO3res *res)
+void NfsServer::fsinfo(UNUSED RpcRequest *request, FSINFO3args *args, FSINFO3res *res)
 {
     PT_DEBUG(DATA, "fs info request");
     res->status = NFS3_OK;
@@ -1349,7 +1349,7 @@ void NfsServer::fsinfo(RpcRequest *request, FSINFO3args *args, FSINFO3res *res)
     info->properties = FSF3_LINK | FSF3_SYMLINK | FSF3_HOMOGENEOUS | FSF3_CANSETTIME;
 }
 
-void NfsServer::pathconf(RpcRequest *request, PATHCONF3args *args, PATHCONF3res *res)
+void NfsServer::pathconf(UNUSED RpcRequest *request, PATHCONF3args *args, PATHCONF3res *res)
 {
     PT_DEBUG(DATA, "path conf");
     res->status = NFS3_OK;
@@ -1368,7 +1368,7 @@ void NfsServer::pathconf(RpcRequest *request, PATHCONF3args *args, PATHCONF3res 
     res->PATHCONF3res_u.resok.case_preserving = TRUE;
 }
 
-void NfsServer::commit(RpcRequest *request, COMMIT3args *args, COMMIT3res *res)
+void NfsServer::commit(UNUSED RpcRequest *request, COMMIT3args *args, COMMIT3res *res)
 {
     // This should never be called since we always return FILE_SYNC to write requests.
     // Yet in case the client is acting weird we'll just return NFS3_OK here

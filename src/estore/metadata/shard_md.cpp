@@ -101,7 +101,7 @@ WriteBuffer *ShardMd::get_ingest_buffer(P::ShardId shard_id)
     return &_ingest_buffers[shard_id];
 }
 
-WriteBuffer *ShardMd::get_migrate_buffer(P::ShardId shard_id)
+WriteBuffer *ShardMd::get_migrate_buffer(UNUSED P::ShardId shard_id)
 {
     PANIC("not implemented");
     return nullptr;
@@ -154,7 +154,7 @@ EStoreRes ShardMd::switch_ingest_buffer(BuffersGuard *buffers_guard, P::ShardId 
     return OK;
 }
 
-EStoreRes ShardMd::free_buffer(P::ShardId shard_id, WriteBuffer *write_buffer)
+EStoreRes ShardMd::free_buffer(UNUSED P::ShardId shard_id, UNUSED WriteBuffer *write_buffer)
 {
     PANIC("not implemented");
     return OK;

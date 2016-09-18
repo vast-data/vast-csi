@@ -7,12 +7,12 @@ void IModuleAgentServerImpl::init(P::SiloId silo_id, IModule *module)
     register_server(silo_id, ModuleId::I);
 }
 
-void IModuleAgentServerImpl::activate(P::VProto::Empty::RootReader *args, P::VProto::Empty::RootBuilder *result)
+void IModuleAgentServerImpl::activate(UNUSED P::VProto::Empty::RootReader *args, UNUSED P::VProto::Empty::RootBuilder *result)
 {
     _module->activate();
 }
 
-void IModuleAgentServerImpl::create_estore(P::VProto::Empty::RootReader *args, P::VProto::Empty::RootBuilder *result)
+void IModuleAgentServerImpl::create_estore(UNUSED P::VProto::Empty::RootReader *args, UNUSED P::VProto::Empty::RootBuilder *result)
 {
     _module->create_estore();
 }

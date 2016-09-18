@@ -22,9 +22,8 @@ static void set_env_modules(EnvObj *env, T connect_params) {
         *connect_params->get_modules(i) = false;
     }
 
-    IMDB_ITER_MODULES(env, module, {
+    IMDB_ITER_CHILDREN(env, module, BaseModuleLogic)
         *connect_params->get_modules((P::byte) module->get_module_id()) = true;
-    });
 }
 
 static bool node_has_address(BaseNode *node, char *host)
@@ -43,16 +42,14 @@ bool Cluster::address_already_exists(char *host)
     if (strcmp(host, P::LOCALHOST) == 0)
         return false; // it's allowed to run several nodes only on localhost
 
-    IMDB_ITER_CHILDREN(_system, cnode, CNode, {
+    IMDB_ITER_CHILDREN(_system, cnode, CNode)
         if (node_has_address(cnode, host))
             return true;
-    });
-    IMDB_ITER_CHILDREN(_system, dbox, DBox, {
-        IMDB_ITER_CHILDREN(dbox, dnode, DNode, {
+
+    IMDB_ITER_CHILDREN(_system, dbox, DBox)
+        IMDB_ITER_CHILDREN(dbox, dnode, DNode)
             if (node_has_address(dnode, host))
                 return true;
-        });
-    });
     return false;
 }
 
@@ -81,11 +78,9 @@ void Cluster::start()
 
 void Cluster::connect_envs()
 {
-    IMDB_ITER_CHILDREN(_system, cnode, CNode, {
-        IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
+    IMDB_ITER_CHILDREN(_system, cnode, CNode)
+        IMDB_ITER_CHILDREN(cnode, env, EnvObj)
             connect_env(env);
-        });
-    });
 }
 
 void Cluster::connect_platform_env(EnvObj *env)
@@ -156,10 +151,9 @@ void Cluster::connect_env(EnvObj *env)
     env->get_guid().to_string(guid_string);
     PT_INFO(CONTROL, "Connecting to env=%s id=%d", guid_string, env->get_id());
 
-    P::EnvModules env_modules = { 0 };
-    IMDB_ITER_MODULES(env, module, {
+    P::EnvModules env_modules = {{ 0 }};
+    IMDB_ITER_CHILDREN(env, module, BaseModuleLogic)
         env_modules.env_modules[(P::byte)module->get_module_id()] = true;
-    });
 
     // connect to the env.
     P::Env::get()->get_vmsg()->set_env_addresses(env->get_id(), &addresses, &env_modules);
@@ -178,6 +172,7 @@ void Cluster::connect_env(EnvObj *env)
 
 void Cluster::system_status(SystemStatusParams::RootReader *args, SystemStatusResult::RootBuilder *res)
 {
+    (void) args;
     res->get_system()->init_from_reader(_system->as_reader());
 }
 
@@ -199,12 +194,11 @@ void Cluster::system_activate(SystemActivateParams::RootReader *args, SystemActi
     PT_INFO(CONTROL, "MIO Activated.");
 
     // potentially activate all nodes
-    IMDB_ITER_CHILDREN(_system, cnode, CNode, {
+    IMDB_ITER_CHILDREN(_system, cnode, CNode)
         calc_cnode_state(cnode);
-    });
 }
 
-void Cluster::system_redist(SystemRedistParams::RootReader *args, SystemRedistResult::RootBuilder *res)
+void Cluster::system_redist(UNUSED SystemRedistParams::RootReader *args, SystemRedistResult::RootBuilder *res)
 {
     //TODO: enlarge section count and redistribute the data
     initialize_all_dnodes();
@@ -261,12 +255,12 @@ void Cluster::calc_dnode_state(DNode *dnode)
 
 void Cluster::env_activate(EnvObj *env)
 {
-    IMDB_ITER_MODULES(env, module, {
+    IMDB_ITER_CHILDREN(env, module, BaseModuleLogic) {
         module->activate();
         char guid_string[P::GUID::STRING_SIZE];
         module->get_guid().to_string(guid_string);
         PT_INFO(CONTROL, "Activated module=%s module_id=%hhu env_id=%d", guid_string, module->get_module_id(), env->get_id());
-    });
+    }
     env->set_state(EnvState::ACTIVE);
 }
 
@@ -315,69 +309,67 @@ void Cluster::env_stop(EnvObj *env)
 
 void Cluster::connect_all_cnodes_to_node(BaseNode *node)
 {
-    IMDB_ITER_CHILDREN(_system, cnode, CNode, {
+    IMDB_ITER_CHILDREN(_system, cnode, CNode) {
         if (cnode == node || cnode->get_base_node()->get_state() != NodeState::ACTIVE)
             continue;
-        IMDB_ITER_CHILDREN(cnode, other_env, EnvObj, {
+        IMDB_ITER_CHILDREN(cnode, other_env, EnvObj) {
             if (other_env->is_platform())
                 continue;
-            IMDB_ITER_CHILDREN(node, env, EnvObj, {
+            IMDB_ITER_CHILDREN(node, env, EnvObj) {
                 if (env->is_platform())
                     continue;
                 connect_env_to_env(env, other_env);
                 connect_env_to_env(other_env, env);
-            });
-        });
-    });
+            }
+        }
+    }
 }
 
 void Cluster::connect_all_dnodes_to_node(BaseNode *node)
 {
-    IMDB_ITER_CHILDREN(_system, dbox, DBox, {
-        IMDB_ITER_CHILDREN(dbox, dnode, DNode, {
-            IMDB_ITER_CHILDREN(dnode, other_env, EnvObj, {
+    IMDB_ITER_CHILDREN(_system, dbox, DBox) {
+        IMDB_ITER_CHILDREN(dbox, dnode, DNode) {
+            IMDB_ITER_CHILDREN(dnode, other_env, EnvObj) {
                 if (other_env->is_platform() || dnode->get_base_node()->get_state() != NodeState::ACTIVE)
                     continue;
-                IMDB_ITER_CHILDREN(node, env, EnvObj, {
+                IMDB_ITER_CHILDREN(node, env, EnvObj) {
                     if (env->is_platform())
                         continue;
                     connect_env_to_env(env, other_env);
                     connect_env_to_env(other_env, env);
-                });
-            });
-        });
-    });
+                }
+            }
+        }
+    }
 }
 
 void Cluster::cnode_activate(CNode *cnode)
 {
     // 1. start envs on this node.
-    IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
+    IMDB_ITER_CHILDREN(cnode, env, EnvObj) {
         if (env->is_platform())
             continue;
         env_start(env);
         connect_env(env);
-    });
+    }
 
     // 2. interconnect the envs on this node with the rest of the envs in the system.
     connect_all_cnodes_to_node(cnode);
     connect_all_dnodes_to_node(cnode);
 
     // 3. connect the cnode to the NVRAMs
-    IMDB_ITER_CHILDREN(_system, dbox, DBox, {
-        IMDB_ITER_CHILDREN(dbox, dnode, DNode, {
+    IMDB_ITER_CHILDREN(_system, dbox, DBox) {
+        IMDB_ITER_CHILDREN(dbox, dnode, DNode) {
             if (dnode->get_base_node()->get_state() == NodeState::ACTIVE) {
-                IMDB_ITER_CHILDREN(dnode, nvram, NVRAM, {
+                IMDB_ITER_CHILDREN(dnode, nvram, NVRAM)
                     connect_cnode_to_device(cnode, nvram);
-                });
             }
-        });
-    });
+        }
+    }
 
     // 4. activate the envs.
-    IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
+    IMDB_ITER_CHILDREN(cnode, env, EnvObj)
         env_activate(env);
-    });
 
     char guid_string[P::GUID::STRING_SIZE];
     cnode->get_guid().to_string(guid_string);
@@ -388,11 +380,11 @@ void Cluster::cnode_activate(CNode *cnode)
 
 void Cluster::node_deactivate(BaseNode *node)
 {
-    IMDB_ITER_CHILDREN(node, env, EnvObj, {
+    IMDB_ITER_CHILDREN(node, env, EnvObj) {
         if (env->is_platform())
             continue;
         env_stop(env);
-    });
+    }
 
     char guid_string[P::GUID::STRING_SIZE];
     node->get_guid().to_string(guid_string);
@@ -449,7 +441,7 @@ void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBu
             env->get_silos(silo_index)->set_affinity(silo_config.get_affinity());
             LOOP(silo_config.get_modules_enabled_count(), module_index) {
                 if (*silo_config.get_modules_enabled(module_index))
-                    create_module(env, (ModuleId) module_index, silo_index);
+                    create_module(env, (ModuleId) module_index, (SiloId) silo_index);
             }
         }
     }
@@ -592,9 +584,8 @@ void Cluster::dbox_get(DBoxGetParams::RootReader *args, DBoxGetResult::RootBuild
     }
     res->get_dbox()->init_from_reader(dbox->as_reader());
     int i = 0;
-    IMDB_ITER_CHILDREN(dbox, dnode, DNode, {
+    IMDB_ITER_CHILDREN(dbox, dnode, DNode)
         res->get_dnodes(i++)->init_from_reader(dnode->as_reader());
-    });
     res->set_code(DBoxGetResultCode::SUCCESS);
 }
 
@@ -619,12 +610,10 @@ void Cluster::dnode_modify(DNodeModifyParams::RootReader *args, DNodeModifyResul
 
 void Cluster::initialize_all_dnodes()
 {
-    IMDB_ITER_CHILDREN(_system, dbox, DBox, {
-        IMDB_ITER_CHILDREN(dbox, dnode, DNode, {
+    IMDB_ITER_CHILDREN(_system, dbox, DBox)
+        IMDB_ITER_CHILDREN(dbox, dnode, DNode)
             if (dnode->get_base_node()->get_state() == NodeState::INIT && dnode->get_base_node()->get_enabled())
                 dnode_initialize(dnode);
-        });
-    });
 }
 
 void Cluster::dnode_initialize(DNode *dnode)
@@ -658,24 +647,22 @@ void Cluster::dnode_initialize(DNode *dnode)
 void Cluster::dnode_activate(DNode *dnode)
 {
     // 1. start envs on this node.
-    IMDB_ITER_CHILDREN(dnode, env, EnvObj, {
+    IMDB_ITER_CHILDREN(dnode, env, EnvObj) {
         if (env->is_platform())
             continue;
         env_start(env);
         connect_env(env);
-    });
+    }
 
     // 2. interconnect the envs on this node with the rest of the envs in the system.
     connect_all_cnodes_to_node(dnode);
 
     // 3. activate the envs.
-    IMDB_ITER_CHILDREN(dnode, env, EnvObj, {
+    IMDB_ITER_CHILDREN(dnode, env, EnvObj)
         env_activate(env);
-    });
 
-    IMDB_ITER_CHILDREN(dnode, nvram, NVRAM, {
+    IMDB_ITER_CHILDREN(dnode, nvram, NVRAM)
         nvram_activate(nvram);
-    });
 
     char guid_string[P::GUID::STRING_SIZE];
     dnode->get_guid().to_string(guid_string);
@@ -686,9 +673,8 @@ void Cluster::dnode_activate(DNode *dnode)
 
 void Cluster::dnode_deactivate(DNode *dnode)
 {
-    IMDB_ITER_CHILDREN(dnode, nvram, NVRAM, {
+    IMDB_ITER_CHILDREN(dnode, nvram, NVRAM)
         nvram_deactivate(nvram);
-    });
     node_deactivate(dnode);
 }
 
@@ -719,11 +705,11 @@ void Cluster::connect_cnode_to_device(CNode *cnode, NVRAM *nvram)
         PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
     }
 
-    IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
+    IMDB_ITER_CHILDREN(cnode, env, EnvObj) {
         if (env->is_platform())
             continue;
         Cluster::connect_env_to_device(env, nvram, result->get_path());
-    });
+    }
 }
 
 void Cluster::connect_env_to_device(EnvObj *env, NVRAM *nvram, char *local_path)
@@ -731,7 +717,7 @@ void Cluster::connect_env_to_device(EnvObj *env, NVRAM *nvram, char *local_path)
     DevAgentClient client;
     client.init();
 
-    IMDB_ITER_CHILDREN(env, module, IModuleObj, {
+    IMDB_ITER_CHILDREN(env, module, IModuleObj) {
         DeviceAddParams::RootBuilder *params = client.alloc_device_add();
         params->set_device_count(1);
         RemoteDeviceProto::Builder *device = params->get_devices(0);
@@ -742,7 +728,7 @@ void Cluster::connect_env_to_device(EnvObj *env, NVRAM *nvram, char *local_path)
         if (client.device_add_sync(module->get_address(), params) != P::VMsg::VMsgRes::OK) {
             PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
         }
-    });
+    }
 }
 
 void Cluster::prepare_disconnect_env_from_device(EnvObj *env, NVRAM *nvram)
@@ -750,14 +736,14 @@ void Cluster::prepare_disconnect_env_from_device(EnvObj *env, NVRAM *nvram)
     DevAgentClient client;
     client.init();
 
-    IMDB_ITER_CHILDREN(env, module, IModuleObj, {
+    IMDB_ITER_CHILDREN(env, module, IModuleObj) {
         DevicePrepareRemoveParams::RootBuilder *prepare_params = client.alloc_device_prepare_remove();
         prepare_params->set_guid_count(1);
         *(prepare_params->get_guids(0)) = nvram->get_guid();
         if (client.device_prepare_remove_sync(module->get_address(), prepare_params) != P::VMsg::VMsgRes::OK) {
             PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
         }
-    });
+    }
 }
 
 void Cluster::disconnect_env_from_device(EnvObj *env, NVRAM *nvram)
@@ -765,32 +751,32 @@ void Cluster::disconnect_env_from_device(EnvObj *env, NVRAM *nvram)
     DevAgentClient client;
     client.init();
 
-    IMDB_ITER_CHILDREN(env, module, IModuleObj, {
+    IMDB_ITER_CHILDREN(env, module, IModuleObj) {
         DeviceRemoveParams::RootBuilder *remove_params = client.alloc_device_remove();
         remove_params->set_guid_count(1);
         *(remove_params->get_guids(0)) = nvram->get_guid();
         if (client.device_remove_sync(module->get_address(), remove_params) != P::VMsg::VMsgRes::OK) {
             PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
         }
-    });
+    }
 }
 
 void Cluster::prepare_disconnect_cnode_from_device(CNode *cnode, NVRAM *nvram)
 {
-    IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
+    IMDB_ITER_CHILDREN(cnode, env, EnvObj) {
         if (env->is_platform())
             continue;
         Cluster::prepare_disconnect_env_from_device(env, nvram);
-    });
+    }
 }
 
 void Cluster::disconnect_cnode_from_device(CNode *cnode, NVRAM *nvram)
 {
-    IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
+    IMDB_ITER_CHILDREN(cnode, env, EnvObj) {
         if (env->is_platform())
             continue;
         Cluster::disconnect_env_from_device(env, nvram);
-    });
+    }
 
     P::PModuleAgentClient client;
     client.init();
@@ -842,7 +828,7 @@ template <typename Func, typename Param>
 void Cluster::map_on_cnodes(Func func, Param param)
 {
     using Functor = CNodeFunctor<Func, Param>;
-    IMDB_ITER_CHILDREN(_system, cnode, CNode, {
+    IMDB_ITER_CHILDREN(_system, cnode, CNode) {
         if (cnode->get_base_node()->get_state() != NodeState::ACTIVE)
             continue;
         void *mem = alloca(sizeof(Functor));
@@ -850,7 +836,7 @@ void Cluster::map_on_cnodes(Func func, Param param)
         functor->init(this, cnode, func, param);
         P::Fiber *fiber = P::Fiber::init((P::Index)FiberGroupId::C, runner<Functor>, functor, true);
         ASSERT_NOT_NULL(fiber);
-    });
+    }
     P::Fiber::join_all();
 }
 

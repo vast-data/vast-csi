@@ -7,7 +7,7 @@
 namespace P {
 namespace IO {
 
-VMsg::ModuleAddress dest = {
+static VMsg::ModuleAddress dest = {
                   0,
                   0, //reserved
                   (uint8_t) ModuleId::B,
@@ -34,7 +34,7 @@ bool MemIO::compare_and_swap(Baddr address, uint64_t new_val, uint64_t exp_val, 
     return true;
 }
 
-bool MemIO::perform_scattered_io(IOVecs buffers[], Baddrs *dev_offsets, bool is_write, Future *io_future)
+bool MemIO::perform_scattered_io(UNUSED IOVecs buffers[], UNUSED Baddrs *dev_offsets, UNUSED bool is_write, UNUSED Future *io_future)
 {
     PANIC("UNIMPLEMENTED!");
     return true;

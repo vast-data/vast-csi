@@ -54,6 +54,7 @@
 #endif
 
 #define ASSERT_NO_VTABLE(cls) static_assert(!std::is_polymorphic<cls>::value, #cls " has a virtual table")
+#define ASSERT_POD(cls) static_assert(std::is_pod<cls>::value, #cls " is not a POD object")
 
 // make nullptr_t printable (can be passed into ASSERT_OP)
 template<class C, class T>

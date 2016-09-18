@@ -43,7 +43,7 @@ void EnvObj::generate_config(char *buffer, size_t buf_size)
     conf_setting_set_int32(port, get_port());
     BaseNode *node = get_parent<BaseNode>();
     ASSERT_NOT_NULL(node);
-    for (int i = 0; i < node->get_base_node()->get_addresses_count(); ++i) {
+    for (int i = 0; i < node->get_base_node()->get_addresses_count(); /*++i*/) {
         ConfigSetting *local_address = conf_setting_add(vmsg, "local_address", CONFIG_TYPE_STRING);
         conf_setting_set_string(local_address, node->get_base_node()->get_addresses(i)->get_host());
         break;  // TODO: remove this to support multiple addresses. Change what the config looks like (can't have 2 "local_address" fields), and update the relevant code (and config files).
@@ -51,7 +51,7 @@ void EnvObj::generate_config(char *buffer, size_t buf_size)
 
     ConfigSetting *module_resources = conf_setting_add(vmsg, "module_resources", CONFIG_TYPE_LIST);
 
-    ConfigSetting *global_traces = conf_setting_add_group(root, "global_traces");
+    conf_setting_add_group(root, "global_traces");
 
     ConfigSetting *silo_types = conf_setting_add_group(root, "silo_types");
     ConfigSetting *silos = conf_setting_add(root, "silos", CONFIG_TYPE_LIST);
@@ -67,21 +67,21 @@ void EnvObj::generate_config(char *buffer, size_t buf_size)
         conf_setting_set_int32(affinity, get_silos(i)->get_affinity());
 
         ConfigSetting *silo_type = conf_setting_add_group(silo_types, silo_type_name);
-        ConfigSetting *modules = conf_setting_add_group(silo_type, "modules");
-        ConfigSetting *traces = conf_setting_add_group(silo_type, "traces");
+        conf_setting_add_group(silo_type, "modules");
+        conf_setting_add_group(silo_type, "traces");
     }
 
     bool module_resources_configured[(int)ModuleId::COUNT] = { false };
 
-    IMDB_ITER_MODULES(this, module, {
+    IMDB_ITER_CHILDREN(this, module, BaseModuleLogic) {
         // Update silo_types
         ConfigSetting *silo_type = P::Conf::conf_setting_get_element(silo_types,
                                                                      module->get_base_module()->get_silo_id());
         ASSERT_NOT_NULL(silo_type);
         ConfigSetting *modules = P::Conf::conf_setting_lookup_required(silo_type, "modules");
         ConfigSetting *module_config = conf_setting_add_group(modules, module_id_to_string(module->get_module_id()));
-        ConfigSetting *components = conf_setting_add_group(module_config, "components");
-        ConfigSetting *fibers = conf_setting_add(module_config, "fibers", CONFIG_TYPE_LIST);
+        conf_setting_add_group(module_config, "components");
+        conf_setting_add(module_config, "fibers", CONFIG_TYPE_LIST);
         ModuleRegistry::get(module->get_module_id())->generate_config(module_config);
 
         // Update VMsg module_resources
@@ -91,14 +91,14 @@ void EnvObj::generate_config(char *buffer, size_t buf_size)
             ConfigSetting *resources = conf_setting_add_group(module_resources, nullptr /* name */);
             ConfigSetting *name = conf_setting_add(resources, "name", CONFIG_TYPE_STRING);
             conf_setting_set_string(name, module_id_to_string(module->get_module_id()));
-            P::VMsg::ModuleResources vmsg_module_resources = { 0 };
+            P::VMsg::ModuleResources vmsg_module_resources = { 0, 0 };
             ModuleRegistry::get(module->get_module_id())->get_vmsg_module_resources(&vmsg_module_resources);
             ConfigSetting *num_send_buffers = conf_setting_add(resources, "num_send_buffers", CONFIG_TYPE_INT32);
             conf_setting_set_int32(num_send_buffers, vmsg_module_resources.num_send_buffers);
             ConfigSetting *num_recv_buffers = conf_setting_add(resources, "num_recv_buffers", CONFIG_TYPE_INT32);
             conf_setting_set_int32(num_recv_buffers, vmsg_module_resources.num_recv_buffers);
         }
-    });
+    }
 
     // Generate NFS config if there's an I-Module
     if (module_resources_configured[(P::Index)ModuleId::I]) {

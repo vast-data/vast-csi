@@ -299,7 +299,7 @@ xdrdrec_direct_read(XDR *xdrs, caddr_t addr, u_int len)
         if (current > 0) {
             // now read the rest from the socket
             // TODO readv
-            u_int bytes_read = (*(rstrm->readit))(rstrm->tcp_handle, addr, current);
+            int bytes_read = (*(rstrm->readit))(rstrm->tcp_handle, addr, current);
             if (bytes_read == -1) {
                 return FALSE;
             }

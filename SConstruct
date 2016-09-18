@@ -60,20 +60,36 @@ if debug is not None:
 compiler = ARGUMENTS.get('cc', 'clang')
 if compiler == 'clang':
     env.Replace(CC=compiler, CXX=compiler + '++')
-    env.Append(CFLAGS=['-Weverything',
-                       '-Wno-disabled-macro-expansion',
-                       '-Wno-gnu-zero-variadic-macro-arguments'])
+    env.Append(CPPFLAGS=['-Weverything',
+                         '-Wno-flexible-array-extensions',
+                         '-Wno-c++98-compat-pedantic',
+                         '-Wno-c99-extensions',
+                         '-Wno-exit-time-destructors',
+                         '-Wno-global-constructors',
+                         '-Wno-used-but-marked-unused',
+                         '-Wno-covered-switch-default',
+                         '-Wno-disabled-macro-expansion',
+                         '-Wno-zero-length-array',
+                         '-Wno-vla-extension',
+                         '-Wno-gnu-statement-expression',
+                         '-Wno-weak-vtables',
+                         '-Wno-gnu-zero-variadic-macro-arguments'])
 else:
     assert compiler == 'gcc'
     env.Replace(CC='/opt/rh/devtoolset-3/root/usr/bin/gcc',
-                CXX='g++')
-    env.Append(CFLAGS=['-Wall'])
+                CXX='/opt/rh/devtoolset-4/root/bin/g++')
+    env.Append(CPPFLAGS=['-Wall'])
 
 env.Append(CPPFLAGS=['-g',
                      '-O' + optimizations,
                      '-fno-omit-frame-pointer', # with -O2 this is required to be able to generate backtraces
                      '-Werror',
+                     '-Wno-conversion',
+                     '-Wno-switch-enum',
                      '-Wno-vla',
+                     '-Wno-packed',
+                     '-Wno-unused-function',
+                     '-Wno-non-virtual-dtor',
                      '-Wno-padded',
                      '-Wno-cast-align'])
 env.Append(CPPPATH=['src'])

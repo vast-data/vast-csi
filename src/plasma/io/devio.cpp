@@ -142,7 +142,7 @@ void DevIO::poll_events()
 
     ASSERT(active_ios > 0);
 
-    int ios_done;
+    int ios_done = 0;
     RETRY_LOOP_TILL_PANIC(io_poll_retry_params, P::Fiber::yield,
         ios_done = io_getevents(_ctx, 0, active_ios, events, nullptr);
         if (ios_done >= 0) {

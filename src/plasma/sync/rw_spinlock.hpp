@@ -86,7 +86,7 @@ public:
 private:
 
     bool writer_pending(State s) { return (s & State::WPENDING) != 0; }
-    bool reader_disabled (State s) { return (s & (State::WLOCKED || State::WPENDING)) != 0; }
+    bool reader_disabled (State s) { return (s & (State::WLOCKED | State::WPENDING)) != 0; }
     bool has_readers (State s) { return reader_count(s) > 0; }
     bool has_writer (State s) { return (s & State::WLOCKED) != 0; }
     bool no_lockers (State s) { return (s | State::WPENDING) == State::WPENDING; }

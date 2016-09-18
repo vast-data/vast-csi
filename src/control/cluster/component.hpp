@@ -65,8 +65,8 @@ private:
     /*!
      * Run Func concurrently on all active cnodes and wait for all fibers to complete.
      *
-     * \param Func a method of this class that accepts a CNode and Param.
-     * \param Param an arbitrary parameter passed to method.
+     * Func is a method of this class that accepts a CNode and Param.
+     * Param is an arbitrary parameter passed to method.
      */
     template <typename Func, typename Param>
     void map_on_cnodes(Func func, Param param);

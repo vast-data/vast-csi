@@ -20,13 +20,13 @@ void LockManagerServerImpl::init(SiloId silo_id, ModuleId module_id, ConfigSetti
     register_server(silo_id, module_id, FiberGroupId::B);
 }
 
-void LockManagerServerImpl::lock(LockParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
+void LockManagerServerImpl::lock(LockParams::RootReader *args, UNUSED P::VProto::Empty::RootBuilder *res)
 {
     DEBUG_ASSERT(args->get_lock_id() < _size)
     _locks[args->get_lock_id()].lock();
 }
 
-void LockManagerServerImpl::unlock(LockParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
+void LockManagerServerImpl::unlock(LockParams::RootReader *args, UNUSED P::VProto::Empty::RootBuilder *res)
 {
     DEBUG_ASSERT(args->get_lock_id() < _size)
     _locks[args->get_lock_id()].unlock();

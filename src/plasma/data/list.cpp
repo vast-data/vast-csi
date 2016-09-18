@@ -14,6 +14,11 @@ void List::init(List::Anchor *anchor, List::Pool *list_pool)
     _list_pool = list_pool;
 }
 
+DEBUG_VIRTUAL Index List::get_first()
+{
+    return _anchor->head;
+}
+
 void List::destroy(bool leak_check)
 {
     if (leak_check) {

@@ -46,7 +46,6 @@ public:
          * In order to destroy the listpool and release resources call destroy().
          *
          * \param size maximum number of nodes in the dlistpool.
-         * \return a pointer to a dlistpool.
          */
         void init(Index size)
         {
@@ -77,7 +76,6 @@ public:
     public:
         /*!
          * Initialize a dlist anchor.
-         * \param anchor out structure for initialization initialize
          */
         void init()
         {
@@ -105,8 +103,7 @@ public:
     };
 
     /*!
-     * Initialize a dlist.
-      * \param list out structure to initialize according to anchor and listpool. params are kept by reference,
+     * Initialize a dlist according to anchor and listpool. params are kept by reference,
      */
     void init(Anchor *anchor, Pool *list_pool);
 

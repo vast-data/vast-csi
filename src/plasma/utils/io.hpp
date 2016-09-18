@@ -59,7 +59,7 @@ enum TokenFieldBitSize
 
 
 #define TOKEN_MAX_SIZE  (16)
-#define TOKEN_STRUCT_PERFIX TokenType token_type : TokenFieldBitSize::TYPE;
+#define TOKEN_STRUCT_PREFIX TokenType token_type : TokenFieldBitSize::TYPE;
 
 static_assert((int)TokenType::TOKEN_TYPE_COUNT <= 1 << (int)TokenFieldBitSize::TYPE, "Too many token types!");
 
@@ -67,7 +67,7 @@ static_assert((int)TokenType::TOKEN_TYPE_COUNT <= 1 << (int)TokenFieldBitSize::T
 class MirroredAddressToken
 {
 public:
-    TOKEN_STRUCT_PERFIX
+    TOKEN_STRUCT_PREFIX
     uint64_t section_id  :   TokenFieldBitSize::MIRRORED_SECTION;
     uint64_t byte_offset :   TokenFieldBitSize::MIRRORED_BYTE_OFFSET;
 
@@ -85,21 +85,21 @@ public:
 
 struct FlashAddressToken
 {
-    TOKEN_STRUCT_PERFIX
+    TOKEN_STRUCT_PREFIX
     uint64_t big_block_id:  TokenFieldBitSize::FLASH_BIG_BLOCK;
     uint64_t byte_offset:   TokenFieldBitSize::FLASH_BYTE_OFFSET;
 };
 
 struct MapperAddressToken
 {
-    TOKEN_STRUCT_PERFIX
+    TOKEN_STRUCT_PREFIX
     uint64_t bla:60;
     uint64_t la;
 };
 
 struct DataReductionAddressToken
 {
-    TOKEN_STRUCT_PERFIX
+    TOKEN_STRUCT_PREFIX
     uint64_t blala:60;
     uint64_t li;
 };
@@ -109,7 +109,7 @@ class AddressToken
 public:
 
     union {
-        TOKEN_STRUCT_PERFIX
+        TOKEN_STRUCT_PREFIX
         MirroredAddressToken mirrored_token;
         FlashAddressToken f_token;
         MapperAddressToken mapper_token;

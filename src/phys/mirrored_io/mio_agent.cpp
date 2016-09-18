@@ -144,7 +144,7 @@ void MIOAgent::destroy()
     _section_zero_mapping.destroy();
 }
 
-void MIOAgent::config(ConfigParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
+void MIOAgent::config(ConfigParams::RootReader *args, UNUSED P::VProto::Empty::RootBuilder *res)
 {
     for (uint16_t i = 0; i < args->get_num_sections(); ++i) {
         SectionConfig::Reader section_config;
@@ -161,13 +161,13 @@ void MIOAgent::config(ConfigParams::RootReader *args, P::VProto::Empty::RootBuil
     }
 }
 
-void MIOAgent::activate(P::VProto::Empty::RootReader *args, P::VProto::Empty::RootBuilder *res)
+void MIOAgent::activate(UNUSED P::VProto::Empty::RootReader *args, UNUSED P::VProto::Empty::RootBuilder *res)
 {
     ASSERT(!_is_activated);
     _is_activated = true;
 }
 
-void MIOAgent::start_rebuilds(StartRebuildsParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
+void MIOAgent::start_rebuilds(StartRebuildsParams::RootReader *args, UNUSED P::VProto::Empty::RootBuilder *res)
 {
     for (uint16_t i = 0; i < args->get_num_section_rebuilds(); ++i) {
         SectionRebuildParams::Reader section_rebuild;
@@ -179,19 +179,19 @@ void MIOAgent::start_rebuilds(StartRebuildsParams::RootReader *args, P::VProto::
     }
 }
 
-void MIOAgent::end_rebuilds(EndRebuildsParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
+void MIOAgent::end_rebuilds(EndRebuildsParams::RootReader *args, UNUSED P::VProto::Empty::RootBuilder *res)
 {
     for (uint16_t i = 0; i < args->get_num_section_ids(); ++i) {
         end_rebuild(*args->get_section_ids(i));
     }
 }
 
-void MIOAgent::rebuild_copy(RebuildCopyParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
+void MIOAgent::rebuild_copy(RebuildCopyParams::RootReader *args, UNUSED P::VProto::Empty::RootBuilder *res)
 {
     rebuild_copy_internal(args->get_section_id());
 }
 
-void MIOAgent::remove_mappings(RemoveMappingsParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
+void MIOAgent::remove_mappings(RemoveMappingsParams::RootReader *args, UNUSED P::VProto::Empty::RootBuilder *res)
 {
     for (uint16_t i = 0; i < args->get_num_remove_mappings(); ++i) {
         RemoveMapping::Reader remove_mapping;
@@ -201,7 +201,7 @@ void MIOAgent::remove_mappings(RemoveMappingsParams::RootReader *args, P::VProto
     }
 }
 
-void MIOAgent::remove_device(RemoveDeviceParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
+void MIOAgent::remove_device(RemoveDeviceParams::RootReader *args, UNUSED P::VProto::Empty::RootBuilder *res)
 {
     remove_device_internal(get_device_from_guid(args->get_device_guid()));
 }
@@ -223,7 +223,7 @@ void MIOAgent::do_config_section(SectionMapping<max_devs_per_section> *section_m
                                  P::Index num_addresses, bool in_rebuild)
 {
     P::Index new_num_addresses = section_mapping->mapping_data.num_addresses + num_addresses;
-    ASSERT_OP(new_num_addresses, <=, max_devs_per_section);
+    ASSERT_OP((uint32_t)new_num_addresses, <=, max_devs_per_section);
 
     for (P::Index i = 0; i < num_addresses; ++i) {
         section_mapping->addresses[section_mapping->mapping_data.num_addresses + i] = addresses[i];
@@ -250,7 +250,7 @@ void MIOAgent::do_start_rebuild(SectionMapping<max_devs_per_section> *section_ma
 {
     ASSERT(!section_mapping->mapping_data.check_pending_change());
     section_mapping->mapping_data.set_in_rebuild(true);
-    ASSERT_OP(section_mapping->mapping_data.num_addresses, <, max_devs_per_section);
+    ASSERT_OP((uint32_t)section_mapping->mapping_data.num_addresses, <, max_devs_per_section);
     section_mapping->addresses[section_mapping->mapping_data.num_addresses].dev = new_dev;
     section_mapping->addresses[section_mapping->mapping_data.num_addresses].byte_offset = new_base_offset;
     ++section_mapping->mapping_data.num_addresses;
@@ -446,7 +446,7 @@ void MIOAgent::check_section_id_valid(uint32_t section_id)
     ASSERT_OP(section_id, <=, _max_section_id, "Invalid section ID");
 }
 
-bool MIOAgent::is_device_alive(P::IO::BaseIO *dev) const
+bool MIOAgent::is_device_alive(UNUSED P::IO::BaseIO *dev) const
 {
     // TODO: implement
 //    PANIC("Not implemented!");

@@ -21,41 +21,40 @@ namespace P {
 
 typedef uint8_t SiloId;
 
-/*!
- * Initialize a silo. Returns a pointer to a heap-allocated PSilo object.
- *
- * \param affinity the core id this silo should be pinned to. NO_AFFINITY (-1) means this silo should not be pinned to any core.
- * \param silo_config a config subtree. Here's an example configuration:
-\code
- {
-   modules: {
-     MODULE_I: {
-       components: {
-         cache: {
-           pages: 200;
-         }
-       }
-       fibers: (
-         {
-           count: 50;
-           stack_size: 4096;
-           group_id: "FIBER_GROUP_P";
-         }
-       )
-     }
-   }
-   traces: {
-
-   }
- }
-\endcode
- */
-
 class Silo {
 public:
     static const int32_t NO_AFFINITY = -1;
     static const SiloId  INVALID_SILO_ID = 255;
 
+    /*!
+     * Initialize a silo. Returns a pointer to a heap-allocated Silo object.
+     *
+     * \param affinity the core id this silo should be pinned to. NO_AFFINITY (-1) means this silo should not be pinned to any core.
+     * \param silo_config a config subtree. Here's an example configuration:
+     \code
+     {
+       modules: {
+         MODULE_I: {
+           components: {
+             cache: {
+               pages: 200;
+             }
+           }
+           fibers: (
+             {
+               count: 50;
+               stack_size: 4096;
+               group_id: "FIBER_GROUP_P";
+             }
+           )
+         }
+       }
+       traces: {
+
+       }
+     }
+     \endcode
+    */
     void init(P::Conf::ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, const char *data_dir, const char *trace_dir);
 
     /*!

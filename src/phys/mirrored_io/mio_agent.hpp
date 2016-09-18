@@ -100,23 +100,19 @@ public:
      *******************************/
     /*!
      *
-     * \param
      */
     void start_write(P::IO::MirroredAddressToken section, size_t write_size, MappingSet *phys_address_set);
     /*!
      *
-     * \param
      */
     void done_write(P::IO::MirroredAddressToken section, MappingSet *phys_address_set);
     /*!
      * Get a physical address for read purposes.
      * Note: when in_rebuild last device (the one that is being rebuilt) is not a valid device to read from.
-     * \param address logical address
      */
     void start_read(P::IO::MirroredAddressToken section, MappingSet *phys_address_set);
     /*!
      *
-     * \param
      */
     void done_read(P::IO::MirroredAddressToken section, MappingSet *phys_address_set);
 
@@ -188,7 +184,7 @@ private:
      * This means that write operations should acquire sub-section read locks while writing (avoid race with rebuild copier).
      * It also means that read operations should still avoid reading the newly added device.
      * Blocks until all ongoing write operations to the old mapping are done.
-     * \param section the section being redeployed to this new device
+     * \param section_id the section being redeployed to this new device
      */
     void start_rebuild(uint32_t section_id, P::IO::BaseIO *new_dev, P::IO::Baddr new_base_offset);
     /*!
@@ -196,20 +192,18 @@ private:
      * This is only allowed when section is in_rebuild.
      * The operation will need to acquire a write lock.
      * Copying is done from the last device in the old mapping.
-     * \param section the section being copied to the rebuilt new device
+     * \param section_id the section being copied to the rebuilt new device
      */
     void rebuild_copy_internal(uint32_t section_id);
     /*!
      * Undo the effect of start_rebuild.
      * Unmark the section mapping as in_rebuild and return to regular state with the currently update mapping.
-     * \param section the section that has finished redeployment to a new device
+     * \param section_id the section that has finished redeployment to a new device
      */
     void end_rebuild(uint32_t section_id);
 
     /*!
-     *
      * Blocks untill all IOs to device are done (writes to section and read to device)
-     * \param
      */
     void remove_section_from_device(uint32_t section_id, P::IO::BaseIO *dev);
 

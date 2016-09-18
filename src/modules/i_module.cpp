@@ -16,7 +16,7 @@ void IModule::init(Silo *silo, ConfigSetting *setting)
 
     // Verify that the i-module config matches that of NFS.
     ConfigSetting *fibers_setting = conf_setting_lookup_required(setting, "fibers");
-    int32_t i_proto_fiber_count = 0;
+    uint32_t i_proto_fiber_count = 0;
     LOOP(conf_setting_length(fibers_setting), i) {
         ConfigSetting *fiber_group_setting = conf_setting_get_element(fibers_setting, (uint32_t) i);
         ConfigSetting *group_id_setting = conf_setting_lookup_required(fiber_group_setting, "group_id");

@@ -10,6 +10,7 @@ public:
     {
         _size = size;
         _next_index = next_index;
+        _reserved = 0;
     }
 
     uint32_t get_size() { return _size; }

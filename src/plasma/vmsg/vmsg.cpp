@@ -68,10 +68,10 @@ void VMsg::init(VMsgConfiguration *vmsg_configuration)
         ctx->pending_acks_list_pool.init(n_acks);
         ctx->fiber = nullptr;
         ctx->n_pending_requests = 0;
-        LOOP(MAX_ENVS_PER_SYSTEM, i) {
-            ctx->pending_acks_anchors[i].init();
-            ctx->pending_acks_lists[i].init(&ctx->pending_acks_anchors[i], &ctx->pending_acks_list_pool);
-            ctx->n_acks[i] = 0;
+        LOOP(MAX_ENVS_PER_SYSTEM, j) {
+            ctx->pending_acks_anchors[j].init();
+            ctx->pending_acks_lists[j].init(&ctx->pending_acks_anchors[j], &ctx->pending_acks_list_pool);
+            ctx->n_acks[j] = 0;
         }
     }
 
@@ -104,7 +104,7 @@ void VMsg::destroy()
     LOOP(_vmsg_configuration.n_silos, i) {
         SiloContext *ctx = &_silos_context[i];
         // not calling destroy since it is legit to go down with pending acks
-        LOOP(MAX_ENVS_PER_SYSTEM, i) {
+        LOOP(MAX_ENVS_PER_SYSTEM, j) {
             // ctx->pending_acks_lists[i].destroy();
             // ctx->pending_acks_anchors[i].destroy();
         }
@@ -369,7 +369,7 @@ VMsgRes VMsg::send_async(ModuleAddress dest_guid, RpcServerId server_id, uint8_t
         .module_id = (uint8_t)header->sender.module_id,
         .buffer_type = (uint8_t)BufferType::SEND_REQUEST,
     };
-    header->response_msg_id = {0};
+    header->response_msg_id = {0, 0, 0};
     header->payload_size = len;
     header->verifier = 0;
     header->server_id = (uint8_t) server_id;
@@ -476,17 +476,17 @@ void VMsg::handle_event(TransportEvent *event)
     }
 }
 
-void VMsg::on_write_complete(TransportEvent *event)
+NO_RETURN void VMsg::on_write_complete(UNUSED TransportEvent *event)
 {
     PANIC("not implemented");
 }
 
-void VMsg::on_read_complete(TransportEvent *event)
+NO_RETURN void VMsg::on_read_complete(UNUSED TransportEvent *event)
 {
     PANIC("not implemented");
 }
 
-void VMsg::on_send_complete(TransportEvent *event)
+void VMsg::on_send_complete(UNUSED TransportEvent *event)
 {
     PT_DEBUG(DATA, "send complete");
 }

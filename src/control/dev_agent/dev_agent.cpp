@@ -27,7 +27,7 @@ void DevAgent::start(FiberGroupId io_provider_fiber_group)
     PT_INFO(CONTROL, "IOProvider started.");
 }
 
-void DevAgent::device_add(DeviceAddParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
+void DevAgent::device_add(DeviceAddParams::RootReader *args, UNUSED P::VProto::Empty::RootBuilder *res)
 {
     RemoteDeviceProto::Reader device_reader;
     LOOP(args->get_device_count(), i) {
@@ -47,7 +47,7 @@ void DevAgent::device_add(DeviceAddParams::RootReader *args, P::VProto::Empty::R
     }
 }
 
-void DevAgent::device_remove(DeviceRemoveParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
+void DevAgent::device_remove(DeviceRemoveParams::RootReader *args, UNUSED P::VProto::Empty::RootBuilder *res)
 {
     LOOP(args->get_guid_count(), i) {
         RemoteDevice *device = _db.get<RemoteDevice>(*args->get_guids(i));
@@ -60,7 +60,7 @@ void DevAgent::device_remove(DeviceRemoveParams::RootReader *args, P::VProto::Em
     }
 }
 
-void DevAgent::device_prepare_remove(DevicePrepareRemoveParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
+void DevAgent::device_prepare_remove(DevicePrepareRemoveParams::RootReader *args, UNUSED P::VProto::Empty::RootBuilder *res)
 {
     LOOP(args->get_guid_count(), i) {
         RemoteDevice *device = _db.get<RemoteDevice>(*args->get_guids(i));

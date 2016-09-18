@@ -102,7 +102,7 @@ void MountServer::run_procedure(RpcRequest *request)
     return;
 }
 
-void MountServer::mnt(RpcRequest *request, dirpath *path, mountres3 *res)
+void MountServer::mnt(UNUSED RpcRequest *request, dirpath *path, mountres3 *res)
 {
     static int auth_unix_val = AUTH_UNIX;
 
@@ -124,30 +124,28 @@ void MountServer::mnt(RpcRequest *request, dirpath *path, mountres3 *res)
     res->mountres3_u.mountinfo.auth_flavors.auth_flavors_val = &auth_unix_val;
 }
 
-void MountServer::dump(RpcRequest *request, mountlist *res)
+NO_RETURN void MountServer::dump(UNUSED RpcRequest *request, UNUSED mountlist *res)
 {
     // need to understand if someone is actually using this API
     PANIC("not implemented");
 }
 
-void MountServer::umnt(RpcRequest *request, dirpath *path)
+void MountServer::umnt(UNUSED RpcRequest *request, UNUSED dirpath *path)
 {
     // TODO remove from active mount list
     PT_INFO(CONTROL, "umnt request path=%s", *path);
 }
 
-void MountServer::umntall(RpcRequest *request)
+NO_RETURN void MountServer::umntall(UNUSED RpcRequest *request)
 {
     // need to understand if someone is actually using this API
     PANIC("not implemented");
 }
 
-void MountServer::list_export(RpcRequest *request, exports *exports_list)
+NO_RETURN void MountServer::list_export(UNUSED RpcRequest *request, UNUSED exports *exports_list)
 {
     // need to understand if someone is actually using this API
     PANIC("not implemented");
 }
 
 }
-
-

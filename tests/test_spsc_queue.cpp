@@ -12,10 +12,10 @@ struct TestElement {
     uint64_t val;
 };
 
-TestElement test_elements[100000];
-uint64_t expected_sum = 0;
+static TestElement test_elements[100000];
+static uint64_t expected_sum = 0;
 
-void producer(SPSCQueue *q)
+static void producer(SPSCQueue *q)
 {
     LOOP(NUM_ELEMENTS(test_elements), i) {
         test_elements[i].val = i;
@@ -31,7 +31,7 @@ void producer(SPSCQueue *q)
 #define GET_TEST_NODE(IDX) \
      (&(test_elements[IDX].node))
 
-void consumer(SPSCQueue *q)
+static void consumer(SPSCQueue *q)
 {
     uint64_t sum = 0;
     int visited_elements = 0;

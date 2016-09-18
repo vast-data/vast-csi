@@ -26,6 +26,7 @@ using namespace Layout;
 using P::VMsg::RpcGuard;
 
 static const LAddress head = { .shard_id=0, .addr_type=LAddrType::MD_BLOCKS, .offset=0 };
+UNUSED
 static const LAddress block_1 = { .shard_id=0, .addr_type=LAddrType::MD_BLOCKS, .offset=1*4*1024 };
 static const LAddress block_2 = { .shard_id=0, .addr_type=LAddrType::MD_BLOCKS, .offset=2*4*1024 };
 static const P::VMsg::ModuleAddress dest = {
@@ -84,7 +85,6 @@ static void _test_empty_head(EStore::EStoreIO *estore_io) {
 }
 
 static void _test_split_head(EStore::EStoreIO *estore_io) {
-    LAddress addr;
     EStoreRes res;
     MIOBuffer buf;
     estore_io->alloc_md_buffers(1, &buf);
@@ -175,10 +175,10 @@ static void test_block_allocator(void *ctx)
 
     add_params.init();
     add_params.set_device_count(dev_count);
-    for (int i = 0; i < dev_count; ++i) {
+    for (size_t i = 0; i < dev_count; ++i) {
         dev_guids[i].init();
         char dev_path[64];
-        sprintf(dev_path, "/tmp/io_provider_test_device_file%d.tmp", i);
+        sprintf(dev_path, "/tmp/io_provider_test_device_file%zu.tmp", i);
         add_params.get_devices(i)->set_guid(dev_guids[i]);
         add_params.get_devices(i)->set_size(dev_size);
         strcpy(add_params.get_devices(i)->get_path(), dev_path);
@@ -200,7 +200,7 @@ static void test_block_allocator(void *ctx)
         config_params->get_section_configs(0)->set_section_id(1);
         config_params->get_section_configs(0)->set_num_mappings(dev_count);
         config_params->get_section_configs(0)->set_in_rebuild(false);
-        for (int i = 0; i < dev_count; ++i) {
+        for (size_t i = 0; i < dev_count; ++i) {
             config_params->get_section_configs(0)->get_mappings(i)->set_device_guid(dev_guids[i]);
             config_params->get_section_configs(0)->get_mappings(i)->set_base_offset(i * DevIO::O_DIRECT_ALIGNMENT);
         }

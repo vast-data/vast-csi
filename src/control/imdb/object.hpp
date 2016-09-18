@@ -52,7 +52,7 @@ public:
 
     P::GUID get_guid() { return _guid; }
 
-    void set_guid(P::GUID guid) { _guid = guid; };
+    void set_guid(P::GUID guid) { _guid = guid; }
 
 private:
     P::GUID _guid;

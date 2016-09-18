@@ -21,7 +21,7 @@ void DataElement::init(EStoreIO *eio, ShardMd *shard_md, HandlesTable *handles_t
     _content_block.init(_buffers_guard->get_next());
 }
 
-EStoreRes DataElement::io_start(EHandle handle, uint64_t offset)
+EStoreRes DataElement::io_start(EHandle handle, UNUSED uint64_t offset)
 {
     EStoreRes res = read_handle_block(handle);
     PT_RETURN(res != OK, res, "failed to read handle=0x%lx block", handle);
@@ -353,7 +353,7 @@ EStoreRes DataElement::read_extents(uint64_t offset, uint32_t len)
 }
 
 EStoreRes DataElement::read_data(uint64_t offset, uint32_t len, P::IO::IOVecs *res_vecs, P::IO::IOVecs *alloc_vecs,
-                                 uint32_t *bytes_read, bool *eof)
+                                 uint32_t *bytes_read, UNUSED bool *eof)
 {
     EHandle handle = get_handle();
     uint32_t n_buffers = alloc_vecs->count;
@@ -439,14 +439,14 @@ struct TruncateCtx {
     uint64_t size;
 };
 
-EStoreRes truncate_cb_func(Layout::Address addr, uint64_t offset, void *ctx)
+static EStoreRes truncate_cb_func(Layout::Address addr, uint64_t offset, void *ctx)
 {
     TruncateCtx *truncate_ctx = (TruncateCtx *)ctx;
     return truncate_ctx->element->truncate_cb(addr, offset, ctx);
 }
 
 
-EStoreRes DataElement::truncate_cb(Layout::Address addr, uint64_t offset, void *ctx)
+EStoreRes DataElement::truncate_cb(Layout::Address addr, UNUSED uint64_t offset, void *ctx)
 {
     TruncateCtx *truncate_ctx = (TruncateCtx *)ctx;
     EStoreRes res = read_block(addr, get_handle(), &_bitmap_block);

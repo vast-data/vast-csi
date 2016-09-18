@@ -96,7 +96,7 @@ protected:
     /*!
      * Perform a scatter => scatter IO operation
      * \param buffers an array of scatter_gather buffers containing data to be written or read to (depending on is_write).
-     * \param target_baddrs a structure holding the collection of target device physical addresses to access.
+     * \param dev_offsets a structure holding the collection of target device physical addresses to access.
      *        target_baddrs->count is the length of buffers array.
      * \param io_future the token to wait on for async execution. for sync operation set as nullptr.
      */

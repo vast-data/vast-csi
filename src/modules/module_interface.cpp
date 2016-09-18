@@ -26,14 +26,14 @@ class ModuleFactoryImpl : public ModuleFactory {
     }
 };
 
-ModuleFactoryImpl<TestModule, Control::TModuleObj> t;
-ModuleFactoryImpl<P::PModule, Control::PModuleObj> p;
-ModuleFactoryImpl<P::EModule, Control::EModuleObj> e;
-ModuleFactoryImpl<Control::CModule, Control::CModuleObj> c;
-ModuleFactoryImpl<BModule, Control::BModuleObj> b;
-ModuleFactoryImpl<IModule, Control::IModuleObj> i;
+static ModuleFactoryImpl<TestModule, Control::TModuleObj> t;
+static ModuleFactoryImpl<P::PModule, Control::PModuleObj> p;
+static ModuleFactoryImpl<P::EModule, Control::EModuleObj> e;
+static ModuleFactoryImpl<Control::CModule, Control::CModuleObj> c;
+static ModuleFactoryImpl<BModule, Control::BModuleObj> b;
+static ModuleFactoryImpl<IModule, Control::IModuleObj> i;
 
-ModuleFactory *factories[] = { &t, &p, &e, &c, &b, &i };
+static ModuleFactory *factories[] = { &t, &p, &e, &c, &b, &i };
 
 /*static*/ ModuleFactory *ModuleRegistry::get(ModuleId module_id)
 {

@@ -84,7 +84,7 @@ uint64_t TimerQueues::poll()
     return NANO_TO_MICRO(time - start_time);
 }
 
-/* static */ void TimerQueues::wakeup(Fiber *fiber, SleepInterval interval)
+/* static */ void TimerQueues::wakeup(Fiber *fiber, UNUSED SleepInterval interval)
 {
     TimerQueues *timer_queues = Scheduler::get()->get_timer_queues();
     fiber->pop_and_resume(&timer_queues->_queues[(byte) fiber->get_suspend_state()->sleep_interval]);

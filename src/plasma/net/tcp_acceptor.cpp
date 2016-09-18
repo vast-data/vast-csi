@@ -82,7 +82,7 @@ void TcpAcceptor::add_consumer(TcpConsumer *consumer)
     _n_consumers++;
 }
 
-void sig_handler(int sig)
+static void sig_handler(UNUSED int sig)
 {
     // do nothing, this is simply used to take the thread out of epoll
 }

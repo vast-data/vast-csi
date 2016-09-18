@@ -16,7 +16,7 @@ public:
     // TODO optimize by keeping each handle only once in the block
     EHandle _handle;
 } PACKED;
-ASSERT_NO_VTABLE(ContentExtent);;
+ASSERT_NO_VTABLE(ContentExtent);
 
 struct ContentExtents {
     uint16_t n_extents;
@@ -85,4 +85,3 @@ private:
 
 
 }
-

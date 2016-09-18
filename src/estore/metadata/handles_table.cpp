@@ -58,7 +58,7 @@ void HandlesTable::load()
     }
 }
 
-EStoreRes HandlesTable::resize(uint32_t n_buckets)
+EStoreRes HandlesTable::resize(UNUSED uint32_t n_buckets)
 {
     PANIC("not implemented");
     return OK;

@@ -59,7 +59,7 @@ EStoreRes BlockAllocator::alloc_from_extra_space(P::ShardId shard_id, LAddrType 
 }
 
 EStoreRes BlockAllocator::alloc(P::ShardId shard_id, LAddrType type, LAddress *eaddr OUT) {
-    MirroredIO::WorkerID worker_id = P::Silo::get_current_silo_id();
+    //currently unused: MirroredIO::WorkerID worker_id = P::Silo::get_current_silo_id();
     //_lock_addr.byte_offset=_section_allocator->shard_id_to_offset(eaddr->addr_type, eaddr->shard_id);
     P::IO::MirroredAddressToken head_addr = _section_allocator->translate_block(shard_id, type, 0);
     MirroredIO::MIO::Buffer *mio_buf = &_head_mio_buf;
@@ -111,7 +111,7 @@ EStoreRes BlockAllocator::alloc(P::ShardId shard_id, LAddrType type, LAddress *e
 }
 
 bool BlockAllocator::free(const LAddress *eaddr) {
-    MirroredIO::WorkerID worker_id = P::Silo::get_current_silo_id();
+    //currently unused: MirroredIO::WorkerID worker_id = P::Silo::get_current_silo_id();
     //_lock_addr.byte_offset=_section_allocator->shard_id_to_offset(eaddr->addr_type, eaddr->shard_id);
     P::IO::MirroredAddressToken head_addr = _section_allocator->translate_block(eaddr->shard_id, eaddr->addr_type, 0);
     BlockAddr new_block = eaddr->offset / _section_allocator->get_addr_type_block_size(eaddr->addr_type);

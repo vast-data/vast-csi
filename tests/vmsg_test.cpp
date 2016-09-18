@@ -123,7 +123,7 @@ void VMsgTest::add_addresses(EnvId id, uint16_t port)
     _lock.lock();
     if (_first_silo) {
         EnvAddresses::RootBuilder addresses;
-        P::EnvModules env_modules = { 0 };
+        P::EnvModules env_modules = { };
         env_modules.env_modules[(P::byte)ModuleId::E] = true;
         env_modules.env_modules[(P::byte)ModuleId::TEST] = true;
         addresses.set_n_addr(1);
@@ -245,9 +245,9 @@ static TestRpcServerImpl *rpc_server_init(Silo *silo)
     return server;
 }
 
-static void init_test_server(Silo *silo, void *ctx)
+static void init_test_server(Silo *silo, UNUSED void *ctx)
 {
-    TestRpcServer *server = rpc_server_init(silo);
+    rpc_server_init(silo);
 }
 
 static void client_test_func(void *ctx)

@@ -39,9 +39,8 @@ public:
     };
 
     /*!
-     * Initialize a PDevIO structure.
-     * When finished with the PDevIO call destroy.
-     * \param devio the structure to be initialized.
+     * Initialize a DevIO structure.
+     * When finished with the DevIO call destroy.
      * \param dev_name the device path.
      * \param iodepth the maximum value of concurrent pending ios for this device.
      * \param iopool the shared object pool holding items of type PIO.
@@ -66,8 +65,7 @@ public:
     bool has_pending_ios();
 
     /*!
-     * Release PDevIO structure resources.
-     * \param devio is the structure to be released.
+     * Release DevIO structure resources.
      */
     void destroy();
 

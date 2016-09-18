@@ -20,8 +20,8 @@ using P::ShardId;
 
 #define OP_CALLBACK_RETURN(OP_CB, CB_CTX, ATTR) \
         if (OP_CB) { \
-            EStoreRes res = OP_CB(ATTR, CB_CTX); \
-            PT_RETURN(res != OK, res, "operation callback returned with error"); \
+            EStoreRes _res = OP_CB(ATTR, CB_CTX); \
+            PT_RETURN(_res != OK, _res, "operation callback returned with error"); \
         }
 
 void Ingest::init(EStoreIO *eio, ShardMd *shard_md, HandlesTable *handles_table)
@@ -47,7 +47,7 @@ EStoreRes Ingest::create_root()
 }
 
 EStoreRes Ingest::create(OpCallback op_cb, void *cb_ctx, EHandle parent, const char *name, CreateFlags create_flags,
-                         uint64_t verifier, SettableAttr *sattr, ExtendedAttrs *user_xattr, ExtendedAttrs *proto_xattr,
+                         UNUSED uint64_t verifier, SettableAttr *sattr, UNUSED ExtendedAttrs *user_xattr, UNUSED ExtendedAttrs *proto_xattr,
                          EHandle *element_handle, SystemAttr *element_attr, SystemAttr *pre_pattr, SystemAttr *post_pattr)
 {
     PT_INFO(DATA, "create parent=0x%lx name=%s", parent, name);
@@ -96,7 +96,7 @@ EStoreRes Ingest::create(OpCallback op_cb, void *cb_ctx, EHandle parent, const c
     return OK;
 }
 
-EStoreRes Ingest::lookup(OpCallback op_cb, void *cb_ctx, EHandle parent, const char *name, bool case_sensitive,
+EStoreRes Ingest::lookup(OpCallback op_cb, void *cb_ctx, EHandle parent, const char *name, UNUSED bool case_sensitive,
                          EHandle *handle, SystemAttr *element_attr, SystemAttr *parent_attr)
 {
     DEBUG_ASSERT(case_sensitive == true); // TODO case insensitive lookup
@@ -256,8 +256,8 @@ EStoreRes Ingest::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t 
     return OK;
 }
 
-EStoreRes Ingest::get_attr(OpCallback op_cb, void *cb_ctx, EHandle handle, SystemAttr *attr, ExtendedAttrs *user_xattr,
-                           ExtendedAttrs *proto_xattr)
+EStoreRes Ingest::get_attr(OpCallback op_cb, void *cb_ctx, EHandle handle, SystemAttr *attr, UNUSED ExtendedAttrs *user_xattr,
+                           UNUSED ExtendedAttrs *proto_xattr)
 {
     BuffersGuard buffers_guard(_eio, 2);
 
@@ -270,7 +270,7 @@ EStoreRes Ingest::get_attr(OpCallback op_cb, void *cb_ctx, EHandle handle, Syste
 }
 
 EStoreRes Ingest::set_attr(OpCallback op_cb, void *cb_ctx, EHandle handle, SettableAttr *sattr, uint64_t ctime_guard,
-                 ExtendedAttrs *user_xattr, ExtendedAttrs *proto_xattr, SystemAttr *pre_attr, SystemAttr *post_attr)
+                           UNUSED ExtendedAttrs *user_xattr, UNUSED ExtendedAttrs *proto_xattr, SystemAttr *pre_attr, SystemAttr *post_attr)
 {
     BuffersGuard buffers_guard(_eio, 7);
 

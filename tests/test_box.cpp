@@ -6,14 +6,13 @@
 #include "test_module.hpp"
 #include "lock_manager/lock_manager.rpc.client.hpp"
 
-#define CURRENT_COMPONENT ComponentId::TEST
 #define STEP(var) ASSERT_EQUAL(++step, var)
 static int step = 0;
 
 using namespace P::VMsg;
 using P::Env;
 
-ModuleAddress dest = {
+static ModuleAddress dest = {
     0,
     0, //reserved
     (uint8_t) ModuleId::B,
@@ -63,7 +62,7 @@ static void fiber_lock(void *value)
     STEP(6);
 }
 
-static void test_lock_manager(void *arg)
+static void test_lock_manager(UNUSED void *arg)
 {
     LockManager::LockManagerClient client;
     client.init();

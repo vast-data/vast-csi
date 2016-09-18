@@ -14,8 +14,8 @@
 namespace EStore {
 
 #define N_WRITE_BUFFERS 4
-std::map<std::string, int> fd_map;
-uint64_t current_addr = 2 + N_WRITE_BUFFERS;
+static std::map<std::string, int> fd_map;
+static uint64_t current_addr = 2 + N_WRITE_BUFFERS;
 
 using EStoreRes::OK;
 using P::IO::IOVec;
@@ -23,7 +23,7 @@ using P::IO::IOVecs;
 using P::FiberSync::FutureRes;
 using MirroredIO::MIO;
 
-void EStoreIO::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id, MirroredIO::MIO *mio)
+void EStoreIO::init(UNUSED P::SiloId silo_id, UNUSED ModuleId module_id, UNUSED FiberGroupId rpc_fiber_group_id, UNUSED MirroredIO::MIO *mio)
 {
     current_addr = 2 + N_WRITE_BUFFERS;
     P::ensure_directory_exists("/tmp/eio_mock_data");
@@ -61,17 +61,17 @@ static int get_mock_fd(LAddress addr)
     return fd;
 }
 
-EStoreRes WARN_UNUSED EStoreIO::read_md(LAddress addr, MIOBuffer *buff, bool locked, FutureRes<MIO::ReadRet> *future)
+EStoreRes WARN_UNUSED EStoreIO::read_md(LAddress addr, MIOBuffer *buff, UNUSED bool locked, FutureRes<MIO::ReadRet> *future)
 {
     int fd = get_mock_fd(addr);
     PT_DEBUG(DATA, "read addr=0x%lx offset=%lu fd=%d", addr.as_number(), addr.offset, fd);
     ASSERT(buff->get_raw_size() == NVRAM_MD_BLOCK_SIZE);
     ASSERT((size_t)buff->get_mio_vec()->iov_base % IO_ALIGNMENT == 0);
     ssize_t res = pread(fd, buff->get_mio_vec()->iov_base, buff->get_raw_size(), addr.offset);
-    if (res != buff->get_raw_size()) {
+    if (res != (ssize_t) buff->get_raw_size()) {
         PTC_ERROR("requested %lu bytes got res=%ld bytes errno=%d", buff->get_raw_size(), res, errno);
     }
-    ASSERT_ERRNO(res == buff->get_raw_size());
+    ASSERT_ERRNO(res == (ssize_t) buff->get_raw_size());
     if (future) {
         future->set();
     }
@@ -86,7 +86,7 @@ EStoreRes EStoreIO::write_md(LAddress addr, MIOBuffer *buff, FutureRes<bool> *fu
     ASSERT_OP((size_t)buff->get_mio_vec()->iov_base % IO_ALIGNMENT, ==, 0);
     memset(buff->get_mio_vec()->iov_base, 0xff, MIO_OVERHEAD);
     ssize_t res = pwrite(fd, buff->get_mio_vec()->iov_base, buff->get_raw_size(), addr.offset);
-    ASSERT_ERRNO(res == buff->get_raw_size());
+    ASSERT_ERRNO(res == (ssize_t) buff->get_raw_size());
     if (future) {
         future->set();
     }
@@ -174,7 +174,7 @@ void EStoreIO::free_data_buffers(IOVecs *iovecs)
     iovecs->count = 0;
 }
 
-EStoreRes EStoreIO::create_block_allocator(LAddrType type)
+EStoreRes EStoreIO::create_block_allocator(UNUSED LAddrType type)
 {
     return EStoreRes::OK;
 }
@@ -188,12 +188,12 @@ EStoreRes EStoreIO::alloc_md_block(P::ShardId shard_id, LAddrType type, LAddress
     return EStoreRes::OK;
 }
 
-EStoreRes EStoreIO::free_md_block(LAddress addr)
+EStoreRes EStoreIO::free_md_block(UNUSED LAddress addr)
 {
     return EStoreRes::OK;
 }
 
-uint64_t EStoreIO::get_total_addr_type_size(P::ShardId shard_id, LAddrType type)
+uint64_t EStoreIO::get_total_addr_type_size(UNUSED P::ShardId shard_id, LAddrType type)
 {
     if (type == LAddrType::WRITE_BUFFER) {
         return WRITE_BUFFER_SIZE * N_WRITE_BUFFERS;
@@ -202,11 +202,11 @@ uint64_t EStoreIO::get_total_addr_type_size(P::ShardId shard_id, LAddrType type)
     }
 }
 
-EStoreRes WARN_UNUSED EStoreIO::lock(LAddress addr, BlockType type, LockObject *lock_obj) {
+NO_RETURN EStoreRes WARN_UNUSED EStoreIO::lock(UNUSED LAddress addr, UNUSED BlockType type, UNUSED LockObject *lock_obj) {
     PANIC("");
 }
 
-EStoreRes WARN_UNUSED EStoreIO::unlock(LAddress addr, BlockType type, LockObject *lock_obj) {
+EStoreRes WARN_UNUSED EStoreIO::unlock(UNUSED LAddress addr, UNUSED BlockType type, UNUSED LockObject *lock_obj) {
     PANIC("");
 }
 

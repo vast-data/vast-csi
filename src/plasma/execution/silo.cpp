@@ -27,7 +27,7 @@ using namespace P::Conf;
 
 static thread_local Silo *current_silo = nullptr;
 
-void Silo::init(ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, const char *data_dir, const char *trace_dir)
+void Silo::init(ConfigSetting *silo_config, int32_t affinity, SiloId silo_id, UNUSED const char *data_dir, const char *trace_dir)
 {
     _affinity = affinity;
     _silo_id = silo_id;
@@ -95,7 +95,7 @@ static void pin_to_core(int32_t core_id)
     silo->maintenance();
 }
 
-void Silo::maintenance()
+NO_RETURN void Silo::maintenance()
 {
     while (true) {
         P::TimerQueues::sleep(P::SleepInterval::SLEEP_1_SECOND);
@@ -179,7 +179,7 @@ ModuleInterface *Silo::get_module()
     return Silo::get()->get_module_descriptor()->module;
 }
 
-void Silo::set_component_state(ModuleId module_id, ComponentId component_id, void *component)
+void Silo::set_component_state(UNUSED ModuleId module_id, ComponentId component_id, void *component)
 {
     get_module_descriptor()->components[(int)component_id] = component;
 }

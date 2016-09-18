@@ -10,7 +10,7 @@ namespace EStore {
 struct NameRange {
     uint16_t len;
     LAddress bitmap_addr;
-    char name[0];
+    char name[];
 } PACKED;
 
 
@@ -35,4 +35,3 @@ private:
 };
 
 }
-

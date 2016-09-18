@@ -96,8 +96,7 @@ public:
     };
 
     /*!
-     * Initialize a list.
-      * \param list out structure to initialize according to anchor and listpool. params are kept by reference,
+     * Initialize a list with an anchor and listpool. params are kept by reference,
      */
     void init(Anchor *anchor, Pool *list_pool);
 
@@ -137,14 +136,14 @@ public:
     /*!
      * Get the first list element index (for traversal).
      */
-    Index get_first() { return _anchor->head; }
+    DEBUG_VIRTUAL Index get_first();
 
-    Index next(Index index) { return idx2node(index)->next; }
+    DEBUG_VIRTUAL Index next(Index index) { return idx2node(index)->next; }
 
     /*!
      * True if the item in index is the last in the list (right before the anchor element)..
      */
-    bool is_last(Index index) { DEBUG_ASSERT((next(index) == INVALID_INDEX) == (_anchor->tail == index)); return _anchor->tail == index; }
+    DEBUG_VIRTUAL bool is_last(Index index) { DEBUG_ASSERT((next(index) == INVALID_INDEX) == (_anchor->tail == index)); return _anchor->tail == index; }
 
 private:
 

@@ -4,7 +4,7 @@
 
 namespace {
 
-void test_panic()
+void NO_RETURN test_panic()
 {
     PANIC("Drop the mic");
 }

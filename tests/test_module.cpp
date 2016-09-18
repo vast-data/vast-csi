@@ -47,7 +47,7 @@ void TestModule::set_start_func(StartFunc func, void *ctx)
     _start_func_ctx = ctx;
 }
 
-void TestModule::init(P::Silo *silo, P::Conf::ConfigSetting *setting)
+void TestModule::init(P::Silo *silo, UNUSED P::Conf::ConfigSetting *setting)
 {
     _init = true;
     if (_init_func) {
@@ -61,7 +61,7 @@ void TestModule::run_start_func()
     _start_func(_start_func_ctx);
 }
 
-static void start_func_fiber(void *ctx)
+static void start_func_fiber(UNUSED void *ctx)
 {
     TestModule::run_start_func();
 

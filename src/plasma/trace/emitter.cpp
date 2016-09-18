@@ -26,7 +26,7 @@ DBuffer *Emitter::get_dbuffer(Channel channel)
     return _buffers[(byte) channel];
 }
 
-uint64_t Emitter::get_fiber_id()
+uint32_t Emitter::get_fiber_id()
 {
     Fiber *fiber = Fiber::get_current();
     if (fiber != nullptr)

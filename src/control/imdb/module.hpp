@@ -90,9 +90,3 @@ public:
 };
 
 }
-
-#define IMDB_ITER_MODULES(env, var, body)                               \
-    ILIST_ITER_SAFE(env->get_children(), i) {                           \
-        BaseModuleLogic *var = dynamic_cast<BaseModuleLogic*>(p_container_of(i, BaseTreeObject, child_node)); \
-        if (var != nullptr) { body }                                    \
-    }

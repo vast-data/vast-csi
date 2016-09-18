@@ -22,7 +22,7 @@ void Hash::init_custom(size_t n_buckets, Index n_values, MatchFunc match_func, v
     }
 }
 
-size_t default_hash_func(void *key, size_t length)
+static size_t default_hash_func(void *key, size_t length)
 {
     uint32_t murmur_hash;
     MurmurHash3_x86_32(key, (int) length, SEED, &murmur_hash);

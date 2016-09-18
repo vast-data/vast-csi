@@ -10,13 +10,13 @@ namespace EStore {
 
 struct NameHash {
     uint8_t len;
-    char hash[0];
+    char hash[];
 } PACKED;
 
 struct ContentHashes {
     uint16_t len;
     LAddress content_addr;
-    NameHash hashes[0];
+    NameHash hashes[];
 } PACKED;
 
 class NameBitmapBlock : public BaseBlock {

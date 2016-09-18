@@ -14,7 +14,7 @@
 
 static struct timeval TIMEOUT = { 2, 0 };
 
-void test_nfs3_bad_version()
+static void test_nfs3_bad_version()
 {
     CLIENT *nfs_clnt = clnt_create("127.0.0.1", NFS_PROGRAM, 1, "tcp");
     struct rpc_err error;
@@ -33,10 +33,10 @@ void test_nfs3_bad_version()
     clnt_destroy(nfs_clnt);
 }
 
-void send_mount_msgs(CLIENT *clnt)
+static void send_mount_msgs(CLIENT *clnt)
 {
-    void  *clnt_res;
-    char *mountproc3_null_3_arg;
+    void  *clnt_res = nullptr;
+    char *mountproc3_null_3_arg = nullptr;
 
     if (clnt_call(clnt, MOUNTPROC3_NULL,
                   (xdrproc_t) xdr_void, (caddr_t) mountproc3_null_3_arg,
@@ -69,7 +69,7 @@ void send_mount_msgs(CLIENT *clnt)
     }
 }
 
-void test_nfs3_getattr()
+static void test_nfs3_getattr()
 {
     const char *dir_path = "/";
     mountres3 mnt_res3;
@@ -127,7 +127,7 @@ void test_nfs3_getattr()
     auth_destroy(auth);
 }
 
-void test_mount()
+static void test_mount()
 {
     AUTH *auth = authunix_create_default();
     CLIENT *tcp_clnt;
@@ -153,7 +153,7 @@ void test_mount()
     auth_destroy(auth);
 }
 
-void test_nfs()
+static void test_nfs()
 {
     // note: this isn't really testing much, need to decide if its worth the investment vs just using existing tools
     AUTH *auth = authunix_create_default();
@@ -184,7 +184,7 @@ static const P::VMsg::ModuleAddress dest = {
     0  // silo_id
 };
 
-static void start_func(void *ctx)
+static void start_func(UNUSED void *ctx)
 {
     IModuleAgentClient client;
     client.init();

@@ -14,7 +14,7 @@ using namespace P::Conf;
 
 namespace Nfs {
 
-/*static*/ Nfs::NfsConfig NfsProto::_nfs_conf = { 0 };
+/*static*/ Nfs::NfsConfig NfsProto::_nfs_conf = {};
 
 void NfsProto::init(EStore::EStore *estore, TcpAcceptor *tcp_acceptor, bool primary_instance)
 {
@@ -123,4 +123,3 @@ static uint32_t get_nfs_setting(P::Conf::ConfigSetting *nfs_setting, const char 
 }
 
 }
-

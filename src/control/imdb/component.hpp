@@ -41,13 +41,6 @@ public:
     virtual TypeId get_type_id() = 0;
     // This following is also required but doesn't compile (pure virtual can't be static)
     // static virtual TypeId get_type_id_static() = 0;
-
-    template <class T>
-    T* cast()
-    {
-        ASSERT(T::get_type_id_static() == get_type_id(), "Invalid cast from base type to child.");
-        return (T*) this;
-    }
 };
 
 // the following functions are used by the hash table.
@@ -55,12 +48,14 @@ public:
 
 static size_t object_hash_func(void *key, size_t length)
 {
+    (void) length;
     P::GUID *guid = (P::GUID*) key;
     return guid->get_first_half();
 }
 
 static bool match_object(void *match_arg, P::Index index, void *key, size_t length)
 {
+    (void) length;
     P::Pool *pool = (P::Pool*)match_arg;
     BaseObject *p = (BaseObject*)pool->index_to_address(index);
     P::GUID *guid = (P::GUID*) key;
@@ -213,14 +208,36 @@ public:
     }
 
     template <class Child>
+    Child *get_first_child()
+    {
+        ILIST_ITER(get_children(), i) {
+            Child *var = dynamic_cast<Child*>(p_container_of(i, BaseTreeObject, child_node));
+            if (var != nullptr)
+                return var;
+        }
+        return nullptr;
+    }
+
+    template <class Sibling>
+    Sibling *get_next_sibling()
+    {
+        ILIST_ITER_FROM(_parent->get_children(), i, &child_node) {
+            Sibling *var = dynamic_cast<Sibling*>(p_container_of(i, BaseTreeObject, child_node));
+            if (var != nullptr && var != this)
+                return var;
+        }
+        return nullptr;
+    }
+
+    template <class Child>
     Child *get_only_child()
     {
         Child *result = nullptr;
         ILIST_ITER(get_children(), i) {
-            BaseTreeObject *child = p_container_of(i, BaseTreeObject, child_node);
-            if (child->get_type_id() == Child::get_type_id_static()) {
+            Child *var = dynamic_cast<Child*>(p_container_of(i, BaseTreeObject, child_node));
+            if (var != nullptr) {
                 ASSERT(result == nullptr);
-                result = child->cast<Child>();
+                result = var;
             }
         }
         return result;
@@ -232,8 +249,8 @@ public:
         size_t count = 0;
 
         ILIST_ITER(get_children(), i) {
-            BaseTreeObject *child = p_container_of(i, BaseTreeObject, child_node);
-            if (child->get_type_id() == Child::get_type_id_static()) {
+            Child *var = dynamic_cast<Child*>(p_container_of(i, BaseTreeObject, child_node));
+            if (var != nullptr) {
                 count++;
             }
         }
@@ -301,16 +318,4 @@ private:
 
 }
 
-#define IMDB_ITER_CHILDREN(parent, var, child_type, body)               \
-    ILIST_ITER_SAFE(parent->get_children(), i_) {                       \
-        BaseTreeObject *child_ = p_container_of(i_, BaseTreeObject, child_node); \
-        child_type *var;                                                \
-        switch (child_->get_type_id()) {                                \
-        case TypeId::child_type:                                        \
-            var = child_->cast<child_type>();                           \
-            { body }                                                    \
-            break;                                                      \
-        default:                                                        \
-            break;                                                      \
-        }                                                               \
-    }
+#define IMDB_ITER_CHILDREN(parent, var, child_type) for (child_type *var = parent->get_first_child<child_type>(); var != nullptr; var = var->get_next_sibling<child_type>())

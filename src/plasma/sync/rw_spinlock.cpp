@@ -8,7 +8,7 @@ namespace Sync {
 
 void RWSpinLock::retry_until_wlock()
 {
-    uint32_t current_state;
+    uint32_t current_state = State::UNLOCKED; //TODO: the UNLOCKED value is just so the compiler won't warn this might be uninitialized at line 21. Perhaps RETRY_LOOP should be fixed and this can be uninitialized.
     RETRY_LOOP_TILL_PANIC(write_retry, Fiber::thread_or_fiber_yield,
         RETRY_LOOP_TILL_PANIC(write_retry, Fiber::thread_or_fiber_yield,
             current_state = _state.load();

@@ -32,7 +32,7 @@ void NlmServer::set_xdr_procs(RpcRequest *request)
             request->args_proc = (xdrproc_t)xdr_void;
             request->res_proc = (xdrproc_t)xdr_void;
             break;
-        
+
         case NLMPROC4_TEST:
             request->args.test_args.cookie.n_bytes = request->args_buffer_nlm.netobj0;
             request->args.test_args.alock.caller_name = request->args_buffer_nlm.caller_name;
@@ -117,11 +117,11 @@ void NlmServer::test(RpcRequest *request, nlm4_testargs *arg, nlm4_testres *res)
     EStore::LockInfo lock;
     EStore::LockInfo existing_lock;
     EStore::EHandle handle;
-    
+
     nlm4_lock_to_handle(&arg->alock, &handle);
     nlm4_lock_to_lock_info(arg->exclusive, &arg->alock, &lock);
     EStoreRes eres = _estore->test_lock(nullptr, nullptr, handle, &lock, &existing_lock);
-    
+
     request->res.nlm4_test_res.cookie.n_bytes = request->args.test_args.cookie.n_bytes;
     request->res.nlm4_test_res.cookie.n_len = request->args.test_args.cookie.n_len;
 
@@ -152,11 +152,11 @@ void NlmServer::lock(RpcRequest *request, nlm4_lockargs *arg, nlm4_res *res)
 {
     EStore::LockInfo lock;
     EStore::EHandle handle;
-    
+
     nlm4_lock_to_handle(&arg->alock, &handle);
     nlm4_lock_to_lock_info(arg->exclusive, &arg->alock, &lock);
     EStoreRes eres = _estore->lock(nullptr, nullptr, handle, arg->block, &lock);
-    
+
     request->res.nlm4_res.cookie.n_bytes = request->args.lock_args.cookie.n_bytes;
     request->res.nlm4_res.cookie.n_len = request->args.lock_args.cookie.n_len;
 
@@ -173,7 +173,7 @@ void NlmServer::lock(RpcRequest *request, nlm4_lockargs *arg, nlm4_res *res)
     }
 }
 
-void NlmServer::cancel(RpcRequest *request, nlm4_cancargs *arg, nlm4_res *res)
+void NlmServer::cancel(RpcRequest *request, UNUSED nlm4_cancargs *arg, nlm4_res *res)
 {
     request->res.nlm4_res.cookie.n_bytes = request->args.cancel_args.cookie.n_bytes;
     request->res.nlm4_res.cookie.n_len = request->args.cancel_args.cookie.n_len;
@@ -185,11 +185,11 @@ void NlmServer::unlock(RpcRequest *request, nlm4_unlockargs *arg, nlm4_res *res)
 {
     EStore::LockInfo lock;
     EStore::EHandle handle;
-    
+
     nlm4_lock_to_handle(&arg->alock, &handle);
     nlm4_lock_to_lock_info(true, &arg->alock, &lock);
     EStoreRes eres = _estore->unlock(nullptr, nullptr, handle, &lock);
-    
+
     request->res.nlm4_res.cookie.n_bytes = request->args.unlock_args.cookie.n_bytes;
     request->res.nlm4_res.cookie.n_len = request->args.unlock_args.cookie.n_len;
 
@@ -207,5 +207,3 @@ void NlmServer::unlock(RpcRequest *request, nlm4_unlockargs *arg, nlm4_res *res)
 }
 
 }
-
-

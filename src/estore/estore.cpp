@@ -112,47 +112,47 @@ EStoreRes EStore::list_elements(OpCallback op_cb, void *cb_ctx, EHandle handle, 
                                  current_element_version, post_attr);
 }
 
-EStoreRes EStore::link(OpCallback op_cb, void *cb_ctx, EHandle link_target, EHandle parent, const char *name,
-                       SystemAttr *post_link_attr, SystemAttr *pre_pattr, SystemAttr *post_pattr)
+EStoreRes EStore::link(UNUSED OpCallback op_cb, UNUSED void *cb_ctx, UNUSED EHandle link_target, UNUSED EHandle parent, UNUSED const char *name,
+                       UNUSED SystemAttr *post_link_attr, UNUSED SystemAttr *pre_pattr, UNUSED SystemAttr *post_pattr)
 {
     PANIC("not implemented");
     return OK;
 }
 
-EStoreRes EStore::unlink(OpCallback op_cb, void *cb_ctx, EHandle parent, const char *name, bool verify_no_children,
-                         SystemAttr *pre_pattr, SystemAttr *post_pattr)
+EStoreRes EStore::unlink(UNUSED OpCallback op_cb, UNUSED void *cb_ctx, UNUSED EHandle parent, UNUSED const char *name, UNUSED bool verify_no_children,
+                         UNUSED SystemAttr *pre_pattr, UNUSED SystemAttr *post_pattr)
 {
     PANIC("not implemented");
     return OK;
 }
 
-EStoreRes EStore::rename(OpCallback op_cb, void *cb_ctx, EHandle src_handle, const char *src_name, EHandle dst_handle,
-                         const char *dst_name, SystemAttr *pre_src_attr, SystemAttr *post_src_attr,
-                         SystemAttr *pre_dst_attr, SystemAttr *post_dst_attr)
+EStoreRes EStore::rename(UNUSED OpCallback op_cb, UNUSED void *cb_ctx, UNUSED EHandle src_handle, UNUSED const char *src_name, UNUSED EHandle dst_handle,
+                         UNUSED const char *dst_name, UNUSED SystemAttr *pre_src_attr, UNUSED SystemAttr *post_src_attr,
+                         UNUSED SystemAttr *pre_dst_attr, UNUSED SystemAttr *post_dst_attr)
 {
     PANIC("not implemented");
     return OK;
 }
 
-EStoreRes EStore::get_stats(OpCallback op_cb, void *cb_ctx, EHandle handle, EStoreStats *stats, SystemAttr *attr)
+EStoreRes EStore::get_stats(UNUSED OpCallback op_cb, UNUSED void *cb_ctx, UNUSED EHandle handle, UNUSED EStoreStats *stats, UNUSED SystemAttr *attr)
 {
     PANIC("not implemented");
     return OK;
 }
 
-EStoreRes EStore::lock(OpCallback op_cb, void *cb_ctx, EHandle handle, bool block, LockInfo *lock)
+EStoreRes EStore::lock(UNUSED OpCallback op_cb, UNUSED void *cb_ctx, UNUSED EHandle handle, UNUSED bool block, UNUSED LockInfo *lock)
 {
     PANIC("not implemented");
     return OK;
 }
 
-EStoreRes EStore::unlock(OpCallback op_cb, void *cb_ctx, EHandle handle, LockInfo *lock)
+EStoreRes EStore::unlock(UNUSED OpCallback op_cb, UNUSED void *cb_ctx, UNUSED EHandle handle, UNUSED LockInfo *lock)
 {
     PANIC("not implemented");
     return OK;
 }
 
-EStoreRes EStore::test_lock(OpCallback op_cb, void *cb_ctx, EHandle handle, LockInfo *lock, LockInfo *existing_lock OUT)
+EStoreRes EStore::test_lock(UNUSED OpCallback op_cb, UNUSED void *cb_ctx, UNUSED EHandle handle, UNUSED LockInfo *lock, UNUSED LockInfo *existing_lock OUT)
 {
     PANIC("not implemented");
     return OK;

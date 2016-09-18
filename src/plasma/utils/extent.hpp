@@ -10,7 +10,7 @@ namespace P {
 
 template <typename T>
 class Extent {
-    public:
+public:
     bool overlaps(T offset, uint32_t len) {
         return !((offset + len) <= _offset || (_offset + _len) <= offset);
     }

@@ -119,7 +119,7 @@ MIO::ReadRet MIO::protected_read(MirroredAddressToken address, Buffer *mio_buff,
     return future->res;
 }
 
-bool MIO::internal_write(MirroredAddressToken address, UnifiedBuff *buff, bool protected_write,
+bool MIO::internal_write(MirroredAddressToken address, UnifiedBuff *buff, UNUSED bool protected_write,
                                 P::FiberSync::FutureRes<bool> *finalized_future,
                                 P::FiberSync::FutureRes<bool> *committed_future)
 {
@@ -168,7 +168,7 @@ bool MIO::protected_write(MirroredAddressToken address, Buffer *mio_buff,
 
 /// Mirrored locking ///
 
-bool MIO::is_live_worker(WorkerID worker_id)
+bool MIO::is_live_worker(UNUSED WorkerID worker_id)
 {
     // todo: implement
 //    PANIC("Not Implemented!");
@@ -340,7 +340,7 @@ bool MIO::Writer::concurrent_write(MIOAgent::MappingSet *phys_address_set, P::In
     P::Index phys_idx = 0;
     PhysAddr curr_addr;
 
-    size_t submitted_ios;
+    P::Index submitted_ios;
     for (submitted_ios = 0; (submitted_ios < device_count); ++submitted_ios) {
         phys_address_set->at(phys_idx, &curr_addr);
         devices[submitted_ios] = curr_addr.dev;

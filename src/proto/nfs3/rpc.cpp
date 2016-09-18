@@ -20,11 +20,11 @@ using P::Net::unblock_socket;
 
 namespace Nfs {
 
-int readit(char *handle, char *buff, int len)
+static int readit(char *handle, char *buff, int len)
 {
     PT_DEV(DATA, "request to read %d", len);
     Rpc::Connection *conn = ((Rpc::Connection *)handle);
-    for (int i = 0; i < RECV_RETRY; ++i) {
+    for (uint32_t i = 0; i < RECV_RETRY; ++i) {
         ssize_t res = read(conn->fd, buff, len);
         if (res == -1) {
             if (errno == EAGAIN) {
@@ -49,13 +49,13 @@ int readit(char *handle, char *buff, int len)
     return -1;
 }
 
-int writeit(char *handle, char *buff, int len)
+static int writeit(char *handle, char *buff, int len)
 {
     int fd = ((Rpc::Connection *)handle)->fd;
 //    PT_DEBUG(DATA, "request to write %d", len);
     int written = 0;
     int retry = 0;
-    for (int i = 0; i < SEND_RETRY && written < len; ++i) {
+    for (uint32_t i = 0; i < SEND_RETRY && written < len; ++i) {
         // its seems redundant to check if the socket is writable since it is non blocking
         // however for some obscure reason when we write to a full socket it gets disconnected by the peer (SIGPIPE)
         struct pollfd pfd;
@@ -265,7 +265,7 @@ static vaccept_stat request_status_to_accept_status(RpcStatus status)
     }
 }
 
-void Rpc::fill_msg_header(Rpc::Connection *conn, RpcRequest *request)
+void Rpc::fill_msg_header(UNUSED Rpc::Connection *conn, RpcRequest *request)
 {
     vrpc_msg *msg = &request->msg;
     msg->body.vrpc_msg_body_u.rbody.vreply_body_u.areply.verf.body.body_val = request->auth_verf_buffer;
@@ -336,7 +336,7 @@ void Rpc::do_encode(Rpc::Connection *conn, RpcRequest *request)
             PT_ERROR(DATA, "send failed errno=%d", errno);
             return;
         }
-        if (ret != send_bytes) {
+        if (ret != (ssize_t) send_bytes) {
             // currenlty we only use UDP fo small messages (mount protocol) so we do not expect full socket issues
             // and no retry logic has been implemented
             PT_ERROR(DATA, "failed to send full UDP message requested=%lu sent=%ld", send_bytes, ret);
@@ -382,7 +382,7 @@ void Rpc::handle_msg(Connection *conn, RpcRequest *request)
         request->conn = conn;
         request->rpc = this;
         P::Fiber *fiber = P::Fiber::init((P::Index)FiberGroupId::I_PROTO, fiber_handle_msg, request, false);
-        for (int i = 0; fiber == nullptr && i < ALLOCATION_RETRY; ++i) {
+        for (uint32_t i = 0; fiber == nullptr && i < ALLOCATION_RETRY; ++i) {
             PT_DEBUG(DATA, "fiber not available yield and retry fiber allocation");
             P::Fiber::yield();
             fiber = P::Fiber::init((P::Index)FiberGroupId::I_PROTO, fiber_handle_msg, request, false);
@@ -497,7 +497,7 @@ int Rpc::poll()
     return n_events;
 }
 
-void Rpc::accept_connection(P::Net::SocketId id, int fd)
+void Rpc::accept_connection(UNUSED P::Net::SocketId id, int fd)
 {
     // add the new connection to epoll
     Connection *conn = _connections.alloc();

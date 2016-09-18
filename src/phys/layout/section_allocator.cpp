@@ -35,7 +35,7 @@ void SectionAllocator::do_activate(uint32_t estore_shard_count, uint32_t max_sec
     }
 }
 
-void SectionAllocator::activate(SectionAllocatorActivateParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
+void SectionAllocator::activate(SectionAllocatorActivateParams::RootReader *args, UNUSED P::VProto::Empty::RootBuilder *res)
 {
     do_activate(args->get_estore_shard_count(), args->get_max_section_id());
 }
@@ -111,7 +111,7 @@ uint32_t SectionAllocator::get_total_section_count(AddrType type)
     return _max_section_id * numerator / (DUPLICATION_TO_TRIPLICATION_SECTION_COUNT_RATIO + 1) + leftover;
 }
 
-uint64_t SectionAllocator::get_total_addr_type_size(P::ShardId shard_id, AddrType type)
+uint64_t SectionAllocator::get_total_addr_type_size(UNUSED P::ShardId shard_id, AddrType type)
 {
     const AddrTypeConfig *addr_type_config = &ADDR_TYPE_CONFIG[(int)type];
     SectionTypeConfig *section_type_config = &_section_type_config[(int)addr_type_config->replication_factor];
