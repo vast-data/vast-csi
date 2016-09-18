@@ -14,6 +14,7 @@ public:
 private:
     void connect(ConnectParams::RootReader *args, VProto::Empty::RootBuilder *res);
     void disconnect(DisconnectParams::RootReader *args, VProto::Empty::RootBuilder *res);
+    void vmsg_ping(VProto::Empty::RootReader *args, VProto::Empty::RootBuilder *res);
 };  // class EModuleAgentServerImpl
 
 }  // namespace P

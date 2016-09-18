@@ -12,3 +12,7 @@ methods:
   op_id: 2
   arg: DisconnectParams
   res: VProto::Empty
+- method: vmsg_ping
+  op_id: 3
+  arg: VProto::Empty
+  res: VProto::Empty

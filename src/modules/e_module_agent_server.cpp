@@ -1,6 +1,8 @@
 #include "e_module_agent_server.hpp"
 #include "plasma/execution/env.hpp"
 
+#define CURRENT_COMPONENT ComponentId::PLASMA
+
 namespace P {
 
 void EModuleAgentServerImpl::connect(ConnectParams::RootReader *args, VProto::Empty::RootBuilder *res)
@@ -15,6 +17,13 @@ void EModuleAgentServerImpl::connect(ConnectParams::RootReader *args, VProto::Em
 void EModuleAgentServerImpl::disconnect(DisconnectParams::RootReader *args, VProto::Empty::RootBuilder *res)
 {
     PANIC("not implemented");  // TODO: implement once vmsg supports "disconnect".
+}
+
+void EModuleAgentServerImpl::vmsg_ping(VProto::Empty::RootReader *args, VProto::Empty::RootBuilder *res)
+{
+#ifdef DEBUG
+    PT_DEBUG(DATA, "PING!");
+#endif
 }
 
 }  // namespace P
