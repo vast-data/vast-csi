@@ -122,6 +122,25 @@ bool Dumper::iteration(bool force)
     return found;
 }
 
+void Dumper::finalize()
+{
+    static TraceInfo TRACE_SECTION shutdown_info = {
+        CURRENT_COMPONENT, "Trace dumper shutdown.", __FILE__, __LINE__, __func__
+    };
+    uint16_t shutdown_index = get_trace_info_index(&shutdown_info);
+
+    TraceRecord record;
+    LOOP(Channel::COUNT, i) {
+        if (_files[i] != nullptr) {
+            record.time = get_time_nano();
+            record.job_id = 0; // no fiber
+            record.severity = Severity::INFO;
+            record.info_index = shutdown_index;
+            _files[i]->emit(&record, offsetof(TraceRecord, params));
+        }
+    }
+}
+
 void *dumper_main(void *dumper_arg) {
     Dumper *dumper = (Dumper*) dumper_arg;
     dumper->main();
@@ -146,6 +165,7 @@ void Dumper::main()
     while (iteration(true)) {
 
     }
+    finalize();
     _running = false;
 }
 

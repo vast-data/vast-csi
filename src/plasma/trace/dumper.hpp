@@ -63,6 +63,7 @@ private:
     bool should_persist_channel(Channel chan) { return chan != Channel::DETAILED_DATA; }
 
     bool iteration(bool force);
+    void finalize();
 
     static const uint32_t MAX_PREFIX_SIZE = 128;
 

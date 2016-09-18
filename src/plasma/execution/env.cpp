@@ -196,6 +196,8 @@ static void error_handler(int sig)
         return;
     }
 
+    PT_ERROR(CONTROL, "Env stopping! caught signal: %d", sig);
+
     switch(sig) {
     case SIGTERM:
         printf("===TERMINATED===\n");

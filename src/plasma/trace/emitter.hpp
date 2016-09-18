@@ -84,6 +84,7 @@ public:
      * Set this emitter to be used by default if no local emitter was defined.
      */
     void set_global();
+    static Emitter *get_global() { return _global_emitter; }
 
     DBuffer *get_dbuffer(Channel channel); // used only by the dumper
 

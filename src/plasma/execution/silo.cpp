@@ -100,6 +100,8 @@ void Silo::maintenance()
 {
     while (true) {
         P::TimerQueues::sleep(P::SleepInterval::SLEEP_1_SECOND);
+        if (get_id() == 0)
+            Trace::Emitter::get_global()->flush();
         _trace_emitter.flush();
     }
 }
