@@ -11,8 +11,8 @@
 using namespace P;
 using namespace Control;
 
-static const VMsg::ModuleGUID dest = {
-    0,  // env_id
+static const VMsg::ModuleAddress dest = {
+    1,  // env_id
     0,  // reserved : 4;
         // only the first 4 bits are in use for module ids
     (uint8_t) ModuleId::C,  // module_id : 4
@@ -76,8 +76,8 @@ static void cnode_activation_start_func(void *ctx)
     CNodeAddParams::RootBuilder *cnode_add_params = client.alloc_cnode_add();
     cnode_add_params->set_guid(cnode_guid);
     cnode_add_params->set_env_count(0);
-    *cnode_add_params->get_address(0) = 0;
-    *cnode_add_params->get_address(1) = 0;
+    LOOP(2, i)
+        strcpy(cnode_add_params->get_addresses(i)->get_host(), "127.0.0.1");
     CNodeAddResult::RootReader *cnode_add_result;
     ASSERT_EQ(VMsg::VMsgRes::OK, client.cnode_add_sync(dest, cnode_add_params, &cnode_add_result));
     ASSERT_EQ(cnode_add_result->get_code(), CNodeAddResultCode::SUCCESS);
@@ -132,10 +132,15 @@ TEST(TestEnv, system_init)
 
 TEST(TestEnv, cnode_activation)
 {
+    pid_t platform_pid = ::Test::run_env("tests/platform.config");
     cluster_test(cnode_activation_start_func);
+    kill(platform_pid, 9);
 }
 
+#include "globals.hpp"
+
 int main(int argc, char **argv) {
+    debugging = true;
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }

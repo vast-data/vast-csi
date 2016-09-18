@@ -11,7 +11,7 @@
 
 namespace Control {
 
-class EnvObj : public Object<EnvProto, TypeId::Env> {
+class EnvObj : public Object<EnvProto, TypeId::EnvObj> {
 public:
 
 };

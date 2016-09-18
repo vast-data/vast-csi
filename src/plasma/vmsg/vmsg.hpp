@@ -40,8 +40,13 @@ public:
 
     /*!
      * Set the addresses for the specified env
-    */
+     */
     void set_env_addresses(EnvId env_id, EnvAddresses::RootBuilder *addresses);
+
+    /*!
+     * Copy the addresses of the current env (getting is harder to implement since it requires locking)
+     */
+    void copy_local_env_addresses(EnvAddresses::Builder *addresses);
 
     /*!
      * Defines a connection pair between the client and server modules
@@ -64,14 +69,14 @@ public:
      * Low level API for sending a sync RPC request.
      * In the common case this API should only be used by auto generated code.
      */
-    VMsgRes send_sync(ModuleGUID dest_guid, RpcServerId server_id, uint8_t op_id, uint64_t timeout_usec,
+    VMsgRes send_sync(ModuleAddress dest_guid, RpcServerId server_id, uint8_t op_id, uint64_t timeout_usec,
                       void *buffer, uint16_t len, void **reply, uint32_t *reply_len);
 
     /*!
      * Low level API for sending an async RPC request.
      * In the common case this API should only be used by auto generated code.
      */
-    VMsgRes send_async(ModuleGUID dest_guid, RpcServerId server_id, uint8_t op_id, uint64_t timeout_usec,
+    VMsgRes send_async(ModuleAddress dest_guid, RpcServerId server_id, uint8_t op_id, uint64_t timeout_usec,
                        void *buffer, uint16_t len, VMsgFuture **future);
 
     /*!

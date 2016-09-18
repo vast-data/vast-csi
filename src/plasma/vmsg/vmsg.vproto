@@ -3,10 +3,11 @@ $namespace P::VMsg
 $typedef uint16_t EnvId
 
 $const size_t MAX_ADDR_PER_ENV = 4;
+$const size_t HOST_LENGTH = 128;
 
 // A container for a single env address
 struct EnvAddress {
-    @0 host char[128];
+    @0 host char[HOST_LENGTH];
     @1 port uint16_t;
 };
 

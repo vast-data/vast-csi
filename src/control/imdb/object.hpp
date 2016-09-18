@@ -9,43 +9,48 @@
 #include "plasma/data/ilist.hpp"
 #include "plasma/utils/types.hpp"
 
+#define IMDB_ITER_CHILDREN(parent, var, child_type, body)               \
+    ILIST_ITER_SAFE(parent->get_children(), i) {                        \
+        ObjectBase *child_ = p_container_of(i, ObjectBase, child_node); \
+        child_type *var;                                                \
+        switch (child_->get_type_id()) {                                \
+        case TypeId::child_type:                                        \
+            var = child_->cast<child_type>();                           \
+            { body }                                                    \
+            break;                                                      \
+        default:                                                        \
+            break;                                                      \
+        }                                                               \
+    }
+
 namespace Control {
 
 // this enum should be coordinated with the TYPE_CONFIGS array in defs.hpp.
 enum class TypeId : P::byte {
     System,
     CNode,
-    Env,
-    EModule,
-    PModule,
-    BModule,
-    IModule,
-    TModule,
-    CModule,
+    EnvObj,
+    EModuleObj,
+    PModuleObj,
+    BModuleObj,
+    IModuleObj,
+    TModuleObj,
+    CModuleObj,
     Drive,
     COUNT
 };
 
 class ObjectBase {
 public:
-    virtual void init(ObjectBaseProto::Builder *base, TypeId type_id)
+    void init()
     {
-        _base = base;
-        _type_id = type_id;
-
+        _parent = nullptr;
         _children.init();
         child_node.init();
     }
 
-    ObjectBaseProto::Builder *get_base()
-    {
-        return _base;
-    }
-
-    TypeId get_type_id()
-    {
-        return _type_id;
-    }
+    virtual ObjectBaseProto::Builder *get_base() = 0;
+    virtual TypeId get_type_id() = 0;
 
     template <class T>
     T* cast()
@@ -59,6 +64,7 @@ public:
     {
         child->get_base()->set_parent_guid(get_base()->get_guid());
         _children.append(&child->child_node);
+        child->_parent = this;
     }
 
     template <class Child>
@@ -67,43 +73,54 @@ public:
         child->child_node.remove();
     }
 
+    ObjectBase *get_parent()
+    {
+        return _parent;
+    }
+
     P::IList *get_children()
     {
         return &_children;
     }
 
+    template <class Child>
+    Child *get_only_child()
+    {
+        Child *result = nullptr;
+        ILIST_ITER(get_children(), i) {
+            ObjectBase *child = p_container_of(i, ObjectBase, child_node);
+            if (child->get_type_id() == Child::get_type_id_static()) {
+                ASSERT(result == nullptr);
+                result = child->cast<Child>();
+            }
+        }
+        return result;
+    }
+
     P::IList::Node child_node; // IList iteration requires this node to be public
 
 private:
-    ObjectBaseProto::Builder *_base;
-    TypeId _type_id;
     P::IList _children;
+    ObjectBase *_parent;
 };
 
-template <class Proto, TypeId ThisTypeId>
-class Object : public ObjectBase, public Proto::RootBuilder {
+template <class Proto, TypeId type_id, class base = ObjectBase>
+class Object : public base, public Proto::RootBuilder {
 public:
-    static TypeId get_type_id_static() { return ThisTypeId; };
+    static TypeId get_type_id_static() { return type_id; }
 
-    virtual void init()
+    virtual TypeId get_type_id() { return type_id; }
+
+    virtual ObjectBaseProto::Builder *get_base()
     {
-        ObjectBase::init(Proto::RootBuilder::get_base_proto(), ThisTypeId);
+        return Proto::RootBuilder::get_base_proto();
+    }
+
+    void init()
+    {
+        base::init();
         Proto::RootBuilder::init();
     }
 };
 
 }
-
-#define IMDB_ITER_CHILDREN(parent, var, child_type, body)               \
-    ILIST_ITER_SAFE(parent->get_children(), i) {                        \
-        ObjectBase *child = p_container_of(i, ObjectBase, child_node);  \
-        child_type *var;                                                \
-        switch (child->get_type_id()) {                                 \
-        case TypeId::child_type:                                        \
-            var = child->cast<child_type>();                            \
-            { body }                                                    \
-            break;                                                      \
-        default:                                                        \
-            break;                                                      \
-        }                                                               \
-    }

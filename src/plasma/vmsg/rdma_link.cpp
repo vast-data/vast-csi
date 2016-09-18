@@ -42,7 +42,7 @@ static struct addrinfo *get_addr(const char *host, uint16_t port)
     struct addrinfo *addr;
     int ret = getaddrinfo(host, portstr, NULL, &addr);
     if (ret) {
-        PT_ERROR(DATA, "getaddrinfo failed - invalid hostname or IP address");
+        PT_ERROR(DATA, "getaddrinfo failed - invalid hostname or IP address: %s:%d", host, port);
         return NULL;
     }
     return addr;

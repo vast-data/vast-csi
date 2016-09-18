@@ -18,7 +18,7 @@ static const EnvId LEADER_ENV_ID = 100;
 static const uint16_t TEST_ENV_PORT = 4000;
 static const uint16_t LEADER_PORT = 6000;
 
-static const ModuleGUID local_dest = {
+static const ModuleAddress local_dest = {
         1,  // env_id
         0,  // reserved : 4;
         // only the first 4 bits are in use for module ids
@@ -26,7 +26,7 @@ static const ModuleGUID local_dest = {
         0  // silo_id
 };
 
-static const ModuleGUID leader_dest = {
+static const ModuleAddress leader_dest = {
         LEADER_ENV_ID,  // env_id
         0,  // reserved : 4;
         // only the first 4 bits are in use for module ids
@@ -34,7 +34,7 @@ static const ModuleGUID leader_dest = {
         0  // silo_id
 };
 
-static const ModuleGUID leader_dest_control = {
+static const ModuleAddress leader_dest_control = {
         LEADER_ENV_ID,  // env_id
         0,  // reserved : 4;
         // only the first 4 bits are in use for module ids

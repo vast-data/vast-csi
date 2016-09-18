@@ -12,6 +12,7 @@ class ModuleFactoryImpl : public ModuleFactory {
     virtual ModuleInterface *create() { return new Module(); }
     virtual const char *get_name() { return Module::get_name(); }
     virtual ModuleId get_id() { return Module::get_id(); }
+
     virtual ControlObj *create_control_object(Control::IMDB *imdb)
     {
         return imdb->create<ControlObj>(P::GUID::create());

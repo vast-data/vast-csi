@@ -49,14 +49,14 @@ enum class VMsgRes : uint32_t {
     SYS_ERR // system call / library error
 };
 
-struct ModuleGUID {
+struct ModuleAddress {
     EnvId env_id;
     uint8_t reserved : 4;
     // only the first 4 bits are in use for module ids
     uint8_t module_id : 4;
     SiloId silo_id;
 };
-static_assert(sizeof(ModuleGUID) == 4, "ModuleGUID size should be 4 bytes");
+static_assert(sizeof(ModuleAddress) == 4, "ModuleAddress size should be 4 bytes");
 #define TRACE_GUID(TEXT, GUID) \
     PT_DEBUG(DATA, TEXT " env_id=%hu module_id=%hhu silo_id=%hhu", GUID.env_id, \
              GUID.module_id, GUID.silo_id)
@@ -88,9 +88,9 @@ static_assert(sizeof(MsgId) == 4, "MsgId size should be 4 bytes");
 
 struct VMsgHeader {
     // sender identifier
-    ModuleGUID sender;
+    ModuleAddress sender;
     // destination identifier
-    ModuleGUID dest;
+    ModuleAddress dest;
     // internal messaging information piggy backed on top of the message header
     MsgId msg_ack;
     // verifier of the env at the time the message was sent, used for crash detection.

@@ -472,16 +472,16 @@ VMsgRes RDMATransport::recv_request(ModuleId module_id, MemRegion *region, MsgId
     return recv(srq, mr, msg_id, buff, len);
 }
 
-VMsgRes RDMATransport::send_request(ModuleGUID module_guid, MemRegion *region, MsgId msg_id, void *buff, uint32_t len)
+VMsgRes RDMATransport::send_request(ModuleAddress module_address, MemRegion *region, MsgId msg_id, void *buff, uint32_t len)
 {
-    RDMALink *link = _send_request_connections[module_guid.env_id][(int)module_guid.module_id].get_next_link();
+    RDMALink *link = _send_request_connections[module_address.env_id][(int)module_address.module_id].get_next_link();
     struct ibv_mr *mr = (struct ibv_mr *)region;
     return link->send(mr, msg_id, buff, len);
 }
 
-VMsgRes RDMATransport::send_response(ModuleGUID module_guid, MemRegion *region, MsgId msg_id, void *buff, uint32_t len)
+VMsgRes RDMATransport::send_response(ModuleAddress module_address, MemRegion *region, MsgId msg_id, void *buff, uint32_t len)
 {
-    RDMALink *link = _send_response_connections[module_guid.env_id][(int)module_guid.module_id].get_next_link();
+    RDMALink *link = _send_response_connections[module_address.env_id][(int)module_address.module_id].get_next_link();
     struct ibv_mr *mr = (struct ibv_mr *)region;
     return link->send(mr, msg_id, buff, len);
 }

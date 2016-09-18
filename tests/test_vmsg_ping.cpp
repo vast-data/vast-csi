@@ -13,7 +13,7 @@ using namespace P::VMsg;
 using P::Env;
 using P::FiberSync::Future;
 
-ModuleGUID dest = {
+ModuleAddress dest = {
     0,
     0, //reserved
     (uint8_t) ModuleId::E,

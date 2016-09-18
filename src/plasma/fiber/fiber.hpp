@@ -56,7 +56,7 @@ public:
      * \param daemon when true, the scheduler doesn't wait for this fiber to finish in order to exit
      * \return a pointer to a fiber or nullptr if the pool is empty.
      */
-    static Fiber *init(Index group_index, void (*func)(void *arg), void *arg, bool parent_will_join, bool daemon=false);
+    static Fiber *init(Index group_index, void (*func)(void *arg), void *arg, bool parent_will_join=false, bool daemon=false);
 
     /*!
      * A fiber should call this function to yield the CPU. Should be used in CPU-intensive code.

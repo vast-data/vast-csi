@@ -16,4 +16,15 @@ static void create_system_guid()
     ASSERT_TRUE(P::string_to_file("data/system.guid", guid_string));
 }
 
+static pid_t run_env(const char *config)
+{
+    pid_t pid = fork();
+    if (pid == 0) {
+        execl("dist/env", "dist/env", config, nullptr);
+        return pid;
+    } else {
+        return pid;
+    }
+}
+
 }  // namespace Test

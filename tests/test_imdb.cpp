@@ -26,10 +26,12 @@ TEST(TestIMDB, test_tree)
     db.init();
 
     System *sys = db.create<System>(GUID::create());
+    ASSERT_EQ(sys->get_parent(), nullptr);
 
     CNode *cnode1 = db.create<CNode>(GUID::create());
     cnode1->set_version(1);
     sys->add_child(cnode1);
+    ASSERT_EQ(cnode1->get_parent(), sys);
 
     CNode *cnode2 = db.create<CNode>(GUID::create());
     cnode2->set_version(2);

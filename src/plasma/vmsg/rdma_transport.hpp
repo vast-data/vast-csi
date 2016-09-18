@@ -86,28 +86,28 @@ public:
     VMsgRes recv_response(ModuleId module_id, MemRegion *region, MsgId msg_id, void *buff, uint32_t len);
 
     /*!
-     * Send a request to the env/module/silo as specified in module_guid. The given buffer must be placed inside the
+     * Send a request to the env/module/silo as specified in module_address. The given buffer must be placed inside the
      * given memory region.
      *
-     * /param module_guid the send destination
+     * /param module_address the send destination
      * /param region the previously registered handle for the memory region the buffer belongs too
      * /param msg_id the buffer identifier
      * /param buff a pointer to the buffer address
      * /param len the buffer length
      */
-    VMsgRes send_request(ModuleGUID module_guid, MemRegion *region, MsgId msg_id, void *buff, uint32_t len);
+    VMsgRes send_request(ModuleAddress module_address, MemRegion *region, MsgId msg_id, void *buff, uint32_t len);
 
     /*!
-     * Send a reply to the env/module/silo as specified in module_guid. The given buffer must be placed inside the
+     * Send a reply to the env/module/silo as specified in module_address. The given buffer must be placed inside the
      * given memory region.
      *
-     * /param module_guid the send destination
+     * /param module_address the send destination
      * /param region the previously registered handle for the memory region the buffer belongs too
      * /param msg_id the buffer identifier
      * /param buff a pointer to the buffer address
      * /param len the buffer length
      */
-    VMsgRes send_response(ModuleGUID module_guid, MemRegion *region, MsgId msg_id, void *buff, uint32_t len);
+    VMsgRes send_response(ModuleAddress module_address, MemRegion *region, MsgId msg_id, void *buff, uint32_t len);
 
     static const uint32_t MAX_EVENTS_PER_POLL = 16;
 

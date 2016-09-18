@@ -13,7 +13,7 @@ static int step = 0;
 using namespace P::VMsg;
 using P::Env;
 
-ModuleGUID dest = {
+ModuleAddress dest = {
     0,
     0, //reserved
     (uint8_t) ModuleId::B,

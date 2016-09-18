@@ -129,6 +129,13 @@ void VMsg::set_env_addresses(EnvId env_id, EnvAddresses::RootBuilder *addresses)
     }
 }
 
+void VMsg::copy_local_env_addresses(EnvAddresses::Builder *addresses)
+{
+    _address_table.lock();
+    addresses->init_from_root(_address_table.get(get_local_env_id()));
+    _address_table.unlock();
+}
+
 void VMsg::register_server(RpcServer *server, SiloId silo_id, ModuleId module_id)
 {
     RpcServerId server_id = server->get_server_id();
@@ -293,7 +300,7 @@ void VMsg::handle_piggyback_data(VMsgHeader *header, SiloId silo_id)
 
 VMsgRes VMsg::send_request(VMsgHeader *header, uint64_t timeout_usec)
 {
-    const ModuleGUID dest = header->dest;
+    const ModuleAddress dest = header->dest;
     MemRegion *region = _vmsg_pool.get_region(BufferType::SEND_REQUEST, (ModuleId) header->sender.module_id);
     VMsgRes res = _rdma_transport.send_request(dest, region, header->sender_msg_id, header, msg_len(header));
     if (res == VMsgRes::NOT_CONNECTED && timeout_usec > 0) {
@@ -315,7 +322,7 @@ VMsgRes VMsg::send_request(VMsgHeader *header, uint64_t timeout_usec)
     return VMsgRes::OK;
 }
 
-VMsgRes VMsg::send_async(ModuleGUID dest_guid, RpcServerId server_id, uint8_t op_id,
+VMsgRes VMsg::send_async(ModuleAddress dest_guid, RpcServerId server_id, uint8_t op_id,
                          uint64_t timeout_usec, void *buffer, uint16_t len, VMsgFuture **future)
 {
     ASSERT(len <= RPC_BUFFER_SIZE);
@@ -360,7 +367,7 @@ VMsgRes VMsg::send_async(ModuleGUID dest_guid, RpcServerId server_id, uint8_t op
     return VMsgRes::OK;
 }
 
-VMsgRes VMsg::send_sync(ModuleGUID dest_guid, RpcServerId server_id, uint8_t op_id, uint64_t timeout_usec,
+VMsgRes VMsg::send_sync(ModuleAddress dest_guid, RpcServerId server_id, uint8_t op_id, uint64_t timeout_usec,
                         void *buffer, uint16_t len, void **reply, uint32_t *reply_len)
 {
     VMsgFuture *future;

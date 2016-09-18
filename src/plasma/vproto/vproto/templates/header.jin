@@ -120,6 +120,12 @@ public:
             {% endfor %}
         }
 
+        template <class T>
+        void init_from_root(T *builder)
+        {
+            memcpy(this, (P::byte*) builder + sizeof(P::VProto::RootStruct), {{ struct.size }});
+        }
+
         {% for field in struct.primitive_fields %}
         {% if field.type.name != 'VProto::ArrayPtr' %}
         void set_{{ field.name }}({{ get_fqn(field) }} {{ field.name }})

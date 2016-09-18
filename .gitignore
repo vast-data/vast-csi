@@ -20,3 +20,4 @@ __pycache__
 *.egg-info
 CMakeLists.txt
 dummy_main.c
+.gdb_history

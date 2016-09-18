@@ -145,7 +145,7 @@ static void sync_call(TestRpcClient *client, uint64_t i, uint32_t n_silos, EnvId
     args->set_a(i);
     args->set_b(i);
 
-    ModuleGUID dest = {
+    ModuleAddress dest = {
         dest_env,
         0, //reserved
         (uint8_t) ModuleId::TEST,
@@ -164,7 +164,7 @@ static void async_call(TestRpcClient *client, uint64_t i, uint32_t n_silos, EnvI
     static const uint64_t ASYNC_REQUESTS_PER_LOOP = 16;
     VMsgFutureRes<MultiplyRes::RootReader> *futures[ASYNC_REQUESTS_PER_LOOP];
 
-    ModuleGUID dest = {
+    ModuleAddress dest = {
         dest_env,
         0, //reserved
         (uint8_t) ModuleId::TEST,

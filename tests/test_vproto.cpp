@@ -176,6 +176,19 @@ TEST(TestVProto, test_root_reader_to_reader)
     ASSERT_EQ(person_reader.get_active(), true);
 }
 
+TEST(TestVProto, test_root_builder_to_builder)
+{
+    NS::Person::RootBuilder root;
+    root.init();
+
+    root.set_age(120);
+
+    NS::Person::Builder builder;
+    builder.init_from_root(&root);
+
+    ASSERT_EQ(builder.get_age(), 120);
+}
+
 int main(int argc, char **argv)
 {
     ::testing::FLAGS_gtest_death_test_style = "threadsafe";

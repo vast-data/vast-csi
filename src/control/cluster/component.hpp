@@ -6,26 +6,32 @@
  */
 #pragma once
 
+#include "plasma/vmsg/vmsg.vproto.hpp"
 #include "control/imdb/component.hpp"
 #include "cluster.rpc.server.hpp"
 
 namespace Control {
 
+const uint16_t PLATFORM_ENV_PORT = 4000;
+const uint16_t PLATFORM_ENV_INITIAL_ID = 0;
+const uint16_t LEADER_ENV_ID = 1;
+
 class Cluster : public ClusterServer {
 public:
-    void init(P::SiloId silo_id, ModuleId module_id, IMDB *imdb, System *system)
-    {
-        _imdb = imdb;
-        _system = system;
-        register_server(silo_id, module_id);
-    }
+    void init(P::SiloId silo_id, ModuleId module_id, IMDB *imdb, System *system);
+    void start();
+    void connect_envs();
 
 private:
-    EnvObj *create_env(const char *name, P::byte silo_count);
-    ObjectBase *create_module(ModuleId module_id, SiloId silo_id);
     void calc_cnode_state(CNode *cnode);
     void cnode_activate(CNode *cnode);
     void cnode_deactivate(CNode *cnode);
+
+    EnvObj *create_env(const char *name, P::byte silo_count, uint16_t port);
+    void connect_to_env(EnvObj *env);
+    void env_activate(EnvObj *env);
+
+    ObjectBase *create_module(ModuleId module_id, SiloId silo_id);
 
     // RPC functions
     void system_status(SystemStatusParams::RootReader *args, SystemStatusResult::RootBuilder *res);

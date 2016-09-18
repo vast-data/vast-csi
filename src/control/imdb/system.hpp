@@ -6,6 +6,7 @@
  */
 #pragma once
 
+#include <limits>
 #include "system.vproto.hpp"
 #include "object.hpp"
 
@@ -16,6 +17,7 @@ public:
     uint16_t allocate_env_id()
     {
         uint16_t result = get_next_env_id();
+        ASSERT(result != std::numeric_limits<uint16_t>::max(), "Env id overflow!");
         set_next_env_id(result + 1);
         return result;
     }
@@ -23,6 +25,7 @@ public:
     uint16_t allocate_cnode_id()
     {
         uint16_t result = get_next_cnode_id();
+        ASSERT(result != std::numeric_limits<uint16_t>::max(), "CNode id overflow!");
         set_next_cnode_id(result + 1);
         return result;
     }
