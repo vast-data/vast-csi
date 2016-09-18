@@ -576,27 +576,28 @@ void RDMATransport::handle_connection_requests()
     _conn_lock.lock();
     request = _conn_queue.pop();
     _conn_lock.unlock();
-    if (request == nullptr) {
-        return;
+
+    while (!request)
+    {
+        PT_DEBUG(DATA, "handling connection request to env_id=%hu module_id=%hhu conn_dir=%d", request->env_id, request->module_id, request->conn_dir);
+
+        _addr_table->lock();
+        EnvAddresses::RootBuilder *addresses = _addr_table->get(request->env_id);
+        ASSERT(addresses->get_n_addr() > 0, "Env " << request->env_id << " have no addresses configured");
+        EnvAddress::Builder *addr = addresses->get_addresses(0);
+        _addr_table->unlock();
+
+        auto connections = request->conn_dir == ConnDir::CLIENT_TO_SERVER ? _send_request_connections : _send_response_connections;
+        static_assert((int)ConnDir::COUNT == 2, "you have to convert if to switch");
+        RDMALink *link = connections[request->env_id][(int)request->module_id].get_next_link();
+        if (link->get_state() == LinkState::IDLE)
+            link->initiate_connection(_event_channel, addr->get_host(), addr->get_port());
+
+        _conn_lock.lock();
+        _conn_queue.free(request);
+        request = _conn_queue.pop();
+        _conn_lock.unlock();
     }
-
-    PT_DEBUG(DATA, "handling connection request to env_id=%hu module_id=%hhu conn_dir=%d", request->env_id, request->module_id, request->conn_dir);
-
-    _addr_table->lock();
-    EnvAddresses::RootBuilder *addresses = _addr_table->get(request->env_id);
-    ASSERT(addresses->get_n_addr() > 0, "Env " << request->env_id << " have no addresses configured");
-    EnvAddress::Builder *addr = addresses->get_addresses(0);
-    _addr_table->unlock();
-
-    auto connections = request->conn_dir == ConnDir::CLIENT_TO_SERVER ? _send_request_connections : _send_response_connections;
-    static_assert((int)ConnDir::COUNT == 2, "you have to convert if to switch");
-    RDMALink *link = connections[request->env_id][(int)request->module_id].get_next_link();
-    if (link->get_state() == LinkState::IDLE)
-        link->initiate_connection(_event_channel, addr->get_host(), addr->get_port());
-
-    _conn_lock.lock();
-    _conn_queue.free(request);
-    _conn_lock.unlock();
 }
 
 }
