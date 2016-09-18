@@ -103,12 +103,6 @@ public:
     void finalize();
 
     /*!
-     * This function stops the silo's pthread.
-     */
-    void quit();
-    bool is_quitting() { return _quitting; }
-
-    /*!
      * This function releases the silo's resources. It's important to mention this is used solely for testing. When a silo is destroyed its resources are freed but the modules that it initialized will not be destroyed (module/components don't support destruction).
      */
     void destroy();
@@ -139,7 +133,6 @@ private:
     pthread_t _pthread;
     int32_t _affinity;
     SiloId _silo_id;
-    bool _quitting;
 };
 
 #define COMPONENT_GET_STATE() Silo::get()->get_component_state(CURRENT_COMPONENT)

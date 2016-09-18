@@ -28,8 +28,6 @@ void Env::error()
     Silo *current_silo = Silo::get();
     LOOP(_num_silos, i)
     {
-        if (current_silo != _silos[i])
-            _silos[i]->quit();
         _silos[i]->finalize();
     }
 
@@ -191,36 +189,30 @@ void Env::wait_for_run_state()
 
 static void error_handler(int sig)
 {
-    Silo *current_silo = Silo::get();
-    if (current_silo != nullptr && current_silo->is_quitting()) {
-        return;
-    }
-
     PT_ERROR(CONTROL, "Env stopping! caught signal: %d", sig);
 
-    switch(sig) {
-    case SIGTERM:
-        printf("===TERMINATED===\n");
-        break;
-    case SIGSEGV:
-        printf("===SEGFAULT===\n");
-        break;
-    case SIGABRT:
-        printf("===PANIC===\n");
-        break;
-    case SIGINT:
-        printf("===INTERRUPT===\n");
-        break;
-    default:
-        printf("===UNKNOWN===\n");
-        PANIC();
+    // assertions already print tracebacks. interrupt doesn't require it.
+    if (sig != SIGABRT) {
+        switch(sig) {
+        case SIGTERM:
+            printf("===TERMINATED===\n");
+            break;
+        case SIGSEGV:
+            printf("===SEGFAULT===\n");
+            break;
+        case SIGINT:
+            printf("===INTERRUPT===\n");
+            break;
+        default:
+            printf("===UNKNOWN===\n");
+            PANIC();
+        }
+        P::Backtracer::show_backtrace();
+        printf("===FINISH===\n");
     }
 
-    if (sig != SIGABRT) // assertions already print tracebacks. interrupt doesn't require it.
-        P::Backtracer::show_backtrace();
-
-    printf("===FINISH===\n");
     P::Env::get()->error();
+
     exit(sig);
 }
 
