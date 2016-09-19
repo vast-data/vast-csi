@@ -2,7 +2,8 @@
 #include <unistd.h>
 #include <signal.h>
 #include <pthread.h>
-#include <proto/nfs3/nfs_proto.hpp>
+#include <atomic>
+#include "proto/nfs3/nfs_proto.hpp"
 #include "proto/nfs3/nfs_defs.hpp"
 #include "plasma/trace/emitter.hpp"
 #include "plasma/memory/alloc.hpp"
@@ -112,6 +113,7 @@ void Env::init(Config *config)
     ConfigSetting *traces_setting = conf_lookup(config, "global_traces");
     _emitter.init(traces_setting, true);
     _dumper.init(traces_setting, &_emitter, _trace_dir);
+
     _tcp_acceptor = new P::Net::TcpAcceptor();
     _tcp_acceptor->init();
     init_nfs(config);
@@ -187,11 +189,17 @@ void Env::wait_for_run_state()
     pthread_barrier_wait(&_state_barrier);
 }
 
+static std::atomic_flag during_error_handling = ATOMIC_FLAG_INIT;
+
 static void error_handler(int sig)
 {
+    if (during_error_handling.test_and_set()) {
+        return; // it's possible other threads are crashing and generating signals.
+    }
+
     PT_ERROR(CONTROL, "Env stopping! caught signal: %d", sig);
 
-    // assertions already print tracebacks. interrupt doesn't require it.
+    // assertions generate ABRT and already print tracebacks.
     if (sig != SIGABRT) {
         switch(sig) {
         case SIGTERM:
@@ -207,12 +215,12 @@ static void error_handler(int sig)
             printf("===UNKNOWN===\n");
             PANIC();
         }
-        P::Backtracer::show_backtrace();
-        printf("===FINISH===\n");
+        if (sig != SIGINT)
+            P::Backtracer::show_backtrace();
     }
 
     P::Env::get()->error();
-
+    printf("===FINISH===\n");
     exit(sig);
 }
 
