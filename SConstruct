@@ -226,7 +226,7 @@ cpp_sources.extend([murmur, rpc_xdr, mnt_xdr, nfs_xdr, nlm_xdr])
 cpp_lib = cpp_env.Library(target='dist/orion_cpp', source=cpp_sources)
 cpp_env.Depends(cpp_lib, LINKER_SCRIPT)
 cpp_env.Append(LIBS=[cpp_lib, 'unwind', 'config', 'libaio', 'rdmacm', 'ibverbs', 'uuid'])
-cpp_env.Program(target='dist/env', source=[build_dir + '/src/plasma/execution/main.cpp'])
+env_program = cpp_env.Program(target='dist/env', source=[build_dir + '/src/plasma/execution/main.cpp'])
 
 def AddCppTest(target, source, wrap=[], group_alias='cpptest'):
     cpp_test_env = cpp_env.Clone()
@@ -235,6 +235,7 @@ def AddCppTest(target, source, wrap=[], group_alias='cpptest'):
     for func in wrap:
         cpp_test_env.Append(LINKFLAGS='-Wl,-wrap,' + func)
     test = cpp_test_env.Program(target=target, source=source)
+    cpp_test_env.Depends(test, env_program)
     for alias in [group_alias, 'test_' + target.split('/')[-1]]:
         cpp_test_env.Alias(alias, test, test[0].abspath)
         cpp_test_env.AlwaysBuild(alias)
