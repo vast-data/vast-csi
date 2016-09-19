@@ -34,6 +34,7 @@ typedef struct Context {
     uint64_t n_pings_left;
     uint64_t n_fibers;
     uint64_t total_vmsg_time;
+    P::EModuleAgentClient *client;
 } Context;
 
 typedef struct FiberContext {
@@ -55,13 +56,11 @@ static void fiber_vmsg_ping(void *arg)
 {
     FiberContext *fiber_ctx = (FiberContext*)arg;
     Context *ctx = fiber_ctx->ctx;
-    P::EModuleAgentClient client;
-    client.init(Env::get()->get_vmsg());
 
     while (ctx->n_pings_left > 0)
     {
         ctx->n_pings_left--;
-        vmsg_ping(&client);
+        vmsg_ping(ctx->client);
     }
     fiber_ctx->future.set();
 }
@@ -71,10 +70,10 @@ static void run_vmsg_ping(void *arg)
     Context *ctx = (Context*)arg;
     Env::get()->get_vmsg()->add_module_pair(ModuleId::TEST, ModuleId::E, TransportType::RDMA);
     Future **futures = new Future*[ctx->n_fibers];
+    P::EModuleAgentClient client;
+    client.init();
 
     // create backward connection
-    P::EModuleAgentClient client;
-    client.init(Env::get()->get_vmsg());
     vmsg_ping(&client);
     ctx->total_vmsg_time = 0;
 
@@ -84,6 +83,7 @@ static void run_vmsg_ping(void *arg)
         fiber_ctx->future.init();
         futures[i] = &fiber_ctx->future;
         fiber_ctx->ctx = ctx;
+        ctx->client = &client;
         P::Fiber::init((P::Index)FiberGroupId::TEST, fiber_vmsg_ping, fiber_ctx, false);
     }
     {

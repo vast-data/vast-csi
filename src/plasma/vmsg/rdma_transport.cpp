@@ -577,7 +577,7 @@ void RDMATransport::handle_connection_requests()
     request = _conn_queue.pop();
     _conn_lock.unlock();
 
-    while (!request)
+    while (request)
     {
         PT_DEBUG(DATA, "handling connection request to env_id=%hu module_id=%hhu conn_dir=%d", request->env_id, request->module_id, request->conn_dir);
 
