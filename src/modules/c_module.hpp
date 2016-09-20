@@ -32,7 +32,7 @@ public:
 private:
     BaseAgent _agent;
     Cluster _cluster;
-    IMDB _imdb;
+    TreeDB _tree;
     System *_system;
 };
 

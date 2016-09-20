@@ -18,7 +18,7 @@ const uint16_t LEADER_ENV_ID = 1;
 
 class Cluster : public ClusterServer {
 public:
-    void init(P::SiloId silo_id, ModuleId module_id, IMDB *imdb, System *system);
+    void init(P::SiloId silo_id, ModuleId module_id, TreeDB *imdb, System *system);
     void start();
     void connect_envs();
 
@@ -27,15 +27,16 @@ private:
     void cnode_activate(CNode *cnode);
     void cnode_deactivate(CNode *cnode);
 
-    EnvObj *create_env(const char *name, P::byte silo_count, uint16_t port);
+    EnvObj *create_env(CNode *cnode, const char *name, P::byte silo_count, uint16_t port);
     void env_activate(EnvObj *env);
     void env_start(EnvObj *env);
+    void env_stop(EnvObj *env);
     void connect_env(EnvObj *env);
     void connect_data_env(EnvObj *env);
     void connect_platform_env(EnvObj *env);
     void connect_env_to_env(EnvObj *env1, EnvObj *env2);
 
-    ObjectBase *create_module(ModuleId module_id, SiloId silo_id);
+    ObjectBase *create_module(EnvObj *env, ModuleId module_id, SiloId silo_id);
 
     // RPC functions
     void system_status(SystemStatusParams::RootReader *args, SystemStatusResult::RootBuilder *res);
@@ -45,7 +46,7 @@ private:
     void cnode_remove(CNodeRemoveParams::RootReader *args, CNodeRemoveResult::RootBuilder *res);
     void cnode_get(CNodeGetParams::RootReader *args, CNodeGetResult::RootBuilder *res);
 
-    IMDB *_imdb;
+    TreeDB *_tree;
     System *_system;
 };
 

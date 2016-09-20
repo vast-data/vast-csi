@@ -103,10 +103,9 @@ public:
     }
 
     /*!
-     * Remove an object. T can be a pointer to a ObjectBase.
+     * Remove an object.
      */
-    template<class T>
-    void remove(T *object)
+    void remove(ObjectBase *object)
     {
         P::GUID guid = object->get_base()->get_guid();
         bool existed = _hashes[(size_t)object->get_type_id()].remove(&guid, sizeof(P::GUID));
@@ -117,6 +116,59 @@ public:
 private:
     P::Pool _pools[(size_t)TypeId::COUNT];
     P::Hash _hashes[(size_t)TypeId::COUNT];
+};
+
+class TreeDB {
+public:
+    void init()
+    {
+        _imdb.init();
+    }
+
+    void destroy()
+    {
+        _imdb.destroy();
+    }
+
+    template<class T>
+    T *get(P::GUID guid)
+    {
+        return _imdb.get<T>(guid);
+    }
+
+    template<class T>
+    T* get_or_create(P::GUID guid, bool *exists OUT, ObjectBase *parent)
+    {
+        T *result = _imdb.get_or_create<T>(guid, exists);
+        if (result != nullptr && parent != nullptr && exists != nullptr && !*exists)
+            parent->add_child(result);
+        return result;
+    }
+
+    template<class T>
+    T* create(P::GUID guid, ObjectBase *parent)
+    {
+        T* result = _imdb.create<T>(guid);
+        if (result != nullptr && parent != nullptr)
+            parent->add_child(result);
+        return result;
+    }
+
+    /*!
+     * Remove an object along with its children.
+     */
+    void remove(ObjectBase *object)
+    {
+        ILIST_ITER_SAFE(object->get_children(), i) {
+            remove(p_container_of(i, ObjectBase, child_node));
+        }
+        object->get_parent()->remove_child(object);
+        _imdb.remove(object);
+    }
+
+private:
+
+    IMDB _imdb;
 };
 
 }

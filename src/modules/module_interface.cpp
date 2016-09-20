@@ -13,9 +13,9 @@ class ModuleFactoryImpl : public ModuleFactory {
     virtual const char *get_name() { return Module::get_name(); }
     virtual ModuleId get_id() { return Module::get_id(); }
 
-    virtual ControlObj *create_control_object(Control::IMDB *imdb)
+    virtual ControlObj *create_control_object(Control::TreeDB *imdb, Control::EnvObj *parent)
     {
-        return imdb->create<ControlObj>(P::GUID::create());
+        return imdb->create<ControlObj>(P::GUID::create(), parent);
     }
 };
 

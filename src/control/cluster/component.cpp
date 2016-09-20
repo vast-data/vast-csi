@@ -14,9 +14,9 @@
 
 namespace Control {
 
-void Cluster::init(P::SiloId silo_id, ModuleId module_id, IMDB *imdb, System *system)
+void Cluster::init(P::SiloId silo_id, ModuleId module_id, TreeDB *tree, System *system)
 {
-    _imdb = imdb;
+    _tree = tree;
     _system = system;
     register_server(silo_id, module_id);
 }
@@ -60,6 +60,7 @@ void Cluster::connect_platform_env(EnvObj *env)
         char guid_string[P::GUID::STRING_SIZE];
         env->get_base()->get_guid().to_string(guid_string);
         PT_ERROR(CONTROL, "Error setting platform env id for env=%s", guid_string);
+        return;
     }
     client.free_set_local_env_id(result);
 }
@@ -79,13 +80,13 @@ void Cluster::connect_data_env(EnvObj *env)
         char guid_string[P::GUID::STRING_SIZE];
         env->get_base()->get_guid().to_string(guid_string);
         PT_ERROR(CONTROL, "Error requesting env=%s to connect back to me", guid_string);
+        return;
     }
     client.free_connect(result);
 }
 
 void Cluster::connect_env_to_env(EnvObj *env1, EnvObj *env2)
 {
-    // env1 -> env2
     P::EModuleAgentClient client;
     client.init();
 
@@ -98,6 +99,7 @@ void Cluster::connect_env_to_env(EnvObj *env1, EnvObj *env2)
         char guid_string[P::GUID::STRING_SIZE];
         env1->get_base()->get_guid().to_string(guid_string);
         PT_ERROR(CONTROL, "Error requesting env=%s to connect back to me", guid_string);
+        return;
     }
     client.free_connect(result);
 }
@@ -146,9 +148,9 @@ void Cluster::system_init(SystemInitParams::RootReader *args, SystemInitResult::
     res->set_code(SystemInitResultCode::SUCCESS);
 }
 
-EnvObj *Cluster::create_env(const char *name, P::byte silo_count, uint16_t port)
+EnvObj *Cluster::create_env(CNode *cnode, const char *name, P::byte silo_count, uint16_t port)
 {
-    EnvObj *env = _imdb->create<EnvObj>(P::GUID::create());
+    EnvObj *env = _tree->create<EnvObj>(P::GUID::create(), cnode);
     strcpy(env->get_base_proto()->get_name(), name);
 
     env->set_state(EnvState::INIT);
@@ -159,9 +161,9 @@ EnvObj *Cluster::create_env(const char *name, P::byte silo_count, uint16_t port)
     return env;
 }
 
-ObjectBase *Cluster::create_module(ModuleId module_id, SiloId silo_id)
+ObjectBase *Cluster::create_module(EnvObj *env, ModuleId module_id, SiloId silo_id)
 {
-    ObjectBase *object = ModuleRegistry::get(module_id)->create_control_object(_imdb);
+    ObjectBase *object = ModuleRegistry::get(module_id)->create_control_object(_tree, env);
     BaseModuleLogic *module = (BaseModuleLogic*) object;
     module->get_base_module()->set_state(ModuleState::OFFLINE);
     module->get_base_module()->set_silo_id(silo_id);
@@ -206,13 +208,35 @@ void Cluster::env_start(EnvObj *env)
     P::EnvStartResult::RootReader *result;
     PModuleObj *module = env->get_only_child<PModuleObj>();
     if (client.env_start_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
-        PT_ERROR(CONTROL, "Error setting platform env id for env=%s", guid_string);
+        PT_ERROR(CONTROL, "Error starting env=%s", guid_string);
         return;
     }
     P::EnvStartResultCode code = result->get_code();
     client.free_env_start(result);
     if (code != P::EnvStartResultCode::SUCCESS)
         PT_ERROR(CONTROL, "Error starting env=%s with code=%hhd", guid_string, code);
+}
+
+void Cluster::env_stop(EnvObj *env)
+{
+    char guid_string[P::GUID::STRING_SIZE];
+    env->get_base()->get_guid().to_string(guid_string);
+
+    P::PModuleAgentClient client;
+    client.init();
+
+    P::EnvStopParams::RootBuilder *params = client.alloc_env_stop();
+    params->set_env_guid(env->get_base()->get_guid());
+    P::EnvStopResult::RootReader *result;
+    PModuleObj *module = env->get_only_child<PModuleObj>();
+    if (client.env_stop_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
+        PT_ERROR(CONTROL, "Error setting platform env id for env=%s", guid_string);
+        return;
+    }
+    P::EnvStopResultCode code = result->get_code();
+    client.free_env_stop(result);
+    if (code != P::EnvStopResultCode::SUCCESS)
+        PT_ERROR(CONTROL, "Error stoping env=%s with code=%hhd", guid_string, code);
 }
 
 void Cluster::cnode_activate(CNode *cnode)
@@ -253,6 +277,12 @@ void Cluster::cnode_activate(CNode *cnode)
 
 void Cluster::cnode_deactivate(CNode *cnode)
 {
+    IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
+        if (env->get_port() == PLATFORM_ENV_PORT)
+            continue;
+        env_stop(env);
+    });
+
     char guid_string[P::GUID::STRING_SIZE];
     cnode->get_base()->get_guid().to_string(guid_string);
     PT_INFO(CONTROL, "Deactivated cnode=%s", guid_string);
@@ -264,7 +294,7 @@ void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBu
 {
     // create the CNode
     bool already_exists;
-    CNode *cnode = _imdb->get_or_create<CNode>(args->get_guid(), &already_exists);
+    CNode *cnode = _tree->get_or_create<CNode>(args->get_guid(), &already_exists, _system);
     if (cnode == nullptr) {
         res->set_code(CNodeAddResultCode::NO_MEM);
         return;
@@ -274,7 +304,6 @@ void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBu
         return;
     }
 
-    _system->add_child(cnode);
     sprintf(cnode->get_base_proto()->get_name(), "cnode-%03d", _system->allocate_cnode_id());
 
     CNodeAddress::Reader address;
@@ -286,10 +315,9 @@ void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBu
     cnode->set_state(CNodeState::INACTIVE);
 
     // create the child platform env
-    EnvObj *env = create_env("platform", 1, PLATFORM_ENV_PORT);
-    cnode->add_child(env);
-    env->add_child(create_module(ModuleId::E, 0));
-    env->add_child(create_module(ModuleId::P, 0));
+    EnvObj *env = create_env(cnode, "platform", 1, PLATFORM_ENV_PORT);
+    create_module(env, ModuleId::E, 0);
+    create_module(env, ModuleId::P, 0);
     connect_env(env);
 
     // create the child data EnvObjs
@@ -297,14 +325,13 @@ void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBu
     SiloConfig::Reader silo_config;
     LOOP(args->get_env_count(), env_index) {
         args->get_env_configs(&env_config, env_index);
-        env = create_env("data", env_config.get_silo_count(), env_config.get_port());
-        cnode->add_child(env);
+        env = create_env(cnode, "data", env_config.get_silo_count(), env_config.get_port());
         LOOP(env_config.get_silo_count(), silo_index) {
             env_config.get_silo_configs(&silo_config, silo_index);
             env->get_silos(silo_index)->set_affinity(silo_config.get_affinity());
             LOOP(silo_config.get_modules_enabled_count(), module_index) {
                 if (silo_config.get_modules_enabled(module_index))
-                    env->add_child(create_module((ModuleId) module_index, silo_index));
+                    create_module(env, (ModuleId) module_index, silo_index);
             }
         }
     }
@@ -318,7 +345,7 @@ void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBu
 
 void Cluster::cnode_modify(CNodeModifyParams::RootReader *args, CNodeModifyResult::RootBuilder *res)
 {
-    CNode *cnode = _imdb->get<CNode>(args->get_guid());
+    CNode *cnode = _tree->get<CNode>(args->get_guid());
     if (cnode == nullptr) {
         res->set_code(CNodeModifyResultCode::NOT_FOUND);
         return;
@@ -336,7 +363,7 @@ void Cluster::cnode_modify(CNodeModifyParams::RootReader *args, CNodeModifyResul
 
 void Cluster::cnode_remove(CNodeRemoveParams::RootReader *args, CNodeRemoveResult::RootBuilder *res)
 {
-    CNode *cnode = _imdb->get<CNode>(args->get_guid());
+    CNode *cnode = _tree->get<CNode>(args->get_guid());
     if (cnode == nullptr) {
         res->set_code(CNodeRemoveResultCode::NOT_FOUND);
         return;
@@ -350,14 +377,14 @@ void Cluster::cnode_remove(CNodeRemoveParams::RootReader *args, CNodeRemoveResul
     args->get_guid().to_string(guid_string);
     PT_INFO(CONTROL, "Removing cnode=%s", guid_string);
 
-    _imdb->remove(cnode);
+    _tree->remove(cnode);
 
     res->set_code(CNodeRemoveResultCode::SUCCESS);
 }
 
 void Cluster::cnode_get(CNodeGetParams::RootReader *args, CNodeGetResult::RootBuilder *res)
 {
-    CNode *cnode = _imdb->get<CNode>(args->get_guid());
+    CNode *cnode = _tree->get<CNode>(args->get_guid());
     if (cnode == nullptr) {
         res->set_code(CNodeGetResultCode::NOT_FOUND);
         return;

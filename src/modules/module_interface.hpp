@@ -18,7 +18,8 @@ namespace P {
 namespace Control {
     class BaseAgent;
     class ObjectBase;
-    class IMDB;
+    class TreeDB;
+    class EnvObj;
 }
 
 class ModuleInterface {
@@ -39,7 +40,7 @@ public:
     virtual const char *get_name() = 0;
     virtual ModuleId get_id() = 0;
 
-    virtual Control::ObjectBase *create_control_object(Control::IMDB *imdb) = 0;
+    virtual Control::ObjectBase *create_control_object(Control::TreeDB *imdb, Control::EnvObj *parent) = 0;
 };
 
 class ModuleRegistry {

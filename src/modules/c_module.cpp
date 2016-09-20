@@ -28,10 +28,10 @@ GUID get_system_guid()
 
 void CModule::init(P::Silo *silo, P::Conf::ConfigSetting *module_setting)
 {
-    _imdb.init();
+    _tree.init();
 
     GUID system_guid = get_system_guid();
-    _system = _imdb.create<System>(system_guid);
+    _system = _tree.create<System>(system_guid, nullptr);
     _system->get_base_proto()->set_parent_guid(system_guid); // the system is the root and points to itself.
     strcpy(_system->get_base_proto()->get_name(), "system");
 
@@ -40,7 +40,7 @@ void CModule::init(P::Silo *silo, P::Conf::ConfigSetting *module_setting)
     _system->set_state(SystemState::INIT);
 
     _agent.init(silo->get_id(), get_id(), FiberGroupId::C);
-    _cluster.init(silo->get_id(), get_id(), &_imdb, _system);
+    _cluster.init(silo->get_id(), get_id(), &_tree, _system);
 
     // TODO: these calls should be removed - see ticket ORION-65
     Env::get()->get_vmsg()->add_module_pair(ModuleId::TEST, ModuleId::C, VMsg::TransportType::RDMA);
