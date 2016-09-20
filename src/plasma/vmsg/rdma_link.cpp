@@ -215,7 +215,7 @@ VMsgRes RDMALink::send(struct ibv_mr *mr, MsgId msg_id, void *buff, uint32_t len
     wr.sg_list = &sg;
     wr.num_sge = 1;
     wr.opcode = IBV_WR_SEND;
-    wr.send_flags = 0;
+    wr.send_flags = IBV_SEND_SIGNALED; // TODO reduce number of SIGNALED work requests
 
     struct ibv_send_wr *bad_wr;
     int ret = ibv_post_send(_cm_id->qp, &wr, &bad_wr);

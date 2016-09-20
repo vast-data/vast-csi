@@ -1,7 +1,6 @@
 /* Copyright (C) Vast Data Ltd. */
 #include <gtest/gtest.h>
 #include "plasma/execution/env.hpp"
-#include "plasma/fiber/sleep.hpp"
 #include "globals.hpp"
 #include "test_module.hpp"
 #include "modules/e_module_agent.rpc.client.hpp"
@@ -48,7 +47,7 @@ static void vmsg_ping(P::EModuleAgentClient *client)
     P::VProto::Empty::RootReader *res;
 
     args = client->alloc_vmsg_ping();
-    client->vmsg_ping_sync(dest, args, &res);
+    ASSERT(client->vmsg_ping_sync(dest, args, &res) == VMsgRes::OK);
     client->free_vmsg_ping(res);
 }
 

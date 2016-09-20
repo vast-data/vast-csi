@@ -314,7 +314,7 @@ void RDMATransport::on_connect_request(struct rdma_cm_event *event)
         _ibv_ctx = event->id->verbs;
     }
     Handshake *handshake = (Handshake *)event->param.conn.private_data;
-    ASSERT_EQUAL(event->param.conn.private_data_len, sizeof(Handshake));
+    ASSERT_OP(event->param.conn.private_data_len, >=, sizeof(Handshake)); // it is "transport dependent"
     ModuleId module_id = handshake->module_id;
     ConnDir conn_dir = handshake->conn_dir;
     auto connections = conn_dir == ConnDir::CLIENT_TO_SERVER ? _recv_request_connections : _recv_response_connections;
@@ -334,7 +334,7 @@ void RDMATransport::on_connection_established(struct rdma_cm_event *event)
     RDMALink *link = (RDMALink *)event->id->context;
     if (link->is_client_link()) {
         Handshake *handshake = (Handshake *)event->param.conn.private_data;
-        ASSERT_EQUAL(event->param.conn.private_data_len, sizeof(Handshake));
+        ASSERT_OP(event->param.conn.private_data_len, >=, sizeof(Handshake)); // it is "transport dependent"
         ModuleId module_id = handshake->module_id;
         PT_DEBUG(DATA, "server handshake env_id=%hu module_id=%hhu module_ver=%u vmsg_ver=%u",
                  handshake->env_id, module_id, handshake->module_ver, handshake->vmsg_ver);

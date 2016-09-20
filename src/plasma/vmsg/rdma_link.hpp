@@ -90,7 +90,7 @@ private:
     // Max backlog size of incoming connection requests.
     static const uint16_t LISTEN_BACKLOG = 32;
     // number of outstanding send QP requests
-    static const uint32_t RQ_SEND_DEPTH = 16;
+    static const uint32_t RQ_SEND_DEPTH = 1024;
     // The maximum number of scatter/gather elements in any Work Request that can be posted to the
     // Send Queue in that Queue Pair.
     static const uint32_t MAX_SEND_SGE = 1;

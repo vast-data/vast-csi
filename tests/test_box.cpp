@@ -27,7 +27,7 @@ static void lock(LockManager::LockManagerClient *client, size_t lock_id)
 
     args = client->alloc_lock();
     args->set_lock_id(lock_id);
-    client->lock_sync(dest, args, &res);
+    ASSERT(client->lock_sync(dest, args, &res) == VMsgRes::OK);
     client->free_lock(res);
 }
 
@@ -38,7 +38,7 @@ static void unlock(LockManager::LockManagerClient *client, size_t lock_id)
 
     args = client->alloc_unlock();
     args->set_lock_id(lock_id);
-    client->unlock_sync(dest, args, &res);
+    ASSERT(client->unlock_sync(dest, args, &res) == VMsgRes::OK);
     client->free_unlock(res);
 }
 
@@ -50,7 +50,7 @@ static bool try_lock(LockManager::LockManagerClient *client, size_t lock_id)
 
     args = client->alloc_try_lock();
     args->set_lock_id(lock_id);
-    client->try_lock_sync(dest, args, &res);
+    ASSERT(client->try_lock_sync(dest, args, &res) == VMsgRes::OK);
     ret = res->get_success();
     client->free_try_lock(res);
     return ret;

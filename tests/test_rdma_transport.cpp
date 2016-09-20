@@ -79,21 +79,28 @@ TEST(TestRDMATransport, test)
         ASSERT(n_events >= 0);
         if (n_events > 0) {
             TRACE_VMSG_EVENT(event);
-            if (event.type == TransportEvent::Type::MSG_RECV) {
-                rcv_ack++;
-                TestMsg *msg = (TestMsg *) (recv_buff + (event.len * event.id.buffer_index));
-                ASSERT(msg->idx == event.id.buffer_index);
-                PT_DEBUG(DATA, "received msg %d '%s'", msg->idx, msg->msg);
-                sum += msg->idx;
-            } else {
-                PANIC();
+            switch (event.type)
+            {
+                case TransportEvent::Type::MSG_RECV:
+                {
+                    rcv_ack++;
+                    TestMsg *msg = (TestMsg *) (recv_buff + (event.len * event.id.buffer_index));
+                    ASSERT(msg->idx == event.id.buffer_index);
+                    PT_DEBUG(DATA, "received msg %d '%s'", msg->idx, msg->msg);
+                    sum += msg->idx;
+                    break;
+                }
+                case TransportEvent::Type::SEND_COMPLETE:
+                    break;
+                default:
+                    PANIC();
             }
         } else {
             usleep(1);
         }
     } while (rcv_ack < loops);
 
-    ASSERT(sum == expected_sum);
+    ASSERT_EQUAL(sum, expected_sum);
 
     transport->unregister_mem(recv_mr);
     transport->unregister_mem(send_mr);
