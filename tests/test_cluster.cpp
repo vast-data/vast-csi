@@ -132,9 +132,8 @@ TEST(TestEnv, system_init)
 
 TEST(TestEnv, cnode_activation)
 {
-    pid_t platform_pid = ::Test::run_env("tests/platform.config");
+    ::Test::EnvProcess platform("tests/platform.config");
     cluster_test(cnode_activation_start_func);
-    kill(platform_pid, 9);
 }
 
 #include "globals.hpp"

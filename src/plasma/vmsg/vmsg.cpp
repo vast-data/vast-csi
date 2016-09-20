@@ -129,10 +129,10 @@ void VMsg::set_env_addresses(EnvId env_id, EnvAddresses::RootBuilder *addresses)
     }
 }
 
-void VMsg::copy_local_env_addresses(EnvAddresses::Builder *addresses)
+void VMsg::copy_env_addresses(EnvId env_id, EnvAddresses::Builder *addresses)
 {
     _address_table.lock();
-    addresses->init_from_root(_address_table.get(get_local_env_id()));
+    addresses->init_from_root(_address_table.get(env_id));
     _address_table.unlock();
 }
 

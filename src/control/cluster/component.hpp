@@ -28,8 +28,12 @@ private:
     void cnode_deactivate(CNode *cnode);
 
     EnvObj *create_env(const char *name, P::byte silo_count, uint16_t port);
-    void connect_to_env(EnvObj *env);
     void env_activate(EnvObj *env);
+    void env_start(EnvObj *env);
+    void connect_env(EnvObj *env);
+    void connect_data_env(EnvObj *env);
+    void connect_platform_env(EnvObj *env);
+    void connect_env_to_env(EnvObj *env1, EnvObj *env2);
 
     ObjectBase *create_module(ModuleId module_id, SiloId silo_id);
 

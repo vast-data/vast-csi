@@ -36,15 +36,73 @@ void Cluster::start()
 void Cluster::connect_envs()
 {
     IMDB_ITER_CHILDREN(_system, cnode, CNode, {
-        if (cnode->get_state() == CNodeState::ACTIVE) {
-            IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
-                connect_to_env(env);
-            });
-        }
+        IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
+            connect_env(env);
+        });
     });
 }
 
-void Cluster::connect_to_env(EnvObj *env)
+void Cluster::connect_platform_env(EnvObj *env)
+{
+    // a platform env requires setting its env_id. the set_env_id RPC also connects back to me.
+    P::PModuleAgentClient client;
+    client.init();
+
+    P::SetLocalEnvIdParams::RootBuilder *params = client.alloc_set_local_env_id();
+    params->set_env_id(env->get_id());
+    P::ConnectParams::Builder *connect_params = params->get_connect_params();
+    connect_params->set_env_id(P::Env::get()->get_vmsg()->get_local_env_id());
+    P::Env::get()->get_vmsg()->copy_env_addresses(connect_params->get_env_id(), connect_params->get_addresses());
+    // TODO: make sure this function can be called more than once on an env. (the leader might be down and the platform could restart)
+    PModuleObj *module = env->get_only_child<PModuleObj>();
+    P::VProto::Empty::RootReader *result;
+    if (client.set_local_env_id_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
+        char guid_string[P::GUID::STRING_SIZE];
+        env->get_base()->get_guid().to_string(guid_string);
+        PT_ERROR(CONTROL, "Error setting platform env id for env=%s", guid_string);
+    }
+    client.free_set_local_env_id(result);
+}
+
+void Cluster::connect_data_env(EnvObj *env)
+{
+    // any env other than the platform can be simply connected back to me.
+    P::EModuleAgentClient client;
+    client.init();
+
+    P::ConnectParams::RootBuilder *params = client.alloc_connect();
+    params->set_env_id(P::Env::get()->get_vmsg()->get_local_env_id());
+    P::Env::get()->get_vmsg()->copy_env_addresses(params->get_env_id(), params->get_addresses());
+    EModuleObj *module = env->get_only_child<EModuleObj>();
+    P::VProto::Empty::RootReader *result;
+    if (client.connect_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
+        char guid_string[P::GUID::STRING_SIZE];
+        env->get_base()->get_guid().to_string(guid_string);
+        PT_ERROR(CONTROL, "Error requesting env=%s to connect back to me", guid_string);
+    }
+    client.free_connect(result);
+}
+
+void Cluster::connect_env_to_env(EnvObj *env1, EnvObj *env2)
+{
+    // env1 -> env2
+    P::EModuleAgentClient client;
+    client.init();
+
+    P::ConnectParams::RootBuilder *params = client.alloc_connect();
+    params->set_env_id(env2->get_id());
+    P::Env::get()->get_vmsg()->copy_env_addresses(env2->get_id(), params->get_addresses());
+    EModuleObj *module = env1->get_only_child<EModuleObj>();
+    P::VProto::Empty::RootReader *result;
+    if (client.connect_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
+        char guid_string[P::GUID::STRING_SIZE];
+        env1->get_base()->get_guid().to_string(guid_string);
+        PT_ERROR(CONTROL, "Error requesting env=%s to connect back to me", guid_string);
+    }
+    client.free_connect(result);
+}
+
+void Cluster::connect_env(EnvObj *env)
 {
     P::VMsg::EnvAddresses::RootBuilder addresses;
     CNode *cnode = (CNode*) env->get_parent();
@@ -57,37 +115,17 @@ void Cluster::connect_to_env(EnvObj *env)
 
     char guid_string[P::GUID::STRING_SIZE];
     env->get_base()->get_guid().to_string(guid_string);
-    PT_INFO(CONTROL, "Connecting to env id: %d, GUID: %s.", env->get_id(), guid_string);
+    PT_INFO(CONTROL, "Connecting to env=%s", guid_string);
 
     // connect to the env.
     P::Env::get()->get_vmsg()->set_env_addresses(env->get_id(), &addresses);
 
+    P::VProto::Empty::RootReader *result;
     // tell the env to connect back to me.
     if (env->get_port() == PLATFORM_ENV_PORT) {
-        // a platform env requires setting its env_id. the set_env_id RPC also connects back to me.
-        P::PModuleAgentClient client;
-        client.init();
-        P::SetLocalEnvIdParams::RootBuilder *params = client.alloc_set_local_env_id();
-        params->set_env_id(env->get_id());
-        P::ConnectParams::Builder *connect_params = params->get_connect_params();
-        connect_params->set_env_id(P::Env::get()->get_vmsg()->get_local_env_id());
-        P::Env::get()->get_vmsg()->copy_local_env_addresses(connect_params->get_addresses());
-        P::VProto::Empty::RootReader *result;
-        // TODO: make sure this function can be called more than once on an env. (the leader might be down and the platform could restart)
-        PModuleObj *module = env->get_only_child<PModuleObj>();
-        if (client.set_local_env_id_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK)
-            PT_ERROR(CONTROL, "Error setting platform env id for env: %s", guid_string);
+        connect_platform_env(env);
     } else {
-        // any env other than the platform can be simply connected back to me.
-        P::EModuleAgentClient client;
-        client.init();
-        P::ConnectParams::RootBuilder *params = client.alloc_connect();
-        params->set_env_id(P::Env::get()->get_vmsg()->get_local_env_id());
-        P::Env::get()->get_vmsg()->copy_local_env_addresses(params->get_addresses());
-        P::VProto::Empty::RootReader *result;
-        EModuleObj *module = env->get_only_child<EModuleObj>();
-        if (client.connect_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK)
-            PT_ERROR(CONTROL, "Error requesting env: %s to connect back to me", guid_string);
+        connect_data_env(env);
     }
 }
 
@@ -146,20 +184,70 @@ void Cluster::env_activate(EnvObj *env)
 {
     IMDB_ITER_MODULES(env, module, {
         module->activate();
-        PT_INFO(CONTROL, "Module %s of env %d activated.", module_id_to_string(module->get_module_id()), env->get_id());
+        char guid_string[P::GUID::STRING_SIZE];
+        module->get_base()->get_guid().to_string(guid_string);
+        PT_INFO(CONTROL, "Activated module=%s", guid_string);
     });
     env->set_state(EnvState::ACTIVE);
 }
 
+void Cluster::env_start(EnvObj *env)
+{
+    char guid_string[P::GUID::STRING_SIZE];
+    env->get_base()->get_guid().to_string(guid_string);
+
+    P::PModuleAgentClient client;
+    client.init();
+
+    P::EnvStartParams::RootBuilder *params = client.alloc_env_start();
+    params->set_env_guid(env->get_base()->get_guid());
+    const char *config = ""; //TODO: once configuration is ready, call it from here.
+    strcpy(params->get_config(), config);
+    P::EnvStartResult::RootReader *result;
+    PModuleObj *module = env->get_only_child<PModuleObj>();
+    if (client.env_start_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
+        PT_ERROR(CONTROL, "Error setting platform env id for env=%s", guid_string);
+        return;
+    }
+    P::EnvStartResultCode code = result->get_code();
+    client.free_env_start(result);
+    if (code != P::EnvStartResultCode::SUCCESS)
+        PT_ERROR(CONTROL, "Error starting env=%s with code=%hhd", guid_string, code);
+}
+
 void Cluster::cnode_activate(CNode *cnode)
 {
+    // 1. start envs on this node.
+    IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
+        if (env->get_port() == PLATFORM_ENV_PORT)
+            continue;
+        env_start(env);
+    });
+
+    // 2. interconnect the envs on this with the rest of the envs in the system.
+    IMDB_ITER_CHILDREN(_system, other_cnode, CNode, {
+        if (cnode == other_cnode)
+            continue;
+        IMDB_ITER_CHILDREN(other_cnode, other_env, EnvObj, {
+            if (other_env->get_port() == PLATFORM_ENV_PORT)
+                continue;
+            IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
+                if (env->get_port() == PLATFORM_ENV_PORT)
+                    continue;
+                connect_env_to_env(env, other_env);
+                connect_env_to_env(other_env, env);
+            });
+        });
+    });
+
+    // 3. activate the envs.
     IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
         env_activate(env);
     });
 
     char guid_string[P::GUID::STRING_SIZE];
     cnode->get_base()->get_guid().to_string(guid_string);
-    PT_INFO(CONTROL, "CNode %s:%s activated", cnode->get_base_proto()->get_name(), guid_string);
+    PT_INFO(CONTROL, "Activated cnode=%s", guid_string);
     cnode->set_state(CNodeState::ACTIVE);
 }
 
@@ -167,7 +255,7 @@ void Cluster::cnode_deactivate(CNode *cnode)
 {
     char guid_string[P::GUID::STRING_SIZE];
     cnode->get_base()->get_guid().to_string(guid_string);
-    PT_INFO(CONTROL, "CNode %s:%s deactivated", cnode->get_base_proto()->get_name(), guid_string);
+    PT_INFO(CONTROL, "Deactivated cnode=%s", guid_string);
 
     cnode->set_state(CNodeState::INACTIVE);
 }
@@ -202,7 +290,7 @@ void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBu
     cnode->add_child(env);
     env->add_child(create_module(ModuleId::E, 0));
     env->add_child(create_module(ModuleId::P, 0));
-    connect_to_env(env);
+    connect_env(env);
 
     // create the child data EnvObjs
     EnvConfig::Reader env_config;
@@ -223,7 +311,7 @@ void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBu
 
     char guid_string[P::GUID::STRING_SIZE];
     args->get_guid().to_string(guid_string);
-    PT_INFO(CONTROL, "CNode %s:%s added.", cnode->get_base_proto()->get_name(), guid_string);
+    PT_INFO(CONTROL, "Added cnode=%s", guid_string);
 
     res->set_code(CNodeAddResultCode::SUCCESS);
 }
@@ -238,7 +326,7 @@ void Cluster::cnode_modify(CNodeModifyParams::RootReader *args, CNodeModifyResul
 
     char guid_string[P::GUID::STRING_SIZE];
     args->get_guid().to_string(guid_string);
-    PT_INFO(CONTROL, "CNode %s:%s modifed: enabled=%c", cnode->get_base_proto()->get_name(), guid_string, args->get_enabled());
+    PT_INFO(CONTROL, "Modified cnode=%s: enabled=%c", guid_string, args->get_enabled());
 
     cnode->set_enabled(args->get_enabled());
     calc_cnode_state(cnode);
@@ -260,7 +348,7 @@ void Cluster::cnode_remove(CNodeRemoveParams::RootReader *args, CNodeRemoveResul
 
     char guid_string[P::GUID::STRING_SIZE];
     args->get_guid().to_string(guid_string);
-    PT_INFO(CONTROL, "removing CNode %s:%s .", cnode->get_base_proto()->get_name(), guid_string);
+    PT_INFO(CONTROL, "Removing cnode=%s", guid_string);
 
     _imdb->remove(cnode);
 

@@ -44,9 +44,9 @@ public:
     void set_env_addresses(EnvId env_id, EnvAddresses::RootBuilder *addresses);
 
     /*!
-     * Copy the addresses of the current env (getting is harder to implement since it requires locking)
+     * Copy the addresses of the current env (a getter is harder to implement since it requires locking)
      */
-    void copy_local_env_addresses(EnvAddresses::Builder *addresses);
+    void copy_env_addresses(EnvId env_id, EnvAddresses::Builder *addresses);
 
     /*!
      * Defines a connection pair between the client and server modules
