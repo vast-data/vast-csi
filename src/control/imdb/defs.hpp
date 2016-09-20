@@ -11,6 +11,8 @@
 #include "cnode.hpp"
 #include "env.hpp"
 #include "module.hpp"
+#include "dbox.hpp"
+#include "dnode.hpp"
 #include "drive.hpp"
 
 namespace Control {
@@ -30,6 +32,8 @@ const TypeConfig TYPE_CONFIGS[(P::byte)TypeId::COUNT] = {{sizeof(System), 1},
                                                          {sizeof(IModuleObj), 2048},
                                                          {sizeof(TModuleObj), 5},
                                                          {sizeof(CModuleObj), 1},
+                                                         {sizeof(DBox), 64},
+                                                         {sizeof(DNode), 128},
                                                          {sizeof(Drive), 4096}};
 
 }

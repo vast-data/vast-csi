@@ -36,6 +36,8 @@ enum class TypeId : P::byte {
     IModuleObj,
     TModuleObj,
     CModuleObj,
+    DBox,
+    DNode,
     Drive,
     COUNT
 };

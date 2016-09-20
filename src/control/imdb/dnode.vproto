@@ -1,0 +1,18 @@
+$import object.vproto
+$import cnode.vproto as cnode
+
+$namespace Control
+
+enum DNodeState : byte {
+    INIT,
+    ACTIVE,
+    INACTIVE,
+    FAILED
+};
+
+struct DNodeProto {
+    @0 base_proto ObjectBaseProto;
+    @1 state DNodeState;
+    @2 version uint32_t;
+    @3 addresses cnode.NodeAddress[2];
+};

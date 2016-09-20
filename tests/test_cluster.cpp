@@ -76,8 +76,8 @@ static void cnode_activation_start_func(void *ctx)
     CNodeAddParams::RootBuilder *cnode_add_params = client.alloc_cnode_add();
     cnode_add_params->set_guid(cnode_guid);
     cnode_add_params->set_env_count(0);
-    LOOP(2, i)
-        strcpy(cnode_add_params->get_addresses(i)->get_host(), "127.0.0.1");
+    strcpy(cnode_add_params->get_addresses(0)->get_host(), "127.0.0.1");
+    strcpy(cnode_add_params->get_addresses(1)->get_host(), "127.0.1.1");
     CNodeAddResult::RootReader *cnode_add_result;
     ASSERT_EQ(VMsg::VMsgRes::OK, client.cnode_add_sync(dest, cnode_add_params, &cnode_add_result));
     ASSERT_EQ(cnode_add_result->get_code(), CNodeAddResultCode::SUCCESS);

@@ -14,6 +14,33 @@
 
 namespace Control {
 
+template <class Node>
+static bool node_has_address(Node *node, char *host)
+{
+    // check if a cnode or a dnode has a given address
+    LOOP(node->get_addresses_count(), i)
+        if (strncmp(host,
+                    node->get_addresses(i)->get_host(),
+                    node->get_addresses_count()) == 0)
+            return true;
+    return false;
+}
+
+bool Cluster::address_already_exists(char *host)
+{
+    IMDB_ITER_CHILDREN(_system, cnode, CNode, {
+        if (node_has_address(cnode, host))
+            return true;
+    });
+    IMDB_ITER_CHILDREN(_system, dbox, DBox, {
+        IMDB_ITER_CHILDREN(dbox, dnode, DNode, {
+            if (node_has_address(dnode, host))
+                return true;
+        });
+    });
+    return false;
+}
+
 void Cluster::init(P::SiloId silo_id, ModuleId module_id, TreeDB *tree, System *system)
 {
     _tree = tree;
@@ -129,6 +156,8 @@ void Cluster::connect_env(EnvObj *env)
     } else {
         connect_data_env(env);
     }
+
+    env->set_connected(true);
 }
 
 void Cluster::system_status(SystemStatusParams::RootReader *args, SystemStatusResult::RootBuilder *res)
@@ -148,9 +177,10 @@ void Cluster::system_init(SystemInitParams::RootReader *args, SystemInitResult::
     res->set_code(SystemInitResultCode::SUCCESS);
 }
 
-EnvObj *Cluster::create_env(CNode *cnode, const char *name, P::byte silo_count, uint16_t port)
+template <class Node>
+EnvObj *Cluster::create_env(Node *node, const char *name, P::byte silo_count, uint16_t port)
 {
-    EnvObj *env = _tree->create<EnvObj>(P::GUID::create(), cnode);
+    EnvObj *env = _tree->create<EnvObj>(P::GUID::create(), node);
     strcpy(env->get_base_proto()->get_name(), name);
 
     env->set_state(EnvState::INIT);
@@ -291,6 +321,15 @@ void Cluster::cnode_deactivate(CNode *cnode)
 
 void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBuilder *res)
 {
+    NodeAddress::Reader address;
+    LOOP(args->get_addresses_count(), i) {
+        args->get_addresses(&address, i);
+        if (address_already_exists(address.get_host())) {
+            res->set_code(CNodeAddResultCode::ADDRESS_ALREADY_EXISTS);
+            return;
+        }
+    }
+
     // create the CNode
     bool already_exists;
     CNode *cnode = _tree->get_or_create<CNode>(args->get_guid(), &already_exists, _system);
@@ -299,19 +338,18 @@ void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBu
         return;
     }
     if (already_exists) {
-        res->set_code(CNodeAddResultCode::ALREADY_EXISTS);
+        res->set_code(CNodeAddResultCode::GUID_ALREADY_EXISTS);
         return;
     }
 
-    sprintf(cnode->get_base_proto()->get_name(), "cnode-%03d", _system->allocate_cnode_id());
-
-    CNodeAddress::Reader address;
+    // init the CNode's properties
     LOOP(cnode->get_addresses_count(), i) {
         args->get_addresses(&address, i);
         cnode->get_addresses(i)->init_from_reader(&address);
     }
     cnode->set_enabled(false);
     cnode->set_state(CNodeState::INACTIVE);
+    sprintf(cnode->get_base_proto()->get_name(), "cnode-%03d", _system->allocate_cnode_id());
 
     // create the child platform env
     EnvObj *env = create_env(cnode, "platform", 1, PLATFORM_ENV_PORT);
@@ -390,6 +428,76 @@ void Cluster::cnode_get(CNodeGetParams::RootReader *args, CNodeGetResult::RootBu
     }
     res->get_cnode()->init_from_reader(cnode->as_reader());
     res->set_code(CNodeGetResultCode::SUCCESS);
+}
+
+void Cluster::dbox_add(DBoxAddParams::RootReader *args, DBoxAddResult::RootBuilder *res)
+{
+    NodeAddress::Reader address;
+    LOOP(args->get_addresses_count(), i) {
+        args->get_addresses(&address, i);
+        if (address_already_exists(address.get_host())) {
+            res->set_code(DBoxAddResultCode::ADDRESS_ALREADY_EXISTS);
+            return;
+        }
+    }
+
+    // create the DBox
+    bool already_exists;
+    DBox *dbox = _tree->get_or_create<DBox>(args->get_guid(), &already_exists, _system);
+    if (dbox == nullptr) {
+        res->set_code(DBoxAddResultCode::NO_MEM);
+        return;
+    }
+    if (already_exists) {
+        res->set_code(DBoxAddResultCode::GUID_ALREADY_EXISTS);
+        return;
+    }
+
+    // init the DBox's properties
+    dbox->set_state(DNodeState::INIT);
+    sprintf(dbox->get_base_proto()->get_name(), "dbox-%03d", _system->allocate_dbox_id());
+
+    LOOP(2, i) {
+        DNode *dnode = _tree->create<DNode>(P::GUID::create(), dbox);
+        ASSERT_NOT_NULL(dnode);
+        LOOP(dnode->get_addresses_count(), j) {
+            args->get_addresses(&address, i * 2 + j);
+            dnode->get_addresses(j)->init_from_reader(&address);
+        }
+
+        // create the child platform env
+        EnvObj *env = create_env(dbox, "platform", 1, PLATFORM_ENV_PORT);
+        create_module(env, ModuleId::E, 0);
+        create_module(env, ModuleId::P, 0);
+        connect_env(env);
+
+        // create the child data EnvObjs
+        EnvConfig::Reader env_config;
+        SiloConfig::Reader silo_config;
+        LOOP(args->get_env_count(), env_index) {
+            args->get_env_configs(&env_config, env_index);
+            env = create_env(dnode, "data", env_config.get_silo_count(), env_config.get_port());
+            LOOP(env_config.get_silo_count(), silo_index) {
+                env_config.get_silo_configs(&silo_config, silo_index);
+                env->get_silos(silo_index)->set_affinity(silo_config.get_affinity());
+                LOOP(silo_config.get_modules_enabled_count(), module_index) {
+                    if (silo_config.get_modules_enabled(module_index))
+                        create_module(env, (ModuleId) module_index, silo_index);
+                }
+            }
+        }
+    }
+
+    char guid_string[P::GUID::STRING_SIZE];
+    args->get_guid().to_string(guid_string);
+    PT_INFO(CONTROL, "Added dbox=%s", guid_string);
+
+    res->set_code(DBoxAddResultCode::SUCCESS);
+}
+
+void Cluster::dnode_modify(DNodeModifyParams::RootReader *args, DNodeModifyResult::RootBuilder *res)
+{
+
 }
 
 }

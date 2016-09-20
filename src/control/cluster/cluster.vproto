@@ -40,16 +40,17 @@ struct EnvConfig {
 };
 
 struct CNodeAddParams {
-    @0 env_configs EnvConfig[CNODE_MAX_DATA_ENVS];
-    @1 env_count byte;
-    @2 guid GUID;
-    @3 addresses cnode.CNodeAddress[2];
+    @0 guid GUID;
+    @1 addresses cnode.NodeAddress[2];
+    @2 env_configs EnvConfig[CNODE_MAX_DATA_ENVS];
+    @3 env_count byte;
 };
 
 enum CNodeAddResultCode {
     SUCCESS,
     NO_MEM,
-    ALREADY_EXISTS
+    GUID_ALREADY_EXISTS,
+    ADDRESS_ALREADY_EXISTS
 };
 
 struct CNodeAddResult {
@@ -96,4 +97,36 @@ enum CNodeGetResultCode {
 struct CNodeGetResult {
     @0 code CNodeGetResultCode;
     @1 cnode cnode.CNodeProto;
+};
+
+struct DBoxAddParams {
+    @0 guid GUID;
+    @1 addresses cnode.NodeAddress[4];
+    @2 env_configs EnvConfig[CNODE_MAX_DATA_ENVS];
+    @3 env_count byte;
+};
+
+enum DBoxAddResultCode {
+    SUCCESS,
+    NO_MEM,
+    GUID_ALREADY_EXISTS,
+    ADDRESS_ALREADY_EXISTS
+};
+
+struct DBoxAddResult {
+    @0 code DBoxAddResultCode;
+};
+
+struct DNodeModifyParams {
+    @0 guid GUID;
+    @1 enabled bool;
+};
+
+enum DNodeModifyResultCode {
+    SUCCESS,
+    NOT_FOUND
+};
+
+struct DNodeModifyResult {
+    @0 code DNodeModifyResultCode;
 };

@@ -1,0 +1,9 @@
+$import object.vproto
+$import dnode.vproto as dnode
+
+$namespace Control
+
+struct DBoxProto {
+    @0 base_proto ObjectBaseProto;
+    @1 state dnode.DNodeState; // the DBox state is an aggregate of its DNode's state
+};

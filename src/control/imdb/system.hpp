@@ -29,6 +29,22 @@ public:
         set_next_cnode_id(result + 1);
         return result;
     }
+
+    uint16_t allocate_dbox_id()
+    {
+        uint16_t result = get_next_dbox_id();
+        ASSERT(result != std::numeric_limits<uint16_t>::max(), "DBox id overflow!");
+        set_next_dbox_id(result + 1);
+        return result;
+    }
+
+    uint16_t allocate_dnode_id()
+    {
+        uint16_t result = get_next_dnode_id();
+        ASSERT(result != std::numeric_limits<uint16_t>::max(), "DNode id overflow!");
+        set_next_dnode_id(result + 1);
+        return result;
+    }
 };
 
 }

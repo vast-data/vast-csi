@@ -9,13 +9,13 @@ enum CNodeState : byte {
     FAILED
 };
 
-struct CNodeAddress {
+struct NodeAddress {
     @0 host char[VMsg.HOST_LENGTH];
 };
 
 struct CNodeProto {
     @0 base_proto ObjectBaseProto;
-    @1 addresses CNodeAddress[2];
+    @1 addresses NodeAddress[2];
     @2 version uint32_t;
     @3 enabled bool;
     @4 state CNodeState;

@@ -23,11 +23,15 @@ public:
     void connect_envs();
 
 private:
+    // internal functions
+    bool address_already_exists(char *host);
+
     void calc_cnode_state(CNode *cnode);
     void cnode_activate(CNode *cnode);
     void cnode_deactivate(CNode *cnode);
 
-    EnvObj *create_env(CNode *cnode, const char *name, P::byte silo_count, uint16_t port);
+    template <class Node>
+    EnvObj *create_env(Node *node, const char *name, P::byte silo_count, uint16_t port);
     void env_activate(EnvObj *env);
     void env_start(EnvObj *env);
     void env_stop(EnvObj *env);
@@ -41,10 +45,14 @@ private:
     // RPC functions
     void system_status(SystemStatusParams::RootReader *args, SystemStatusResult::RootBuilder *res);
     void system_init(SystemInitParams::RootReader *args, SystemInitResult::RootBuilder *res);
+
     void cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBuilder *res);
     void cnode_modify(CNodeModifyParams::RootReader *args, CNodeModifyResult::RootBuilder *res);
     void cnode_remove(CNodeRemoveParams::RootReader *args, CNodeRemoveResult::RootBuilder *res);
     void cnode_get(CNodeGetParams::RootReader *args, CNodeGetResult::RootBuilder *res);
+
+    void dbox_add(DBoxAddParams::RootReader *args, DBoxAddResult::RootBuilder *res);
+    void dnode_modify(DNodeModifyParams::RootReader *args, DNodeModifyResult::RootBuilder *res);
 
     TreeDB *_tree;
     System *_system;

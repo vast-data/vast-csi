@@ -5,7 +5,7 @@
 using namespace P;
 using namespace Control;
 
-TEST(TestIMDB, test_guid_hash)
+TEST(TestIMDB, test_imdb)
 {
     GUID guid;
     guid.init();
@@ -20,30 +20,44 @@ TEST(TestIMDB, test_guid_hash)
     ASSERT_EQ(db.get<CNode>(guid), nullptr);
 }
 
-TEST(TestIMDB, test_tree)
+TEST(TestIMDB, test_get_or_create)
 {
+    GUID guid;
+    guid.init();
+
     IMDB db;
     db.init();
 
-    System *sys = db.create<System>(GUID::create());
-    ASSERT_EQ(sys->get_parent(), nullptr);
+    CNode *c = db.get_or_create<CNode>(guid, nullptr);
 
-    CNode *cnode1 = db.create<CNode>(GUID::create());
+    bool exists;
+    ASSERT_EQ(db.get_or_create<CNode>(guid, &exists), c);
+    ASSERT_TRUE(exists);
+
+    db.remove(c);
+    ASSERT_EQ(db.get_or_create<CNode>(guid, &exists), c);
+    ASSERT_FALSE(exists);
+
+    db.remove(c);
+    db.destroy();
+}
+
+TEST(TestIMDB, test_tree)
+{
+    TreeDB db;
+    db.init();
+
+    System *sys = db.create<System>(GUID::create(), nullptr);
+
+    CNode *cnode1 = db.create<CNode>(GUID::create(), sys);
     cnode1->set_version(1);
-    sys->add_child(cnode1);
     ASSERT_EQ(cnode1->get_parent(), sys);
-
-    CNode *cnode2 = db.create<CNode>(GUID::create());
+    CNode *cnode2 = db.create<CNode>(GUID::create(), sys);
     cnode2->set_version(2);
-    sys->add_child(cnode2);
-
-    Drive *drive1 = db.create<Drive>(GUID::create());
+    Drive *drive1 = db.create<Drive>(GUID::create(), sys);
     drive1->set_version(3);
-    sys->add_child(drive1);
-
-    Drive *drive2 = db.create<Drive>(GUID::create());
+    Drive *drive2 = db.create<Drive>(GUID::create(), sys);
     drive2->set_version(4);
-    sys->add_child(drive2);
 
     int drive_version_sum = 0;
     int cnode_version_sum = 0;
@@ -77,7 +91,6 @@ TEST(TestIMDB, test_tree)
             ASSERT_TRUE(0);
             break;
         }
-        sys->remove_child(child);
         db.remove(child);
     }
 

@@ -28,3 +28,11 @@ methods:
   op_id: 5
   arg: CNodeGetParams
   res: CNodeGetResult
+- method: dbox_add
+  op_id: 6
+  arg: DBoxAddParams
+  res: DBoxAddResult
+- method: dnode_modify
+  op_id: 7
+  arg: DNodeModifyParams
+  res: DNodeModifyResult
