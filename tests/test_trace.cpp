@@ -217,7 +217,7 @@ TEST(Trace, dumper)
     dumper.start();
 
     LOOP(1000000, i)
-        PT_INFO(DATA, "Kawabanga: %ld!.", i);
+        PT_DEBUG(DATA, "Kawabanga: %ld!.", i);
 
     char c[3] = {'a', 'b', 'c'};
     PT_INFO(DATA, "%d %d %d", c[0], c[1], c[2]);

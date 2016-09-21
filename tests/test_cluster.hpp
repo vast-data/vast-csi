@@ -24,13 +24,16 @@ public:
     EnvProcess(const char *config)
     {
         _pid = fork();
-        if (_pid == 0)
+        if (_pid == 0) {
+            P::kill_myself_on_parent_death();
             execl("dist/env", "dist/env", config, nullptr);
+        }
     }
 
     ~EnvProcess()
     {
         kill(_pid, 9);
+        waitpid(_pid, nullptr, 0);
     }
 
 };

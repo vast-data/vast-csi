@@ -6,12 +6,13 @@
  */
 #pragma once
 
+#include "object.vproto.hpp"
 #include "plasma/data/ilist.hpp"
 #include "plasma/utils/types.hpp"
 
 #define IMDB_ITER_CHILDREN(parent, var, child_type, body)               \
-    ILIST_ITER_SAFE(parent->get_children(), i) {                        \
-        ObjectBase *child_ = p_container_of(i, ObjectBase, child_node); \
+    ILIST_ITER_SAFE(parent->get_children(), i_) {                       \
+        ObjectBase *child_ = p_container_of(i_, ObjectBase, child_node);\
         child_type *var;                                                \
         switch (child_->get_type_id()) {                                \
         case TypeId::child_type:                                        \
@@ -38,6 +39,7 @@ enum class TypeId : P::byte {
     CModuleObj,
     DBox,
     DNode,
+    NVRAM,
     Drive,
     COUNT
 };

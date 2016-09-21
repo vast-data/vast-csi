@@ -10,24 +10,27 @@
 #include "modules/e_module_agent.rpc.client.hpp"
 #include "control/imdb/cnode.hpp"
 #include "control/imdb/env.hpp"
+#include "control/imdb/nvram.hpp"
 #include "control/imdb/module.hpp"
 
 namespace Control {
 
-template <class Node>
-static bool node_has_address(Node *node, char *host)
+static bool node_has_address(BaseNode *node, char *host)
 {
     // check if a cnode or a dnode has a given address
-    LOOP(node->get_addresses_count(), i)
+    LOOP(node->get_node_base()->get_addresses_count(), i)
         if (strncmp(host,
-                    node->get_addresses(i)->get_host(),
-                    node->get_addresses_count()) == 0)
+                    node->get_node_base()->get_addresses(i)->get_host(),
+                    node->get_node_base()->get_addresses_count()) == 0)
             return true;
     return false;
 }
 
 bool Cluster::address_already_exists(char *host)
 {
+    if (strcmp(host, P::LOCALHOST) == 0)
+        return false; // it's allowed to run several nodes only on localhost
+
     IMDB_ITER_CHILDREN(_system, cnode, CNode, {
         if (node_has_address(cnode, host))
             return true;
@@ -117,6 +120,8 @@ void Cluster::connect_env_to_env(EnvObj *env1, EnvObj *env2)
     P::EModuleAgentClient client;
     client.init();
 
+    PT_INFO(CONTROL, "Connecting between env_id=%d and env_id=%d", env1->get_id(), env2->get_id());
+
     P::ConnectParams::RootBuilder *params = client.alloc_connect();
     params->set_env_id(env2->get_id());
     P::Env::get()->get_vmsg()->copy_env_addresses(env2->get_id(), params->get_addresses());
@@ -134,28 +139,31 @@ void Cluster::connect_env_to_env(EnvObj *env1, EnvObj *env2)
 void Cluster::connect_env(EnvObj *env)
 {
     P::VMsg::EnvAddresses::RootBuilder addresses;
+    addresses.init();
     CNode *cnode = (CNode*) env->get_parent();
-    addresses.set_n_addr(cnode->get_addresses_count());
-    LOOP(cnode->get_addresses_count(), i) {
+    addresses.set_n_addr(cnode->get_node_base()->get_addresses_count());
+    LOOP(cnode->get_node_base()->get_addresses_count(), i) {
         strcpy(addresses.get_addresses(i)->get_host(),
-               cnode->get_addresses(i)->get_host());
+               cnode->get_node_base()->get_addresses(i)->get_host());
         addresses.get_addresses(i)->set_port(env->get_port());
     }
 
     char guid_string[P::GUID::STRING_SIZE];
     env->get_base()->get_guid().to_string(guid_string);
-    PT_INFO(CONTROL, "Connecting to env=%s", guid_string);
+    PT_INFO(CONTROL, "Connecting to env=%s id=%d", guid_string, env->get_id());
 
     // connect to the env.
     P::Env::get()->get_vmsg()->set_env_addresses(env->get_id(), &addresses);
 
     P::VProto::Empty::RootReader *result;
     // tell the env to connect back to me.
-    if (env->get_port() == PLATFORM_ENV_PORT) {
+    if (cnode->get_platform_env() == env) {
         connect_platform_env(env);
     } else {
         connect_data_env(env);
     }
+
+    PT_INFO(CONTROL, "Connected to env=%s id=%d", guid_string, env->get_id());
 
     env->set_connected(true);
 }
@@ -165,23 +173,33 @@ void Cluster::system_status(SystemStatusParams::RootReader *args, SystemStatusRe
     res->get_system()->init_from_reader(_system->as_reader());
 }
 
-void Cluster::system_init(SystemInitParams::RootReader *args, SystemInitResult::RootBuilder *res)
+void Cluster::system_activate(SystemActivateParams::RootReader *args, SystemActivateResult::RootBuilder *res)
 {
-    _system->set_state(SystemState::ONLINE);
-    PT_INFO(CONTROL, "System initialized. State is now ONLINE.");
+    if (_system->get_state() == SystemState::INIT) {
+        _system->set_state(SystemState::ONLINE);
+        PT_INFO(CONTROL, "System activated. State is now ONLINE.");
+    } else {
+        PT_INFO(CONTROL, "System re-activated.");
+    }
 
     // potentially activate all cnodes
     IMDB_ITER_CHILDREN(_system, cnode, CNode, {
         calc_cnode_state(cnode);
     });
-    res->set_code(SystemInitResultCode::SUCCESS);
+
+    // potentially activate all dnodes
+    IMDB_ITER_CHILDREN(_system, dbox, DBox, {
+        IMDB_ITER_CHILDREN(dbox, dnode, DNode, {
+            if (dnode->get_node_base()->get_state() == NodeState::INIT && dnode->get_node_base()->get_enabled())
+                dnode_initialize(dnode);
+        });
+    });
+    res->set_code(SystemActivateResultCode::SUCCESS);
 }
 
-template <class Node>
-EnvObj *Cluster::create_env(Node *node, const char *name, P::byte silo_count, uint16_t port)
+EnvObj *Cluster::create_env(BaseNode *node, P::byte silo_count, uint16_t port)
 {
     EnvObj *env = _tree->create<EnvObj>(P::GUID::create(), node);
-    strcpy(env->get_base_proto()->get_name(), name);
 
     env->set_state(EnvState::INIT);
     env->set_silo_count(silo_count);
@@ -202,12 +220,25 @@ ObjectBase *Cluster::create_module(EnvObj *env, ModuleId module_id, SiloId silo_
 
 void Cluster::calc_cnode_state(CNode *cnode)
 {
-    if (_system->get_state() == SystemState::ONLINE && cnode->get_enabled()) {
-        if (cnode->get_state() == CNodeState::INACTIVE)
+    if (cnode->get_node_base()->get_enabled()) {
+        if ((cnode->get_node_base()->get_state() == NodeState::INACTIVE ||
+             cnode->get_node_base()->get_state() == NodeState::INIT)
+            && _system->get_state() != SystemState::INIT)
             cnode_activate(cnode);
     } else {
-        if (cnode->get_state() == CNodeState::ACTIVE)
+        if (cnode->get_node_base()->get_state() == NodeState::ACTIVE)
             cnode_deactivate(cnode);
+    }
+}
+
+void Cluster::calc_dnode_state(DNode *dnode)
+{
+    if (dnode->get_node_base()->get_enabled()) {
+        if (dnode->get_node_base()->get_state() == NodeState::INACTIVE && _system->get_state() != SystemState::INIT)
+            dnode_activate(dnode);
+    } else {
+        if (dnode->get_node_base()->get_state() == NodeState::ACTIVE)
+            dnode_deactivate(dnode);
     }
 }
 
@@ -217,7 +248,7 @@ void Cluster::env_activate(EnvObj *env)
         module->activate();
         char guid_string[P::GUID::STRING_SIZE];
         module->get_base()->get_guid().to_string(guid_string);
-        PT_INFO(CONTROL, "Activated module=%s", guid_string);
+        PT_INFO(CONTROL, "Activated module=%s module_id=%hhu env_id=%d", guid_string, module->get_module_id(), env->get_id());
     });
     env->set_state(EnvState::ACTIVE);
 }
@@ -232,10 +263,10 @@ void Cluster::env_start(EnvObj *env)
 
     P::EnvStartParams::RootBuilder *params = client.alloc_env_start();
     params->set_env_guid(env->get_base()->get_guid());
-    const char *config = ""; //TODO: once configuration is ready, call it from here.
-    strcpy(params->get_config(), config);
+    env->generate_config(params->get_config(), params->get_config_count());
     P::EnvStartResult::RootReader *result;
-    PModuleObj *module = env->get_only_child<PModuleObj>();
+    CNode *cnode = (CNode*) env->get_parent();
+    PModuleObj *module = cnode->get_platform_module();
     if (client.env_start_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
         PT_ERROR(CONTROL, "Error starting env=%s", guid_string);
         return;
@@ -256,8 +287,9 @@ void Cluster::env_stop(EnvObj *env)
 
     P::EnvStopParams::RootBuilder *params = client.alloc_env_stop();
     params->set_env_guid(env->get_base()->get_guid());
+    CNode *cnode = (CNode*) env->get_parent();
+    PModuleObj *module = cnode->get_platform_module();
     P::EnvStopResult::RootReader *result;
-    PModuleObj *module = env->get_only_child<PModuleObj>();
     if (client.env_stop_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
         PT_ERROR(CONTROL, "Error setting platform env id for env=%s", guid_string);
         return;
@@ -268,30 +300,54 @@ void Cluster::env_stop(EnvObj *env)
         PT_ERROR(CONTROL, "Error stoping env=%s with code=%hhd", guid_string, code);
 }
 
-void Cluster::cnode_activate(CNode *cnode)
+void Cluster::connect_all_cnodes_to_node(BaseNode *node)
 {
-    // 1. start envs on this node.
-    IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
-        if (env->get_port() == PLATFORM_ENV_PORT)
+    IMDB_ITER_CHILDREN(_system, cnode, CNode, {
+        if (cnode == node || cnode->get_node_base()->get_state() != NodeState::ACTIVE)
             continue;
-        env_start(env);
-    });
-
-    // 2. interconnect the envs on this with the rest of the envs in the system.
-    IMDB_ITER_CHILDREN(_system, other_cnode, CNode, {
-        if (cnode == other_cnode)
-            continue;
-        IMDB_ITER_CHILDREN(other_cnode, other_env, EnvObj, {
-            if (other_env->get_port() == PLATFORM_ENV_PORT)
+        IMDB_ITER_CHILDREN(cnode, other_env, EnvObj, {
+            if (other_env == cnode->get_platform_env())
                 continue;
-            IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
-                if (env->get_port() == PLATFORM_ENV_PORT)
+            IMDB_ITER_CHILDREN(node, env, EnvObj, {
+                if (env == node->get_platform_env())
                     continue;
                 connect_env_to_env(env, other_env);
                 connect_env_to_env(other_env, env);
             });
         });
     });
+}
+
+void Cluster::connect_all_dnodes_to_node(BaseNode *node)
+{
+    IMDB_ITER_CHILDREN(_system, dbox, DBox, {
+        IMDB_ITER_CHILDREN(dbox, dnode, DNode, {
+            IMDB_ITER_CHILDREN(dnode, other_env, EnvObj, {
+                if (other_env == dnode->get_platform_env() || dnode->get_node_base()->get_state() != NodeState::ACTIVE)
+                    continue;
+                IMDB_ITER_CHILDREN(node, env, EnvObj, {
+                    if (env == node->get_platform_env())
+                        continue;
+                    connect_env_to_env(env, other_env);
+                    connect_env_to_env(other_env, env);
+                });
+            });
+        });
+    });
+}
+
+void Cluster::cnode_activate(CNode *cnode)
+{
+    // 1. start envs on this node.
+    IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
+        if (env == cnode->get_platform_env())
+            continue;
+        env_start(env);
+        connect_env(env);
+    });
+
+    // 2. interconnect the envs on this node with the rest of the envs in the system.
+    connect_all_cnodes_to_node(cnode);
 
     // 3. activate the envs.
     IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
@@ -300,23 +356,29 @@ void Cluster::cnode_activate(CNode *cnode)
 
     char guid_string[P::GUID::STRING_SIZE];
     cnode->get_base()->get_guid().to_string(guid_string);
-    PT_INFO(CONTROL, "Activated cnode=%s", guid_string);
-    cnode->set_state(CNodeState::ACTIVE);
+    PT_INFO(CONTROL, "Activated node=%s", guid_string);
+
+    cnode->get_node_base()->set_state(NodeState::ACTIVE);
 }
 
-void Cluster::cnode_deactivate(CNode *cnode)
+void Cluster::node_deactivate(BaseNode *node)
 {
-    IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
-        if (env->get_port() == PLATFORM_ENV_PORT)
+    IMDB_ITER_CHILDREN(node, env, EnvObj, {
+        if (env == node->get_platform_env())
             continue;
         env_stop(env);
     });
 
     char guid_string[P::GUID::STRING_SIZE];
-    cnode->get_base()->get_guid().to_string(guid_string);
-    PT_INFO(CONTROL, "Deactivated cnode=%s", guid_string);
+    node->get_base()->get_guid().to_string(guid_string);
+    PT_INFO(CONTROL, "Deactivated node=%s", guid_string);
 
-    cnode->set_state(CNodeState::INACTIVE);
+    node->get_node_base()->set_state(NodeState::INACTIVE);
+}
+
+void Cluster::cnode_deactivate(CNode *cnode)
+{
+    node_deactivate(cnode);
 }
 
 void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBuilder *res)
@@ -343,35 +405,31 @@ void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBu
     }
 
     // init the CNode's properties
-    LOOP(cnode->get_addresses_count(), i) {
+    LOOP(cnode->get_node_base()->get_addresses_count(), i) {
         args->get_addresses(&address, i);
-        cnode->get_addresses(i)->init_from_reader(&address);
+        cnode->get_node_base()->get_addresses(i)->init_from_reader(&address);
     }
-    cnode->set_enabled(false);
-    cnode->set_state(CNodeState::INACTIVE);
+    cnode->get_node_base()->set_enabled(false);
+    cnode->get_node_base()->set_state(NodeState::INIT);
     sprintf(cnode->get_base_proto()->get_name(), "cnode-%03d", _system->allocate_cnode_id());
-
-    // create the child platform env
-    EnvObj *env = create_env(cnode, "platform", 1, PLATFORM_ENV_PORT);
-    create_module(env, ModuleId::E, 0);
-    create_module(env, ModuleId::P, 0);
-    connect_env(env);
 
     // create the child data EnvObjs
     EnvConfig::Reader env_config;
     SiloConfig::Reader silo_config;
     LOOP(args->get_env_count(), env_index) {
         args->get_env_configs(&env_config, env_index);
-        env = create_env(cnode, "data", env_config.get_silo_count(), env_config.get_port());
+        EnvObj *env = create_env(cnode, env_config.get_silo_count(), env_config.get_port());
         LOOP(env_config.get_silo_count(), silo_index) {
             env_config.get_silo_configs(&silo_config, silo_index);
             env->get_silos(silo_index)->set_affinity(silo_config.get_affinity());
             LOOP(silo_config.get_modules_enabled_count(), module_index) {
-                if (silo_config.get_modules_enabled(module_index))
+                if (*silo_config.get_modules_enabled(module_index))
                     create_module(env, (ModuleId) module_index, silo_index);
             }
         }
     }
+
+    connect_env(cnode->get_platform_env());
 
     char guid_string[P::GUID::STRING_SIZE];
     args->get_guid().to_string(guid_string);
@@ -392,7 +450,7 @@ void Cluster::cnode_modify(CNodeModifyParams::RootReader *args, CNodeModifyResul
     args->get_guid().to_string(guid_string);
     PT_INFO(CONTROL, "Modified cnode=%s: enabled=%c", guid_string, args->get_enabled());
 
-    cnode->set_enabled(args->get_enabled());
+    cnode->get_node_base()->set_enabled(args->get_enabled());
     calc_cnode_state(cnode);
 
     res->set_code(CNodeModifyResultCode::SUCCESS);
@@ -405,7 +463,7 @@ void Cluster::cnode_remove(CNodeRemoveParams::RootReader *args, CNodeRemoveResul
         res->set_code(CNodeRemoveResultCode::NOT_FOUND);
         return;
     }
-    if (cnode->get_enabled()) {
+    if (cnode->get_node_base()->get_enabled()) {
         res->set_code(CNodeRemoveResultCode::NOT_DISABLED);
         return;
     }
@@ -432,12 +490,16 @@ void Cluster::cnode_get(CNodeGetParams::RootReader *args, CNodeGetResult::RootBu
 
 void Cluster::dbox_add(DBoxAddParams::RootReader *args, DBoxAddResult::RootBuilder *res)
 {
+    DNodeConfig::Reader dnode_config;
     NodeAddress::Reader address;
-    LOOP(args->get_addresses_count(), i) {
-        args->get_addresses(&address, i);
-        if (address_already_exists(address.get_host())) {
-            res->set_code(DBoxAddResultCode::ADDRESS_ALREADY_EXISTS);
-            return;
+    LOOP(args->get_dnodes_config_count(), i) {
+        args->get_dnodes_config(&dnode_config, i);
+        LOOP(dnode_config.get_addresses_count(), j) {
+            dnode_config.get_addresses(&address, i);
+            if (address_already_exists(address.get_host())) {
+                res->set_code(DBoxAddResultCode::ADDRESS_ALREADY_EXISTS);
+                return;
+            }
         }
     }
 
@@ -454,38 +516,41 @@ void Cluster::dbox_add(DBoxAddParams::RootReader *args, DBoxAddResult::RootBuild
     }
 
     // init the DBox's properties
-    dbox->set_state(DNodeState::INIT);
     sprintf(dbox->get_base_proto()->get_name(), "dbox-%03d", _system->allocate_dbox_id());
 
-    LOOP(2, i) {
-        DNode *dnode = _tree->create<DNode>(P::GUID::create(), dbox);
+    // create the DNodes
+    LOOP(args->get_dnodes_config_count(), i) {
+        args->get_dnodes_config(&dnode_config, i);
+        DNode *dnode = _tree->create<DNode>(dnode_config.get_guid(), dbox);
         ASSERT_NOT_NULL(dnode);
-        LOOP(dnode->get_addresses_count(), j) {
-            args->get_addresses(&address, i * 2 + j);
-            dnode->get_addresses(j)->init_from_reader(&address);
+        LOOP(dnode_config.get_addresses_count(), j) {
+            dnode_config.get_addresses(&address, j);
+            dnode->get_node_base()->get_addresses(j)->init_from_reader(&address);
+        }
+        dnode->get_node_base()->set_state(NodeState::INIT);
+        dnode->get_node_base()->set_enabled(false);
+
+        LOOP(P::DNODE_NVRAM_COUNT, j) {
+            NVRAM *nvram = _tree->create<NVRAM>(P::GUID::create(), dnode);
         }
 
-        // create the child platform env
-        EnvObj *env = create_env(dbox, "platform", 1, PLATFORM_ENV_PORT);
-        create_module(env, ModuleId::E, 0);
-        create_module(env, ModuleId::P, 0);
-        connect_env(env);
-
-        // create the child data EnvObjs
+        // create the child EnvObjs
         EnvConfig::Reader env_config;
         SiloConfig::Reader silo_config;
-        LOOP(args->get_env_count(), env_index) {
-            args->get_env_configs(&env_config, env_index);
-            env = create_env(dnode, "data", env_config.get_silo_count(), env_config.get_port());
+        LOOP(dnode_config.get_env_count(), env_index) {
+            dnode_config.get_env_configs(&env_config, env_index);
+            EnvObj *env = create_env(dnode, env_config.get_silo_count(), env_config.get_port());
             LOOP(env_config.get_silo_count(), silo_index) {
                 env_config.get_silo_configs(&silo_config, silo_index);
                 env->get_silos(silo_index)->set_affinity(silo_config.get_affinity());
                 LOOP(silo_config.get_modules_enabled_count(), module_index) {
-                    if (silo_config.get_modules_enabled(module_index))
+                    if (*silo_config.get_modules_enabled(module_index))
                         create_module(env, (ModuleId) module_index, silo_index);
                 }
             }
         }
+
+        connect_env(dnode->get_platform_env());
     }
 
     char guid_string[P::GUID::STRING_SIZE];
@@ -495,9 +560,73 @@ void Cluster::dbox_add(DBoxAddParams::RootReader *args, DBoxAddResult::RootBuild
     res->set_code(DBoxAddResultCode::SUCCESS);
 }
 
+void Cluster::dbox_get(DBoxGetParams::RootReader *args, DBoxGetResult::RootBuilder *res)
+{
+    DBox *dbox = _tree->get<DBox>(args->get_guid());
+    if (dbox == nullptr) {
+        res->set_code(DBoxGetResultCode::NOT_FOUND);
+        return;
+    }
+    res->get_dbox()->init_from_reader(dbox->as_reader());
+    int i = 0;
+    IMDB_ITER_CHILDREN(dbox, dnode, DNode, {
+        res->get_dnodes(i++)->init_from_reader(dnode->as_reader());
+    });
+    res->set_code(DBoxGetResultCode::SUCCESS);
+}
+
 void Cluster::dnode_modify(DNodeModifyParams::RootReader *args, DNodeModifyResult::RootBuilder *res)
 {
+    DNode *dnode = _tree->get<DNode>(args->get_guid());
+    if (dnode == nullptr) {
+        res->set_code(DNodeModifyResultCode::NOT_FOUND);
+        return;
+    }
 
+    char guid_string[P::GUID::STRING_SIZE];
+    args->get_guid().to_string(guid_string);
+    PT_INFO(CONTROL, "Modified dnode=%s: enabled=%c", guid_string, args->get_enabled());
+
+    dnode->get_node_base()->set_enabled(args->get_enabled());
+
+    calc_dnode_state(dnode);
+
+    res->set_code(DNodeModifyResultCode::SUCCESS);
+}
+
+void Cluster::dnode_initialize(DNode *dnode)
+{
+    dnode_activate(dnode);
+}
+
+void Cluster::dnode_activate(DNode *dnode)
+{
+    // 1. start envs on this node.
+    IMDB_ITER_CHILDREN(dnode, env, EnvObj, {
+        if (env == dnode->get_platform_env())
+            continue;
+        env_start(env);
+        connect_env(env);
+    });
+
+    // 2. interconnect the envs on this node with the rest of the envs in the system.
+    connect_all_cnodes_to_node(dnode);
+
+    // 3. activate the envs.
+    IMDB_ITER_CHILDREN(dnode, env, EnvObj, {
+        env_activate(env);
+    });
+
+    char guid_string[P::GUID::STRING_SIZE];
+    dnode->get_base()->get_guid().to_string(guid_string);
+    PT_INFO(CONTROL, "Activated node=%s", guid_string);
+
+    dnode->get_node_base()->set_state(NodeState::ACTIVE);
+}
+
+void Cluster::dnode_deactivate(DNode *dnode)
+{
+    node_deactivate(dnode);
 }
 
 }

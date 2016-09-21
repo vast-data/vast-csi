@@ -39,8 +39,8 @@ components = {0: 'TEST',
 
 TIME_FORMAT = '%y/%m/%d %H:%M:%S.%f'
 LOCATION_FORMAT = ' [{channel}:{file}:{func}:{line}]'
-TRACE_FORMAT = '{time} ({tid:5d}|{job_id:08x}) [{component:.4}] {severity}{location}: {message}'
-file_re = re.compile(r'(\w+)\.(\d+)')
+TRACE_FORMAT = '{time} ({pid:5d}|{tid:5d}|{job_id:08x}) [{component:.4}] {severity}{location}: {message}'
+file_re = re.compile(r'(\w+)\.(\d+).(\d+)')
 def print_trace(trace, verbose):
     time = datetime.datetime.fromtimestamp(trace.header.time / 1000000000.).strftime(TIME_FORMAT)
     message = c_format_to_python_format(underline_variables(trace.info.format)) % tuple(trace.params)
@@ -52,23 +52,24 @@ def print_trace(trace, verbose):
                               message=message,
                               location=location,
                               component=components.get(trace.info.component, ''),
-                              tid=int(trace.tid),
+                              tid=trace.tid,
+                              pid=trace.pid,
                               job_id=trace.header.job_id,
                               severity=severities[trace.header.severity]))
 
 def print_error(msg):
     print(term.red + 'READER ERROR: ' + msg + term.normal)
 
-Trace = collections.namedtuple('Trace', ['info', 'header', 'params', 'channel', 'tid'])
+Trace = collections.namedtuple('Trace', ['info', 'header', 'params', 'channel', 'pid', 'tid'])
 def handle_path(path):
     assert os.path.exists(path), 'File does not exist: {}'.format(path)
     match = file_re.search(path)
     assert match is not None, 'Not a trace file: {}'.format(path)
     assert os.stat(path).st_size > 0, 'Trace file is empty: {}'.format(path)
-    channel, tid = match.groups()
+    channel, pid, tid = match.groups()
     with open(path, 'rb') as f:
         for info, header, params in get_traces(f, get_trace_info(f)):
-            yield Trace(info=info, header=header, params=params, channel=channel, tid=tid)
+            yield Trace(info=info, header=header, params=params, channel=channel, pid=int(pid), tid=int(tid))
 
 def safe_handle_path(path, verbose):
     try:

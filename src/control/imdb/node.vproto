@@ -1,0 +1,22 @@
+$import object.vproto
+$import plasma/vmsg/vmsg.vproto as VMsg
+
+$namespace Control
+
+enum NodeState : byte {
+    INIT,
+    ACTIVE,
+    INACTIVE,
+    FAILED
+};
+
+struct NodeAddress {
+    @0 host char[VMsg.HOST_LENGTH];
+};
+
+struct NodeBaseProto {    
+    @0 addresses NodeAddress[2];
+    @1 version uint32_t;
+    @2 enabled bool;
+    @3 state NodeState;
+};

@@ -1,18 +1,20 @@
 $namespace Control
 
 $import control/imdb/cnode.vproto as cnode
+$import control/imdb/dbox.vproto as dbox
+$import control/imdb/dnode.vproto as dnode
 $import control/imdb/env.vproto as env
 
-struct SystemInitParams {
+struct SystemActivateParams {
     @0 guid GUID;
 };
 
-enum SystemInitResultCode {
+enum SystemActivateResultCode {
     SUCCESS
 };
 
-struct SystemInitResult {
-    @0 code SystemInitResultCode;
+struct SystemActivateResult {
+    @0 code SystemActivateResultCode;
 };
 
 struct SystemStatusParams {
@@ -26,7 +28,8 @@ struct SystemStatusResult {
 };
 
 $const size_t CNODE_MAX_DATA_ENVS = 2;
-$const size_t SILO_MAX_MODULES = 16; // TODO: this should be ModuleId::COUNT in the future.
+$const size_t DNODE_MAX_DATA_ENVS = 2;
+$const size_t SILO_MAX_MODULES = 6; // TODO: this should be ModuleId::COUNT in the future.
 
 struct SiloConfig {
     @0 modules_enabled bool[SILO_MAX_MODULES];
@@ -99,11 +102,16 @@ struct CNodeGetResult {
     @1 cnode cnode.CNodeProto;
 };
 
+struct DNodeConfig {
+    @0 guid GUID;
+    @1 addresses cnode.NodeAddress[2];
+    @2 env_configs EnvConfig[DNODE_MAX_DATA_ENVS];
+    @3 env_count byte;
+};
+
 struct DBoxAddParams {
     @0 guid GUID;
-    @1 addresses cnode.NodeAddress[4];
-    @2 env_configs EnvConfig[CNODE_MAX_DATA_ENVS];
-    @3 env_count byte;
+    @1 dnodes_config DNodeConfig[dbox.DNODES_PER_DBOX];
 };
 
 enum DBoxAddResultCode {
@@ -115,6 +123,21 @@ enum DBoxAddResultCode {
 
 struct DBoxAddResult {
     @0 code DBoxAddResultCode;
+};
+
+struct DBoxGetParams {
+    @0 guid GUID;
+};
+
+enum DBoxGetResultCode {
+    SUCCESS,
+    NOT_FOUND
+};
+
+struct DBoxGetResult {
+    @0 code DBoxGetResultCode;
+    @1 dbox dbox.DBoxProto;
+    @2 dnodes dnode.DNodeProto[dbox.DNODES_PER_DBOX];
 };
 
 struct DNodeModifyParams {

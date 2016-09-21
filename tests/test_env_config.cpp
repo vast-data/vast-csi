@@ -230,8 +230,8 @@ TEST(TestEnvConfig, test)
     cnode_guid.init();
     CNode *cnode = db.create<CNode>(cnode_guid);
     ASSERT_NOT_NULL(cnode);
-    strcpy(cnode->get_addresses(0)->get_host(), "10.1.1.1");
-    strcpy(cnode->get_addresses(1)->get_host(), "10.2.2.2");
+    strcpy(cnode->get_base_node_proto()->get_addresses(0)->get_host(), "10.1.1.1");
+    strcpy(cnode->get_base_node_proto()->get_addresses(1)->get_host(), "10.2.2.2");
 
     GUID env_guid;
     env_guid.init();

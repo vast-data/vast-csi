@@ -3,7 +3,10 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <signal.h>
 #include <sys/stat.h>
+#include <sys/prctl.h>
+#include <linux/prctl.h>
 
 #include "plasma/internal.hpp"
 #include "os.hpp"
@@ -75,6 +78,11 @@ void set_cloexec_flag(FILE *file)
         return;
     }
     fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
+}
+
+void kill_myself_on_parent_death()
+{
+    prctl(PR_SET_PDEATHSIG, SIGTERM);
 }
 
 }  // namespace P

@@ -13,6 +13,7 @@
 #include "module.hpp"
 #include "dbox.hpp"
 #include "dnode.hpp"
+#include "nvram.hpp"
 #include "drive.hpp"
 
 namespace Control {
@@ -34,6 +35,7 @@ const TypeConfig TYPE_CONFIGS[(P::byte)TypeId::COUNT] = {{sizeof(System), 1},
                                                          {sizeof(CModuleObj), 1},
                                                          {sizeof(DBox), 64},
                                                          {sizeof(DNode), 128},
+                                                         {sizeof(NVRAM), 256},
                                                          {sizeof(Drive), 4096}};
 
 }

@@ -50,10 +50,10 @@ TEST(TestIMDB, test_tree)
     System *sys = db.create<System>(GUID::create(), nullptr);
 
     CNode *cnode1 = db.create<CNode>(GUID::create(), sys);
-    cnode1->set_version(1);
+    cnode1->get_base_node_proto()->set_version(1);
     ASSERT_EQ(cnode1->get_parent(), sys);
     CNode *cnode2 = db.create<CNode>(GUID::create(), sys);
-    cnode2->set_version(2);
+    cnode2->get_base_node_proto()->set_version(2);
     Drive *drive1 = db.create<Drive>(GUID::create(), sys);
     drive1->set_version(3);
     Drive *drive2 = db.create<Drive>(GUID::create(), sys);
@@ -64,7 +64,7 @@ TEST(TestIMDB, test_tree)
 
     IMDB_ITER_CHILDREN(sys, cnode, CNode,
     {
-        cnode_version_sum += cnode->get_version();
+        cnode_version_sum += cnode->get_base_node_proto()->get_version();
     });
     IMDB_ITER_CHILDREN(sys, drive, Drive,
     {

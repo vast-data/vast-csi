@@ -45,6 +45,7 @@ void CModule::init(P::Silo *silo, P::Conf::ConfigSetting *module_setting)
     // TODO: these calls should be removed - see ticket ORION-65
     Env::get()->get_vmsg()->add_module_pair(ModuleId::TEST, ModuleId::C, VMsg::TransportType::RDMA);
     Env::get()->get_vmsg()->add_module_pair(ModuleId::C, ModuleId::P, VMsg::TransportType::RDMA);
+    Env::get()->get_vmsg()->add_module_pair(ModuleId::C, ModuleId::E, VMsg::TransportType::RDMA);
 }
 
 void CModule::start()
