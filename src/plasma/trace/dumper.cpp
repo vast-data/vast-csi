@@ -82,7 +82,7 @@ void Dumper::destroy()
 bool Dumper::iteration(bool force)
 {
     static TraceInfo TRACE_SECTION overflow_info = {
-        CURRENT_COMPONENT, "Trace overflow. %hd buffers lost.", __FILE__, __LINE__, __func__
+        CURRENT_COMPONENT, "Trace overflow. buffers_lost=%hd", __FILE__, __LINE__, __func__
     };
     uint16_t overflow_index = get_trace_info_index(&overflow_info);
 
@@ -125,7 +125,7 @@ bool Dumper::iteration(bool force)
 void Dumper::finalize()
 {
     static TraceInfo TRACE_SECTION shutdown_info = {
-        CURRENT_COMPONENT, "Trace dumper shutdown.", __FILE__, __LINE__, __func__
+        CURRENT_COMPONENT, "Trace dumper shutdown. channel=%d", __FILE__, __LINE__, __func__
     };
     uint16_t shutdown_index = get_trace_info_index(&shutdown_info);
 
@@ -136,7 +136,9 @@ void Dumper::finalize()
             record.job_id = 0; // no fiber
             record.severity = Severity::INFO;
             record.info_index = shutdown_index;
-            _files[i]->emit(&record, offsetof(TraceRecord, params));
+            uint32_t channel_id = i;
+            memcpy(record.params, &channel_id, sizeof(channel_id));
+            _files[i]->emit(&record, offsetof(TraceRecord, params) + sizeof(channel_id));
         }
     }
 }

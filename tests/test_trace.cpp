@@ -13,6 +13,8 @@
 #include "plasma/execution/config.hpp"
 #include "plasma/execution/config_internal.hpp"
 
+#include "utils.hpp"
+
 using namespace P;
 using namespace P::Trace;
 using namespace P::Conf;
@@ -296,6 +298,13 @@ TEST(Trace, func_name)
     };
     ASSERT_EQ(39, strlen((char*)trace_info.func));
     ASSERT_EQ(0, strncmp(LONG_FUNC_NAME, (char*)trace_info.func, 39));
+}
+
+#define CURRENT_COMPONENT ComponentId::PLASMA
+TEST(Trace, init_traces)
+{
+    ::Test::init_traces();
+    PT_INFO(CONTROL, "Traces initialized!");
 }
 
 int main(int argc, char **argv)

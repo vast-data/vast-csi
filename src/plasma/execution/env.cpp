@@ -26,7 +26,6 @@ void Env::error()
 {
     set_state(EnvState::ERROR);
 
-    Silo *current_silo = Silo::get();
     LOOP(_num_silos, i)
     {
         _silos[i]->finalize();
