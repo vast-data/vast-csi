@@ -1,7 +1,0 @@
-PoolMetrics:
-    namespaces: ["P"]
-    name_size: 8
-    metrics:
-        - name: free
-          kind: counter
-          type: uint64_t

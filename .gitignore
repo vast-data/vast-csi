@@ -2,6 +2,9 @@
 /dist/*
 /build/*
 /docs/*
+*.rpc.*
+*.vproto.*
+*.metrics.*
 /nbproject/private/
 /.vagrant/
 /ignore
