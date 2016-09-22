@@ -5,6 +5,7 @@
 *.rpc.*
 *.vproto.*
 *.metrics.*
+*.o
 /nbproject/private/
 /.vagrant/
 /ignore

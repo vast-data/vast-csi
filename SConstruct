@@ -4,10 +4,9 @@ import os
 
 DEFAULT_COMPILER = 'clang'
 DEFAULT_OPTIMIZATION_LEVEL = '2'
-DEFAULT_BUILD_DIR = 'build'
 
 def FilterPaths(paths, pattern):
-   return fnmatch.filter(map(str, paths), pattern)
+    return fnmatch.filter(map(str, paths), pattern)
 
 def RGlob(path, pattern, ignore_dirs=[], ignore_files=[]):
     matches = []
@@ -55,11 +54,8 @@ env['ENV'].update(LC_ALL='en_US.UTF-8',
 optimizations = ARGUMENTS.get('O', '2')
 debug = ARGUMENTS.get('debug')
 if debug is not None:
-    build_dir = DEFAULT_BUILD_DIR + '/debug'
     optimizations = '0'
     env.Append(CPPDEFINES=['DEBUG'])
-else:
-    build_dir = DEFAULT_BUILD_DIR + '/release'
 
 compiler = ARGUMENTS.get('cc', 'clang')
 if compiler == 'clang':
@@ -99,14 +95,11 @@ c_env.Append(CFLAGS=['-Wno-cast-align',
                      '-Wno-zero-length-array',
                      '-Wno-covered-switch-default',
                      '-Wno-typedef-redefinition'])
-murmur = c_env.Object(build_dir + '/src/plasma/third_party/murmur3/murmur3.c')
-rpc_xdr = c_env.Object(build_dir + '/src/proto/nfs3/rpcgen/rpc_defs_xdr.c')
-nlm_xdr = c_env.Object(build_dir + '/src/proto/nfs3/rpcgen/nlm4_xdr.c')
-mnt_xdr = c_env.Object(build_dir + '/src/proto/nfs3/rpcgen/mnt3_xdr.c')
-nfs_xdr = c_env.Object(build_dir + '/src/proto/nfs3/rpcgen/nfs3_xdr.c')
-
-VariantDir(build_dir + '/src', 'src', duplicate=0)
-VariantDir(build_dir + '/tests', 'tests', duplicate=0)
+murmur = c_env.Object('src/plasma/third_party/murmur3/murmur3.c')
+rpc_xdr = c_env.Object('src/proto/nfs3/rpcgen/rpc_defs_xdr.c')
+nlm_xdr = c_env.Object('src/proto/nfs3/rpcgen/nlm4_xdr.c')
+mnt_xdr = c_env.Object('src/proto/nfs3/rpcgen/mnt3_xdr.c')
+nfs_xdr = c_env.Object('src/proto/nfs3/rpcgen/nfs3_xdr.c')
 
 # ----- Python Environment ----- #
 venv = env.Command(target='venv/requirements.txt',
@@ -144,15 +137,15 @@ def rpc_emitter(target, source, env):
                    'src/plasma/vmsg/rpc_gen/templates/client_impl.jin',
                    'src/plasma/vmsg/rpc_gen/templates/server_header.jin',
                    'src/plasma/vmsg/rpc_gen/templates/server_impl.jin'])
+
     targets = [str(source[0]) + suffix for suffix in ('.server.cpp', '.server.hpp', '.client.cpp', '.client.hpp')]
     return targets, source
 env.Append(BUILDERS = {'Rpc': Builder(action='./venv/bin/gen-rpc $SOURCE $SOURCE', emitter=rpc_emitter)})
 
 rpc_sources = []
 for rpc_file in RGlob('src', '*.rpc'):
-    rpc_file = build_dir + '/' + rpc_file
     rpc_sources.extend(FilterPaths(env.Rpc(rpc_file), '*.cpp'))
-test_rpc_sources = FilterPaths(env.Rpc(build_dir + '/tests/test_rpc.rpc'), '*.cpp')
+test_rpc_sources = FilterPaths(env.Rpc('tests/test_rpc.rpc'), '*.cpp')
 
 # ----- Metrics ----- #
 def metrics_emitter(target, source, env):
@@ -166,9 +159,8 @@ env.Append(BUILDERS = {'Metrics': Builder(action='./venv/bin/gen-metrics $SOURCE
 
 metric_sources = []
 for metric_file in RGlob('src', '*.metrics'):
-    metric_file = build_dir + '/' + metric_file
     metric_sources.extend(FilterPaths(env.Metrics(metric_file), '*.cpp'))
-test_metric_sources = FilterPaths(env.Metrics(build_dir + '/tests/test.metrics'), '*.cpp')
+test_metric_sources = FilterPaths(env.Metrics('tests/test.metrics'), '*.cpp')
 
 # ----- VProto ----- #
 VPROTO_INCLUDE_DIRS = ['src', 'tests']
@@ -198,9 +190,8 @@ def vproto_emitter(target, source, env):
 env.Append(BUILDERS = {'VProto': Builder(action='./venv/bin/gen-vproto -i {} $SOURCE $SOURCE'.format(':'.join(VPROTO_INCLUDE_DIRS)), emitter=vproto_emitter)},
            SCANNERS = Scanner(function=vproto_scan, skeys=['.vproto']))
 
-for metric_file in RGlob('src', '*.vproto') + RGlob('tests', '*.vproto'):
-    metric_file = build_dir + '/' + metric_file
-    env.VProto(metric_file)
+for vproto_file in RGlob('src', '*.vproto') + RGlob('tests', '*.vproto'):
+    env.VProto(vproto_file)
 
 # ----- C++ Environment ----- #
 LINKER_SCRIPT = 'linkerscript.lds'
@@ -219,21 +210,21 @@ if profile is not None:
     cpp_env.Append(CCFLAGS=['-pg'])
     cpp_env.Append(LINKFLAGS=['-pg'])
 
-cpp_sources = [build_dir + '/' + i for i in RGlob('src', '*.cpp', [], ['src/plasma/execution/main.cpp']) + rpc_sources]
-cpp_sources.append(build_dir + '/tests/test_module.cpp')
+cpp_sources = RGlob('src', '*.cpp', [], ['src/plasma/execution/main.cpp']) + rpc_sources
+cpp_sources.append('tests/test_module.cpp')
 cpp_sources.extend([murmur, rpc_xdr, mnt_xdr, nfs_xdr, nlm_xdr])
 cpp_lib = cpp_env.Library(target='dist/orion_cpp', source=cpp_sources)
 cpp_env.Depends(cpp_lib, LINKER_SCRIPT)
 cpp_env.Append(LIBS=[cpp_lib, 'unwind', 'config', 'libaio', 'rdmacm', 'ibverbs', 'uuid'])
-env_program = cpp_env.Program(target='dist/env', source=[build_dir + '/src/plasma/execution/main.cpp'])
+env_program = cpp_env.Program(target='dist/env', source=['src/plasma/execution/main.cpp'])
 
 def AddCppTest(target, source, wrap=[], group_alias='cpptest'):
     cpp_test_env = cpp_env.Clone()
     cpp_test_env.Append(LIBS=['gtest', 'rt'])
-    cpp_test_env.Append(CPPPATH=[build_dir + '/tests'])
+    cpp_test_env.Append(CPPPATH=['tests'])
     for func in wrap:
         cpp_test_env.Append(LINKFLAGS='-Wl,-wrap,' + func)
-    test = cpp_test_env.Program(target=target, source=[build_dir + '/' + i for i in source])
+    test = cpp_test_env.Program(target=target, source=source)
     cpp_test_env.Depends(test, env_program)
     for alias in [group_alias, 'test_' + target.split('/')[-1]]:
         cpp_test_env.Alias(alias, test, test[0].abspath)
