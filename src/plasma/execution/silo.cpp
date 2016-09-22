@@ -154,8 +154,7 @@ void *Silo::main()
 
     PT_INFO(CONTROL, "Silo finished.");
 
-    _trace_dumper.stop();
-    _trace_dumper.wait();
+    finalize();
 
     return nullptr;
 }

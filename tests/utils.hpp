@@ -22,8 +22,9 @@ static __attribute__ ((destructor)) void finalize_traces()
 
 void error_handler(int sig)
 {
-    //P::Backtracer::show_backtrace();
+    P::Backtracer::show_backtrace();
     finalize_traces();
+    exit(sig);
 }
 
 void init_traces()
@@ -38,6 +39,7 @@ void init_traces()
 
     dumper.init(nullptr, &emitter, "data/traces");
 
+    emitter.set_local();
     emitter.set_global();
     dumper.start();
 
