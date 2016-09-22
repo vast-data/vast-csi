@@ -80,7 +80,7 @@ env.Append(CPPFLAGS=['-g',
                      '-Wno-vla',
                      '-Wno-padded',
                      '-Wno-cast-align'])
-env.Append(CPPPATH=[build_dir + '/src'])
+env.Append(CPPPATH=['src'])
 env.Append(LINKFLAGS=['-pthread'])
 
 murmur_env = env.Clone()
@@ -180,7 +180,7 @@ def vproto_scan(node, env, path):
         found = False
         for d in VPROTO_INCLUDE_DIRS + [os.path.dirname(str(node))]:
             full_path = os.path.join(d, i)
-            if os.path.exists(full_path.replace(build_dir + '/', '')):
+            if os.path.exists(full_path):
                 # the '#' prefix makes scons look for the file from the root of the project (vs. relatively to the file).
                 imports.append('#' + full_path)
                 found = True
@@ -268,7 +268,7 @@ AddCppTest(target='dist/tests/vmsg', source=['tests/vmsg_test.cpp'] + test_rpc_s
 AddCppTest(target='dist/tests/vmsg_ping', source=['tests/test_vmsg_ping.cpp'])
 AddCppTest(target='dist/tests/vproto', source=['tests/test_vproto.cpp'])
 AddCppTest(target='dist/tests/nfs_rpc', source=['tests/test_nfs_rpc.cpp'])
-AddCppTest(target='dist/tests/nfs', source=['tests/test_nfs.cpp', '/tests/estore_mock.cpp'], group_alias='nfstest')
+AddCppTest(target='dist/tests/nfs', source=['tests/test_nfs.cpp', 'tests/estore_mock.cpp'], group_alias='nfstest')
 AddCppTest(target='dist/tests/os', source=['tests/os_test.cpp'])
 AddCppTest(target='dist/tests/box', source=['tests/test_box.cpp'])
 AddCppTest(target='dist/tests/imdb', source=['tests/test_imdb.cpp'])
