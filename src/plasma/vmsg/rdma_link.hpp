@@ -67,6 +67,12 @@ public:
      */
     VMsgRes send(struct ibv_mr *mr, MsgId msg_id, void *buff, uint32_t len);
 
+    /*!
+     * Disconnect - calls rdma_disconnect.
+     * After disconnect link will not try to reconnect.
+     */
+    void disconnect();
+
     void set_state(LinkState state)
     {
         verify_state_transition(state);
@@ -75,10 +81,12 @@ public:
 
     LinkState get_state() const { return _state; }
     bool is_client_link() const { return _link_type == LinkType::SEND_REQUEST || _link_type == LinkType::SEND_RESPONSE; }
+    LinkType get_link_type() const { return _link_type; }
     ConnDir get_link_direction() const;
     void set_cm_id(struct rdma_cm_id *cm_id);
     ModuleId get_module_id() const { return _module_id; }
     EnvId get_env_id() const { return _env_id; }
+    EnvId get_reconnect() const { return _reconnect; }
 
 private:
 
@@ -113,6 +121,7 @@ private:
     LinkType _link_type;
     ModuleId _module_id;
     EnvId _env_id;
+    bool _reconnect;
 };
 
 }

@@ -18,13 +18,25 @@ using namespace P::Sync;
 namespace P {
 namespace VMsg {
 
+// This should be kept in sync with ConnectInterval.
+static const uint64_t interval_to_nano[] = {0,                         // CONNECT_NOW
+                                            MILLI_TO_NANO(10),         // CONNECT_IN_10_MILLI
+                                           };
+static_assert(NUM_ELEMENTS(interval_to_nano) == (byte)ConnectInterval::CONNECT_INTERVAL_COUNT,
+              "interval_to_nano size mismatch");
+
+
 void RDMATransport::init(const VMsgConfiguration *vmsg_configuration, AddressTable *addr_table)
 {
     _addr_table = addr_table;
     _vmsg_configuration = vmsg_configuration;
     sem_init(&_start_sem, 0, 0);
     _conn_lock.init();
-    _conn_queue.init(MAX_CONN_REQUESTS);
+    LOOP(ConnectInterval::CONNECT_INTERVAL_COUNT, interval) {
+        _conn_queues[interval].init(MAX_CONN_REQUESTS);
+    }
+    _disconn_lock.init();
+    _disconn_queue.init(MAX_DISCONN_REQUESTS);
 
     for (int i = 0; i < NUM_ELEMENTS(_send_request_connections); ++i) {
         for (int j = 0; j < NUM_ELEMENTS(_send_request_connections[0]); ++j) {
@@ -54,8 +66,12 @@ void RDMATransport::init(const VMsgConfiguration *vmsg_configuration, AddressTab
 void RDMATransport::destroy()
 {
     ASSERT(_stop);
-    _conn_queue.destroy();
+    LOOP(ConnectInterval::CONNECT_INTERVAL_COUNT, interval) {
+        _conn_queues[interval].destroy(false);
+    }
     _conn_lock.destroy();
+    _disconn_queue.destroy();
+    _disconn_lock.destroy();
 
     for (int i = 0; i < NUM_ELEMENTS(_send_request_connections); ++i) {
         for (int j = 0; j < NUM_ELEMENTS(_send_request_connections[0]); ++j) {
@@ -115,7 +131,7 @@ VMsgRes RDMATransport::start()
     }
 
     // fake a self connection request in order to get the shared resources initialized
-    request_connection(_vmsg_configuration->local_env_id, ModuleId::E, ConnDir::CLIENT_TO_SERVER);
+    request_connection(_vmsg_configuration->local_env_id, ModuleId::E, ConnDir::CLIENT_TO_SERVER, ConnectInterval::CONNECT_NOW);
     PT_DEBUG(DATA, "waiting for shared resource allocation");
     sem_wait(&_start_sem);
     PT_DEBUG(DATA, "wait for shared resource allocation done");
@@ -232,6 +248,7 @@ void RDMATransport::event_loop()
     struct rdma_cm_event *event = NULL;
     while (!_stop) {
         handle_connection_requests();
+        handle_disconnection_requests();
         int ret = poll(&pfd, 1, POLL_TIMEOUT);
         if (ret == -1) {
             PT_ERROR(DATA, "poll  failed errno=%d", errno);
@@ -297,7 +314,7 @@ void RDMATransport::on_route_resolved(struct rdma_cm_event *event)
         PT_WARN(DATA, "failed to connect to env_id=%u module_id=%hhu, retrying connection",
                 link->get_env_id(), link->get_module_id());
         link->reset();
-        request_connection(link->get_env_id(), link->get_module_id(), link->get_link_direction());
+        request_connection(link->get_env_id(), link->get_module_id(), link->get_link_direction(), ConnectInterval::CONNECT_IN_10_MILLI);
     }
 }
 
@@ -342,6 +359,16 @@ void RDMATransport::on_connection_established(struct rdma_cm_event *event)
     }
 }
 
+void RDMATransport::on_disconnected(struct rdma_cm_event *event)
+{
+    PT_DEBUG(DATA, "connection disconnected cm_id=%p", event->id);
+    RDMALink *link = (RDMALink *)event->id->context;
+    link->reset();
+    if (link->get_reconnect()) {
+        request_connection(link->get_env_id(), link->get_module_id(), link->get_link_direction(), ConnectInterval::CONNECT_IN_10_MILLI);
+    }
+}
+
 void RDMATransport::handle_event(rdma_cm_event *event)
 {
     PT_DEBUG(DATA, "cma_event type=%s cma_id=%p status=%d", rdma_event_str(event->event), event->id, event->status);
@@ -372,7 +399,7 @@ void RDMATransport::handle_event(rdma_cm_event *event)
             break;
 
         case RDMA_CM_EVENT_DISCONNECTED:
-            PT_ERROR(DATA, "%s id=%p", rdma_event_str(event->event), event->id);
+            on_disconnected(event);
             break;
 
         case RDMA_CM_EVENT_DEVICE_REMOVAL:
@@ -390,21 +417,22 @@ void RDMATransport::handle_event(rdma_cm_event *event)
     }
 }
 
-VMsgRes RDMATransport::request_connection(EnvId env_id, ModuleId module_id, ConnDir conn_dir)
+VMsgRes RDMATransport::request_connection(EnvId env_id, ModuleId module_id, ConnDir conn_dir, ConnectInterval interval)
 {
     ASSERT(env_id < MAX_ENVS_PER_SYSTEM);
     ASSERT(module_id < ModuleId::COUNT);
 
     LockGuard<SpinLock> guard(&_conn_lock);
     ConnectionRequest *request;
-    request = _conn_queue.alloc();
+    request = _conn_queues[(byte)interval].alloc();
     if (request == nullptr) {
         return VMsgRes::NO_RES;
     }
     request->env_id = env_id;
     request->module_id = module_id;
     request->conn_dir = conn_dir;
-    _conn_queue.push(request);
+    request->time = get_time_nano() + interval_to_nano[(byte)interval];
+    _conn_queues[(byte)interval].push(request);
     return VMsgRes::OK;
 }
 
@@ -573,30 +601,74 @@ int RDMATransport::tpoll(TransportEvent *events, uint32_t max_events)
 void RDMATransport::handle_connection_requests()
 {
     ConnectionRequest *request;
-    _conn_lock.lock();
-    request = _conn_queue.pop();
-    _conn_lock.unlock();
+    uint64_t now = get_time_nano();
+
+    LOOP(ConnectInterval::CONNECT_INTERVAL_COUNT, interval) {
+        _conn_lock.lock();
+        request = _conn_queues[interval].head();
+        request = request && request->time < now ? _conn_queues[interval].pop() : nullptr;
+        _conn_lock.unlock();
+
+        while (request) {
+            PT_DEBUG(DATA, "handling connection request to env_id=%hu module_id=%hhu conn_dir=%d", request->env_id,
+                     request->module_id, request->conn_dir);
+
+            _addr_table->lock();
+            EnvAddresses::RootBuilder *addresses = _addr_table->get(request->env_id);
+            ASSERT(addresses->get_n_addr() > 0, "Env " << request->env_id << " have no addresses configured");
+            EnvAddress::Builder *addr = addresses->get_addresses(0);
+            _addr_table->unlock();
+
+            auto connections = request->conn_dir == ConnDir::CLIENT_TO_SERVER ? _send_request_connections
+                                                                              : _send_response_connections;
+            static_assert((int) ConnDir::COUNT == 2, "you have to convert if to switch");
+            RDMALink *link = connections[request->env_id][(int) request->module_id].get_next_link();
+            if (link->get_state() == LinkState::IDLE)
+                link->initiate_connection(_event_channel, addr->get_host(), addr->get_port());
+
+            _conn_lock.lock();
+            _conn_queues[interval].free(request);
+            request = _conn_queues[interval].head();
+            request = request && request->time < now ? _conn_queues[interval].pop() : nullptr;
+            _conn_lock.unlock();
+        }
+    }
+}
+
+VMsgRes RDMATransport::request_disconnection(EnvId env_id)
+{
+    LockGuard<SpinLock> guard(&_disconn_lock);
+    DisconnectionRequest *request;
+    request = _disconn_queue.alloc();
+    if (request == nullptr) {
+        return VMsgRes::NO_RES;
+    }
+    request->env_id = env_id;
+    _disconn_queue.push(request);
+    return VMsgRes::OK;
+}
+
+void RDMATransport::handle_disconnection_requests()
+{
+    DisconnectionRequest *request;
+    _disconn_lock.lock();
+    request = _disconn_queue.pop();
+    _disconn_lock.unlock();
 
     while (request)
     {
-        PT_DEBUG(DATA, "handling connection request to env_id=%hu module_id=%hhu conn_dir=%d", request->env_id, request->module_id, request->conn_dir);
+        PT_DEBUG(DATA, "handling disconnection request to env_id=%hu", request->env_id);
+        for (int j = 0; j < NUM_ELEMENTS(_send_request_connections[0]); ++j) {
+            _send_request_connections[request->env_id][j].get_next_link()->disconnect();
+            _send_request_connections[request->env_id][j].get_next_link()->disconnect();
+            _send_request_connections[request->env_id][j].get_next_link()->disconnect();
+            _send_request_connections[request->env_id][j].get_next_link()->disconnect();
+        }
 
-        _addr_table->lock();
-        EnvAddresses::RootBuilder *addresses = _addr_table->get(request->env_id);
-        ASSERT(addresses->get_n_addr() > 0, "Env " << request->env_id << " have no addresses configured");
-        EnvAddress::Builder *addr = addresses->get_addresses(0);
-        _addr_table->unlock();
-
-        auto connections = request->conn_dir == ConnDir::CLIENT_TO_SERVER ? _send_request_connections : _send_response_connections;
-        static_assert((int)ConnDir::COUNT == 2, "you have to convert if to switch");
-        RDMALink *link = connections[request->env_id][(int)request->module_id].get_next_link();
-        if (link->get_state() == LinkState::IDLE)
-            link->initiate_connection(_event_channel, addr->get_host(), addr->get_port());
-
-        _conn_lock.lock();
-        _conn_queue.free(request);
-        request = _conn_queue.pop();
-        _conn_lock.unlock();
+        _disconn_lock.lock();
+        _disconn_queue.free(request);
+        request = _disconn_queue.pop();
+        _disconn_lock.unlock();
     }
 }
 

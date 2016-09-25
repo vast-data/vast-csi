@@ -38,10 +38,12 @@ TEST(TestRDMATransport, test)
     ASSERT(res == VMsgRes::OK);
 
     ModuleAddress guid = {0, 0, (uint8_t) ModuleId::TEST, 0};
-    transport->request_connection(guid.env_id, ModuleId::TEST, ConnDir::CLIENT_TO_SERVER);
+    transport->request_connection(guid.env_id, ModuleId::TEST, ConnDir::CLIENT_TO_SERVER, ConnectInterval::CONNECT_NOW);
+
     while (!transport->is_client_connected(guid.env_id, ModuleId::TEST)) {
         usleep(1);
     }
+
     char *recv_buff = (char *)malloc(BUFF_SIZE);
     memset(recv_buff, 0, BUFF_SIZE);
     char *send_buff = (char *)malloc(BUFF_SIZE);

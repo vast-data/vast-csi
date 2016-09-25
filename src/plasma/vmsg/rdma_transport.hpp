@@ -21,6 +21,11 @@ namespace P {
 namespace VMsg {
 
 struct MemRegion;
+enum class ConnectInterval: byte {
+    CONNECT_NOW,
+    CONNECT_IN_10_MILLI,
+    CONNECT_INTERVAL_COUNT
+};
 
 class RDMATransport {
 public:
@@ -37,7 +42,12 @@ public:
     /*!
      * Request to connect to the given module at the given env
      */
-    VMsgRes request_connection(EnvId env_id, ModuleId module_id, ConnDir conn_dir);
+    VMsgRes request_connection(EnvId env_id, ModuleId module_id, ConnDir conn_dir, ConnectInterval interval);
+
+    /*!
+     * Request to disconnect from the given env
+     */
+    VMsgRes request_disconnection(EnvId env_id);
 
     /*!
      * Returns true if there is a client connection to the specified module at the specified env
@@ -134,11 +144,13 @@ private:
     static void *event_loop_func(void *arg);
     void event_loop();
     void handle_connection_requests();
+    void handle_disconnection_requests();
     void handle_event(struct rdma_cm_event *event);
     void on_addr_resolved(struct rdma_cm_event *event);
     void on_route_resolved(struct rdma_cm_event *event);
     void on_connect_request(struct rdma_cm_event *event);
     void on_connection_established(struct rdma_cm_event *event);
+    void on_disconnected(struct rdma_cm_event *event);
 
     VMsgRes recv(struct ibv_srq *srq, struct ibv_mr *mr, MsgId msg_id, void *buff, uint32_t len);
 
@@ -149,13 +161,16 @@ private:
     // max number of item in the completion queue
     static const uint32_t CQ_DEPTH = 4096;
     static const uint32_t MAX_CONN_REQUESTS = 64;
+    static const uint32_t MAX_DISCONN_REQUESTS = 64;
 
     AddressTable *_addr_table;
     const VMsgConfiguration *_vmsg_configuration;
 
-    // connection requests queue
-    P::Queue<ConnectionRequest> _conn_queue;
+    // connection/disconnection requests queue
+    P::Queue<ConnectionRequest> _conn_queues[(byte)ConnectInterval::CONNECT_INTERVAL_COUNT];
     P::Sync::SpinLock _conn_lock;
+    P::Queue<DisconnectionRequest> _disconn_queue;
+    P::Sync::SpinLock _disconn_lock;
 
     // listen link per each address on this node
     RDMALink _listen_links[MAX_ADDR_PER_ENV];

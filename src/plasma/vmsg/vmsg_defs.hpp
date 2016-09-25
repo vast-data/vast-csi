@@ -178,6 +178,13 @@ struct ConnectionRequest {
     EnvId env_id;
     ModuleId module_id;
     ConnDir conn_dir;
+    uint64_t time;
+};
+
+// disconnection request information
+struct DisconnectionRequest {
+    EnvId env_id;
+    char padding[2];
 };
 
 // handshake message passed between 2 envs when establishing a connection

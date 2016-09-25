@@ -44,6 +44,11 @@ public:
     void set_env_addresses(EnvId env_id, EnvAddresses::RootBuilder *addresses);
 
     /*!
+     * Disconnect from specified env
+     */
+    void disconnect_env(EnvId env_id);
+
+    /*!
      * Copy the addresses of the current env (a getter is harder to implement since it requires locking)
      */
     void copy_env_addresses(EnvId env_id, EnvAddresses::Builder *addresses);

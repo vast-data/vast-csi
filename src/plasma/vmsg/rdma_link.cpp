@@ -15,6 +15,7 @@ void RDMALink::init(EnvId env_id, ModuleId module_id, LinkType link_type)
     _state = LinkState::IDLE;
     _cm_id = nullptr;
     _link_type = link_type;
+    _reconnect = link_type == LinkType::SEND_REQUEST;
 }
 
 void RDMALink::destroy()
@@ -25,9 +26,20 @@ void RDMALink::destroy()
         }
         rdma_destroy_id(_cm_id);
     }
+    _cm_id = nullptr;
     _state = LinkState::IDLE;
 }
 
+void RDMALink::disconnect()
+{
+    _reconnect = false;
+    if (_cm_id) {
+        int ret = rdma_disconnect(_cm_id);
+        if (ret) {
+            PT_ERROR(DATA, "rdma_disconnect failed errno=%d", errno);
+        }
+    }
+}
 
 void RDMALink::reset()
 {

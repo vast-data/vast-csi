@@ -129,6 +129,13 @@ void VMsg::set_env_addresses(EnvId env_id, EnvAddresses::RootBuilder *addresses)
     }
 }
 
+void VMsg::disconnect_env(EnvId env_id)
+{
+    EnvAddresses::RootBuilder addresses;
+    _address_table.set(env_id, &addresses);
+    _rdma_transport.request_disconnection(env_id);
+}
+
 void VMsg::copy_env_addresses(EnvId env_id, EnvAddresses::Builder *addresses)
 {
     _address_table.lock();
@@ -155,7 +162,7 @@ RpcServer *VMsg::get_rpc_server(VMsgHeader *header)
 VMsgRes VMsg::request_connection(EnvId env_id, ModuleId module_id, TransportType transport_type, ConnDir conn_dir)
 {
     ASSERT(transport_type == TransportType::RDMA, "RDMA is the only support transport type");
-    return _rdma_transport.request_connection(env_id, module_id, conn_dir);
+    return _rdma_transport.request_connection(env_id, module_id, conn_dir, ConnectInterval::CONNECT_NOW);
 }
 
 void VMsg::add_module_pair(ModuleId client, ModuleId server, TransportType transport_type)

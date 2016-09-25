@@ -28,7 +28,7 @@ public:
     /*!
      * Destroy the queue and free its resources
      */
-    void destroy();
+    void destroy(bool leak_check = true);
 
     /*!
      * Allocate an object from the queue which can later be pushed into it.
@@ -49,6 +49,12 @@ public:
      */
     T *pop();
 
+
+    /*!
+     * Get an element from the head of the queue, the element will NOT be removed from queue
+     */
+    T *head();
+
     /*!
      * Returns the given object to the queue internal pool
      */
@@ -67,9 +73,9 @@ void Queue<T>::init(uint32_t n_elements)
 }
 
 template <class T>
-void Queue<T>::destroy()
+void Queue<T>::destroy(bool leak_check)
 {
-    _list.destroy();
+    _list.destroy(leak_check);
     _pool.destroy();
 }
 
@@ -90,6 +96,16 @@ template <class T>
 T *Queue<T>::pop()
 {
     P::Index index = _list.list()->pop();
+    if (index == P::INVALID_INDEX) {
+        return nullptr;
+    }
+    return (T *)_pool.index_to_address(index);
+}
+
+template <class T>
+T *Queue<T>::head()
+{
+    P::Index index = _list.list()->get_first();
     if (index == P::INVALID_INDEX) {
         return nullptr;
     }
