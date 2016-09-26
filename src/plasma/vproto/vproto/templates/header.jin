@@ -190,6 +190,12 @@ public:
         {
             return (RootReader*) this;
         }
+
+        Builder *as_builder()
+        {
+            return (Builder*) ((P::byte*) this + sizeof(P::VProto::RootStruct));
+        }
+
     };
 
     class Reader {

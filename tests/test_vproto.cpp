@@ -187,6 +187,7 @@ TEST(TestVProto, test_root_builder_to_builder)
     builder.init_from_root(&root);
 
     ASSERT_EQ(builder.get_age(), 120);
+    ASSERT_EQ(root.as_builder()->get_age(), 120);
 }
 
 int main(int argc, char **argv)
