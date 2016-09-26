@@ -35,8 +35,10 @@ void CModule::init(P::Silo *silo, P::Conf::ConfigSetting *module_setting)
     _system->get_base_proto()->set_parent_guid(system_guid); // the system is the root and points to itself.
     strcpy(_system->get_base_proto()->get_name(), "system");
 
-    _system->set_next_cnode_id(1);
     _system->set_next_env_id(2); // 0 is reserved for platform envs and 1 is the leader
+    _system->set_next_cnode_id(1);
+    _system->set_next_dbox_id(1);
+    _system->set_next_dnode_id(1);
     _system->set_state(SystemState::INIT);
 
     _agent.init(silo->get_id(), get_id(), FiberGroupId::C);

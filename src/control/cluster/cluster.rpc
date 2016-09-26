@@ -40,4 +40,8 @@ methods:
   op_id: 8
   arg: DNodeModifyParams
   res: DNodeModifyResult
+- method: system_redist
+  op_id: 9
+  arg: SystemRedistParams
+  res: SystemRedistResult
 

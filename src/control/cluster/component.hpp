@@ -31,6 +31,7 @@ private:
     void dnode_initialize(DNode *dnode);
     void dnode_activate(DNode *dnode);
     void dnode_deactivate(DNode *dnode);
+    void initialize_all_dnodes();
 
     EnvObj *create_env(BaseNode *node, P::byte silo_count, uint16_t port);
     void env_activate(EnvObj *env);
@@ -48,6 +49,7 @@ private:
     // RPC functions
     void system_status(SystemStatusParams::RootReader *args, SystemStatusResult::RootBuilder *res);
     void system_activate(SystemActivateParams::RootReader *args, SystemActivateResult::RootBuilder *res);
+    void system_redist(SystemRedistParams::RootReader *args, SystemRedistResult::RootBuilder *res);
 
     void cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBuilder *res);
     void cnode_modify(CNodeModifyParams::RootReader *args, CNodeModifyResult::RootBuilder *res);

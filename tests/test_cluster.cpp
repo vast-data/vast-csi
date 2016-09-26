@@ -60,7 +60,7 @@ static void system_activate_start_func(void *ctx)
     env_stop = true;
 }
 
-static void add_cnode(ClusterClient *client, GUID guid, uint16_t platform_port, uint16_t data_port, CNodeAddResult::RootReader **cnode_add_result)
+static void add_cnode(ClusterClient *client, GUID guid, uint16_t platform_port, uint16_t data_port)
 {
     CNodeAddParams::RootBuilder *cnode_add_params = client->alloc_cnode_add();
     cnode_add_params->set_guid(guid);
@@ -89,11 +89,14 @@ static void add_cnode(ClusterClient *client, GUID guid, uint16_t platform_port, 
         *(silo_conf->get_modules_enabled(i)) = false;
     *(silo_conf->get_modules_enabled((uint16_t)ModuleId::E)) = true;
 
-    ASSERT_EQ(VMsg::VMsgRes::OK, client->cnode_add_sync(dest, cnode_add_params, cnode_add_result));
+    CNodeAddResult::RootReader *cnode_add_result;
+    ASSERT_EQ(VMsg::VMsgRes::OK, client->cnode_add_sync(dest, cnode_add_params, &cnode_add_result));
+    ASSERT_EQ(cnode_add_result->get_code(), CNodeAddResultCode::SUCCESS);
+    client->free_cnode_add(cnode_add_result);
 }
 
 static void add_dbox(ClusterClient *client, GUID guid, GUID dnode1_guid, GUID dnode2_guid,
-                     uint16_t platform_base_port, uint16_t data_base_port, DBoxAddResult::RootReader **dbox_add_result)
+                     uint16_t platform_base_port, uint16_t data_base_port)
 {
     DBoxAddParams::RootBuilder *dbox_add_params = client->alloc_dbox_add();
     dbox_add_params->set_guid(guid);
@@ -126,7 +129,10 @@ static void add_dbox(ClusterClient *client, GUID guid, GUID dnode1_guid, GUID dn
         *(silo_conf->get_modules_enabled((uint16_t)ModuleId::E)) = true;
     }
 
-    ASSERT_EQ(VMsg::VMsgRes::OK, client->dbox_add_sync(dest, dbox_add_params, dbox_add_result));
+    DBoxAddResult::RootReader *dbox_add_result;
+    ASSERT_EQ(VMsg::VMsgRes::OK, client->dbox_add_sync(dest, dbox_add_params, &dbox_add_result));
+    ASSERT_EQ(dbox_add_result->get_code(), DBoxAddResultCode::SUCCESS);
+    client->free_dbox_add(dbox_add_result);
 }
 
 static void set_dnode_enabled(ClusterClient *client, GUID guid, bool enabled)
@@ -165,10 +171,7 @@ static void cnode_activation_start_func(void *ctx)
     client.init();
 
     GUID cnode_guid = GUID::create();
-    CNodeAddResult::RootReader *cnode_add_result;
-    add_cnode(&client, cnode_guid, P::PLATFORM_ENV_PORT, 6001, &cnode_add_result);
-    ASSERT_EQ(cnode_add_result->get_code(), CNodeAddResultCode::SUCCESS);
-    client.free_cnode_add(cnode_add_result);
+    add_cnode(&client, cnode_guid, P::PLATFORM_ENV_PORT, 6001);
 
     CNodeGetResult::RootReader *cnode_get_result;
     get_cnode(&client, cnode_guid, &cnode_get_result);
@@ -227,10 +230,7 @@ static void dbox_activation_start_func(void *ctx)
     GUID dnode1_guid = GUID::create();
     GUID dnode2_guid = GUID::create();
 
-    DBoxAddResult::RootReader *dbox_add_result;
-    add_dbox(&client, dbox_guid, dnode1_guid, dnode2_guid, 5000, 6000, &dbox_add_result);
-    ASSERT_EQ(dbox_add_result->get_code(), DBoxAddResultCode::SUCCESS);
-    client.free_dbox_add(dbox_add_result);
+    add_dbox(&client, dbox_guid, dnode1_guid, dnode2_guid, 5000, 6000);
 
     DBoxGetResult::RootReader *dbox_get_result;
     get_dbox(&client, dbox_guid, &dbox_get_result);
@@ -280,11 +280,7 @@ static void full_cluster_start_func(void *ctx)
 
     LOOP(2, i) {
         GUID cnode_guid = i == 0 ? cnode1_guid : cnode2_guid;
-        CNodeAddResult::RootReader *cnode_add_result;
-        add_cnode(&client, cnode_guid, P::PLATFORM_ENV_PORT + i, 6000 + i, &cnode_add_result);
-        ASSERT_EQ(cnode_add_result->get_code(), CNodeAddResultCode::SUCCESS);
-        client.free_cnode_add(cnode_add_result);
-
+        add_cnode(&client, cnode_guid, P::PLATFORM_ENV_PORT + i, 6000 + i);
         set_cnode_enabled(&client, cnode_guid, true);
     }
 
@@ -292,10 +288,7 @@ static void full_cluster_start_func(void *ctx)
     GUID dnode1_guid = GUID::create();
     GUID dnode2_guid = GUID::create();
 
-    DBoxAddResult::RootReader *dbox_add_result;
-    add_dbox(&client, dbox_guid, dnode1_guid, dnode2_guid, 5000, 7000, &dbox_add_result);
-    ASSERT_EQ(dbox_add_result->get_code(), DBoxAddResultCode::SUCCESS);
-    client.free_dbox_add(dbox_add_result);
+    add_dbox(&client, dbox_guid, dnode1_guid, dnode2_guid, 5000, 7000);
 
     set_dnode_enabled(&client, dnode1_guid, true);
     set_dnode_enabled(&client, dnode2_guid, true);

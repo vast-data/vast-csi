@@ -157,7 +157,7 @@ void Cluster::connect_env(EnvObj *env)
 
     P::VProto::Empty::RootReader *result;
     // tell the env to connect back to me.
-    if (cnode->get_platform_env() == env) {
+    if (env->is_platform()) {
         connect_platform_env(env);
     } else {
         connect_data_env(env);
@@ -175,26 +175,26 @@ void Cluster::system_status(SystemStatusParams::RootReader *args, SystemStatusRe
 
 void Cluster::system_activate(SystemActivateParams::RootReader *args, SystemActivateResult::RootBuilder *res)
 {
-    if (_system->get_state() == SystemState::INIT) {
-        _system->set_state(SystemState::ONLINE);
-        PT_INFO(CONTROL, "System activated. State is now ONLINE.");
-    } else {
-        PT_INFO(CONTROL, "System re-activated.");
+    res->set_code(SystemActivateResultCode::SUCCESS);
+    if (_system->get_state() != SystemState::INIT) {
+        return;
     }
 
-    // potentially activate all cnodes
+    _system->set_state(SystemState::ONLINE);
+    PT_INFO(CONTROL, "System activated. State is now ONLINE.");
+
+    // potentially activate all nodes
     IMDB_ITER_CHILDREN(_system, cnode, CNode, {
         calc_cnode_state(cnode);
     });
 
-    // potentially activate all dnodes
-    IMDB_ITER_CHILDREN(_system, dbox, DBox, {
-        IMDB_ITER_CHILDREN(dbox, dnode, DNode, {
-            if (dnode->get_node_base()->get_state() == NodeState::INIT && dnode->get_node_base()->get_enabled())
-                dnode_initialize(dnode);
-        });
-    });
-    res->set_code(SystemActivateResultCode::SUCCESS);
+    initialize_all_dnodes();
+}
+
+void Cluster::system_redist(SystemRedistParams::RootReader *args, SystemRedistResult::RootBuilder *res)
+{
+    initialize_all_dnodes();
+    res->set_code(SystemRedistResultCode::SUCCESS);
 }
 
 EnvObj *Cluster::create_env(BaseNode *node, P::byte silo_count, uint16_t port)
@@ -221,6 +221,9 @@ ObjectBase *Cluster::create_module(EnvObj *env, ModuleId module_id, SiloId silo_
 void Cluster::calc_cnode_state(CNode *cnode)
 {
     if (cnode->get_node_base()->get_enabled()) {
+        // unlike D-Nodes that transition from INIT to ACTIVE upon system_redist command,
+        // the C-Node automatically transitions to ACTIVE from INIT if it's enabled
+        // and the system isn't in INIT.
         if ((cnode->get_node_base()->get_state() == NodeState::INACTIVE ||
              cnode->get_node_base()->get_state() == NodeState::INIT)
             && _system->get_state() != SystemState::INIT)
@@ -306,10 +309,10 @@ void Cluster::connect_all_cnodes_to_node(BaseNode *node)
         if (cnode == node || cnode->get_node_base()->get_state() != NodeState::ACTIVE)
             continue;
         IMDB_ITER_CHILDREN(cnode, other_env, EnvObj, {
-            if (other_env == cnode->get_platform_env())
+            if (other_env->is_platform())
                 continue;
             IMDB_ITER_CHILDREN(node, env, EnvObj, {
-                if (env == node->get_platform_env())
+                if (env->is_platform())
                     continue;
                 connect_env_to_env(env, other_env);
                 connect_env_to_env(other_env, env);
@@ -323,10 +326,10 @@ void Cluster::connect_all_dnodes_to_node(BaseNode *node)
     IMDB_ITER_CHILDREN(_system, dbox, DBox, {
         IMDB_ITER_CHILDREN(dbox, dnode, DNode, {
             IMDB_ITER_CHILDREN(dnode, other_env, EnvObj, {
-                if (other_env == dnode->get_platform_env() || dnode->get_node_base()->get_state() != NodeState::ACTIVE)
+                if (other_env->is_platform() || dnode->get_node_base()->get_state() != NodeState::ACTIVE)
                     continue;
                 IMDB_ITER_CHILDREN(node, env, EnvObj, {
-                    if (env == node->get_platform_env())
+                    if (env->is_platform())
                         continue;
                     connect_env_to_env(env, other_env);
                     connect_env_to_env(other_env, env);
@@ -340,7 +343,7 @@ void Cluster::cnode_activate(CNode *cnode)
 {
     // 1. start envs on this node.
     IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
-        if (env == cnode->get_platform_env())
+        if (env->is_platform())
             continue;
         env_start(env);
         connect_env(env);
@@ -348,6 +351,7 @@ void Cluster::cnode_activate(CNode *cnode)
 
     // 2. interconnect the envs on this node with the rest of the envs in the system.
     connect_all_cnodes_to_node(cnode);
+    connect_all_dnodes_to_node(cnode);
 
     // 3. activate the envs.
     IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
@@ -364,7 +368,7 @@ void Cluster::cnode_activate(CNode *cnode)
 void Cluster::node_deactivate(BaseNode *node)
 {
     IMDB_ITER_CHILDREN(node, env, EnvObj, {
-        if (env == node->get_platform_env())
+        if (env->is_platform())
             continue;
         env_stop(env);
     });
@@ -523,6 +527,8 @@ void Cluster::dbox_add(DBoxAddParams::RootReader *args, DBoxAddResult::RootBuild
         args->get_dnodes_config(&dnode_config, i);
         DNode *dnode = _tree->create<DNode>(dnode_config.get_guid(), dbox);
         ASSERT_NOT_NULL(dnode);
+        sprintf(dnode->get_base_proto()->get_name(), "dnode-%03d", _system->allocate_dnode_id());
+
         LOOP(dnode_config.get_addresses_count(), j) {
             dnode_config.get_addresses(&address, j);
             dnode->get_node_base()->get_addresses(j)->init_from_reader(&address);
@@ -594,6 +600,16 @@ void Cluster::dnode_modify(DNodeModifyParams::RootReader *args, DNodeModifyResul
     res->set_code(DNodeModifyResultCode::SUCCESS);
 }
 
+void Cluster::initialize_all_dnodes()
+{
+    IMDB_ITER_CHILDREN(_system, dbox, DBox, {
+        IMDB_ITER_CHILDREN(dbox, dnode, DNode, {
+            if (dnode->get_node_base()->get_state() == NodeState::INIT && dnode->get_node_base()->get_enabled())
+                dnode_initialize(dnode);
+        });
+    });
+}
+
 void Cluster::dnode_initialize(DNode *dnode)
 {
     dnode_activate(dnode);
@@ -603,7 +619,7 @@ void Cluster::dnode_activate(DNode *dnode)
 {
     // 1. start envs on this node.
     IMDB_ITER_CHILDREN(dnode, env, EnvObj, {
-        if (env == dnode->get_platform_env())
+        if (env->is_platform())
             continue;
         env_start(env);
         connect_env(env);

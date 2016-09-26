@@ -103,4 +103,9 @@ void EnvObj::generate_config(char *buffer, size_t buf_size)
     ASSERT_EQUAL(0, remove(config_file_path));
 }
 
+bool EnvObj::is_platform()
+{
+    return get_only_child<PModuleObj>() != nullptr;
+}
+
 }  // namespace Control

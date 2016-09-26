@@ -17,6 +17,18 @@ struct SystemActivateResult {
     @0 code SystemActivateResultCode;
 };
 
+struct SystemRedistParams {
+    @0 guid GUID;
+};
+
+enum SystemRedistResultCode {
+    SUCCESS
+};
+
+struct SystemRedistResult {
+    @0 code SystemRedistResultCode;
+};
+
 struct SystemStatusParams {
 
 };
