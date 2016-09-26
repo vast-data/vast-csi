@@ -184,7 +184,7 @@ void Dumper::start()
         }
         _running = true;
         const char *channel = channel_to_string((Channel) i);
-        snprintf(_file_prefixes[i], MAX_PREFIX_SIZE, "%s.%ld", channel, syscall(SYS_gettid));
+        snprintf(_file_prefixes[i], MAX_PREFIX_SIZE, "%s.%d.%ld", channel, getpid(), syscall(SYS_gettid));
         _files[i]->set_prefix(_file_prefixes[i]);
     }
 

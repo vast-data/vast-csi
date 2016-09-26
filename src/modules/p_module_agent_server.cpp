@@ -30,6 +30,7 @@ void PModuleAgentServerImpl::set_local_env_id(SetLocalEnvIdParams::RootReader *a
     // 1. Set local env ID:
     VMsg::EnvId env_id = args->get_env_id();
     Env::get()->get_vmsg()->set_local_env_id(env_id);
+    PT_INFO(CONTROL, "Setting local env_id=%d", env_id);
 
     // 2. Set env addresses (of the caller, which is the Leader env):
     ConnectParams::Reader connect_params_reader;
@@ -69,6 +70,7 @@ void PModuleAgentServerImpl::do_env_start(GUID env_guid, const char *config, Env
 
     pid_t pid = fork();
     if (pid == 0) {  // child process
+        P::kill_myself_on_parent_death();
         // This will only return on error..
         if (execl(Env::get()->get_binary_path(), Env::get()->get_binary_path(),
                   config_file_path, (char*)nullptr) == -1) {
@@ -77,7 +79,7 @@ void PModuleAgentServerImpl::do_env_start(GUID env_guid, const char *config, Env
         PANIC("Not supposed to get here..");
     } else if (pid > 0) {  // parent process
         EnvData *env = &_envs[_n_envs];
-        PT_DEBUG(CONTROL, "Added env #%d, GUID %s", _n_envs, env_guid_str);
+        PT_DEBUG(CONTROL, "Added env #%d, GUID=%s, pid=%d", _n_envs, env_guid_str, pid);
         ++_n_envs;
         env->env_guid = env_guid;
         env->pid = pid;

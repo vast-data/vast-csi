@@ -1,18 +1,18 @@
 /* Copyright (C) Vast Data Ltd. */
 
 /*!
- * \file cnode.hpp
- * \brief CNode object implementation.
+ * \file dnode.hpp
+ * \brief DNode object implementation.
  */
 #pragma once
 
-#include "cnode.vproto.hpp"
+#include "dnode.vproto.hpp"
 #include "object.hpp"
 #include "node.hpp"
 
 namespace Control {
 
-class CNode : public Object<CNodeProto, TypeId::CNode, BaseNode> {
+class DNode : public Object<DNodeProto, TypeId::DNode, BaseNode> {
 public:
     virtual NodeBaseProto::Builder *get_node_base()
     {

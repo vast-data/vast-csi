@@ -25,4 +25,7 @@ bool file_to_string(const char *file_path, size_t buf_size, char *buf);
 // Enable the O_CLOEXEC flag on the given file, so that it will be automatically closed after fork/exec.
 void set_cloexec_flag(FILE *fd);
 
+// Kill process on parent death
+void kill_myself_on_parent_death();
+
 }  // namespace P

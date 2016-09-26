@@ -70,6 +70,9 @@ void EModule::init(Silo *silo, ConfigSetting *module_setting)
     ConfigSetting *io_setting = Conf::conf_setting_lookup_required(module_setting, "io");
     init_io_from_settings(io_setting, &devices, &iopool, &io_provider);
     _agent.init(silo->get_id(), get_id());
+
+    // TODO: these calls should be removed - see ticket ORION-65
+    Env::get()->get_vmsg()->add_module_pair(ModuleId::C, ModuleId::E, VMsg::TransportType::RDMA);
 }
 
 void EModule::start()

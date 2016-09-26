@@ -8,10 +8,10 @@ methods:
   op_id: 0
   arg: SystemStatusParams
   res: SystemStatusResult
-- method: system_init
+- method: system_activate
   op_id: 1
-  arg: SystemInitParams
-  res: SystemInitResult
+  arg: SystemActivateParams
+  res: SystemActivateResult
 - method: cnode_add
   op_id: 2
   arg: CNodeAddParams
@@ -28,3 +28,20 @@ methods:
   op_id: 5
   arg: CNodeGetParams
   res: CNodeGetResult
+- method: dbox_add
+  op_id: 6
+  arg: DBoxAddParams
+  res: DBoxAddResult
+- method: dbox_get
+  op_id: 7
+  arg: DBoxGetParams
+  res: DBoxGetResult
+- method: dnode_modify
+  op_id: 8
+  arg: DNodeModifyParams
+  res: DNodeModifyResult
+- method: system_redist
+  op_id: 9
+  arg: SystemRedistParams
+  res: SystemRedistResult
+

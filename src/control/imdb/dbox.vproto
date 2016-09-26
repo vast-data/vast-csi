@@ -1,9 +1,9 @@
 $import object.vproto
-$import node.vproto
 
 $namespace Control
 
-struct CNodeProto {
+$const uint8_t DNODES_PER_DBOX = 2;
+
+struct DBoxProto {
     @0 base_proto ObjectBaseProto;
-    @1 base_node_proto NodeBaseProto;
 };

@@ -13,6 +13,8 @@ struct SystemProto {
 
     @1 next_cnode_id uint16_t;
     @2 next_env_id uint16_t;
+    @3 next_dbox_id uint16_t;
+    @4 next_dnode_id uint16_t;
 
-    @3 state SystemState;
+    @5 state SystemState;
 };

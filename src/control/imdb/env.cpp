@@ -1,7 +1,7 @@
 /* Copyright (C) Vast Data Ltd. */
 
 #include "env.hpp"
-#include "control/imdb/cnode.hpp"
+#include "control/imdb/node.hpp"
 #include "control/imdb/module.hpp"
 #include "modules/module_interface.hpp"
 #include "plasma/execution/config.hpp"
@@ -34,11 +34,11 @@ void EnvObj::generate_config(char *buffer, size_t buf_size)
     conf_setting_set_int32(env_id, get_id());
     ConfigSetting *port = conf_setting_add(vmsg, "port", CONFIG_TYPE_INT32);
     conf_setting_set_int32(port, get_port());
-    CNode *cnode = dynamic_cast<CNode*>(get_parent());
-    ASSERT_NOT_NULL(cnode);
-    for (int i = 0; i < cnode->get_addresses_count(); ++i) {
+    BaseNode *node = dynamic_cast<BaseNode*>(get_parent());
+    ASSERT_NOT_NULL(node);
+    for (int i = 0; i < node->get_node_base()->get_addresses_count(); ++i) {
         ConfigSetting *local_address = conf_setting_add(vmsg, "local_address", CONFIG_TYPE_STRING);
-        conf_setting_set_string(local_address, cnode->get_addresses(i)->get_host());
+        conf_setting_set_string(local_address, node->get_node_base()->get_addresses(i)->get_host());
         break;  // TODO: remove this to support multiple addresses. Change what the config looks like (can't have 2 "local_address" fields), and update the relevant code (and config files).
     }
 
@@ -101,6 +101,11 @@ void EnvObj::generate_config(char *buffer, size_t buf_size)
     P::Conf::conf_destroy(config);
     ASSERT(P::file_to_string(config_file_path, buf_size, buffer));
     ASSERT_EQUAL(0, remove(config_file_path));
+}
+
+bool EnvObj::is_platform()
+{
+    return get_only_child<PModuleObj>() != nullptr;
 }
 
 }  // namespace Control
