@@ -1,7 +1,10 @@
+#include <plasma/vmsg/vmsg_defs.hpp>
 #include "e_module_agent_server.hpp"
 #include "plasma/execution/env.hpp"
 
 #define CURRENT_COMPONENT ComponentId::PLASMA
+
+static_assert(P::MODULES_COUNT == ::MODULES_COUNT, "MODULES_COUNT in e_module.vproto must be the same as MODULES_COUNT");
 
 namespace P {
 
@@ -11,7 +14,14 @@ namespace P {
     args->get_addresses(&addresses_reader);
     VMsg::EnvAddresses::RootBuilder addresses;
     addresses.init_from_reader(&addresses_reader);
-    Env::get()->get_vmsg()->set_env_addresses(args->get_env_id(), &addresses);
+
+    ASSERT_EQUAL(MODULES_COUNT, args->get_modules_count());
+    EnvModules env_modules= { 0 };
+    LOOP(MODULES_COUNT, i)
+    {
+        env_modules.env_modules[i] = *args->get_modules(i);
+    }
+    Env::get()->get_vmsg()->set_env_addresses(args->get_env_id(), &addresses, &env_modules);
 }
 
 void EModuleAgentServerImpl::connect(ConnectParams::RootReader *args, VProto::Empty::RootBuilder *res)

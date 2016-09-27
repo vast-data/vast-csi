@@ -15,7 +15,7 @@ void RDMALink::init(EnvId env_id, ModuleId module_id, LinkType link_type)
     _state = LinkState::IDLE;
     _cm_id = nullptr;
     _link_type = link_type;
-    _reconnect = link_type == LinkType::SEND_REQUEST;
+    _reconnect = link_type == LinkType::SEND_REQUEST || link_type == LinkType::SEND_RESPONSE;
 }
 
 void RDMALink::destroy()

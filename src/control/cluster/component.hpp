@@ -62,6 +62,7 @@ private:
 
     TreeDB *_tree;
     System *_system;
+    EnvObj *_local_env_obj;
 };
 
 }

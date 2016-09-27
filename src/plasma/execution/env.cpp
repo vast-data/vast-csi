@@ -62,6 +62,7 @@ void Env::init_vmsg(Config *config, uint32_t n_silos)
     ConfigSetting *env_id_setting = conf_lookup(config, "vmsg.env_id");
     ASSERT_NOT_NULL(env_id_setting);
     EnvId env_id = (EnvId)conf_setting_get_int32(env_id_setting);
+    EnvModules env_modules = { 0 };
 
     VMsgConfiguration vmsg_configuration;
     memset(&vmsg_configuration, 0, sizeof(vmsg_configuration));
@@ -78,6 +79,7 @@ void Env::init_vmsg(Config *config, uint32_t n_silos)
         ModuleResources *module_resources = &vmsg_configuration.modules[module_id];
         module_resources->num_send_buffers = conf_setting_get_int32(send_buffers);
         module_resources->num_recv_buffers = conf_setting_get_int32(recv_buffers);
+        env_modules.env_modules[module_id] = module_resources->num_recv_buffers != 0;
     }
 
     _vmsg->init(&vmsg_configuration);
@@ -95,7 +97,7 @@ void Env::init_vmsg(Config *config, uint32_t n_silos)
     strcpy(address_builder->get_host(), local_address);
     address_builder->set_port((uint16_t)conf_setting_get_int32(port_setting));
     addresses_builder.set_n_addr(1);
-    _vmsg->set_env_addresses(env_id, &addresses_builder);
+    _vmsg->set_env_addresses(env_id, &addresses_builder, &env_modules);
 }
 
 void Env::init(Config *config)

@@ -70,9 +70,6 @@ static void fiber_lock(void *value)
 
 static void test_lock_manager(void *arg)
 {
-    VMsg *vmsg = Env::get()->get_vmsg();
-    vmsg->add_module_pair(ModuleId::TEST, ModuleId::B, TransportType::RDMA);
-
     LockManager::LockManagerClient client;
     client.init();
 

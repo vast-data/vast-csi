@@ -43,11 +43,6 @@ void CModule::init(P::Silo *silo, P::Conf::ConfigSetting *module_setting)
 
     _agent.init(silo->get_id(), get_id(), FiberGroupId::C);
     _cluster.init(silo->get_id(), get_id(), &_tree, _system);
-
-    // TODO: these calls should be removed - see ticket ORION-65
-    Env::get()->get_vmsg()->add_module_pair(ModuleId::TEST, ModuleId::C, VMsg::TransportType::RDMA);
-    Env::get()->get_vmsg()->add_module_pair(ModuleId::C, ModuleId::P, VMsg::TransportType::RDMA);
-    Env::get()->get_vmsg()->add_module_pair(ModuleId::C, ModuleId::E, VMsg::TransportType::RDMA);
 }
 
 void CModule::start()

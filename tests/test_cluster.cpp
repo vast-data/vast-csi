@@ -21,12 +21,6 @@ static const VMsg::ModuleAddress dest = {
     0  // silo_id
 };
 
-static void init_func(P::Silo *silo, void *ctx)
-{
-    VMsg::VMsg *vmsg = P::Env::get()->get_vmsg();
-    vmsg->add_module_pair(ModuleId::TEST, ModuleId::C, VMsg::TransportType::RDMA);
-}
-
 static void system_activate(ClusterClient *client)
 {
     SystemActivateParams::RootBuilder *activate_params = client->alloc_system_activate();
@@ -308,7 +302,6 @@ void cluster_test(StartFunc start_func)
 {
     ::Test::create_system_guid();
 
-    TestModule::set_init_func(init_func, nullptr);
     TestModule::set_start_func(start_func, nullptr);
 
     env_stop = false;

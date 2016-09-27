@@ -67,7 +67,6 @@ static void fiber_vmsg_ping(void *arg)
 static void run_vmsg_ping(void *arg)
 {
     Context *ctx = (Context*)arg;
-    Env::get()->get_vmsg()->add_module_pair(ModuleId::TEST, ModuleId::E, TransportType::RDMA);
     Future **futures = new Future*[ctx->n_fibers];
     P::EModuleAgentClient client;
     client.init();

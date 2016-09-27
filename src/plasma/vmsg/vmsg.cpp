@@ -5,6 +5,7 @@
 #include "plasma/fiber/provider.hpp"
 #include "plasma/internal.hpp"
 #include "plasma/trace/emitter.hpp"
+#include "vmsg_defs.hpp"
 
 namespace P {
 namespace VMsg {
@@ -17,7 +18,26 @@ void VMsg::init(VMsgConfiguration *vmsg_configuration)
     _started = false;
     LOOP(ModuleId::COUNT, i) {
         LOOP(ModuleId::COUNT, j) {
-            _module_pairs[i][j] = TransportType::NONE;
+            _request_module_pairs[i][j] = TransportType::NONE;
+            _response_module_pairs[i][j] = TransportType::NONE;
+        }
+    }
+
+    LOOP(MAX_ENVS_PER_SYSTEM, i) {
+        LOOP(ModuleId::COUNT, j) {
+            _env_modules[i].env_modules[j] = false;
+        }
+    }
+
+    for (ModulePair p : module_pairs)
+    {
+        uint32_t num_send_buffers = _vmsg_configuration.modules[(byte)p.src].num_send_buffers;
+        uint32_t num_recv_buffers = _vmsg_configuration.modules[(byte)p.dest].num_recv_buffers;
+        if (num_send_buffers) {
+            _request_module_pairs[(byte) p.src][(byte) p.dest] = p.type;
+        }
+        if (num_recv_buffers) {
+            _response_module_pairs[(byte) p.src][(byte) p.dest] = p.type;
         }
     }
 
@@ -121,12 +141,11 @@ void VMsg::stop()
     _rdma_transport.stop();
 }
 
-void VMsg::set_env_addresses(EnvId env_id, EnvAddresses::RootBuilder *addresses)
+void VMsg::set_env_addresses(EnvId env_id, EnvAddresses::RootBuilder *addresses, EnvModules *env_modules)
 {
     _address_table.set(env_id, addresses);
-    if (_started && addresses->get_n_addr() > 0) {
-        connect_to_peer_modules(env_id);
-    }
+    _env_modules[env_id] = *env_modules;
+    connect_to_peers();
 }
 
 void VMsg::disconnect_env(EnvId env_id)
@@ -165,14 +184,6 @@ VMsgRes VMsg::request_connection(EnvId env_id, ModuleId module_id, TransportType
     return _rdma_transport.request_connection(env_id, module_id, conn_dir, ConnectInterval::CONNECT_NOW);
 }
 
-void VMsg::add_module_pair(ModuleId client, ModuleId server, TransportType transport_type)
-{
-    PT_DEBUG(DATA, "add_module_pair: client = %hhu, server = %hhu", client, server);
-    ASSERT(transport_type == TransportType::RDMA, "RDMA is currently the only supported transport type");
-    _module_pairs[(int)client][(int)server] = transport_type;
-    connect_to_peers();
-}
-
 void VMsg::connect_to_peers()
 {
     LOOP(MAX_ENVS_PER_SYSTEM, env_id) {
@@ -187,9 +198,15 @@ void VMsg::connect_to_peer_modules(EnvId env_id)
 {
     LOOP(ModuleId::COUNT, i) {
         LOOP(ModuleId::COUNT, j) {
-            if ((_module_pairs[i][j] != TransportType::NONE) &&
+            if ((_request_module_pairs[i][j] != TransportType::NONE) &&
+                (_env_modules[env_id].env_modules[j]) &&
                 (!_rdma_transport.is_client_connected(env_id, (ModuleId)j))) {
-                request_connection(env_id, (ModuleId)j, _module_pairs[i][j], ConnDir::CLIENT_TO_SERVER);
+                request_connection(env_id, (ModuleId)j, _request_module_pairs[i][j], ConnDir::CLIENT_TO_SERVER);
+            }
+            if ((_response_module_pairs[i][j] != TransportType::NONE) &&
+                (_env_modules[env_id].env_modules[i]) &&
+                (!_rdma_transport.is_server_connected(env_id, (ModuleId)i))) {
+                request_connection(env_id, (ModuleId)i, _response_module_pairs[i][j], ConnDir::SERVER_TO_CLIENT);
             }
         }
     }
@@ -587,7 +604,6 @@ VMsgRes VMsg::send_response(VMsgHeader *response, SiloId silo_id)
         PT_INFO(DATA, "no connection back to client: env_id=%hu module_id=%hhu retrying send", dest.env_id, dest.module_id);
         uint64_t now = 0;
         uint64_t start_time = NANO_TO_MICRO(get_time_nano());
-        request_connection(dest.env_id, (ModuleId)dest.module_id, _module_pairs[dest.module_id][response->sender.module_id], ConnDir::SERVER_TO_CLIENT);
         // wait for the send timeout for the link to get connected
         do {
             TimerQueues::fast_sleep(1000);

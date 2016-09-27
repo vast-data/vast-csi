@@ -15,6 +15,16 @@
 
 namespace Control {
 
+template  <class T>
+static void set_env_modules(EnvObj *env, T connect_params) {
+    LOOP(MODULES_COUNT, i) {
+        *connect_params->get_modules(i) = false;
+    }
+    IMDB_ITER_MODULES(env, module, {
+        *connect_params->get_modules((P::byte) module->get_module_id()) = true;
+    });
+}
+
 static bool node_has_address(BaseNode *node, char *host)
 {
     // check if a cnode or a dnode has a given address
@@ -49,6 +59,8 @@ void Cluster::init(P::SiloId silo_id, ModuleId module_id, TreeDB *tree, System *
     _tree = tree;
     _system = system;
     register_server(silo_id, module_id);
+    _local_env_obj = _tree->create<EnvObj>(P::GUID::create(), nullptr);
+    _tree->create<CModuleObj>(P::GUID::create(), _local_env_obj);
 }
 
 static void connect_envs_fiber(void *cluster_arg)
@@ -83,6 +95,7 @@ void Cluster::connect_platform_env(EnvObj *env)
     P::ConnectParams::Builder *connect_params = params->get_connect_params();
     connect_params->set_env_id(P::Env::get()->get_vmsg()->get_local_env_id());
     P::Env::get()->get_vmsg()->copy_env_addresses(connect_params->get_env_id(), connect_params->get_addresses());
+    set_env_modules(_local_env_obj, params->get_connect_params());
     // TODO: make sure this function can be called more than once on an env. (the leader might be down and the platform could restart)
     PModuleObj *module = env->get_only_child<PModuleObj>();
     P::VProto::Empty::RootReader *result;
@@ -104,6 +117,7 @@ void Cluster::connect_data_env(EnvObj *env)
     P::ConnectParams::RootBuilder *params = client.alloc_connect();
     params->set_env_id(P::Env::get()->get_vmsg()->get_local_env_id());
     P::Env::get()->get_vmsg()->copy_env_addresses(params->get_env_id(), params->get_addresses());
+    set_env_modules(_local_env_obj, params);
     EModuleObj *module = env->get_only_child<EModuleObj>();
     P::VProto::Empty::RootReader *result;
     if (client.connect_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
@@ -125,6 +139,7 @@ void Cluster::connect_env_to_env(EnvObj *env1, EnvObj *env2)
     P::ConnectParams::RootBuilder *params = client.alloc_connect();
     params->set_env_id(env2->get_id());
     P::Env::get()->get_vmsg()->copy_env_addresses(env2->get_id(), params->get_addresses());
+    set_env_modules(env2, params);
     EModuleObj *module = env1->get_only_child<EModuleObj>();
     P::VProto::Empty::RootReader *result;
     if (client.connect_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
@@ -152,8 +167,13 @@ void Cluster::connect_env(EnvObj *env)
     env->get_base()->get_guid().to_string(guid_string);
     PT_INFO(CONTROL, "Connecting to env=%s id=%d", guid_string, env->get_id());
 
+    P::EnvModules env_modules = { 0 };
+    IMDB_ITER_MODULES(env, module, {
+        env_modules.env_modules[(P::byte)module->get_module_id()] = true;
+    });
+
     // connect to the env.
-    P::Env::get()->get_vmsg()->set_env_addresses(env->get_id(), &addresses);
+    P::Env::get()->get_vmsg()->set_env_addresses(env->get_id(), &addresses, &env_modules);
 
     P::VProto::Empty::RootReader *result;
     // tell the env to connect back to me.

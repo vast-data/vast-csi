@@ -223,4 +223,24 @@ struct QueuedEvent {
                event.type, event.id.buffer_index, event.id.module_id, event.len, event.status);
 
 }
+
+typedef struct { bool env_modules[MODULES_COUNT]; } EnvModules;
+
+struct ModulePair {
+    ModuleId src;
+    ModuleId dest;
+    VMsg::TransportType type;
+};
+
+static const ModulePair module_pairs[] = {
+        { .src = ModuleId::C, .dest = ModuleId::E, .type = VMsg::TransportType::RDMA },
+        { .src = ModuleId::C, .dest = ModuleId::P, .type = VMsg::TransportType::RDMA },
+        { .src = ModuleId::E, .dest = ModuleId::TEST, .type = VMsg::TransportType::RDMA },
+        { .src = ModuleId::TEST, .dest = ModuleId::B, .type = VMsg::TransportType::RDMA },
+        { .src = ModuleId::TEST, .dest = ModuleId::C, .type = VMsg::TransportType::RDMA },
+        { .src = ModuleId::TEST, .dest = ModuleId::E, .type = VMsg::TransportType::RDMA },
+        { .src = ModuleId::TEST, .dest = ModuleId::P, .type = VMsg::TransportType::RDMA },
+        { .src = ModuleId::TEST, .dest = ModuleId::TEST, .type = VMsg::TransportType::RDMA },
+    };
+
 }

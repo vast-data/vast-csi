@@ -41,7 +41,7 @@ public:
     /*!
      * Set the addresses for the specified env
      */
-    void set_env_addresses(EnvId env_id, EnvAddresses::RootBuilder *addresses);
+    void set_env_addresses(EnvId env_id, EnvAddresses::RootBuilder *addresses, EnvModules *env_modules);
 
     /*!
      * Disconnect from specified env
@@ -52,11 +52,6 @@ public:
      * Copy the addresses of the current env (a getter is harder to implement since it requires locking)
      */
     void copy_env_addresses(EnvId env_id, EnvAddresses::Builder *addresses);
-
-    /*!
-     * Defines a connection pair between the client and server modules
-     */
-    void add_module_pair(ModuleId client, ModuleId server, TransportType transport_type);
 
     /*!
      * Register a module server
@@ -149,7 +144,10 @@ private:
     VMsgPool _vmsg_pool;
     RDMATransport _rdma_transport;
     // a map of the modules that are allowed to communicate
-    TransportType _module_pairs[MODULES_COUNT][MODULES_COUNT];
+    TransportType _request_module_pairs[MODULES_COUNT][MODULES_COUNT];
+    TransportType _response_module_pairs[MODULES_COUNT][MODULES_COUNT];
+    // enabled modules per env
+    EnvModules _env_modules[MAX_ENVS_PER_SYSTEM];
     // lock for polling transports
     Sync::SpinLock _poll_lock;
     VMsgConfiguration _vmsg_configuration;

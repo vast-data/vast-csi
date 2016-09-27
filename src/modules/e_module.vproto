@@ -2,9 +2,12 @@ $import plasma/vmsg/vmsg.vproto as VMsg
 
 $namespace P
 
+$const size_t MODULES_COUNT = 6;
+
 struct ConnectParams {
     @0 env_id VMsg.EnvId;
     @1 addresses VMsg.EnvAddresses;
+    @2 modules bool[MODULES_COUNT];
 };
 
 struct DisconnectParams {

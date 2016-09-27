@@ -363,7 +363,9 @@ void RDMATransport::on_disconnected(struct rdma_cm_event *event)
 {
     PT_DEBUG(DATA, "connection disconnected cm_id=%p", event->id);
     RDMALink *link = (RDMALink *)event->id->context;
-    link->reset();
+    if (link->get_link_type() != LinkType::LISTEN) {
+        link->reset();
+    }
     if (link->get_reconnect()) {
         request_connection(link->get_env_id(), link->get_module_id(), link->get_link_direction(), ConnectInterval::CONNECT_IN_10_MILLI);
     }
@@ -439,6 +441,12 @@ VMsgRes RDMATransport::request_connection(EnvId env_id, ModuleId module_id, Conn
 bool RDMATransport::is_client_connected(EnvId env_id, ModuleId module_id)
 {
     RDMALink *link = _send_request_connections[env_id][(int)module_id].get_next_link();
+    return link->get_state() == LinkState::CONNECTED;
+}
+
+bool RDMATransport::is_server_connected(EnvId env_id, ModuleId module_id)
+{
+    RDMALink *link = _send_response_connections[env_id][(int)module_id].get_next_link();
     return link->get_state() == LinkState::CONNECTED;
 }
 

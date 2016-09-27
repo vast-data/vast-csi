@@ -111,11 +111,22 @@ static void send_set_local_env_id(uint16_t env_id)
     client.init();
 
     P::SetLocalEnvIdParams::RootBuilder *set_local_env_id_params = client.alloc_set_local_env_id();
+    P::ConnectParams::Builder *connect_params = set_local_env_id_params->get_connect_params();
     set_local_env_id_params->set_env_id(env_id);
     set_local_env_id_params->get_connect_params()->set_env_id(1);
     set_local_env_id_params->get_connect_params()->get_addresses()->set_n_addr(1);
     set_local_env_id_params->get_connect_params()->get_addresses()->get_addresses(0)->set_port(TEST_ENV_PORT);
     strcpy(set_local_env_id_params->get_connect_params()->get_addresses()->get_addresses(0)->get_host(), "127.0.0.01");
+
+    ASSERT(MODULES_COUNT == connect_params->get_modules_count());
+    LOOP(MODULES_COUNT, i) {
+        *connect_params->get_modules(i) = false;
+    }
+    *connect_params->get_modules((P::byte)ModuleId::P) = true;
+    *connect_params->get_modules((P::byte)ModuleId::E) = true;
+    *connect_params->get_modules((P::byte)ModuleId::C) = true;
+    *connect_params->get_modules((P::byte)ModuleId::TEST) = true;
+
     P::VProto::Empty::RootReader *set_local_env_id_reply;
     EXPECT_EQ(VMsgRes::OK, client.set_local_env_id_sync(leader_dest, set_local_env_id_params, &set_local_env_id_reply));
     client.free_set_local_env_id(set_local_env_id_reply);
@@ -143,9 +154,6 @@ static void env_start_stop_start_func(void *ctx)
     if (P::Silo::get()->get_id() > 0) {
         return;
     }
-
-    VMsg *vmsg = P::Env::get()->get_vmsg();
-    vmsg->add_module_pair(ModuleId::TEST, ModuleId::P, TransportType::RDMA);
 
     P::GUID env_guid;
     env_guid.init();
@@ -189,10 +197,6 @@ static void run_leader_start_func(void *ctx)
         return;
     }
 
-    VMsg *vmsg = P::Env::get()->get_vmsg();
-    vmsg->add_module_pair(ModuleId::TEST, ModuleId::P, TransportType::RDMA);
-    vmsg->add_module_pair(ModuleId::TEST, ModuleId::C, TransportType::RDMA);
-
     P::GUID leader_env_guid;
     ASSERT(leader_env_guid.init_from_string(P::LEADER_ENV_GUID));
 
@@ -207,6 +211,16 @@ static void run_leader_start_func(void *ctx)
     connect_params_builder.get_addresses()->set_n_addr(1);
     connect_params_builder.get_addresses()->get_addresses(0)->set_port(LEADER_PORT);
     strcpy(connect_params_builder.get_addresses()->get_addresses(0)->get_host(), "127.0.0.1");
+
+    ASSERT(MODULES_COUNT == connect_params_builder.get_modules_count());
+    LOOP(MODULES_COUNT, i) {
+        *connect_params_builder.get_modules(i) = false;
+    }
+    *connect_params_builder.get_modules((P::byte)ModuleId::P) = true;
+    *connect_params_builder.get_modules((P::byte)ModuleId::E) = true;
+    *connect_params_builder.get_modules((P::byte)ModuleId::C) = true;
+    *connect_params_builder.get_modules((P::byte)ModuleId::TEST) = true;
+
     P::ConnectParams::Reader connect_params_reader;
     connect_params_reader.init_from_root(connect_params_builder.as_reader());
     P::EModuleAgentServerImpl::do_connect(&connect_params_reader);

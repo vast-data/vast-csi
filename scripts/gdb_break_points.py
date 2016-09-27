@@ -26,7 +26,6 @@ commands
 end'''.format(name, pos+1, '\n    '.join(cmds))
 
 print '''
-run
 
 if $_exitcode != -999
   quit

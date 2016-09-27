@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <sys/file.h>
 #include <sys/mman.h>
+#include <plasma/vmsg/vmsg_defs.hpp>
 #include "plasma/execution/silo.hpp"
 #include "plasma/execution/env.hpp"
 #include "test_module.hpp"
@@ -121,13 +122,14 @@ void VMsgTest::add_addresses(EnvId id, uint16_t port)
     VMsg *vmsg = Env::get()->get_vmsg();
     _lock.lock();
     if (_first_silo) {
-        vmsg->add_module_pair(ModuleId::TEST, ModuleId::TEST, TransportType::RDMA);
-        vmsg->add_module_pair(ModuleId::E, ModuleId::TEST, TransportType::RDMA);
         EnvAddresses::RootBuilder addresses;
+        P::EnvModules env_modules = { 0 };
+        env_modules.env_modules[(P::byte)ModuleId::E] = true;
+        env_modules.env_modules[(P::byte)ModuleId::TEST] = true;
         addresses.set_n_addr(1);
         strcpy(addresses.get_addresses(0)->get_host(), "127.0.0.1");
         addresses.get_addresses(0)->set_port(port);
-        vmsg->set_env_addresses(id, &addresses);
+        vmsg->set_env_addresses(id, &addresses, &env_modules);
         _first_silo = false;
     }
     _lock.unlock();
