@@ -70,11 +70,6 @@ silo_types :
           {
             count = 1;
             stack_size = 65536;
-            group_id = "E_IO_POLLING";
-          },
-          {
-            count = 1;
-            stack_size = 65536;
             group_id = "E_VMSG_POLLING";
           } );
         io :
@@ -133,11 +128,6 @@ silo_types :
           {
             count = 1;
             stack_size = 65536;
-            group_id = "E_IO_POLLING";
-          },
-          {
-            count = 1;
-            stack_size = 65536;
             group_id = "E_VMSG_POLLING";
           } );
         io :
@@ -180,11 +170,6 @@ silo_types :
             count = 50;
             stack_size = 65536;
             group_id = "E";
-          },
-          {
-            count = 1;
-            stack_size = 65536;
-            group_id = "E_IO_POLLING";
           },
           {
             count = 1;

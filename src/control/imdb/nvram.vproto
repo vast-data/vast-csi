@@ -3,6 +3,6 @@ $import object.vproto
 $namespace Control
 
 struct NVRAMProto {
-    @0 base_proto ObjectBaseProto;
+    @0 base_proto BaseObjectProto;
     @1 version uint32_t;
 };

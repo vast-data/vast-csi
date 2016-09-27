@@ -1,0 +1,25 @@
+$import control/imdb/node.vproto as node
+$import control/imdb/object.vproto as object
+
+$namespace Control
+
+// this number is large enough to reduce number of calls on startup and small enough to fit in one RPC
+$const size_t DEVICE_UPDATES_PER_RPC = 8;
+$const size_t DEVICE_MAX_PATH = 256;
+
+// remote device encapsulates both NVRAM and Flash drives.
+struct RemoteDeviceProto {
+    @0 guid GUID;
+    @1 path char[DEVICE_MAX_PATH];
+    @2 size uint32_t;
+};
+
+struct DeviceAddParams {
+    @0 devices RemoteDeviceProto[DEVICE_UPDATES_PER_RPC];
+    @1 device_count uint16_t;
+};
+
+struct DeviceRemoveParams {
+    @0 guids GUID[DEVICE_UPDATES_PER_RPC];
+    @1 guid_count uint16_t;
+};

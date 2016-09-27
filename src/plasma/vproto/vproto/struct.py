@@ -1,7 +1,7 @@
 from collections import namedtuple, OrderedDict, Counter
 from .parser import Field, FieldType, Name, Number
 
-MAX_STRUCT_FIELDS = 255
+MAX_STRUCT_FIELDS = 2**8
 MAX_STRUCT_SIZE = 2**20
 MAX_ARRAY_ELEMENTS = 2**16
 

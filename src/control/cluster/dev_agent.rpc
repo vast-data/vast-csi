@@ -1,0 +1,13 @@
+class: DevAgent
+include: ["dev_agent.vproto.hpp", "plasma/vproto/empty.vproto.hpp"]
+api_version: 1
+namespaces: ["Control"]
+methods:
+- method: device_add
+  op_id: 0
+  arg: DeviceAddParams
+  res: P::VProto::Empty
+- method: device_remove
+  op_id: 1
+  arg: DeviceRemoveParams
+  res: P::VProto::Empty

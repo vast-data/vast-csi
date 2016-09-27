@@ -4,6 +4,6 @@ $import node.vproto
 $namespace Control
 
 struct DNodeProto {
-    @0 base_proto ObjectBaseProto;
-    @1 base_node_proto NodeBaseProto;
+    @0 base_proto BaseObjectProto;
+    @1 base_node_proto BaseNodeProto;
 };

@@ -48,8 +48,8 @@ public:
                                                   {TypeId::CModuleObj, sizeof(CModuleObj), 1},
                                                   {TypeId::DBox, sizeof(DBox), P::MAX_DBOXES_PER_SYSTEM},
                                                   {TypeId::DNode, sizeof(DNode), P::MAX_DNODES_PER_SYSTEM},
-                                                  {TypeId::NVRAM, sizeof(NVRAM), P::MAX_DNODES_PER_SYSTEM * P::DNODE_NVRAM_COUNT},
-                                                  {TypeId::Drive, sizeof(Drive), P::MAX_DBOXES_PER_SYSTEM * P::MAX_DRIVES_PER_DBOX}};
+                                                  {TypeId::NVRAM, sizeof(NVRAM), P::MAX_NVRAMS_PER_SYSTEM},
+                                                  {TypeId::Drive, sizeof(Drive), P::MAX_DRIVES_PER_SYSTEM}};
 
 private:
     BaseAgent _agent;

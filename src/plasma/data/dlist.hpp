@@ -123,7 +123,6 @@ public:
 
     /*!
      * Insert a new element at the beginning of the list.
-     * The anchor is passed through a pointer because its value would be modified.
      */
     void insert(Index index);
 

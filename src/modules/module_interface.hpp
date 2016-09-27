@@ -22,7 +22,7 @@ namespace VMsg {
 
 namespace Control {
     class BaseAgent;
-    class ObjectBase;
+    class BaseTreeObject;
     class TreeDB;
     class EnvObj;
 }
@@ -56,7 +56,7 @@ public:
     virtual void generate_config(P::Conf::ConfigSetting *module_config) = 0;
     virtual void get_vmsg_module_resources(P::VMsg::ModuleResources *vmsg_module_resources) = 0;
 
-    virtual Control::ObjectBase *create_control_object(Control::TreeDB *imdb, Control::EnvObj *parent) = 0;
+    virtual Control::BaseTreeObject *create_control_object(Control::TreeDB *imdb, Control::EnvObj *parent) = 0;
 };
 
 class ModuleRegistry {

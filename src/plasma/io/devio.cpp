@@ -1,11 +1,13 @@
 /* Copyright (C) Vast Data Ltd. */
 
 #include "devio.hpp"
+#include "io_provider.hpp"
 #include "plasma/utils/macros.hpp"
 #include "plasma/utils/assert.hpp"
 #include "plasma/internal.hpp"
 #include <fcntl.h>
 #include <errno.h>
+#include <unistd.h>
 #include <linux/fs.h>
 #include <sys/ioctl.h>
 
@@ -80,7 +82,7 @@ size_t DevIO::io_byte_count(struct iocb *ios)
 
 void DevIO::allocate_ios(struct iocb *ios[], uint32_t count, DevIO::Future *io_future)
 {
-    bool was_idle = (_available_ios.value() == _iodepth);
+    bool was_idle = !has_pending_ios();
     _available_ios.dec(count);
     IO* io_objects[count];
     _iopool->alloc_multiple(io_objects, count);
@@ -205,16 +207,16 @@ void DevIO::validate_io(IOVecs buffers[], Baddrs *dev_offsets)
     LOOP(dev_offsets->count, baddr_idx) {
         size_t io_size = 0;
         // O_DIRECT limitations
-        ASSERT(dev_offsets->baddrs[baddr_idx] % O_DIRECT_ALIGNMENT == 0);
+        ASSERT_OP(dev_offsets->baddrs[baddr_idx] % O_DIRECT_ALIGNMENT, ==, 0);
         LOOP (buffers[baddr_idx].count, iovec_idx) {
-            ASSERT(buffers[baddr_idx].iovecs[iovec_idx].iov_len % O_DIRECT_ALIGNMENT == 0);
-            ASSERT((size_t)buffers[baddr_idx].iovecs[iovec_idx].iov_base % O_DIRECT_ALIGNMENT == 0);
+            ASSERT_OP(buffers[baddr_idx].iovecs[iovec_idx].iov_len % O_DIRECT_ALIGNMENT, ==, 0);
+            ASSERT_OP((size_t)buffers[baddr_idx].iovecs[iovec_idx].iov_base % O_DIRECT_ALIGNMENT, ==, 0);
 
             io_size += buffers[baddr_idx].iovecs[iovec_idx].iov_len;
         }
 
         // make sure the io doesn't go beyond device boundaries.
-        ASSERT(dev_offsets->baddrs[baddr_idx] + io_size <= _size);
+        ASSERT_OP(dev_offsets->baddrs[baddr_idx] + io_size, <=, _size);
     }
 }
 
@@ -250,10 +252,17 @@ bool DevIO::perform_scattered_io(IOVecs buffers[], Baddrs *dev_offsets, bool is_
     return io_future->res;
 }
 
+bool DevIO::has_pending_ios()
+{
+    return _available_ios.value() != _iodepth;
+}
+
 void DevIO::destroy()
 {
-    // Todo: Should we perform a last polling operation for a graceful shutdown?
+    //TODO: Should we perform a last polling operation for a graceful shutdown?
     ASSERT_EQUAL(_available_ios.value(), _iodepth);
+    close(_file_desc);
+    _available_ios.destroy();
     io_destroy(_ctx);
 }
 

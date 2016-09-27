@@ -12,9 +12,9 @@
 
 namespace Control {
 
-class DNode : public Object<DNodeProto, TypeId::DNode, BaseNode> {
+class DNode : public ControlObject<DNodeProto, TypeId::DNode, BaseNode> {
 public:
-    virtual NodeBaseProto::Builder *get_node_base()
+    virtual BaseNodeProto::Builder *get_node_base()
     {
         return get_base_node_proto();
     }

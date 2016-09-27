@@ -12,23 +12,23 @@
 
 namespace Control {
 
-class BaseModuleLogic : public ObjectBase {
+class BaseModuleLogic : public BaseTreeObject {
 public:
-    virtual ModuleBaseProto::Builder *get_base_module() = 0;
+    virtual BaseModuleProto::Builder *get_base_module() = 0;
     virtual P::VMsg::ModuleAddress get_address() = 0;
     virtual ModuleId get_module_id() = 0;
     virtual void activate() = 0;
 };
 
 template <class ModuleProto, TypeId type_id, ModuleId module_id>
-class BaseModuleObj : public Object<ModuleProto, type_id, BaseModuleLogic> {
+class BaseModuleObj : public ControlObject<ModuleProto, type_id, BaseModuleLogic> {
 public:
     ModuleId get_module_id()
     {
         return module_id;
     }
 
-    ModuleBaseProto::Builder *get_base_module()
+    BaseModuleProto::Builder *get_base_module()
     {
         return ModuleProto::RootBuilder::get_base_module_proto();
     }
@@ -89,6 +89,6 @@ class CModuleObj : public BaseModuleObj<CModuleProto, TypeId::CModuleObj, Module
 
 #define IMDB_ITER_MODULES(env, var, body)                               \
     ILIST_ITER_SAFE(env->get_children(), i) {                           \
-        BaseModuleLogic *var = dynamic_cast<BaseModuleLogic*>(p_container_of(i, ObjectBase, child_node)); \
+        BaseModuleLogic *var = dynamic_cast<BaseModuleLogic*>(p_container_of(i, BaseTreeObject, child_node)); \
         if (var != nullptr) { body }                                    \
     }

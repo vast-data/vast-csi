@@ -98,7 +98,7 @@ void Cluster::connect_platform_env(EnvObj *env)
     P::VProto::Empty::RootReader *result;
     if (client.set_local_env_id_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
         char guid_string[P::GUID::STRING_SIZE];
-        env->get_base()->get_guid().to_string(guid_string);
+        env->get_guid().to_string(guid_string);
         PT_ERROR(CONTROL, "Error setting platform env id for env=%s", guid_string);
         return;
     }
@@ -119,7 +119,7 @@ void Cluster::connect_data_env(EnvObj *env)
     P::VProto::Empty::RootReader *result;
     if (client.connect_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
         char guid_string[P::GUID::STRING_SIZE];
-        env->get_base()->get_guid().to_string(guid_string);
+        env->get_guid().to_string(guid_string);
         PT_ERROR(CONTROL, "Error requesting env=%s to connect back to me", guid_string);
         return;
     }
@@ -141,7 +141,7 @@ void Cluster::connect_env_to_env(EnvObj *env1, EnvObj *env2)
     P::VProto::Empty::RootReader *result;
     if (client.connect_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
         char guid_string[P::GUID::STRING_SIZE];
-        env1->get_base()->get_guid().to_string(guid_string);
+        env1->get_guid().to_string(guid_string);
         PT_ERROR(CONTROL, "Error requesting env=%s to connect back to me", guid_string);
         return;
     }
@@ -161,7 +161,7 @@ void Cluster::connect_env(EnvObj *env)
     }
 
     char guid_string[P::GUID::STRING_SIZE];
-    env->get_base()->get_guid().to_string(guid_string);
+    env->get_guid().to_string(guid_string);
     PT_INFO(CONTROL, "Connecting to env=%s id=%d", guid_string, env->get_id());
 
     P::EnvModules env_modules = { 0 };
@@ -226,9 +226,9 @@ EnvObj *Cluster::create_env(BaseNode *node, P::byte silo_count, uint16_t port)
     return env;
 }
 
-ObjectBase *Cluster::create_module(EnvObj *env, ModuleId module_id, SiloId silo_id)
+BaseTreeObject *Cluster::create_module(EnvObj *env, ModuleId module_id, SiloId silo_id)
 {
-    ObjectBase *object = ModuleRegistry::get(module_id)->create_control_object(_tree, env);
+    BaseTreeObject *object = ModuleRegistry::get(module_id)->create_control_object(_tree, env);
     BaseModuleLogic *module = (BaseModuleLogic*) object;
     module->get_base_module()->set_state(ModuleState::OFFLINE);
     module->get_base_module()->set_silo_id(silo_id);
@@ -267,7 +267,7 @@ void Cluster::env_activate(EnvObj *env)
     IMDB_ITER_MODULES(env, module, {
         module->activate();
         char guid_string[P::GUID::STRING_SIZE];
-        module->get_base()->get_guid().to_string(guid_string);
+        module->get_guid().to_string(guid_string);
         PT_INFO(CONTROL, "Activated module=%s module_id=%hhu env_id=%d", guid_string, module->get_module_id(), env->get_id());
     });
     env->set_state(EnvState::ACTIVE);
@@ -276,13 +276,13 @@ void Cluster::env_activate(EnvObj *env)
 void Cluster::env_start(EnvObj *env)
 {
     char guid_string[P::GUID::STRING_SIZE];
-    env->get_base()->get_guid().to_string(guid_string);
+    env->get_guid().to_string(guid_string);
 
     P::PModuleAgentClient client;
     client.init();
 
     P::EnvStartParams::RootBuilder *params = client.alloc_env_start();
-    params->set_env_guid(env->get_base()->get_guid());
+    params->set_env_guid(env->get_guid());
     env->generate_config(params->get_config(), params->get_config_count());
     P::EnvStartResult::RootReader *result;
     CNode *cnode = (CNode*) env->get_parent();
@@ -300,13 +300,13 @@ void Cluster::env_start(EnvObj *env)
 void Cluster::env_stop(EnvObj *env)
 {
     char guid_string[P::GUID::STRING_SIZE];
-    env->get_base()->get_guid().to_string(guid_string);
+    env->get_guid().to_string(guid_string);
 
     P::PModuleAgentClient client;
     client.init();
 
     P::EnvStopParams::RootBuilder *params = client.alloc_env_stop();
-    params->set_env_guid(env->get_base()->get_guid());
+    params->set_env_guid(env->get_guid());
     CNode *cnode = (CNode*) env->get_parent();
     PModuleObj *module = cnode->get_platform_module();
     P::EnvStopResult::RootReader *result;
@@ -376,7 +376,7 @@ void Cluster::cnode_activate(CNode *cnode)
     });
 
     char guid_string[P::GUID::STRING_SIZE];
-    cnode->get_base()->get_guid().to_string(guid_string);
+    cnode->get_guid().to_string(guid_string);
     PT_INFO(CONTROL, "Activated node=%s", guid_string);
 
     cnode->get_node_base()->set_state(NodeState::ACTIVE);
@@ -391,7 +391,7 @@ void Cluster::node_deactivate(BaseNode *node)
     });
 
     char guid_string[P::GUID::STRING_SIZE];
-    node->get_base()->get_guid().to_string(guid_string);
+    node->get_guid().to_string(guid_string);
     PT_INFO(CONTROL, "Deactivated node=%s", guid_string);
 
     node->get_node_base()->set_state(NodeState::INACTIVE);
@@ -651,7 +651,7 @@ void Cluster::dnode_activate(DNode *dnode)
     });
 
     char guid_string[P::GUID::STRING_SIZE];
-    dnode->get_base()->get_guid().to_string(guid_string);
+    dnode->get_guid().to_string(guid_string);
     PT_INFO(CONTROL, "Activated node=%s", guid_string);
 
     dnode->get_node_base()->set_state(NodeState::ACTIVE);

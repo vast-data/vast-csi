@@ -2,19 +2,13 @@
 
 /*!
  * \file e_module.hpp
- * \brief The Env module.
+ * \brief The E-module.
  *
  * This module is initialized per silo (like all modules). Therefore, some plasma sub components which are global (like messaging) are initialized elsewhere (explicitly in the environment).
  */
 #pragma once
 
-#include "plasma/execution/env.hpp"
 #include "module_interface.hpp"
-#include "plasma/execution/silo.hpp"
-#include "plasma/execution/config.hpp"
-#include "plasma/io/devio.hpp"
-#include "plasma/io/io_provider.hpp"
-#include "plasma/memory/atomic_pool.hpp"
 #include "e_module_agent.hpp"
 
 namespace P {
@@ -32,13 +26,7 @@ public:
     static void generate_config(P::Conf::ConfigSetting *module_config);
     static void get_vmsg_module_resources(P::VMsg::ModuleResources *vmsg_module_resources);
 
-    static void init_io_from_settings(Conf::ConfigSetting *io_module, IO::DevIO **devices, AtomicPool<IO::DevIO::IO> *iopool,
-                                      IO::IOProvider *io_provider);
-
-    IO::IOProvider io_provider;
 private:
-    AtomicPool<IO::DevIO::IO> _iopool;
-    IO::DevIO *_devices;
     EModuleAgent _agent;
 };  // class EModule
 

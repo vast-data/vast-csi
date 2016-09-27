@@ -11,7 +11,7 @@
 
 namespace Control {
 
-class EnvObj : public Object<EnvProto, TypeId::EnvObj> {
+class EnvObj : public ControlObject<EnvProto, TypeId::EnvObj> {
 public:
     static constexpr char DATA_DIR_PATH[] = "data";
 

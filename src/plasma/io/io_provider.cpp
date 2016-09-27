@@ -6,18 +6,53 @@
 namespace P {
 namespace IO {
 
-void IOProvider::init(DevIO devices[], size_t device_count)
+void IOProvider::init(size_t device_count, size_t concurrent_ios)
 {
     _device_count = device_count;
-    _devices = devices;
+    _devices = new DevIO[device_count];
     _fiber = nullptr;
     _was_suspended = false;
 
-    _active_devices.init((Index)device_count);
+    _active_devices_anchor.init();
+    _idle_devices_anchor.init();
+    _free_devices_anchor.init();
+    _device_pool.init((Index)device_count);
+    _active_devices.init(&_active_devices_anchor, &_device_pool);
+    _idle_devices.init(&_idle_devices_anchor, &_device_pool);
+    _free_devices.init(&_free_devices_anchor, &_device_pool);
+
+    _iopool.init(concurrent_ios);
 
     LOOP(device_count, i) {
-        _devices[i].set_ioprovider(this);
+        _free_devices.append(i);
     }
+}
+
+DevIO *IOProvider::alloc_device(const char dev_name[], uint32_t iodepth, size_t device_size)
+{
+    Index index = _free_devices.pop();
+    //TODO: return an enum error code
+    if (index == INVALID_INDEX)
+        return nullptr;
+    DevIO *device = &_devices[index];
+    if (!device->init(dev_name, iodepth, &_iopool, device_size)) {
+        _free_devices.append(index);
+        return nullptr;
+    }
+    _idle_devices.append(index);
+    device->set_ioprovider(this);
+    return device;
+}
+
+void IOProvider::free_device(DevIO *device)
+{
+    device->destroy();
+    Index index = PTR2IDX(device, _devices);
+    if (device->has_pending_ios())
+        _active_devices.remove(index);
+    else
+        _idle_devices.remove(index);
+    _free_devices.insert(index);
 }
 
 static void io_poll_fiber(void *io_provider)
@@ -37,10 +72,10 @@ static void io_poll_fiber(void *io_provider)
     }
 }
 
-void IOProvider::start()
+void IOProvider::start(FiberGroupId fiber_group)
 {
     // Running this fiber as a daemon because it's suspended as long as there are no active devices
-    _fiber = Fiber::init((Index)FiberGroupId::E_IO_POLLING, io_poll_fiber, this, false, true);
+    _fiber = Fiber::init((Index)fiber_group, io_poll_fiber, this, false, true);
     ASSERT_NOT_NULL(_fiber);
 }
 
@@ -54,8 +89,9 @@ void IOProvider::poll()
 void IOProvider::enable_polling(DevIO *device)
 {
     Index index = PTR2IDX(device, _devices);
-    bool should_resume = _active_devices.list()->is_empty();
-    _active_devices.list()->append(index);
+    bool should_resume = _active_devices.is_empty();
+    _idle_devices.remove(index);
+    _active_devices.append(index);
     if (should_resume) {
         DEBUG_ASSERT(_was_suspended);
         _fiber->resume();
@@ -65,18 +101,22 @@ void IOProvider::enable_polling(DevIO *device)
 void IOProvider::disable_polling(DevIO *device)
 {
     Index index = PTR2IDX(device, _devices);
-    _active_devices.list()->remove(index);
-    if (_active_devices.list()->is_empty()) {
+    _active_devices.remove(index);
+    _idle_devices.append(index);
+    if (_active_devices.is_empty()) {
         suspend();
     }
 }
 
 void IOProvider::destroy()
 {
-    _active_devices.destroy();
-    LOOP_TYPE(Index, _device_count, index) {
+    ITER_SAFE_EACH(&_idle_devices, index,
         _devices[index].destroy();
-    }
+    )
+    ITER_SAFE_EACH(&_active_devices, index,
+        _devices[index].destroy();
+    )
+    _device_pool.destroy();
 }
 
 void IOProvider::suspend()

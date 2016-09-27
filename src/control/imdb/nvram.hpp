@@ -11,7 +11,7 @@
 
 namespace Control {
 
-class NVRAM : public Object<NVRAMProto, TypeId::NVRAM> {
+class NVRAM : public ControlObject<NVRAMProto, TypeId::NVRAM> {
 public:
 
 };

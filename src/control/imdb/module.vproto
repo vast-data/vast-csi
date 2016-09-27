@@ -9,37 +9,37 @@ enum ModuleState : byte {
     OFFLINE
 };
 
-struct ModuleBaseProto {
+struct BaseModuleProto {
     @0 silo_id SiloId;
     @1 state ModuleState;
 };
 
 struct EModuleProto {
-    @0 base_proto ObjectBaseProto;
-    @1 base_module_proto ModuleBaseProto;
+    @0 base_proto BaseObjectProto;
+    @1 base_module_proto BaseModuleProto;
 };
 
 struct PModuleProto {
-    @0 base_proto ObjectBaseProto;
-    @1 base_module_proto ModuleBaseProto;
+    @0 base_proto BaseObjectProto;
+    @1 base_module_proto BaseModuleProto;
 };
 
 struct IModuleProto {
-    @0 base_proto ObjectBaseProto;
-    @1 base_module_proto ModuleBaseProto;
+    @0 base_proto BaseObjectProto;
+    @1 base_module_proto BaseModuleProto;
 };
 
 struct BModuleProto {
-    @0 base_proto ObjectBaseProto;
-    @1 base_module_proto ModuleBaseProto;
+    @0 base_proto BaseObjectProto;
+    @1 base_module_proto BaseModuleProto;
 };
 
 struct TModuleProto {
-    @0 base_proto ObjectBaseProto;
-    @1 base_module_proto ModuleBaseProto;
+    @0 base_proto BaseObjectProto;
+    @1 base_module_proto BaseModuleProto;
 };
 
 struct CModuleProto {
-    @0 base_proto ObjectBaseProto;
-    @1 base_module_proto ModuleBaseProto;
+    @0 base_proto BaseObjectProto;
+    @1 base_module_proto BaseModuleProto;
 };

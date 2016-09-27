@@ -21,7 +21,7 @@
 
 namespace Control {
 
-class System : public Object<SystemProto, TypeId::System> {
+class System : public ControlObject<SystemProto, TypeId::System> {
 
 public:
     ID_ALLOCATOR_METHOD(env_id)

@@ -84,7 +84,7 @@ TEST(TestIMDB, test_tree)
     CNode *cnode;
     Drive *drive;
     ILIST_ITER_SAFE(sys->get_children(), i) {
-        ObjectBase *child = p_container_of(i, ObjectBase, child_node);
+        BaseTreeObject *child = p_container_of(i, BaseTreeObject, child_node);
         switch (child->get_type_id()) {
         case TypeId::CNode:
             cnode = child->cast<CNode>();

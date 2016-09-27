@@ -13,7 +13,7 @@
 
 namespace Control {
 
-class BaseNode : public ObjectBase {
+class BaseNode : public BaseTreeObject {
 public:
     EnvObj *get_platform_env()
     {
@@ -30,7 +30,7 @@ public:
         return nullptr;
     }
 
-    virtual NodeBaseProto::Builder *get_node_base() = 0;
+    virtual BaseNodeProto::Builder *get_node_base() = 0;
 };
 
 }

@@ -11,7 +11,7 @@
 
 namespace Control {
 
-class Drive : public Object<DriveProto, TypeId::Drive> {
+class Drive : public ControlObject<DriveProto, TypeId::Drive> {
 public:
 
 };

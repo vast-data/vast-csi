@@ -2,15 +2,11 @@
 #include <gtest/gtest.h>
 
 #include "../src/globals.hpp"
-#include "../src/modules/e_module.hpp"
-#include "../src/plasma/execution/config_internal.hpp"
 #include "../src/plasma/fiber/scheduler.hpp"
 #include "../src/plasma/utils/macros.hpp"
-#include "../src/plasma/io/io_provider.hpp"
-#include "../src/plasma/execution/config.hpp"
-#include "../src/plasma/memory/atomic_pool.hpp"
 #include "../src/plasma/memory/alloc.hpp"
 
+#include "io_utils.hpp"
 #include "test_common_scheduler.hpp"
 #include "test_common_io.hpp"
 
@@ -21,11 +17,11 @@ static void generate_scatters(IOVec write_buffers[] OUT, size_t buffer_count, IO
                               const size_t buff_len, IOVecs* scatter_per_io[] OUT, uint32_t io_batches[], size_t io_submission_count)
 {
     LOOP(buffer_count, i) {
-        write_buffers[i].iov_base = P::aligned_new_arr<P::byte>(P::IO::DevIO::O_DIRECT_ALIGNMENT, buff_len);
+        write_buffers[i].iov_base = P::aligned_new_arr<P::byte>(DevIO::O_DIRECT_ALIGNMENT, buff_len);
         write_buffers[i].iov_len = buff_len;
     }
     // initialize scatters (pointing at the buffers)
-    P::IO::IOVec* buff_ptr = write_buffers;
+    IOVec* buff_ptr = write_buffers;
     LOOP(scatter_count, i)
     {
         scatter[i].count = scatter_sizes[i];
@@ -33,7 +29,7 @@ static void generate_scatters(IOVec write_buffers[] OUT, size_t buffer_count, IO
 
         buff_ptr += scatter[i].count;
     }
-    P::IO::IOVecs* scatter_ptr = scatter;
+    IOVecs* scatter_ptr = scatter;
     LOOP(io_submission_count, i)
     {
         scatter_per_io[i] = scatter_ptr;
@@ -205,38 +201,19 @@ static void io_submitter(void *arg)
 
 TEST(TestIOProvider, test)
 {
-    Config* config = conf_init();
-
-    int32_t ret = conf_read_file(config, "tests/test_io_provider.config");
-    ASSERT_TRUE(ret);
-
-    ConfigSetting *io_module = conf_lookup(config, "io_module");
-
-    devices_test_files(io_module, true);
-
-    DevIO *devices;
-    P::AtomicPool<DevIO::IO> iopool;
-
-    IOProvider io_provider;
-
-    P::EModule::init_io_from_settings(io_module, &devices, &iopool, &io_provider);
+    ::Test::IOHelper io_helper;
 
     P::Scheduler::init(&scheduler_config);
 
-    io_provider.start();
-    P::Fiber::init(FG_A, io_submitter, &devices[0], false);
+    io_helper.init("tests/test_io_provider.config");
+
+    P::Fiber::init(FG_A, io_submitter, io_helper.get_device(0), false);
 
     P::Scheduler::run();
 
-    devices_test_files(io_module, false);
-
     P::Scheduler::destroy();
 
-    io_provider.destroy();
-    iopool.destroy();
-    delete[] devices;
-
-    conf_destroy(config);
+    io_helper.destroy();
 }
 
 int main(int argc, char **argv) {

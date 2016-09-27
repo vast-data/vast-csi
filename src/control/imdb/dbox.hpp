@@ -11,7 +11,7 @@
 
 namespace Control {
 
-class DBox : public Object<DBoxProto, TypeId::DBox> {
+class DBox : public ControlObject<DBoxProto, TypeId::DBox> {
 public:
 
 };

@@ -10,18 +10,20 @@
 
 namespace P {
 
+static const uint16_t DNODE_NVRAM_COUNT = 2;
 static const uint16_t MAX_ENVS_PER_CNODE = 4;
 static const uint16_t MAX_CNODES_PER_SYSTEM = 1024;
 static const uint16_t MAX_DBOXES_PER_SYSTEM = 64;
 static const uint16_t MAX_DNODES_PER_SYSTEM = MAX_DBOXES_PER_SYSTEM * 2;
 static const uint16_t MAX_ENVS_PER_SYSTEM = MAX_CNODES_PER_SYSTEM * MAX_ENVS_PER_CNODE;
 static const uint16_t MAX_DRIVES_PER_DBOX = 256;
+static const uint16_t MAX_NVRAMS_PER_SYSTEM = MAX_DNODES_PER_SYSTEM * DNODE_NVRAM_COUNT;
+static const uint16_t MAX_DRIVES_PER_SYSTEM = MAX_DBOXES_PER_SYSTEM * MAX_DRIVES_PER_DBOX;
 
 static const char *LOCALHOST = "127.0.0.1";
 static const uint16_t PLATFORM_ENV_PORT = 4000;
 static const uint16_t PLATFORM_ENV_INITIAL_ID = 0;
 static const uint16_t LEADER_ENV_ID = 1;
-static const uint16_t DNODE_NVRAM_COUNT = 2;
 
 static const char LEADER_ENV_GUID[] = "12345678-9abc-def1-aaaa-bbbbccccdddd";
 
@@ -43,7 +45,6 @@ DEFINE_LOOKUP_PROTOTYPES(COMPONENT_LIST,
 
 #define FIBER_GROUP_LIST(X)                  \
     X(E),                                    \
-    X(E_IO_POLLING),                         \
     X(E_VMSG_POLLING),                       \
     X(P),                                    \
     X(C),                                    \

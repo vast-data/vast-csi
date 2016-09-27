@@ -3,6 +3,8 @@ $import plasma/vmsg/vmsg.vproto as VMsg
 
 $namespace Control
 
+$const size_t NODE_ADDRESS_COUNT = 2;
+
 enum NodeState : byte {
     INIT,
     ACTIVE,
@@ -14,8 +16,8 @@ struct NodeAddress {
     @0 host char[VMsg.HOST_LENGTH];
 };
 
-struct NodeBaseProto {    
-    @0 addresses NodeAddress[2];
+struct BaseNodeProto {    
+    @0 addresses NodeAddress[NODE_ADDRESS_COUNT];
     @1 version uint32_t;
     @2 enabled bool;
     @3 state NodeState;

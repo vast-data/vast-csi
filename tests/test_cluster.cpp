@@ -170,7 +170,7 @@ static void cnode_activation_start_func(void *ctx)
     CNodeGetResult::RootReader *cnode_get_result;
     get_cnode(&client, cnode_guid, &cnode_get_result);
     CNodeProto::Reader cnode;
-    NodeBaseProto::Reader node;
+    BaseNodeProto::Reader node;
     cnode_get_result->get_cnode(&cnode);
     cnode.get_base_node_proto(&node);
     ASSERT_EQ(node.get_state(), NodeState::INIT);
@@ -229,7 +229,7 @@ static void dbox_activation_start_func(void *ctx)
     DBoxGetResult::RootReader *dbox_get_result;
     get_dbox(&client, dbox_guid, &dbox_get_result);
     DNodeProto::Reader dnode;
-    NodeBaseProto::Reader node;
+    BaseNodeProto::Reader node;
     LOOP(dbox_get_result->get_dnodes_count(), i) {
         dbox_get_result->get_dnodes(&dnode, i);
         dnode.get_base_node_proto(&node);

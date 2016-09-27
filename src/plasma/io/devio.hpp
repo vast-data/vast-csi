@@ -21,7 +21,6 @@
 #include "plasma/memory/atomic_pool.hpp"
 #include "plasma/fiber/sync/sem.hpp"
 
-
 namespace P {
 
 namespace IO {
@@ -61,6 +60,11 @@ public:
      * Set an IOProvider object that performs polling over IO submissions.
      */
     void set_ioprovider(IOProvider *io_provider);
+
+    /*!
+     * Return a boolean indicating whether this device has in-flight ios.
+     */
+    bool has_pending_ios();
 
     /*!
      * Release PDevIO structure resources.

@@ -1,5 +1,6 @@
 from .module import VProtoModule, TypeRegistry
 import click
+import sys
 
 def convert(proto_file, output_prefix, import_path=None):
     registry = TypeRegistry()
@@ -18,7 +19,8 @@ def main(proto_file, output_prefix, import_path, debug):
         if debug:
             import pdb
             pdb.post_mortem()
-        raise
+        print("Failed parsing file: {}. With error: {}".format(proto_file, str(e)))
+        sys.exit(-1)
 
 if __name__ == '__main__':
     main()

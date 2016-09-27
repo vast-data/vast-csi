@@ -9,7 +9,7 @@ enum SystemState : byte {
 };
 
 struct SystemProto {
-    @0 base_proto ObjectBaseProto;
+    @0 base_proto BaseObjectProto;
 
     @1 next_cnode_id uint16_t;
     @2 next_env_id uint16_t;

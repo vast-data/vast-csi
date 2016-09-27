@@ -50,7 +50,7 @@ private:
     void connect_all_cnodes_to_node(BaseNode *node);
     void connect_all_dnodes_to_node(BaseNode *node);
 
-    ObjectBase *create_module(EnvObj *env, ModuleId module_id, SiloId silo_id);
+    BaseTreeObject *create_module(EnvObj *env, ModuleId module_id, SiloId silo_id);
 
     // RPC functions
     void system_status(SystemStatusParams::RootReader *args, SystemStatusResult::RootBuilder *res);
