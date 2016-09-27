@@ -3,7 +3,6 @@
 #include "plasma/utils/os.hpp"
 #include "plasma/vmsg/vmsg.hpp"
 #include "plasma/execution/env.hpp"
-#include "control/imdb/system.hpp"
 
 using namespace P;
 
@@ -26,9 +25,11 @@ GUID get_system_guid()
     return result;
 }
 
+constexpr TypeConfig CModule::TYPE_CONFIGS[];
+
 void CModule::init(P::Silo *silo, P::Conf::ConfigSetting *module_setting)
 {
-    _tree.init();
+    _tree.init(NUM_ELEMENTS(TYPE_CONFIGS), TYPE_CONFIGS);
 
     GUID system_guid = get_system_guid();
     _system = _tree.create<System>(system_guid, nullptr);

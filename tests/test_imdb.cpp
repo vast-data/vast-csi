@@ -1,9 +1,16 @@
 /* Copyright (C) Vast Data Ltd. */
 #include <gtest/gtest.h>
 #include "control/imdb/component.hpp"
+#include "control/imdb/system.hpp"
+#include "control/imdb/cnode.hpp"
+#include "control/imdb/drive.hpp"
 
 using namespace P;
 using namespace Control;
+
+static const TypeConfig TYPE_CONFIGS[] = {{TypeId::CNode, sizeof(CNode), 8},
+                                          {TypeId::Drive, sizeof(Drive), 8},
+                                          {TypeId::System, sizeof(System), 1}};
 
 TEST(TestIMDB, test_imdb)
 {
@@ -11,7 +18,7 @@ TEST(TestIMDB, test_imdb)
     guid.init();
 
     IMDB db;
-    db.init();
+    db.init(NUM_ELEMENTS(TYPE_CONFIGS), TYPE_CONFIGS);
 
     ASSERT_EQ(db.get<CNode>(guid), nullptr);
     CNode *c = db.create<CNode>(guid);
@@ -26,7 +33,7 @@ TEST(TestIMDB, test_get_or_create)
     guid.init();
 
     IMDB db;
-    db.init();
+    db.init(NUM_ELEMENTS(TYPE_CONFIGS), TYPE_CONFIGS);
 
     CNode *c = db.get_or_create<CNode>(guid, nullptr);
 
@@ -45,7 +52,7 @@ TEST(TestIMDB, test_get_or_create)
 TEST(TestIMDB, test_tree)
 {
     TreeDB db;
-    db.init();
+    db.init(NUM_ELEMENTS(TYPE_CONFIGS), TYPE_CONFIGS);
 
     System *sys = db.create<System>(GUID::create(), nullptr);
 

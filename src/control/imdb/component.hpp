@@ -8,7 +8,7 @@
 
 #include "plasma/memory/pool.hpp"
 #include "plasma/data/hash.hpp"
-#include "defs.hpp"
+#include "object.hpp"
 
 namespace Control {
 
@@ -29,33 +29,52 @@ static bool match_object(void *match_arg, P::Index index, void *key, size_t leng
     return p->get_base()->get_guid().equals(*guid);
 }
 
+struct TypeConfig {
+    TypeId type_id;
+    P::Index object_size;
+    P::Index max_objects;
+};
+
 class IMDB {
 public:
-    void init()
+    void init(uint8_t type_count, const TypeConfig type_configs[type_count])
     {
         LOOP(TypeId::COUNT, i) {
-            P::Index objects = TYPE_CONFIGS[i].max_objects;
-            _pools[i].init(objects, TYPE_CONFIGS[i].object_size);
+            _pools[i] = nullptr;
+            _hashes[i] = nullptr;
+        }
+        LOOP(type_count, i) {
+            TypeId type_id = type_configs[i].type_id;
+            ASSERT(_pools[(size_t)type_id] == nullptr, "The same type_id was passed more than once: " << (size_t)type_id);
+            P::Index objects = type_configs[i].max_objects;
+            _pools[(size_t)type_id] = new P::Pool;
+            _pools[(size_t)type_id]->init(objects, type_configs[i].object_size);
             P::Index buckets = std::max(objects / 2, 1);
-            _hashes[i].init_custom(buckets, objects, match_object, &_pools[i], object_hash_func);
+            _hashes[(size_t)type_id] = new P::Hash;
+            _hashes[(size_t)type_id]->init_custom(buckets, objects, match_object, _pools[(size_t)type_id], object_hash_func);
         }
     }
 
     void destroy()
     {
         LOOP(TypeId::COUNT, i) {
-            _hashes[i].destroy();
-            _pools[i].destroy();
+            if (_hashes[i] != nullptr) {
+                _hashes[i]->destroy();
+                delete _hashes[i];
+                _pools[i]->destroy();
+                delete _pools[i];
+            }
         }
     }
 
     template<class T>
     T *get(P::GUID guid)
     {
-        P::Index index = _hashes[(size_t)T::get_type_id_static()].get(&guid, sizeof(guid));
+        DEBUG_ASSERT_OP(_hashes[(size_t)T::get_type_id_static()], !=, nullptr);
+        P::Index index = _hashes[(size_t)T::get_type_id_static()]->get(&guid, sizeof(guid));
         if (index == P::INVALID_INDEX)
             return nullptr;
-        return (T*) _pools[(size_t)T::get_type_id_static()].index_to_address(index);
+        return (T*) _pools[(size_t)T::get_type_id_static()]->index_to_address(index);
     }
 
     /*!
@@ -78,16 +97,16 @@ public:
         if (exists != nullptr)
             *exists = false;
 
-        object = new(_pools[(size_t)T::get_type_id_static()].alloc_address()) T;
+        object = new(_pools[(size_t)T::get_type_id_static()]->alloc_address()) T;
         if (object == nullptr)
             return nullptr;
 
         object->init();
         object->get_base()->set_guid(guid);
 
-        _hashes[(size_t)T::get_type_id_static()].set(&guid,
+        _hashes[(size_t)T::get_type_id_static()]->set(&guid,
                                                       sizeof(P::GUID),
-                                                      _pools[(size_t)T::get_type_id_static()].address_to_index(object));
+                                                      _pools[(size_t)T::get_type_id_static()]->address_to_index(object));
         return object;
     }
 
@@ -108,21 +127,21 @@ public:
     void remove(ObjectBase *object)
     {
         P::GUID guid = object->get_base()->get_guid();
-        bool existed = _hashes[(size_t)object->get_type_id()].remove(&guid, sizeof(P::GUID));
+        bool existed = _hashes[(size_t)object->get_type_id()]->remove(&guid, sizeof(P::GUID));
         ASSERT(existed == true, "Removing an unknown object: " << guid);
-        _pools[(size_t)object->get_type_id()].free_address(object);
+        _pools[(size_t)object->get_type_id()]->free_address(object);
     }
 
 private:
-    P::Pool _pools[(size_t)TypeId::COUNT];
-    P::Hash _hashes[(size_t)TypeId::COUNT];
+    P::Pool *_pools[(size_t)TypeId::COUNT];
+    P::Hash *_hashes[(size_t)TypeId::COUNT];
 };
 
 class TreeDB {
 public:
-    void init()
+    void init(uint8_t type_count, const TypeConfig type_configs[type_count])
     {
-        _imdb.init();
+        _imdb.init(type_count, type_configs);
     }
 
     void destroy()

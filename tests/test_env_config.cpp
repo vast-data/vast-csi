@@ -4,7 +4,9 @@
 #include "control/imdb/component.hpp"
 #include "control/imdb/env.hpp"
 #include "modules/p_module.vproto.hpp"
+#include "modules/c_module.hpp"
 #include "plasma/execution/env.hpp"
+#include "plasma/execution/silo.hpp"
 
 using namespace P;
 using namespace Control;
@@ -224,7 +226,7 @@ silos = (
 TEST(TestEnvConfig, test)
 {
     IMDB db;
-    db.init();
+    db.init(NUM_ELEMENTS(CModule::TYPE_CONFIGS), CModule::TYPE_CONFIGS);
 
     GUID cnode_guid;
     cnode_guid.init();

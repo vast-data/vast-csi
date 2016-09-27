@@ -8,6 +8,12 @@
 
 #include "plasma/vmsg/vmsg.vproto.hpp"
 #include "control/imdb/component.hpp"
+#include "control/imdb/system.hpp"
+#include "control/imdb/cnode.hpp"
+#include "control/imdb/dbox.hpp"
+#include "control/imdb/dnode.hpp"
+#include "control/imdb/env.hpp"
+#include "control/imdb/module.hpp"
 #include "cluster.rpc.server.hpp"
 
 namespace Control {

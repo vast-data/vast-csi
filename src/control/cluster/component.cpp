@@ -8,10 +8,7 @@
 #include "plasma/vproto/vproto.hpp"
 #include "modules/p_module_agent.rpc.client.hpp"
 #include "modules/e_module_agent.rpc.client.hpp"
-#include "control/imdb/cnode.hpp"
-#include "control/imdb/env.hpp"
 #include "control/imdb/nvram.hpp"
-#include "control/imdb/module.hpp"
 
 namespace Control {
 
