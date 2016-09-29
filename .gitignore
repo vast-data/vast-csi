@@ -22,6 +22,5 @@ parsetab.py
 __pycache__
 .cache
 *.egg-info
-CMakeLists.txt
 dummy_main.c
 .gdb_history
