@@ -3,12 +3,13 @@
 #include "internal.hpp"
 #include "plasma/trace/emitter.hpp"
 #include "plasma/fiber/fiber.hpp"
+#include "plasma/fiber/runnable.hpp"
 #include "plasma/utils/macros.hpp"
 #include "plasma/execution/env.hpp"
 #include "plasma/vproto/vproto.hpp"
 #include "modules/p_module_agent.rpc.client.hpp"
 #include "modules/e_module_agent.rpc.client.hpp"
-#include "control/imdb/nvram.hpp"
+#include "control/dev_agent/dev_agent.rpc.client.hpp"
 
 namespace Control {
 
@@ -25,10 +26,10 @@ static void set_env_modules(EnvObj *env, T connect_params) {
 static bool node_has_address(BaseNode *node, char *host)
 {
     // check if a cnode or a dnode has a given address
-    LOOP(node->get_node_base()->get_addresses_count(), i)
+    LOOP(node->get_base_node()->get_addresses_count(), i)
         if (strncmp(host,
-                    node->get_node_base()->get_addresses(i)->get_host(),
-                    node->get_node_base()->get_addresses_count()) == 0)
+                    node->get_base_node()->get_addresses(i)->get_host(),
+                    node->get_base_node()->get_addresses_count()) == 0)
             return true;
     return false;
 }
@@ -51,10 +52,11 @@ bool Cluster::address_already_exists(char *host)
     return false;
 }
 
-void Cluster::init(P::SiloId silo_id, ModuleId module_id, TreeDB *tree, System *system)
+void Cluster::init(P::SiloId silo_id, ModuleId module_id, TreeDB *tree, System *system, MIOControl *mio_control)
 {
     _tree = tree;
     _system = system;
+    _mio_control = mio_control;
     register_server(silo_id, module_id);
     _local_env_obj = _tree->create<EnvObj>(P::GUID::create(), nullptr);
     _tree->create<CModuleObj>(P::GUID::create(), _local_env_obj);
@@ -97,10 +99,7 @@ void Cluster::connect_platform_env(EnvObj *env)
     PModuleObj *module = env->get_only_child<PModuleObj>();
     P::VProto::Empty::RootReader *result;
     if (client.set_local_env_id_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
-        char guid_string[P::GUID::STRING_SIZE];
-        env->get_guid().to_string(guid_string);
-        PT_ERROR(CONTROL, "Error setting platform env id for env=%s", guid_string);
-        return;
+        PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
     }
     client.free_set_local_env_id(result);
 }
@@ -118,10 +117,7 @@ void Cluster::connect_data_env(EnvObj *env)
     EModuleObj *module = env->get_only_child<EModuleObj>();
     P::VProto::Empty::RootReader *result;
     if (client.connect_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
-        char guid_string[P::GUID::STRING_SIZE];
-        env->get_guid().to_string(guid_string);
-        PT_ERROR(CONTROL, "Error requesting env=%s to connect back to me", guid_string);
-        return;
+        PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
     }
     client.free_connect(result);
 }
@@ -140,10 +136,7 @@ void Cluster::connect_env_to_env(EnvObj *env1, EnvObj *env2)
     EModuleObj *module = env1->get_only_child<EModuleObj>();
     P::VProto::Empty::RootReader *result;
     if (client.connect_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
-        char guid_string[P::GUID::STRING_SIZE];
-        env1->get_guid().to_string(guid_string);
-        PT_ERROR(CONTROL, "Error requesting env=%s to connect back to me", guid_string);
-        return;
+        PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
     }
     client.free_connect(result);
 }
@@ -152,11 +145,11 @@ void Cluster::connect_env(EnvObj *env)
 {
     P::VMsg::EnvAddresses::RootBuilder addresses;
     addresses.init();
-    CNode *cnode = (CNode*) env->get_parent();
-    addresses.set_n_addr(cnode->get_node_base()->get_addresses_count());
-    LOOP(cnode->get_node_base()->get_addresses_count(), i) {
+    CNode *cnode = env->get_parent<CNode>();
+    addresses.set_n_addr(cnode->get_base_node()->get_addresses_count());
+    LOOP(cnode->get_base_node()->get_addresses_count(), i) {
         strcpy(addresses.get_addresses(i)->get_host(),
-               cnode->get_node_base()->get_addresses(i)->get_host());
+               cnode->get_base_node()->get_addresses(i)->get_host());
         addresses.get_addresses(i)->set_port(env->get_port());
     }
 
@@ -237,27 +230,27 @@ BaseTreeObject *Cluster::create_module(EnvObj *env, ModuleId module_id, SiloId s
 
 void Cluster::calc_cnode_state(CNode *cnode)
 {
-    if (cnode->get_node_base()->get_enabled()) {
+    if (cnode->get_base_node()->get_enabled()) {
         // unlike D-Nodes that transition from INIT to ACTIVE upon system_redist command,
         // the C-Node automatically transitions to ACTIVE from INIT if it's enabled
         // and the system isn't in INIT.
-        if ((cnode->get_node_base()->get_state() == NodeState::INACTIVE ||
-             cnode->get_node_base()->get_state() == NodeState::INIT)
+        if ((cnode->get_base_node()->get_state() == NodeState::INACTIVE ||
+             cnode->get_base_node()->get_state() == NodeState::INIT)
             && _system->get_state() != SystemState::INIT)
             cnode_activate(cnode);
     } else {
-        if (cnode->get_node_base()->get_state() == NodeState::ACTIVE)
+        if (cnode->get_base_node()->get_state() == NodeState::ACTIVE)
             cnode_deactivate(cnode);
     }
 }
 
 void Cluster::calc_dnode_state(DNode *dnode)
 {
-    if (dnode->get_node_base()->get_enabled()) {
-        if (dnode->get_node_base()->get_state() == NodeState::INACTIVE && _system->get_state() != SystemState::INIT)
+    if (dnode->get_base_node()->get_enabled()) {
+        if (dnode->get_base_node()->get_state() == NodeState::INACTIVE && _system->get_state() != SystemState::INIT)
             dnode_activate(dnode);
     } else {
-        if (dnode->get_node_base()->get_state() == NodeState::ACTIVE)
+        if (dnode->get_base_node()->get_state() == NodeState::ACTIVE)
             dnode_deactivate(dnode);
     }
 }
@@ -285,11 +278,10 @@ void Cluster::env_start(EnvObj *env)
     params->set_env_guid(env->get_guid());
     env->generate_config(params->get_config(), params->get_config_count());
     P::EnvStartResult::RootReader *result;
-    CNode *cnode = (CNode*) env->get_parent();
+    CNode *cnode = env->get_parent<CNode>();
     PModuleObj *module = cnode->get_platform_module();
     if (client.env_start_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
-        PT_ERROR(CONTROL, "Error starting env=%s", guid_string);
-        return;
+        PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
     }
     P::EnvStartResultCode code = result->get_code();
     client.free_env_start(result);
@@ -307,12 +299,11 @@ void Cluster::env_stop(EnvObj *env)
 
     P::EnvStopParams::RootBuilder *params = client.alloc_env_stop();
     params->set_env_guid(env->get_guid());
-    CNode *cnode = (CNode*) env->get_parent();
+    CNode *cnode = env->get_parent<CNode>();
     PModuleObj *module = cnode->get_platform_module();
     P::EnvStopResult::RootReader *result;
     if (client.env_stop_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
-        PT_ERROR(CONTROL, "Error setting platform env id for env=%s", guid_string);
-        return;
+        PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
     }
     P::EnvStopResultCode code = result->get_code();
     client.free_env_stop(result);
@@ -323,7 +314,7 @@ void Cluster::env_stop(EnvObj *env)
 void Cluster::connect_all_cnodes_to_node(BaseNode *node)
 {
     IMDB_ITER_CHILDREN(_system, cnode, CNode, {
-        if (cnode == node || cnode->get_node_base()->get_state() != NodeState::ACTIVE)
+        if (cnode == node || cnode->get_base_node()->get_state() != NodeState::ACTIVE)
             continue;
         IMDB_ITER_CHILDREN(cnode, other_env, EnvObj, {
             if (other_env->is_platform())
@@ -343,7 +334,7 @@ void Cluster::connect_all_dnodes_to_node(BaseNode *node)
     IMDB_ITER_CHILDREN(_system, dbox, DBox, {
         IMDB_ITER_CHILDREN(dbox, dnode, DNode, {
             IMDB_ITER_CHILDREN(dnode, other_env, EnvObj, {
-                if (other_env->is_platform() || dnode->get_node_base()->get_state() != NodeState::ACTIVE)
+                if (other_env->is_platform() || dnode->get_base_node()->get_state() != NodeState::ACTIVE)
                     continue;
                 IMDB_ITER_CHILDREN(node, env, EnvObj, {
                     if (env->is_platform())
@@ -379,7 +370,7 @@ void Cluster::cnode_activate(CNode *cnode)
     cnode->get_guid().to_string(guid_string);
     PT_INFO(CONTROL, "Activated node=%s", guid_string);
 
-    cnode->get_node_base()->set_state(NodeState::ACTIVE);
+    cnode->get_base_node()->set_state(NodeState::ACTIVE);
 }
 
 void Cluster::node_deactivate(BaseNode *node)
@@ -394,7 +385,7 @@ void Cluster::node_deactivate(BaseNode *node)
     node->get_guid().to_string(guid_string);
     PT_INFO(CONTROL, "Deactivated node=%s", guid_string);
 
-    node->get_node_base()->set_state(NodeState::INACTIVE);
+    node->get_base_node()->set_state(NodeState::INACTIVE);
 }
 
 void Cluster::cnode_deactivate(CNode *cnode)
@@ -426,12 +417,12 @@ void Cluster::cnode_add(CNodeAddParams::RootReader *args, CNodeAddResult::RootBu
     }
 
     // init the CNode's properties
-    LOOP(cnode->get_node_base()->get_addresses_count(), i) {
+    LOOP(cnode->get_base_node()->get_addresses_count(), i) {
         args->get_addresses(&address, i);
-        cnode->get_node_base()->get_addresses(i)->init_from_reader(&address);
+        cnode->get_base_node()->get_addresses(i)->init_from_reader(&address);
     }
-    cnode->get_node_base()->set_enabled(false);
-    cnode->get_node_base()->set_state(NodeState::INIT);
+    cnode->get_base_node()->set_enabled(false);
+    cnode->get_base_node()->set_state(NodeState::INIT);
     sprintf(cnode->get_base_proto()->get_name(), "cnode-%03d", _system->allocate_cnode_id());
 
     // create the child data EnvObjs
@@ -471,7 +462,7 @@ void Cluster::cnode_modify(CNodeModifyParams::RootReader *args, CNodeModifyResul
     args->get_guid().to_string(guid_string);
     PT_INFO(CONTROL, "Modified cnode=%s: enabled=%c", guid_string, args->get_enabled());
 
-    cnode->get_node_base()->set_enabled(args->get_enabled());
+    cnode->get_base_node()->set_enabled(args->get_enabled());
     calc_cnode_state(cnode);
 
     res->set_code(CNodeModifyResultCode::SUCCESS);
@@ -484,7 +475,7 @@ void Cluster::cnode_remove(CNodeRemoveParams::RootReader *args, CNodeRemoveResul
         res->set_code(CNodeRemoveResultCode::NOT_FOUND);
         return;
     }
-    if (cnode->get_node_base()->get_enabled()) {
+    if (cnode->get_base_node()->get_enabled()) {
         res->set_code(CNodeRemoveResultCode::NOT_DISABLED);
         return;
     }
@@ -548,10 +539,10 @@ void Cluster::dbox_add(DBoxAddParams::RootReader *args, DBoxAddResult::RootBuild
 
         LOOP(dnode_config.get_addresses_count(), j) {
             dnode_config.get_addresses(&address, j);
-            dnode->get_node_base()->get_addresses(j)->init_from_reader(&address);
+            dnode->get_base_node()->get_addresses(j)->init_from_reader(&address);
         }
-        dnode->get_node_base()->set_state(NodeState::INIT);
-        dnode->get_node_base()->set_enabled(false);
+        dnode->get_base_node()->set_state(NodeState::INIT);
+        dnode->get_base_node()->set_enabled(false);
 
         LOOP(P::DNODE_NVRAM_COUNT, j) {
             NVRAM *nvram = _tree->create<NVRAM>(P::GUID::create(), dnode);
@@ -610,7 +601,7 @@ void Cluster::dnode_modify(DNodeModifyParams::RootReader *args, DNodeModifyResul
     args->get_guid().to_string(guid_string);
     PT_INFO(CONTROL, "Modified dnode=%s: enabled=%c", guid_string, args->get_enabled());
 
-    dnode->get_node_base()->set_enabled(args->get_enabled());
+    dnode->get_base_node()->set_enabled(args->get_enabled());
 
     calc_dnode_state(dnode);
 
@@ -621,7 +612,7 @@ void Cluster::initialize_all_dnodes()
 {
     IMDB_ITER_CHILDREN(_system, dbox, DBox, {
         IMDB_ITER_CHILDREN(dbox, dnode, DNode, {
-            if (dnode->get_node_base()->get_state() == NodeState::INIT && dnode->get_node_base()->get_enabled())
+            if (dnode->get_base_node()->get_state() == NodeState::INIT && dnode->get_base_node()->get_enabled())
                 dnode_initialize(dnode);
         });
     });
@@ -629,6 +620,7 @@ void Cluster::initialize_all_dnodes()
 
 void Cluster::dnode_initialize(DNode *dnode)
 {
+    //TODO: query the dnode platform for the NVRAM size and version
     dnode_activate(dnode);
 }
 
@@ -650,16 +642,179 @@ void Cluster::dnode_activate(DNode *dnode)
         env_activate(env);
     });
 
+    IMDB_ITER_CHILDREN(dnode, nvram, NVRAM, {
+        nvram_activate(nvram);
+    });
+
     char guid_string[P::GUID::STRING_SIZE];
     dnode->get_guid().to_string(guid_string);
     PT_INFO(CONTROL, "Activated node=%s", guid_string);
 
-    dnode->get_node_base()->set_state(NodeState::ACTIVE);
+    dnode->get_base_node()->set_state(NodeState::ACTIVE);
 }
 
 void Cluster::dnode_deactivate(DNode *dnode)
 {
+    IMDB_ITER_CHILDREN(dnode, nvram, NVRAM, {
+        nvram_deactivate(nvram);
+    });
     node_deactivate(dnode);
+}
+
+void Cluster::nvram_activate(NVRAM *nvram)
+{
+    map_on_cnodes(&Cluster::connect_cnode_to_device, nvram);
+
+    char guid_string[P::GUID::STRING_SIZE];
+    nvram->get_guid().to_string(guid_string);
+    PT_INFO(CONTROL, "Activated nvram=%s", guid_string);
+}
+
+void Cluster::connect_cnode_to_device(CNode *cnode, NVRAM *nvram)
+{
+    P::PModuleAgentClient client;
+    client.init();
+
+    PModuleObj *module = cnode->get_platform_module();
+    P::ConnectDeviceParams::RootBuilder *params = client.alloc_connect_device();
+    params->set_guid(nvram->get_guid());
+    LOOP(params->get_dnode_addresses_count(), i)
+        *(params->get_dnode_addresses(i)) = *(nvram->get_parent<DNode>()->get_base_node()->get_addresses(i));
+
+    P::ConnectDeviceResult::RootReader *result;
+    if (client.connect_device_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
+        PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
+    }
+
+    IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
+        if (env->is_platform())
+            continue;
+        Cluster::connect_env_to_device(env, nvram, result->get_path());
+    });
+    client.free_connect_device(result);
+}
+
+void Cluster::connect_env_to_device(EnvObj *env, NVRAM *nvram, char *local_path)
+{
+    DevAgentClient client;
+    client.init();
+
+    IMDB_ITER_CHILDREN(env, module, IModuleObj, {
+        DeviceAddParams::RootBuilder *params = client.alloc_device_add();
+        params->set_device_count(1);
+        RemoteDeviceProto::Builder *device = params->get_devices(0);
+        device->set_guid(nvram->get_guid());
+        strncpy(device->get_path(), local_path, device->get_path_count());
+
+        P::VProto::Empty::RootReader *result;
+        if (client.device_add_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
+            PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
+        }
+
+        client.free_device_add(result);
+
+        _mio_control->on_device_addition(module, nvram);
+    });
+}
+
+void Cluster::disconnect_env_from_device(EnvObj *env, NVRAM *nvram)
+{
+    DevAgentClient client;
+    client.init();
+
+    IMDB_ITER_CHILDREN(env, module, IModuleObj, {
+        // 1. Prepare device for removal.
+        DevicePrepareRemoveParams::RootBuilder *prepare_params = client.alloc_device_prepare_remove();
+        prepare_params->set_guid_count(1);
+        *(prepare_params->get_guids(0)) = nvram->get_guid();
+        P::VProto::Empty::RootReader *result;
+        if (client.device_prepare_remove_sync(module->get_address(), prepare_params, &result) != P::VMsg::VMsgRes::OK) {
+            PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
+        }
+        client.free_device_prepare_remove(result);
+
+        // 2. Wait for MIO to finish pending IOs.
+        _mio_control->on_device_removal(module, nvram);
+
+        // 3. Remove the device.
+        DeviceRemoveParams::RootBuilder *remove_params = client.alloc_device_remove();
+        remove_params->set_guid_count(1);
+        *(remove_params->get_guids(0)) = nvram->get_guid();
+        if (client.device_remove_sync(module->get_address(), remove_params, &result) != P::VMsg::VMsgRes::OK) {
+            PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
+        }
+        client.free_device_remove(result);
+    });
+}
+
+void Cluster::disconnect_cnode_from_device(CNode *cnode, NVRAM *nvram)
+{
+    IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
+        if (env->is_platform())
+            continue;
+        Cluster::disconnect_env_from_device(env, nvram);
+    });
+
+    P::PModuleAgentClient client;
+    client.init();
+
+    PModuleObj *module = cnode->get_platform_module();
+    P::DisconnectDeviceParams::RootBuilder *params = client.alloc_disconnect_device();
+    params->set_guid(nvram->get_guid());
+    P::DisconnectDeviceResult::RootReader *result;
+    if (client.disconnect_device_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
+        PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
+    }
+
+    client.free_disconnect_device(result);
+}
+
+void Cluster::nvram_deactivate(NVRAM *nvram)
+{
+    map_on_cnodes(&Cluster::disconnect_cnode_from_device, nvram);
+
+    char guid_string[P::GUID::STRING_SIZE];
+    nvram->get_guid().to_string(guid_string);
+    PT_INFO(CONTROL, "Deactivated nvram=%s", guid_string);
+}
+
+template <typename Func, typename Param>
+class CNodeFunctor : public IRunnable {
+public:
+    void init(Cluster *cluster, CNode *cnode, Func func, Param param)
+    {
+        _cluster = cluster;
+        _cnode = cnode;
+        _func = func;
+        _param = param;
+    }
+
+    void run()
+    {
+        (_cluster->*_func)(_cnode, _param);
+    }
+
+private:
+    Cluster *_cluster;
+    CNode *_cnode;
+    Func _func;
+    Param _param;
+};
+
+template <typename Func, typename Param>
+void Cluster::map_on_cnodes(Func func, Param param)
+{
+    using Functor = CNodeFunctor<Func, Param>;
+    IMDB_ITER_CHILDREN(_system, cnode, CNode, {
+        if (cnode->get_base_node()->get_state() != NodeState::ACTIVE)
+            continue;
+        void *mem = alloca(sizeof(Functor));
+        Functor *functor = new (mem) Functor;
+        functor->init(this, cnode, func, param);
+        P::Fiber *fiber = P::Fiber::init((P::Index)FiberGroupId::C, runner<Functor>, functor, true);
+        ASSERT_NOT_NULL(fiber);
+    });
+    P::Fiber::join_all();
 }
 
 }

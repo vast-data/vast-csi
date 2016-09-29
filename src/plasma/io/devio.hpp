@@ -17,7 +17,6 @@
 #include <sys/uio.h>
 
 #include "base_io.hpp"
-#include "io_provider.hpp"
 #include "plasma/memory/atomic_pool.hpp"
 #include "plasma/fiber/sync/sem.hpp"
 

@@ -58,7 +58,7 @@ TEST(TestIMDB, test_tree)
 
     CNode *cnode1 = db.create<CNode>(GUID::create(), sys);
     cnode1->get_base_node_proto()->set_version(1);
-    ASSERT_EQ(cnode1->get_parent(), sys);
+    ASSERT_EQ(cnode1->get_parent<System>(), sys);
     CNode *cnode2 = db.create<CNode>(GUID::create(), sys);
     cnode2->get_base_node_proto()->set_version(2);
     Drive *drive1 = db.create<Drive>(GUID::create(), sys);

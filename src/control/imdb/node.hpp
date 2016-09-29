@@ -17,7 +17,7 @@ class BaseNode : public BaseTreeObject {
 public:
     EnvObj *get_platform_env()
     {
-        return (EnvObj*) get_platform_module()->get_parent();
+        return get_platform_module()->get_parent<EnvObj>();
     }
 
     PModuleObj *get_platform_module()
@@ -30,7 +30,7 @@ public:
         return nullptr;
     }
 
-    virtual BaseNodeProto::Builder *get_node_base() = 0;
+    virtual BaseNodeProto::Builder *get_base_node() = 0;
 };
 
 }

@@ -11,3 +11,7 @@ methods:
   op_id: 1
   arg: DeviceRemoveParams
   res: P::VProto::Empty
+- method: device_prepare_remove
+  op_id: 2
+  arg: DevicePrepareRemoveParams
+  res: P::VProto::Empty

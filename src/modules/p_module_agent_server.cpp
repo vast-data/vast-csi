@@ -1,4 +1,6 @@
 #include <signal.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #include "p_module_agent_server.hpp"
 #include "e_module_agent_server.hpp"
@@ -130,7 +132,7 @@ void PModuleAgentServerImpl::env_stop(EnvStopParams::RootReader *args, EnvStopRe
         res->set_code(EnvStopResultCode::KILL_FAILED);
         return;
     }
-
+    waitpid(pid, nullptr, 0);
     res->set_code(EnvStopResultCode::SUCCESS);
 }
 
@@ -141,6 +143,17 @@ void PModuleAgentServerImpl::run_leader(VProto::Empty::RootReader *args, EnvStar
 
     // The config file for the leader env already exists, so we don't need to create it.
     do_env_start(env_guid, nullptr, res);
+}
+
+void PModuleAgentServerImpl::connect_device(ConnectDeviceParams::RootReader *args, ConnectDeviceResult::RootBuilder *res)
+{
+    // TODO: this function should connect the device using its guid (marks the subsystem) and dnode addresses
+    // and return the path it's mounted on. if the device is already mounted, return its path anyways.
+}
+
+void PModuleAgentServerImpl::disconnect_device(DisconnectDeviceParams::RootReader *args, DisconnectDeviceResult::RootBuilder *res)
+{
+    // TODO: remove the nvme device
 }
 
 }  // namespace P

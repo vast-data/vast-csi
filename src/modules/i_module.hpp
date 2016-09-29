@@ -9,6 +9,7 @@
 #include "module_interface.hpp"
 #include "estore/estore.hpp"
 #include "control/agent.hpp"
+#include "control/dev_agent/dev_agent.hpp"
 #include "plasma/execution/config.hpp"
 #include "proto/nfs3/nfs_proto.hpp"
 
@@ -26,5 +27,6 @@ public:
 private:
     Nfs::NfsProto _nfs;
     EStore::EStore _estore;
+    Control::DevAgent _dev_agent;
     Control::BaseAgent _agent;
 };

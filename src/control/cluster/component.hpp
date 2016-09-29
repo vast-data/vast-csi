@@ -12,15 +12,17 @@
 #include "control/imdb/cnode.hpp"
 #include "control/imdb/dbox.hpp"
 #include "control/imdb/dnode.hpp"
+#include "control/imdb/nvram.hpp"
 #include "control/imdb/env.hpp"
 #include "control/imdb/module.hpp"
+#include "control/mio/mio.hpp"
 #include "cluster.rpc.server.hpp"
 
 namespace Control {
 
 class Cluster : public ClusterServer {
 public:
-    void init(P::SiloId silo_id, ModuleId module_id, TreeDB *imdb, System *system);
+    void init(P::SiloId silo_id, ModuleId module_id, TreeDB *imdb, System *system, MIOControl *mio_control);
     void start();
     void connect_envs();
 
@@ -39,6 +41,13 @@ private:
     void dnode_deactivate(DNode *dnode);
     void initialize_all_dnodes();
 
+    void nvram_activate(NVRAM *nvram);
+    void nvram_deactivate(NVRAM *nvram);
+    void connect_cnode_to_device(CNode *cnode, NVRAM *nvram);
+    void disconnect_cnode_from_device(CNode *cnode, NVRAM *nvram);
+    void connect_env_to_device(EnvObj *env, NVRAM *nvram, char *local_path);
+    void disconnect_env_from_device(EnvObj *env, NVRAM *nvram);
+
     EnvObj *create_env(BaseNode *node, P::byte silo_count, uint16_t port);
     void env_activate(EnvObj *env);
     void env_start(EnvObj *env);
@@ -49,6 +58,15 @@ private:
     void connect_env_to_env(EnvObj *env1, EnvObj *env2);
     void connect_all_cnodes_to_node(BaseNode *node);
     void connect_all_dnodes_to_node(BaseNode *node);
+
+    /*!
+     * Run Func concurrently on all active cnodes and wait for all fibers to complete.
+     *
+     * \param Func a method of this class that accepts a CNode and Param.
+     * \param Param an arbitrary parameter passed to method.
+     */
+    template <typename Func, typename Param>
+    void map_on_cnodes(Func func, Param param);
 
     BaseTreeObject *create_module(EnvObj *env, ModuleId module_id, SiloId silo_id);
 
@@ -68,6 +86,7 @@ private:
 
     TreeDB *_tree;
     System *_system;
+    MIOControl *_mio_control;
     EnvObj *_local_env_obj;
 };
 

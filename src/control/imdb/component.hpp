@@ -200,9 +200,10 @@ public:
         child->child_node.remove();
     }
 
-    BaseTreeObject *get_parent()
+    template <class Parent>
+    Parent *get_parent()
     {
-        return _parent;
+        return (Parent*) _parent;
     }
 
     P::IList *get_children()
@@ -222,6 +223,20 @@ public:
             }
         }
         return result;
+    }
+
+    template <class Child>
+    size_t get_children_count()
+    {
+        size_t count = 0;
+
+        ILIST_ITER(get_children(), i) {
+            BaseTreeObject *child = p_container_of(i, BaseTreeObject, child_node);
+            if (child->get_type_id() == Child::get_type_id_static()) {
+                count++;
+            }
+        }
+        return count;
     }
 
     P::IList::Node child_node; // IList iteration requires this node to be public
@@ -275,7 +290,7 @@ public:
         ILIST_ITER_SAFE(object->get_children(), i) {
             remove(p_container_of(i, BaseTreeObject, child_node));
         }
-        object->get_parent()->remove_child(object);
+        object->get_parent<BaseTreeObject>()->remove_child(object);
         _imdb.remove(object);
     }
 

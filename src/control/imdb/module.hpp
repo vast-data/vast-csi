@@ -35,7 +35,7 @@ public:
 
     P::VMsg::ModuleAddress get_address()
     {
-        EnvObj *parent = (EnvObj*) BaseModuleLogic::get_parent();
+        EnvObj *parent = BaseModuleLogic::get_parent<EnvObj>();
         return {parent->get_id(), // env_id
                 0, // reserved
                 (P::byte) module_id,
@@ -44,6 +44,7 @@ public:
 };
 
 class EModuleObj : public BaseModuleObj<EModuleProto, TypeId::EModuleObj, ModuleId::E> {
+public:
     void activate()
     {
 
@@ -51,6 +52,7 @@ class EModuleObj : public BaseModuleObj<EModuleProto, TypeId::EModuleObj, Module
 };
 
 class PModuleObj : public BaseModuleObj<PModuleProto, TypeId::PModuleObj, ModuleId::P> {
+public:
     void activate()
     {
 
@@ -58,6 +60,7 @@ class PModuleObj : public BaseModuleObj<PModuleProto, TypeId::PModuleObj, Module
 };
 
 class BModuleObj : public BaseModuleObj<BModuleProto, TypeId::BModuleObj, ModuleId::B> {
+public:
     void activate()
     {
 
@@ -65,6 +68,7 @@ class BModuleObj : public BaseModuleObj<BModuleProto, TypeId::BModuleObj, Module
 };
 
 class IModuleObj : public BaseModuleObj<IModuleProto, TypeId::IModuleObj, ModuleId::I> {
+public:
     void activate()
     {
 
@@ -72,6 +76,7 @@ class IModuleObj : public BaseModuleObj<IModuleProto, TypeId::IModuleObj, Module
 };
 
 class TModuleObj : public BaseModuleObj<TModuleProto, TypeId::TModuleObj, ModuleId::TEST> {
+public:
     void activate()
     {
 
@@ -79,6 +84,7 @@ class TModuleObj : public BaseModuleObj<TModuleProto, TypeId::TModuleObj, Module
 };
 
 class CModuleObj : public BaseModuleObj<CModuleProto, TypeId::CModuleObj, ModuleId::C> {
+public:
     void activate()
     {
         PANIC("CModule should not be activated");

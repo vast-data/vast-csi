@@ -36,7 +36,7 @@ void IOHelper::init(const char *config_path)
     ConfigSetting *devices_setting = conf_setting_lookup_required(io_provider_setting, "devices");
     _device_count = (size_t)conf_setting_length(devices_setting);
 
-    _devices = new P::DevIO*[iopool_count];
+    _devices = new P::IO::DevIO*[iopool_count];
     _io_provider.init(_device_count, iopool_count);
 
     LOOP(_device_count, i) {

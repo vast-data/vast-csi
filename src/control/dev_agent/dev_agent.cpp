@@ -9,7 +9,6 @@ void DevAgent::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId fiber_gr
 {
     _db.init(NUM_ELEMENTS(TYPE_CONFIGS), TYPE_CONFIGS);
     _ioprovider.init(MAX_DEVICES_PER_SYSTEM, CONCURRENT_IOS);
-    _handlers.init();
 
     register_server(silo_id, module_id, fiber_group_id);
 }
@@ -25,22 +24,12 @@ void DevAgent::start(FiberGroupId io_provider_fiber_group)
     _ioprovider.start(io_provider_fiber_group);
 }
 
-void DevAgent::register_handler(DevChangeHandler *handler)
-{
-    _handlers.append(&handler->list_node);
-}
-
-void DevAgent::unregister_handler(DevChangeHandler *handler)
-{
-    handler->list_node.remove();
-}
-
 void DevAgent::device_add(DeviceAddParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
 {
     RemoteDeviceProto::Reader device_reader;
     LOOP(args->get_device_count(), i) {
         args->get_devices(&device_reader, i);
-        P::DevIO *devio = _ioprovider.alloc_device(device_reader.get_path(), DEVICE_IO_DEPTH, device_reader.get_size());
+        P::IO::DevIO *devio = _ioprovider.alloc_device(device_reader.get_path(), DEVICE_IO_DEPTH, device_reader.get_size());
         if (devio == nullptr)
             PANIC("Not implemented - should probably go on living and notify control.");
 
@@ -48,11 +37,6 @@ void DevAgent::device_add(DeviceAddParams::RootReader *args, P::VProto::Empty::R
         ASSERT_NOT_NULL(device);
 
         device->set_devio(devio);
-
-        ILIST_ITER(&_handlers, i) {
-            DevChangeHandler *handler = p_container_of(i, DevChangeHandler, list_node);
-            handler->on_device_addition(device);
-        }
     }
 }
 
@@ -61,11 +45,15 @@ void DevAgent::device_remove(DeviceRemoveParams::RootReader *args, P::VProto::Em
     LOOP(args->get_guid_count(), i) {
         RemoteDevice *device = _db.get<RemoteDevice>(*args->get_guids(i));
         device->set_alive(false);
-        ILIST_ITER(&_handlers, i) {
-            DevChangeHandler *handler = p_container_of(i, DevChangeHandler, list_node);
-            handler->on_device_removal(device);
-        }
         _db.remove(device);
+    }
+}
+
+void DevAgent::device_prepare_remove(DevicePrepareRemoveParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
+{
+    LOOP(args->get_guid_count(), i) {
+        RemoteDevice *device = _db.get<RemoteDevice>(*args->get_guids(i));
+        device->set_alive(false);
     }
 }
 

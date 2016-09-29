@@ -266,7 +266,7 @@ AddCppTest(target='dist/tests/box', source=['tests/test_box.cpp'])
 AddCppTest(target='dist/tests/imdb', source=['tests/test_imdb.cpp'])
 AddCppTest(target='dist/tests/cluster', source=['tests/test_cluster.cpp'])
 AddCppTest(target='dist/tests/env_config', source=['tests/test_env_config.cpp'])
-AddCppTest(target='dist/tests/mio', source=['tests/test_mio.cpp'])
+AddCppTest(target='dist/tests/mio', source=['tests/test_mio.cpp', io_utils])
 AddCppTest(target='dist/tests/dev_agent', source=['tests/test_dev_agent.cpp', io_utils])
 
 cpp_env.AlwaysBuild('nfstest')

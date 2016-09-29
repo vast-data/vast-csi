@@ -53,9 +53,10 @@ public:
 
 private:
     BaseAgent _agent;
-    Cluster _cluster;
-    TreeDB _tree;
     System *_system;
+    TreeDB _tree;
+    Cluster _cluster;
+    MIOControl _mio_control;
 };
 
 } // namespace Control

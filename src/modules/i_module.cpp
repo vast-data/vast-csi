@@ -15,6 +15,7 @@ void IModule::init(Silo *silo, ConfigSetting *setting)
 
     _estore.init();
     _nfs.init(&_estore, P::Env::get()->get_tcp_acceptor(), first_init);
+    _dev_agent.init(silo->get_id(), get_id(), FiberGroupId::I_IO_POLLING);
     _agent.init(silo->get_id(), get_id(), FiberGroupId::I_CONTROL);
     first_init = false;
 }

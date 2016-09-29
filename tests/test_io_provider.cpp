@@ -8,7 +8,6 @@
 
 #include "io_utils.hpp"
 #include "test_common_scheduler.hpp"
-#include "test_common_io.hpp"
 
 using namespace P::Conf;
 using namespace P::IO;

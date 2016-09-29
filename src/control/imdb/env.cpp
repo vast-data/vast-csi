@@ -34,11 +34,11 @@ void EnvObj::generate_config(char *buffer, size_t buf_size)
     conf_setting_set_int32(env_id, get_id());
     ConfigSetting *port = conf_setting_add(vmsg, "port", CONFIG_TYPE_INT32);
     conf_setting_set_int32(port, get_port());
-    BaseNode *node = dynamic_cast<BaseNode*>(get_parent());
+    BaseNode *node = get_parent<BaseNode>();
     ASSERT_NOT_NULL(node);
-    for (int i = 0; i < node->get_node_base()->get_addresses_count(); ++i) {
+    for (int i = 0; i < node->get_base_node()->get_addresses_count(); ++i) {
         ConfigSetting *local_address = conf_setting_add(vmsg, "local_address", CONFIG_TYPE_STRING);
-        conf_setting_set_string(local_address, node->get_node_base()->get_addresses(i)->get_host());
+        conf_setting_set_string(local_address, node->get_base_node()->get_addresses(i)->get_host());
         break;  // TODO: remove this to support multiple addresses. Change what the config looks like (can't have 2 "local_address" fields), and update the relevant code (and config files).
     }
 

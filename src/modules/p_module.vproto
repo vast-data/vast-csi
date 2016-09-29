@@ -1,4 +1,6 @@
 $import e_module.vproto
+$import control/dev_agent/dev_agent.vproto as dev
+$import control/imdb/node.vproto as node
 $import plasma/vmsg/vmsg.vproto as VMsg
 
 $namespace P
@@ -39,4 +41,21 @@ enum EnvStopResultCode : uint8_t {
 
 struct EnvStopResult {
     @0 code EnvStopResultCode;
+};
+
+struct ConnectDeviceParams {
+    @0 guid GUID;
+    @1 dnode_addresses node.NodeAddress[node.NODE_ADDRESS_COUNT];
+};
+
+struct ConnectDeviceResult {
+    @0 path char[dev.DEVICE_MAX_PATH];
+};
+
+struct DisconnectDeviceParams {
+    @0 guid GUID;
+};
+
+struct DisconnectDeviceResult {
+
 };

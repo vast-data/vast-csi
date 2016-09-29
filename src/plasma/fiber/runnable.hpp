@@ -7,7 +7,7 @@
 #pragma once
 
 class IRunnable {
-    public:
+public:
     virtual void run() = 0;
     virtual ~IRunnable() = default;
 };
@@ -20,5 +20,3 @@ void runner(void* arg)
     IRunnable *r = (IRunnable*)arg;
     r->run();
 }
-
-

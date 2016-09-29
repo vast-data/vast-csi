@@ -26,27 +26,14 @@ public:
         _alive = true;
     }
 
-    void set_devio(P::DevIO *devio) { _devio = devio; }
-    P::DevIO *get_devio() { return _devio; }
+    void set_devio(P::IO::DevIO *devio) { _devio = devio; }
+    P::IO::DevIO *get_devio() { return _devio; }
     void set_alive(bool alive) { _alive = alive; }
     bool get_alive() { return _alive; }
 
 private:
-    P::DevIO *_devio;
+    P::IO::DevIO *_devio;
     bool _alive;
-};
-
-class DevChangeHandler {
-public:
-    void init()
-    {
-        list_node.init();
-    }
-
-    virtual void on_device_addition(RemoteDevice *device) = 0;
-    virtual void on_device_removal(RemoteDevice *device) = 0;
-
-    P::IList::Node list_node;
 };
 
 class DevAgent : public DevAgentServer {
@@ -54,17 +41,16 @@ public:
     void init(P::SiloId silo_id, ModuleId module_id, FiberGroupId fiber_group_id);
     void destroy();
     void start(FiberGroupId io_provider_fiber_group);
-    void register_handler(DevChangeHandler *handler);
-    void unregister_handler(DevChangeHandler *handler);
+    RemoteDevice *get_device(P::GUID guid) { return _db.get<RemoteDevice>(guid); }
 
     void device_add(DeviceAddParams::RootReader *args, P::VProto::Empty::RootBuilder *res);
     void device_remove(DeviceRemoveParams::RootReader *args, P::VProto::Empty::RootBuilder *res);
+    void device_prepare_remove(DevicePrepareRemoveParams::RootReader *args, P::VProto::Empty::RootBuilder *res);
 
 private:
 
     IMDB _db;
-    P::IList _handlers;
-    P::IOProvider _ioprovider;
+    P::IO::IOProvider _ioprovider;
 };
 
 }

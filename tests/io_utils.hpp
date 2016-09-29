@@ -16,7 +16,7 @@ public:
         _io_provider.destroy();
     }
 
-    P::DevIO *get_device(size_t index)
+    P::IO::DevIO *get_device(size_t index)
     {
         return _devices[index];
     }

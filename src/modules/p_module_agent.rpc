@@ -20,4 +20,11 @@ methods:
   op_id: 4
   arg: VProto::Empty
   res: EnvStartResult
-
+- method: connect_device
+  op_id: 5
+  arg: ConnectDeviceParams
+  res: ConnectDeviceResult
+- method: disconnect_device
+  op_id: 6
+  arg: DisconnectDeviceParams
+  res: DisconnectDeviceResult

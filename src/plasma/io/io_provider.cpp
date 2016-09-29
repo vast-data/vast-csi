@@ -81,7 +81,7 @@ void IOProvider::start(FiberGroupId fiber_group)
 
 void IOProvider::poll()
 {
-    ITER_SAFE_EACH(_active_devices.list(), index,
+    ITER_SAFE_EACH(&_active_devices, index,
         _devices[index].poll_events();
     )
 }

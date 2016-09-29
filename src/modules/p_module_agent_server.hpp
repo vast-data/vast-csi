@@ -28,6 +28,8 @@ private:
     void env_start(EnvStartParams::RootReader *args, EnvStartResult::RootBuilder *res);
     void env_stop(EnvStopParams::RootReader *args, EnvStopResult::RootBuilder *res);
     void run_leader(VProto::Empty::RootReader *args, EnvStartResult::RootBuilder *res);
+    void connect_device(ConnectDeviceParams::RootReader *args, ConnectDeviceResult::RootBuilder *res);
+    void disconnect_device(DisconnectDeviceParams::RootReader *args, DisconnectDeviceResult::RootBuilder *res);
 
     /*!
      * Helper function, used by env_start and run_leader to start an env.

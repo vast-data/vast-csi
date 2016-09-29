@@ -8,7 +8,7 @@
 
 #include "../src/phys/mirrored_io/mio.hpp"
 #include "test_common_scheduler.hpp"
-#include "test_common_io.hpp"
+#include "io_utils.hpp"
 
 using namespace P::IO;
 using namespace P::FiberSync;
@@ -154,32 +154,20 @@ static void test_rw(void *arg)
 }
 
 TEST(TestMio, test_rw) {
-    Config* config = conf_init();
-
-    int32_t ret = conf_read_file(config, "tests/test_mio.config");
-    ASSERT_TRUE(ret);
-
-    ConfigSetting *io_module = conf_lookup(config, "io_module");
-
-    devices_test_files(io_module, true);
-
-    P::AtomicPool<DevIO::IO> iopool;
-
-    IOProvider io_provider;
-    DevIO* test_dev = nullptr;
-    P::EModule::init_io_from_settings(io_module, &test_dev, &iopool, &io_provider);
+    ::Test::IOHelper io_helper;
 
     P::Scheduler::init(&scheduler_config);
 
-    io_provider.start();
+    io_helper.init("tests/test_mio.config");
 
-    P::Fiber::init(FG_A, test_rw, test_dev, false);
+    P::Fiber::init(FG_A, test_rw, io_helper.get_device(0), false);
 
     P::Scheduler::run();
 
     P::Scheduler::destroy();
 
-    devices_test_files(io_module, false);
+    io_helper.destroy();
+
 }
 
 int main(int argc, char **argv) {

@@ -51,6 +51,7 @@ DEFINE_LOOKUP_PROTOTYPES(COMPONENT_LIST,
     X(B),                                    \
     X(I_NFS_POLLING),                        \
     X(I_PROTO),                              \
+    X(I_IO_POLLING),                         \
     X(I_CONTROL),                            \
     X(TEST),                                 \
     X(COUNT)

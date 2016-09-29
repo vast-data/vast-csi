@@ -11,12 +11,11 @@
 
 #include "../data/dlist.hpp"
 #include "plasma/memory/atomic_pool.hpp"
+#include "devio.hpp"
 
 namespace P {
 
 namespace IO {
-
-class DevIO;
 
 class IOProvider {
 public:
