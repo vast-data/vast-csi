@@ -1,11 +1,14 @@
 /* Copyright (C) Vast Data Ltd. */
 
 /*!
- * \file mirrored_io_agent.hpp
+ * \file mio_agent.hpp
  * \brief
  */
 #pragma once
 
+#include "mio_agent.rpc.server.hpp"
+#include "control/dev_agent/dev_agent.hpp"
+#include "plasma/execution/silo.hpp"
 #include "plasma/fiber/sync/rwlock.hpp"
 #include "plasma/io/base_io.hpp"
 #include "plasma/utils/io.hpp"
@@ -17,11 +20,10 @@ struct PhysAddr {
     P::IO::Baddr byte_offset;
 };
 
-class MirroredIOAgent {
+class MIOAgent : public MIOAgentServer {
 public:
-    // TODO(ido): these will probably move to vproto once we implement RPCs.
+    // TODO(ido): these will probably move to vproto:
     static constexpr uint32_t MAX_SECTION_ID = 16384;
-    static constexpr uint32_t MAX_DEVS_PER_SECTION = 3;
     static constexpr uint32_t MAX_DEVS = 2048;  // Used for section 0.
 
 private:
@@ -54,24 +56,22 @@ public:
         bool is_active() const;
 
         const PhysAddr *_addresses;
-        const MirroredIOAgent::SectionMappingData *_mapping_data;
+        const MIOAgent::SectionMappingData *_mapping_data;
         P::Index _size;
         bool _is_reader;
         P::IO::Baddr _offset;
         uint8_t _active_lock_index;
         size_t _write_size;
         bool _sub_section_lock;
-    };  // class MirroredIOAgent::MappingSet
+    };  // class MIOAgent::MappingSet
 
     /*!
      * Initializing the mirror mappings.
      */
-    void init();
+    void init(P::SiloId silo_id, ModuleId module_id, P::Index fiber_group_id, Control::DevAgent *dev_agent);
 
     /*!
      * Destroy the mirror mappings.
-     *
-     * Will (currently) be used in tests only.
      */
     void destroy();
 
@@ -79,59 +79,26 @@ public:
      * called from MIO_C through RPC
      *******************************/
 
-    /* TODO(ido):
-     * Add RPC functions that will call the existing functions (except for remove_device, which will be called by the DevAgent).
-     * These will call the existing functions, but will first translate from dev GUID to BaseIO* (using the DevAgent).
-     * Optionally, one RPC config may be translated to several config_section calls if it contains configs for more than one section.
-     */
-
     /*!
-     * Configure mappings for one section.
+     * Configure section mappings.
      *
-     * Can be called more than once for one section, and mappings will be accumulated. This is probably useful only for
-     * section zero.
+     * Can be called more than once, including with the same section ID, and mappings will be accumulated. This is
+     * probably useful only for section zero.
      */
-    void config_section(uint32_t section_id, const PhysAddr *addresses, P::Index num_addresses, bool in_rebuild);
+    virtual void config(ConfigParams::RootReader *args, P::VProto::Empty::RootBuilder *res);
 
     /*!
      * Switch to activated mode.
      *
-     * Should be called after all configuration calls (config_section) are done.
+     * Should be called after all configuration calls (config) are done.
      */
-    void activate();
+    virtual void activate(P::VProto::Empty::RootReader *args, P::VProto::Empty::RootBuilder *res);
 
-    /*!
-     * Add a new Physical mapping to a logical section and mark the mapping as in_rebuild.
-     * This means that write operations should acquire sub-section read locks while writing (avoid race with rebuild copier).
-     * It also means that read operations should still avoid reading the newly added device.
-     * Blocks until all ongoing write operations to the old mapping are done.
-     * \param section the section being redeployed to this new device
-     */
-    void start_rebuild(P::IO::MirroredAddressToken section, P::IO::BaseIO *new_dev, P::IO::Baddr new_base_offset);
-    /*!
-     * Perform section copy operation in sub-sections.
-     * This is only allowed when section is in_rebuild.
-     * The operation will need to acquire a write lock.
-     * Copying is done from the last device in the old mapping.
-     * \param section the section being copied to the rebuilt new device
-     */
-    void rebuild_copy(P::IO::MirroredAddressToken section);
-    /*!
-     * Undo the effect of start_rebuild.
-     * Unmark the section mapping as in_rebuild and return to regular state with the currently update mapping.
-     * \param section the section that has finished redeployment to a new device
-     */
-    void end_rebuild(P::IO::MirroredAddressToken section);
-
-
-    /*!
-     *
-     * Blocks untill all IOs to device are done (writes to section and read to device)
-     * \param
-     */
-    void remove_section_from_device(P::IO::MirroredAddressToken section, P::IO::BaseIO *dev);
-
-    void remove_device(P::IO::BaseIO *dev);
+    virtual void start_rebuilds(StartRebuildsParams::RootReader *args, P::VProto::Empty::RootBuilder *res);
+    virtual void end_rebuilds(EndRebuildsParams::RootReader *args, P::VProto::Empty::RootBuilder *res);
+    virtual void rebuild_copy(RebuildCopyParams::RootReader *args, P::VProto::Empty::RootBuilder *res);
+    virtual void remove_mappings(RemoveMappingsParams::RootReader *args, P::VProto::Empty::RootBuilder *res);
+    virtual void remove_device(RemoveDeviceParams::RootReader *args, P::VProto::Empty::RootBuilder *res);
 
     /*******************************
      * called from MIO
@@ -158,7 +125,6 @@ public:
      */
     void done_read(P::IO::MirroredAddressToken section, MappingSet *phys_address_set);
 
-    // TODO(ido): should move to DevAgent
     // Note: this should indicate that the device is down even if it has re-entered as a newly added device
     //       meaning- a device in this context is handed a new "MirroredID" when re-entring the cluster.
     //       Another way is simply asking if this device is still in this stripe.
@@ -203,7 +169,61 @@ private:
 
         void init() { mapping_data.init(); }
         void destroy() { mapping_data.destroy(); }
-    };  // struct MirroredIOAgent::SectionMapping
+    };  // struct MIOAgent::SectionMapping
+
+
+    /***************************************************
+     * Helper functions, used to implement the RPC calls
+     ***************************************************/
+
+// TODO(ido): config_section is public just for test_mio. Remove it (and the correspending "private" below) once that
+// test is fixed. See ORION-81.
+public:
+    /*!
+     * Configure mappings for one section.
+     *
+     * Can be called more than once for one section, and mappings will be accumulated. This is probably useful only for
+     * section zero.
+     */
+    void config_section(uint32_t section_id, const PhysAddr *addresses, P::Index num_addresses, bool in_rebuild);
+private:
+
+    /*!
+     * Add a new Physical mapping to a logical section and mark the mapping as in_rebuild.
+     * This means that write operations should acquire sub-section read locks while writing (avoid race with rebuild copier).
+     * It also means that read operations should still avoid reading the newly added device.
+     * Blocks until all ongoing write operations to the old mapping are done.
+     * \param section the section being redeployed to this new device
+     */
+    void start_rebuild(uint32_t section_id, P::IO::BaseIO *new_dev, P::IO::Baddr new_base_offset);
+    /*!
+     * Perform section copy operation in sub-sections.
+     * This is only allowed when section is in_rebuild.
+     * The operation will need to acquire a write lock.
+     * Copying is done from the last device in the old mapping.
+     * \param section the section being copied to the rebuilt new device
+     */
+    void rebuild_copy_internal(uint32_t section_id);
+    /*!
+     * Undo the effect of start_rebuild.
+     * Unmark the section mapping as in_rebuild and return to regular state with the currently update mapping.
+     * \param section the section that has finished redeployment to a new device
+     */
+    void end_rebuild(uint32_t section_id);
+
+    /*!
+     *
+     * Blocks untill all IOs to device are done (writes to section and read to device)
+     * \param
+     */
+    void remove_section_from_device(uint32_t section_id, P::IO::BaseIO *dev);
+
+    void remove_device_internal(P::IO::BaseIO *dev);
+
+
+    /**********************
+     * Additional functions
+     **********************/
 
     template<uint32_t max_devs_per_section>
     void do_config_section(SectionMapping<max_devs_per_section> *section_mapping, const PhysAddr *addresses,
@@ -233,6 +253,8 @@ private:
     uint32_t _max_section_id;  // max active entry index in _section_mappings
     SectionMapping<MAX_DEVS_PER_SECTION> *_section_mappings;
     SectionMapping<MAX_DEVS> _section_zero_mapping;
-};  // class MirroredIOAgent
+
+    Control::DevAgent *_dev_agent;
+};  // class MIOAgent
 
 }  //  namespace MirroredIO

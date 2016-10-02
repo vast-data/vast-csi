@@ -1,0 +1,33 @@
+class: MIOAgent
+include: ["mio.vproto.hpp", "plasma/vproto/empty.vproto.hpp"]
+api_version: 1
+namespaces: ["MirroredIO"]
+methods:
+- method: config
+  op_id: 1
+  arg: ConfigParams
+  res: P::VProto::Empty
+- method: activate
+  op_id: 2
+  arg: P::VProto::Empty
+  res: P::VProto::Empty
+- method: start_rebuilds
+  op_id: 3
+  arg: StartRebuildsParams
+  res: P::VProto::Empty
+- method: end_rebuilds
+  op_id: 4
+  arg: EndRebuildsParams
+  res: P::VProto::Empty
+- method: rebuild_copy
+  op_id: 5
+  arg: RebuildCopyParams
+  res: P::VProto::Empty
+- method: remove_mappings
+  op_id: 6
+  arg: RemoveMappingsParams
+  res: P::VProto::Empty
+- method: remove_device
+  op_id: 7
+  arg: RemoveDeviceParams
+  res: P::VProto::Empty

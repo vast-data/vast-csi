@@ -1,12 +1,17 @@
 /* Copyright (C) Vast Data Ltd. */
+#include "globals.hpp"
+#include "test_module.hpp"
+#include "plasma/execution/env.hpp"
 #include "plasma/fiber/sync/future_res.hpp"
 #include "plasma/io/devio.hpp"
 #include "plasma/io/memio_mock.hpp"
 #include "plasma/memory/alloc.hpp"
+#include "plasma/utils/types.hpp"
 #include "modules/e_module.hpp"
+#include "phys/mirrored_io/mio.hpp"
+#include "phys/mirrored_io/mio_agent.rpc.client.hpp"
 #include <gtest/gtest.h>
 
-#include "../src/phys/mirrored_io/mio.hpp"
 #include "test_common_scheduler.hpp"
 #include "io_utils.hpp"
 
@@ -20,9 +25,23 @@ const Baddr test_baddr = 512;
 const WorkerID test_workerID = 888;
 const WorkerID other_test_workerID = 999;
 
+static const P::VMsg::ModuleAddress dest = {
+        0,  // env_id
+        0,  // reserved : 4;
+        // only the first 4 bits are in use for module ids
+        (uint8_t) ModuleId::TEST,  // module_id : 4
+        0  // silo_id
+};
+
 // Todo: once a crash testing infrastructure is in place (ORION-64) we should test crashing scenarios here
 
-static void test_locking(void *arg UNUSED)
+static void init_func(P::Silo *silo, void *ctx)
+{
+    Control::DevAgent *dev_agent = (Control::DevAgent*) ctx;
+    dev_agent->init(silo->get_id(), ModuleId::TEST, FiberGroupId::TEST);
+}
+
+static void test_locking_start_func(void *ctx)
 {
     MirroredAddressToken test_address;
     test_address.token_type = TokenType::MEM;
@@ -35,13 +54,20 @@ static void test_locking(void *arg UNUSED)
         phys_arr[i].byte_offset = MemIOMock::mock_address;
     }
 
-    MirroredIOAgent agent;
-    agent.init();
-    agent.config_section(test_address.section_id, phys_arr, NUM_ELEMENTS(phys_arr), false);
-    agent.activate();
+    Control::DevAgent *dev_agent = (Control::DevAgent*)ctx;
 
     MIO mio;
-    mio.init(&agent, 4, 4, 12, FG_C);
+    mio.init(0, ModuleId::TEST, (P::Index)FiberGroupId::TEST, dev_agent, 4, 4, 12);
+
+    MirroredIO::MIOAgentClient client;
+    client.init();
+
+    mio.get_mio_agent()->config_section(test_address.section_id, phys_arr, NUM_ELEMENTS(phys_arr), false);
+
+    P::VProto::Empty::RootBuilder *activate_empty_args = client.alloc_activate();
+    P::VProto::Empty::RootReader *activate_empty_reply;
+    EXPECT_EQ(P::VMsg::VMsgRes::OK, client.activate_sync(dest, activate_empty_args, &activate_empty_reply));
+    client.free_activate(activate_empty_reply);
 
     mio.lock(test_address, test_workerID);
     bool got_lock = mio.trylock(test_address, other_test_workerID);
@@ -51,18 +77,9 @@ static void test_locking(void *arg UNUSED)
     got_lock = mio.trylock(test_address, other_test_workerID);
     ASSERT_TRUE(got_lock);
     mio.unlock(test_address, other_test_workerID);
+
+    env_stop = true;
 }
-
-TEST(TestMio, test_locking) {
-    P::Scheduler::init(&scheduler_config);
-
-    P::Fiber::init(FG_A, test_locking, nullptr, false);
-
-    P::Scheduler::run();
-
-    P::Scheduler::destroy();
-}
-
 
 void allocate_test_buffer(IOVec *buff)
 {
@@ -82,28 +99,58 @@ static void compare_buffers(IOVec *buff1, IOVec *buff2)
     ASSERT_EQ(cmp, 0);
 }
 
-static void test_rw(void *arg)
+static void test_rw_start_func(void *ctx)
 {
-    DevIO *test_dev = (DevIO*)arg;
+    constexpr size_t dev_count = 3;
+    constexpr size_t dev_size = 100000;
+    P::GUID dev_guids[dev_count];
+    Control::DeviceAddParams::RootBuilder add_params;
+    add_params.init();
+    add_params.set_device_count(dev_count);
+    for (int i = 0; i < dev_count; ++i) {
+        dev_guids[i].init();
+        char dev_path[64];
+        sprintf(dev_path, "/tmp/io_provider_test_device_file%d.tmp", i);
+        add_params.get_devices(i)->set_guid(dev_guids[i]);
+        add_params.get_devices(i)->set_size(dev_size);
+        strcpy(add_params.get_devices(i)->get_path(), dev_path);
+        remove(dev_path);
+        Test::create_file(dev_path, dev_size);
+    }
+    Control::DevAgent *dev_agent = (Control::DevAgent*)ctx;
+    dev_agent->device_add(add_params.as_reader(), nullptr);
+
+    dev_agent->start(FiberGroupId::TEST);
+    P::Fiber::yield();  // so that dev_agent will really start.
+
+    MIO mio;
+    mio.init(0, ModuleId::TEST, (P::Index)FiberGroupId::TEST, dev_agent, 4, 4, 12);
 
     MirroredAddressToken test_address;
     test_address.token_type = TokenType::NVRAM;
     test_address.section_id = test_sectionID;
     test_address.byte_offset = test_baddr;
 
-    PhysAddr phys_arr[3];
-    LOOP (NUM_ELEMENTS(phys_arr), i) {
-        phys_arr[i].dev = &test_dev[i];
-        phys_arr[i].byte_offset = i * DevIO::O_DIRECT_ALIGNMENT;
+    MirroredIO::MIOAgentClient client;
+    client.init();
+
+    ConfigParams::RootBuilder *config_params = client.alloc_config();
+    config_params->set_num_sections(1);
+    config_params->get_section_configs(0)->set_section_id(test_address.section_id);
+    config_params->get_section_configs(0)->set_num_mappings(dev_count);
+    config_params->get_section_configs(0)->set_in_rebuild(false);
+    for (int i = 0; i < dev_count; ++i) {
+        config_params->get_section_configs(0)->get_mappings(i)->set_device_guid(dev_guids[i]);
+        config_params->get_section_configs(0)->get_mappings(i)->set_base_offset(i * DevIO::O_DIRECT_ALIGNMENT);
     }
+    P::VProto::Empty::RootReader *config_empty_reply;
+    EXPECT_EQ(P::VMsg::VMsgRes::OK, client.config_sync(dest, config_params, &config_empty_reply));
+    client.free_config(config_empty_reply);
 
-    MirroredIOAgent agent;
-    agent.init();
-    agent.config_section(test_address.section_id, phys_arr, NUM_ELEMENTS(phys_arr), false);
-    agent.activate();
-
-    MIO mio;
-    mio.init(&agent, 4, 4, 12, FG_C);
+    P::VProto::Empty::RootBuilder *activate_empty_args = client.alloc_activate();
+    P::VProto::Empty::RootReader *activate_empty_reply;
+    EXPECT_EQ(P::VMsg::VMsgRes::OK, client.activate_sync(dest, activate_empty_args, &activate_empty_reply));
+    client.free_activate(activate_empty_reply);
 
     IOVec write_buff;
     allocate_test_buffer(&write_buff);
@@ -129,7 +176,6 @@ static void test_rw(void *arg)
     commit.init();
     end.init();
 
-
     MIO::Buffer protected_wbuff;
     protected_wbuff.init((P::byte*)write_buff.iov_base, write_buff.iov_len);
     fill_test_buffer((char*)protected_wbuff.get_data(), protected_wbuff.get_data_size());
@@ -150,24 +196,27 @@ static void test_rw(void *arg)
 
     compare_buffers(&read_buff, &write_buff);
 
-    agent.destroy();
+    env_stop = true;
+}
+
+TEST(TestMio, test_locking) {
+    Control::DevAgent dev_agent;
+    TestModule::set_init_func(init_func, &dev_agent);
+    TestModule::set_start_func(test_locking_start_func, &dev_agent);
+
+    env_stop = false;
+    P::Env::get()->run("dist/env", "tests/test_dev_agent.config");
+    dev_agent.destroy();
 }
 
 TEST(TestMio, test_rw) {
-    ::Test::IOHelper io_helper;
+    Control::DevAgent dev_agent;
+    TestModule::set_init_func(init_func, &dev_agent);
+    TestModule::set_start_func(test_rw_start_func, &dev_agent);
 
-    P::Scheduler::init(&scheduler_config);
-
-    io_helper.init("tests/test_mio.config");
-
-    P::Fiber::init(FG_A, test_rw, io_helper.get_device(0), false);
-
-    P::Scheduler::run();
-
-    P::Scheduler::destroy();
-
-    io_helper.destroy();
-
+    env_stop = false;
+    P::Env::get()->run("dist/env", "tests/test_dev_agent.config");
+    dev_agent.destroy();
 }
 
 int main(int argc, char **argv) {

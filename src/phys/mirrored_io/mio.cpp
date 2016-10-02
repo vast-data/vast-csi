@@ -15,13 +15,14 @@ using namespace P::IO;
 
 namespace MirroredIO {
 
-void MIO::init(MirroredIOAgent *agent, size_t concurrent_readers,
-               size_t concurrent_writers, size_t concurrent_devices_asyncly_written, P::Index fiber_group_id)
+void MIO::init(P::SiloId silo_id, ModuleId module_id, P::Index fiber_group_id, Control::DevAgent *dev_agent,
+               size_t concurrent_readers, size_t concurrent_writers, size_t concurrent_devices_asyncly_written)
 {
     _readers.init(concurrent_readers);
     _writers.init(concurrent_writers);
     _future_pool.init(concurrent_devices_asyncly_written);
-    _agent = agent;
+    _dev_agent = dev_agent;
+    _mio_agent.init(silo_id, module_id, fiber_group_id, _dev_agent);
     _fiber_group_id = fiber_group_id;
 }
 
@@ -30,7 +31,7 @@ void MIO::destroy()
     _readers.destroy();
     _writers.destroy();
     _future_pool.destroy();
-    _agent = nullptr;
+    _mio_agent.destroy();
 }
 
 
@@ -67,7 +68,7 @@ void MIO::internal_read(MirroredAddressToken address, UnifiedBuff *buff,
     ASSERT_NOT_NULL(future);
 
     Reader* reader = _readers.alloc();
-    reader->init(address, buff, _agent, &_readers, &_writers, &_future_pool, has_wlock, future);
+    reader->init(address, buff, &_mio_agent, &_readers, &_writers, &_future_pool, has_wlock, future);
     if (async) {
         P::Fiber::init(_fiber_group_id, runner<MIO::Reader>, (void*)reader, false);
     } else {
@@ -132,9 +133,9 @@ bool MIO::internal_write(MirroredAddressToken address, UnifiedBuff *buff, bool p
     finalized_future->res = true;
 
     MIO::Writer* writer = _writers.alloc();
-    writer->init(address, buff, _agent, &_writers, &_future_pool, finalized_future, committed_future);
+    writer->init(address, buff, &_mio_agent, &_writers, &_future_pool, finalized_future, committed_future);
     if (should_perform_async) {
-        P::Fiber::init(_fiber_group_id, runner<MIO::Writer>, (void*)writer, false);
+        ASSERT_NOT_NULL(P::Fiber::init(_fiber_group_id, runner<MIO::Writer>, (void*)writer, false));
     } else {
         writer->run();
     }
@@ -172,7 +173,7 @@ bool MIO::is_live_worker(WorkerID worker_id)
     return true;
 }
 
-bool MIO::atomic_op(MirroredIOAgent::MappingSet *map_set, P::Index dev_idx, WorkerID worker_id, bool lock, bool blocking)
+bool MIO::atomic_op(MIOAgent::MappingSet *map_set, P::Index dev_idx, WorkerID worker_id, bool lock, bool blocking)
 {
     PhysAddr curr_addr;
     map_set->at(dev_idx, &curr_addr);
@@ -228,8 +229,8 @@ bool MIO::internal_lock(MirroredAddressToken address, WorkerID worker_id, bool l
     ASSERT(worker_id != Unlocked);
 
     bool success = true;
-    MirroredIOAgent::MappingSet map_set;
-    _agent->start_write(address, sizeof(WorkerID), &map_set);
+    MIOAgent::MappingSet map_set;
+    _mio_agent.start_write(address, sizeof(WorkerID), &map_set);
     uint32_t set_size = map_set.size();
     LOOP_TYPE(P::Index, set_size, i) {
         P::Index dev_idx = lock ? i : set_size - i - 1;
@@ -239,7 +240,7 @@ bool MIO::internal_lock(MirroredAddressToken address, WorkerID worker_id, bool l
         }
     }
 
-    _agent->done_write(address, &map_set);
+    _mio_agent.done_write(address, &map_set);
     return success;
 }
 
@@ -279,10 +280,8 @@ void MIO::Buffer::init(P::byte buffer[], size_t len)
 ///////////////// Writer /////////////////////////
 //////////////////////////////////////////////////
 
-void MIO::Writer::init(MirroredAddressToken address, UnifiedBuff* buff,
-                       MirroredIOAgent *agent, P::ObjectPool<Writer> *pool,
-                       P::AtomicPool<BaseIO::Future> *future_pool,
-                       P::FiberSync::FutureRes<bool> *finalized_future,
+void MIO::Writer::init(MirroredAddressToken address, UnifiedBuff* buff, MIOAgent *agent, P::ObjectPool<Writer> *pool,
+                       P::AtomicPool<BaseIO::Future> *future_pool, P::FiberSync::FutureRes<bool> *finalized_future,
                        P::FiberSync::FutureRes<bool> *committed_future)
 {
     _committed_future = committed_future;
@@ -290,20 +289,20 @@ void MIO::Writer::init(MirroredAddressToken address, UnifiedBuff* buff,
     IOer::init(address, buff, agent, pool, finalized_future);
 }
 
-void MIO::Writer::set_header(P::byte *header_buff OUT, bool commited)
+void MIO::Writer::set_header(P::byte *header_buff OUT, bool committed)
 {
     Header *header = (Header*)header_buff;
-    header->is_committed = commited;
+    header->is_committed = committed;
 }
 
-void MIO::Writer::fill_header(bool commited)
+void MIO::Writer::fill_header(bool committed)
 {
     Header *header = (Header*)_buff.prot_buff->get_mio_vec()->iov_base;
     header->CRC = MIO::calc_buff_crc(_buff.prot_buff);
-    set_header((P::byte*)header, commited);
+    set_header((P::byte*)header, committed);
 }
 
-bool MIO::Writer::single_write(BaseIO *dev, IOVecs *buffers, Baddr address, MirroredIOAgent *agent, BaseIO::Future *future)
+bool MIO::Writer::single_write(BaseIO *dev, IOVecs *buffers, Baddr address, MIOAgent *agent, BaseIO::Future *future)
 {
     Baddrs target_baddrs;
     target_baddrs.count = 1;
@@ -326,8 +325,7 @@ bool MIO::Writer::single_write(BaseIO *dev, IOVecs *buffers, Baddr address, Mirr
     return !too_many_times;
 }
 
-bool MIO::Writer::concurrent_write(MirroredIOAgent::MappingSet *phys_address_set,
-                                   P::Index device_count, IOVecs *buffers)
+bool MIO::Writer::concurrent_write(MIOAgent::MappingSet *phys_address_set, P::Index device_count, IOVecs *buffers)
 {
     bool success = true;
     BaseIO::Future *futures[device_count];
@@ -365,7 +363,7 @@ bool MIO::Writer::concurrent_write(MirroredIOAgent::MappingSet *phys_address_set
     return success;
 }
 
-bool MIO::Writer::write_with_header(MirroredIOAgent::MappingSet *phys_address_set)
+bool MIO::Writer::write_with_header(MIOAgent::MappingSet *phys_address_set)
 {
     // This method is resilient under the assumption that a single device write operation
     // is atomic (no partial write when crashing).
@@ -420,7 +418,7 @@ bool MIO::Writer::write_with_header(MirroredIOAgent::MappingSet *phys_address_se
 void MIO::Writer::run()
 {
     ASSERT(_initialized);
-    MirroredIOAgent::MappingSet phys_address_set;
+    MIOAgent::MappingSet phys_address_set;
     _agent->start_write(_address, _buff.get_size(), &phys_address_set);
 
     bool res = _buff.protected_op ?
@@ -443,10 +441,9 @@ void MIO::Writer::run()
 ///////////////// Reader /////////////////////////
 //////////////////////////////////////////////////
 
-void MIO::Reader::init(MirroredAddressToken address, UnifiedBuff *buff,
-          MirroredIOAgent *agent, P::ObjectPool<Reader> *pool,
-          P::ObjectPool<Writer> *writers, P::AtomicPool<BaseIO::Future> *future_pool,
-          bool has_wlock, P::FiberSync::Future *future)
+void MIO::Reader::init(MirroredAddressToken address, UnifiedBuff *buff, MIOAgent *agent, P::ObjectPool<Reader> *pool,
+          P::ObjectPool<Writer> *writers, P::AtomicPool<BaseIO::Future> *future_pool, bool has_wlock,
+                       P::FiberSync::Future *future)
 {
     _writers = writers;
     _future_pool = future_pool;
@@ -474,7 +471,7 @@ bool MIO::Reader::recover_corrupted_data(MirroredAddressToken address, Buffer *m
     buffers.count = 1;
     buffers.iovecs = mio_buff->get_mio_vec();
 
-    MirroredIOAgent::MappingSet phys_addr_set;
+    MIOAgent::MappingSet phys_addr_set;
     _agent->start_write(address, buffers.total_length(), &phys_addr_set);
     P::Index read_idx = 0;
     if(!read_internal(address, &buffers, &phys_addr_set, &read_idx)) {
@@ -515,8 +512,8 @@ bool MIO::Reader::recover_corrupted_data(MirroredAddressToken address, Buffer *m
     return true;
 }
 
-bool MIO::Reader::read_internal(MirroredAddressToken address, IOVecs *buffers,
-                        MirroredIOAgent::MappingSet *phys_addr_set, P::Index *read_idx INOUT, bool wrap_around)
+bool MIO::Reader::read_internal(MirroredAddressToken address, IOVecs *buffers, MIOAgent::MappingSet *phys_addr_set,
+                                P::Index *read_idx INOUT, bool wrap_around)
 {
     ASSERT_NOT_NULL(phys_addr_set);
     ASSERT_NOT_NULL(read_idx);
@@ -569,7 +566,7 @@ void MIO::Reader::read(IOVecs *buffers, P::FiberSync::FutureRes<bool> *future)
 {
     ASSERT_NOT_NULL(future);
 
-    MirroredIOAgent::MappingSet phys_addr_set;
+    MIOAgent::MappingSet phys_addr_set;
     _agent->start_read(_address, &phys_addr_set);
 
     // Todo: randomize this
@@ -589,7 +586,7 @@ void MIO::Reader::read_with_header(Buffer *mio_buff, P::FiberSync::FutureRes<MIO
     buffers.count = 1;
     buffers.iovecs = mio_buff->get_mio_vec();
 
-    MirroredIOAgent::MappingSet phys_addr_set;
+    MIOAgent::MappingSet phys_addr_set;
     _agent->start_read(_address, &phys_addr_set);
     // Note: We must read the first device.
     // that is the only way we are sure the stripe is holding the same data in all devices
@@ -639,7 +636,7 @@ void MIO::Reader::run()
 {
     ASSERT(_initialized);
 
-    MirroredIOAgent::MappingSet phys_address_set;
+    MIOAgent::MappingSet phys_address_set;
     _agent->start_read(_address, &phys_address_set);
 
     if (_buff.protected_op) {

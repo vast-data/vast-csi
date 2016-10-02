@@ -16,6 +16,7 @@ enum class RpcServerId: uint8_t {
     LockManager,
     DevAgent,
     Cluster,
+    MIOAgent,
 
     COUNT
 };

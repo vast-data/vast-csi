@@ -16,6 +16,9 @@ void IModule::init(Silo *silo, ConfigSetting *setting)
     _estore.init();
     _nfs.init(&_estore, P::Env::get()->get_tcp_acceptor(), first_init);
     _dev_agent.init(silo->get_id(), get_id(), FiberGroupId::I_IO_POLLING);
+    _mio.init(silo->get_id(), get_id(), (P::Index)FiberGroupId::I_IO_POLLING, &_dev_agent,
+              MirroredIO::MIO::DEFAULT_CONCURRENT_READERS, MirroredIO::MIO::DEFAULT_CONCURRENT_WRITERS,
+              MirroredIO::MIO::DEFAULT_DEVICES_ASYNCLY_WRITTEN);
     _agent.init(silo->get_id(), get_id(), FiberGroupId::I_CONTROL);
     first_init = false;
 }

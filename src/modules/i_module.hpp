@@ -10,6 +10,7 @@
 #include "estore/estore.hpp"
 #include "control/agent.hpp"
 #include "control/dev_agent/dev_agent.hpp"
+#include "phys/mirrored_io/mio.hpp"
 #include "plasma/execution/config.hpp"
 #include "proto/nfs3/nfs_proto.hpp"
 
@@ -28,5 +29,7 @@ private:
     Nfs::NfsProto _nfs;
     EStore::EStore _estore;
     Control::DevAgent _dev_agent;
+    MirroredIO::MIO _mio;
+
     Control::BaseAgent _agent;
 };

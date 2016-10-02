@@ -1,4 +1,4 @@
-#include "mirrored_io_agent.hpp"
+#include "mio_agent.hpp"
 
 namespace {
 
@@ -12,8 +12,8 @@ static void flush_rwlock(P::FiberSync::RWlock* rwlock)
 
 namespace MirroredIO {
 
-void MirroredIOAgent::MappingSet::init(const PhysAddr *addresses, const SectionMappingData *mapping_data,
-                                       bool is_reader, P::IO::Baddr offset, size_t write_size /* = 0 */)
+void MIOAgent::MappingSet::init(const PhysAddr *addresses, const SectionMappingData *mapping_data, bool is_reader,
+                                P::IO::Baddr offset, size_t write_size /* = 0 */)
 {
     ASSERT_NOT_NULL(addresses);
     ASSERT_NOT_NULL(mapping_data);
@@ -37,7 +37,7 @@ void MirroredIOAgent::MappingSet::init(const PhysAddr *addresses, const SectionM
     }
 }
 
-void MirroredIOAgent::MappingSet::at(P::Index index, PhysAddr *physical_address, bool *may_read) const
+void MIOAgent::MappingSet::at(P::Index index, PhysAddr *physical_address, bool *may_read) const
 {
     ASSERT_NOT_NULL(physical_address);
     ASSERT_OP(index, <, _size);
@@ -55,7 +55,7 @@ void MirroredIOAgent::MappingSet::at(P::Index index, PhysAddr *physical_address,
     }
 }
 
-bool MirroredIOAgent::MappingSet::is_active() const
+bool MIOAgent::MappingSet::is_active() const
 {
     if (_is_reader) {
         return _active_lock_index == _mapping_data->active_readers_index;
@@ -64,7 +64,7 @@ bool MirroredIOAgent::MappingSet::is_active() const
     }
 }
 
-void MirroredIOAgent::SectionMappingData::init()
+void MIOAgent::SectionMappingData::init()
 {
     num_addresses = 0;
     in_rebuild = false;
@@ -77,7 +77,7 @@ void MirroredIOAgent::SectionMappingData::init()
     active_writers_index = 0;
 }
 
-void MirroredIOAgent::SectionMappingData::destroy()
+void MIOAgent::SectionMappingData::destroy()
 {
     readers[0].destroy();
     readers[1].destroy();
@@ -85,8 +85,7 @@ void MirroredIOAgent::SectionMappingData::destroy()
     writers[1].destroy();
 }
 
-void MirroredIOAgent::SectionMappingData::switch_active_readers_and_writers_and_wait(bool switch_readers,
-                                                                                     bool switch_writers)
+void MIOAgent::SectionMappingData::switch_active_readers_and_writers_and_wait(bool switch_readers, bool switch_writers)
 {
     // Make sure the new one is available:
     if (readers) {
@@ -113,14 +112,17 @@ void MirroredIOAgent::SectionMappingData::switch_active_readers_and_writers_and_
     }
 }
 
-void MirroredIOAgent::SectionMappingData::set_in_rebuild(bool new_in_rebuild)
+void MIOAgent::SectionMappingData::set_in_rebuild(bool new_in_rebuild)
 {
     ASSERT(in_rebuild == !new_in_rebuild);
     in_rebuild = new_in_rebuild;
 }
 
-void MirroredIOAgent::init()
+void MIOAgent::init(P::SiloId silo_id, ModuleId module_id, P::Index fiber_group_id, Control::DevAgent *dev_agent)
 {
+    register_server(silo_id, module_id, (FiberGroupId)fiber_group_id);
+    _dev_agent = dev_agent;
+
     _is_activated = false;
     _max_section_id = 0;
 
@@ -132,7 +134,7 @@ void MirroredIOAgent::init()
     _section_zero_mapping.init();
 }
 
-void MirroredIOAgent::destroy()
+void MIOAgent::destroy()
 {
     for (uint32_t i = 0; i < MAX_SECTION_ID; ++i) {
         _section_mappings[i].destroy();
@@ -142,8 +144,70 @@ void MirroredIOAgent::destroy()
     _section_zero_mapping.destroy();
 }
 
-void MirroredIOAgent::config_section(uint32_t section_id, const PhysAddr *addresses, P::Index num_addresses,
-                                     bool in_rebuild)
+void MIOAgent::config(ConfigParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
+{
+    for (uint16_t i = 0; i < args->get_num_sections(); ++i) {
+        SectionConfig::Reader section_config;
+        args->get_section_configs(&section_config, i);
+        PhysAddr addresses[MAX_SECTION_CONFIGS_PER_RPC];
+        for (uint32_t mapping_idx = 0; mapping_idx < section_config.get_num_mappings(); ++mapping_idx) {
+            PhysicalAddress::Reader physical_address;
+            section_config.get_mappings(&physical_address, mapping_idx);
+            addresses[mapping_idx].dev = _dev_agent->get_device(physical_address.get_device_guid())->get_devio();
+            addresses[mapping_idx].byte_offset = physical_address.get_base_offset();
+        }
+        config_section(section_config.get_section_id(), addresses, section_config.get_num_mappings(),
+                       section_config.get_in_rebuild());
+    }
+}
+
+void MIOAgent::activate(P::VProto::Empty::RootReader *args, P::VProto::Empty::RootBuilder *res)
+{
+    ASSERT(!_is_activated);
+    _is_activated = true;
+}
+
+void MIOAgent::start_rebuilds(StartRebuildsParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
+{
+    for (uint16_t i = 0; i < args->get_num_section_rebuilds(); ++i) {
+        SectionRebuildParams::Reader section_rebuild;
+        args->get_section_rebuilds(&section_rebuild, i);
+        PhysicalAddress::Reader new_mapping;
+        section_rebuild.get_new_mapping(&new_mapping);
+        start_rebuild(section_rebuild.get_section_id(),
+                      _dev_agent->get_device(new_mapping.get_device_guid())->get_devio(),
+                      new_mapping.get_base_offset());
+    }
+}
+
+void MIOAgent::end_rebuilds(EndRebuildsParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
+{
+    for (uint16_t i = 0; i < args->get_num_section_ids(); ++i) {
+        end_rebuild(*args->get_section_ids(i));
+    }
+}
+
+void MIOAgent::rebuild_copy(RebuildCopyParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
+{
+    rebuild_copy_internal(args->get_section_id());
+}
+
+void MIOAgent::remove_mappings(RemoveMappingsParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
+{
+    for (uint16_t i = 0; i < args->get_num_remove_mappings(); ++i) {
+        RemoveMapping::Reader remove_mapping;
+        args->get_remove_mappings(&remove_mapping, i);
+        remove_section_from_device(remove_mapping.get_section_id(),
+                                   _dev_agent->get_device(remove_mapping.get_device_guid())->get_devio());
+    }
+}
+
+void MIOAgent::remove_device(RemoveDeviceParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
+{
+    remove_device_internal(_dev_agent->get_device(args->get_device_guid())->get_devio());
+}
+
+void MIOAgent::config_section(uint32_t section_id, const PhysAddr *addresses, P::Index num_addresses, bool in_rebuild)
 {
     ASSERT(!_is_activated);
     ASSERT_OP(section_id, <, MAX_SECTION_ID);
@@ -156,8 +220,8 @@ void MirroredIOAgent::config_section(uint32_t section_id, const PhysAddr *addres
 }
 
 template<uint32_t max_devs_per_section>
-void MirroredIOAgent::do_config_section(SectionMapping<max_devs_per_section> *section_mapping,
-                                        const PhysAddr *addresses, P::Index num_addresses, bool in_rebuild)
+void MIOAgent::do_config_section(SectionMapping<max_devs_per_section> *section_mapping, const PhysAddr *addresses,
+                                 P::Index num_addresses, bool in_rebuild)
 {
     P::Index new_num_addresses = section_mapping->mapping_data.num_addresses + num_addresses;
     ASSERT_OP(new_num_addresses, <=, max_devs_per_section);
@@ -169,28 +233,21 @@ void MirroredIOAgent::do_config_section(SectionMapping<max_devs_per_section> *se
     section_mapping->mapping_data.num_addresses = new_num_addresses;
 }
 
-void MirroredIOAgent::activate()
-{
-    ASSERT(!_is_activated);
-    _is_activated = true;
-}
-
-void MirroredIOAgent::start_rebuild(P::IO::MirroredAddressToken section, P::IO::BaseIO *new_dev,
-                                    P::IO::Baddr new_base_offset)
+void MIOAgent::start_rebuild(uint32_t section_id, P::IO::BaseIO *new_dev, P::IO::Baddr new_base_offset)
 {
     ASSERT(_is_activated);
-    ASSERT_OP(section.section_id, <, MAX_SECTION_ID);
-    if (section.section_id == P::IO::MirroredAddressToken::STATIC_SECTION_ID) {
+    ASSERT_OP(section_id, <, MAX_SECTION_ID);
+    if (section_id == P::IO::MirroredAddressToken::STATIC_SECTION_ID) {
         do_start_rebuild(&_section_zero_mapping, new_dev, new_base_offset);
     } else {
-        update_max_section_id(section.section_id);
-        do_start_rebuild(&_section_mappings[section.section_id], new_dev, new_base_offset);
+        update_max_section_id(section_id);
+        do_start_rebuild(&_section_mappings[section_id], new_dev, new_base_offset);
     }
 }
 
 template<uint32_t max_devs_per_section>
-void MirroredIOAgent::do_start_rebuild(SectionMapping<max_devs_per_section> *section_mapping, P::IO::BaseIO *new_dev,
-                                       P::IO::Baddr new_base_offset)
+void MIOAgent::do_start_rebuild(SectionMapping<max_devs_per_section> *section_mapping, P::IO::BaseIO *new_dev,
+                                P::IO::Baddr new_base_offset)
 {
     ASSERT(!section_mapping->mapping_data.check_pending_change());
     section_mapping->mapping_data.set_in_rebuild(true);
@@ -202,35 +259,36 @@ void MirroredIOAgent::do_start_rebuild(SectionMapping<max_devs_per_section> *sec
                                                                              true /* switch_writers */);
 }
 
-void MirroredIOAgent::end_rebuild(P::IO::MirroredAddressToken section)
+void MIOAgent::end_rebuild(uint32_t section_id)
 {
     ASSERT(_is_activated);
-    ASSERT_OP(section.section_id, <, MAX_SECTION_ID);
-    if (section.section_id == P::IO::MirroredAddressToken::STATIC_SECTION_ID) {
+    ASSERT_OP(section_id, <, MAX_SECTION_ID);
+    if (section_id == P::IO::MirroredAddressToken::STATIC_SECTION_ID) {
         _section_zero_mapping.mapping_data.set_in_rebuild(false);
     } else {
-        _section_mappings[section.section_id].mapping_data.set_in_rebuild(false);
+        _section_mappings[section_id].mapping_data.set_in_rebuild(false);
     }
 }
 
-void MirroredIOAgent::rebuild_copy(P::IO::MirroredAddressToken section)
+void MIOAgent::rebuild_copy_internal(uint32_t section_id)
 {
     ASSERT(_is_activated);
-    ASSERT_OP(section.section_id, <, MAX_SECTION_ID);
-    if (section.section_id == P::IO::MirroredAddressToken::STATIC_SECTION_ID) {
+    ASSERT_OP(section_id, <, MAX_SECTION_ID);
+    if (section_id == P::IO::MirroredAddressToken::STATIC_SECTION_ID) {
         do_rebuild_copy(&_section_zero_mapping);
     } else {
-        do_rebuild_copy(&_section_mappings[section.section_id]);
+        do_rebuild_copy(&_section_mappings[section_id]);
     }
 }
 
 template<uint32_t max_devs_per_section>
-void MirroredIOAgent::do_rebuild_copy(SectionMapping<max_devs_per_section> *section_mapping)
+void MIOAgent::do_rebuild_copy(SectionMapping<max_devs_per_section> *section_mapping)
 {
     ASSERT(section_mapping->mapping_data.in_rebuild);
     /* TODO(ido):
      * Iterate over all sub-sections of the given section.
-     *   The sub-section size should be a const. The section size should also be a const for now.
+     *   The sub-section size should be a const. The section size should also be a const for now (might already be
+     *   defined in ShardLayout).
      * For each sub-section, take a write lock (using RPC), perform copy, and then release the write lock.
      *   Copying is done from the last device in the old mapping.
      *   Copy using BaseIO::read and BaseIO::write.
@@ -238,20 +296,20 @@ void MirroredIOAgent::do_rebuild_copy(SectionMapping<max_devs_per_section> *sect
      */
 }
 
-void MirroredIOAgent::remove_section_from_device(P::IO::MirroredAddressToken section, P::IO::BaseIO *dev)
+void MIOAgent::remove_section_from_device(uint32_t section_id, P::IO::BaseIO *dev)
 {
     ASSERT(_is_activated);
-    ASSERT_OP(section.section_id, <, MAX_SECTION_ID);
-    if (section.section_id == P::IO::MirroredAddressToken::STATIC_SECTION_ID) {
+    ASSERT_OP(section_id, <, MAX_SECTION_ID);
+    if (section_id == P::IO::MirroredAddressToken::STATIC_SECTION_ID) {
         do_remove_section_from_device(&_section_zero_mapping, dev);
     } else {
-        do_remove_section_from_device(&_section_mappings[section.section_id], dev);
+        do_remove_section_from_device(&_section_mappings[section_id], dev);
     }
 }
 
 template<uint32_t max_devs_per_section>
-void MirroredIOAgent::do_remove_section_from_device(SectionMapping<max_devs_per_section> *section_mapping,
-                                                    P::IO::BaseIO *dev, bool allow_not_found /* = false */)
+void MIOAgent::do_remove_section_from_device(SectionMapping<max_devs_per_section> *section_mapping, P::IO::BaseIO *dev,
+                                             bool allow_not_found /* = false */)
 {
     ASSERT(!section_mapping->mapping_data.check_pending_change());
     P::Index dev_index = P::INVALID_INDEX;
@@ -278,7 +336,7 @@ void MirroredIOAgent::do_remove_section_from_device(SectionMapping<max_devs_per_
     section_mapping->mapping_data.deleted_entry = P::INVALID_INDEX;
 }
 
-void MirroredIOAgent::remove_device(P::IO::BaseIO *dev)
+void MIOAgent::remove_device_internal(P::IO::BaseIO *dev)
 {
     ASSERT(_is_activated);
     do_remove_section_from_device(&_section_zero_mapping, dev);
@@ -287,7 +345,7 @@ void MirroredIOAgent::remove_device(P::IO::BaseIO *dev)
     }
 }
 
-void MirroredIOAgent::start_write(P::IO::MirroredAddressToken section, size_t write_size, MappingSet *phys_address_set)
+void MIOAgent::start_write(P::IO::MirroredAddressToken section, size_t write_size, MappingSet *phys_address_set)
 {
     ASSERT(_is_activated);
     ASSERT_NOT_NULL(phys_address_set);
@@ -300,8 +358,8 @@ void MirroredIOAgent::start_write(P::IO::MirroredAddressToken section, size_t wr
 }
 
 template<uint32_t max_devs_per_section>
-void MirroredIOAgent::do_start_write(SectionMapping<max_devs_per_section> *section_mapping, uint64_t byte_offset,
-                                     size_t write_size, MappingSet *phys_address_set)
+void MIOAgent::do_start_write(SectionMapping<max_devs_per_section> *section_mapping, uint64_t byte_offset,
+                              size_t write_size, MappingSet *phys_address_set)
 {
     phys_address_set->init(section_mapping->addresses, &section_mapping->mapping_data, false /* is_reader */,
                            byte_offset, write_size);
@@ -316,7 +374,7 @@ void MirroredIOAgent::do_start_write(SectionMapping<max_devs_per_section> *secti
     }
 }
 
-void MirroredIOAgent::done_write(P::IO::MirroredAddressToken section, MappingSet *phys_address_set)
+void MIOAgent::done_write(P::IO::MirroredAddressToken section, MappingSet *phys_address_set)
 {
     ASSERT(_is_activated);
     ASSERT_NOT_NULL(phys_address_set);
@@ -328,7 +386,7 @@ void MirroredIOAgent::done_write(P::IO::MirroredAddressToken section, MappingSet
     }
 }
 
-void MirroredIOAgent::do_done_write(SectionMappingData *mapping_data, MappingSet *phys_address_set)
+void MIOAgent::do_done_write(SectionMappingData *mapping_data, MappingSet *phys_address_set)
 {
     if (phys_address_set->get_sub_section_lock()) {
         phys_address_set->set_sub_section_lock(false);
@@ -340,7 +398,7 @@ void MirroredIOAgent::do_done_write(SectionMappingData *mapping_data, MappingSet
     mapping_data->writers[phys_address_set->get_active_lock_index()].unlock();
 }
 
-void MirroredIOAgent::start_read(P::IO::MirroredAddressToken section, MappingSet *phys_address_set)
+void MIOAgent::start_read(P::IO::MirroredAddressToken section, MappingSet *phys_address_set)
 {
     ASSERT(_is_activated);
     ASSERT_NOT_NULL(phys_address_set);
@@ -353,15 +411,15 @@ void MirroredIOAgent::start_read(P::IO::MirroredAddressToken section, MappingSet
 }
 
 template<uint32_t max_devs_per_section>
-void MirroredIOAgent::do_start_read(SectionMapping<max_devs_per_section> *section_mapping, uint64_t byte_offset,
-                                    MappingSet *phys_address_set)
+void MIOAgent::do_start_read(SectionMapping<max_devs_per_section> *section_mapping, uint64_t byte_offset,
+                             MappingSet *phys_address_set)
 {
     phys_address_set->init(section_mapping->addresses, &section_mapping->mapping_data, true /* is_reader */,
                            byte_offset);
     section_mapping->mapping_data.readers[phys_address_set->get_active_lock_index()].lock_read();
 }
 
-void MirroredIOAgent::done_read(P::IO::MirroredAddressToken section, MappingSet *phys_address_set)
+void MIOAgent::done_read(P::IO::MirroredAddressToken section, MappingSet *phys_address_set)
 {
     ASSERT(_is_activated);
     ASSERT_NOT_NULL(phys_address_set);
@@ -373,23 +431,23 @@ void MirroredIOAgent::done_read(P::IO::MirroredAddressToken section, MappingSet 
     }
 }
 
-void MirroredIOAgent::do_done_read(SectionMappingData *mapping_data, MappingSet *phys_address_set)
+void MIOAgent::do_done_read(SectionMappingData *mapping_data, MappingSet *phys_address_set)
 {
     mapping_data->readers[phys_address_set->get_active_lock_index()].unlock();
 }
 
-void MirroredIOAgent::update_max_section_id(uint32_t section_id)
+void MIOAgent::update_max_section_id(uint32_t section_id)
 {
     if (section_id > _max_section_id) {
         _max_section_id = section_id;
     }
 }
-void MirroredIOAgent::check_section_id_valid(uint32_t section_id)
+void MIOAgent::check_section_id_valid(uint32_t section_id)
 {
     ASSERT_OP(section_id, <=, _max_section_id);
 }
 
-bool MirroredIOAgent::is_device_alive(P::IO::BaseIO *dev) const
+bool MIOAgent::is_device_alive(P::IO::BaseIO *dev) const
 {
     // TODO: implement
 //    PANIC("Not implemented!");
