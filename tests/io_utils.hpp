@@ -14,6 +14,7 @@ public:
     void destroy()
     {
         _io_provider.destroy();
+        delete[] _devices;
     }
 
     P::IO::DevIO *get_device(size_t index)

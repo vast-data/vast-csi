@@ -47,6 +47,7 @@ void IOHelper::init(const char *config_path)
         const char *device_path = conf_setting_get_string(dev_path_setting);
         uint32_t io_depth = (uint32_t) conf_setting_get_int32(io_depth_setting);
         size_t device_size = (size_t) conf_setting_get_int32(device_size_setting);
+        remove(device_path);
         create_file(device_path, device_size);
         _devices[i] = _io_provider.alloc_device(device_path, io_depth, device_size);
     }

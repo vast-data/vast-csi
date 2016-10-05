@@ -44,7 +44,6 @@ void DevAgent::device_remove(DeviceRemoveParams::RootReader *args, P::VProto::Em
 {
     LOOP(args->get_guid_count(), i) {
         RemoteDevice *device = _db.get<RemoteDevice>(*args->get_guids(i));
-        device->set_alive(false);
         _db.remove(device);
     }
 }
