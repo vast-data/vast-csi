@@ -192,7 +192,7 @@ static void test_rw_start_func(void *ctx)
     protected_rbuff.init((P::byte*)read_buff.iov_base, read_buff.iov_len);
     P::fill_zeroes(read_buff.iov_base, read_buff.iov_len);
     MIO::ReadRet rc = mio.protected_read(test_address, &protected_rbuff, false);
-    ASSERT_EQ(rc, MIO::ReadRet::Success);
+    ASSERT_EQ(rc, MIO::ReadRet::SUCCESS);
 
     compare_buffers(&read_buff, &write_buff);
 

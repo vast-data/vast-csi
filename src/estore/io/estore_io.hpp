@@ -4,6 +4,7 @@
 
 #include "phys/mirrored_io/mio.hpp"
 #include "phys/layout/section_allocator.hpp"
+#include "phys/layout/block_allocator.hpp"
 #include "plasma/utils/io.hpp"
 #include "plasma/utils/types.hpp"
 #include "plasma/fiber/sync/future.hpp"
@@ -18,7 +19,7 @@ typedef MirroredIO::MIO::Buffer MIOBuffer;
 
 class EStoreIO {
 public:
-    void init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id);
+    void init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id, MirroredIO::MIO *mio);
     void destroy();
 
     // All IO operations must be aligned to P::DevIO::O_DIRECT_ALIGNMENT size
@@ -43,10 +44,11 @@ public:
     // free data buffers
     void free_data_buffers(P::IO::IOVecs *iovecs);
 
+    EStoreRes create_block_allocator(LAddrType type);
     // returns to address to a NVRAM_MD_BLOCK_SIZE sized block, out of which only NVRAM_USABLE_BLOCK_SIZE may be used
-    LAddress WARN_UNUSED alloc_md_block(P::ShardId shard_id, LAddrType type, VirtualBucketId virt_bucket);
+    EStoreRes WARN_UNUSED alloc_md_block(P::ShardId shard_id, LAddrType type, LAddress *addr OUT);
     // free a previously allocated md block
-    void free_md_block(LAddress addr);
+    EStoreRes free_md_block(LAddress addr IN);
 
     // returns the size of the write buffers for the specified shard
     uint64_t get_total_addr_type_size(P::ShardId shard_id, LAddrType type);
@@ -57,6 +59,7 @@ private:
 
     MirroredIO::MIO *_mio;
     Layout::SectionAllocator _section_allocator;
+    Layout::BlockAllocator _block_allocator;
     P::Pool _md_pool;
     P::Pool _data_pool;
 };

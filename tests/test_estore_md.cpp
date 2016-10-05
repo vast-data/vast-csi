@@ -376,7 +376,7 @@ TEST(TestHandleBlock, test_md)
 TEST(TestCompositeBlock, test_md)
 {
     EStoreIO eio;
-    eio.init(0, ModuleId::I, FiberGroupId::I_CONTROL);
+    eio.init(0, ModuleId::I, FiberGroupId::I_CONTROL, nullptr);
 
     BuffersGuard buffers_guard(&eio, 5);
     EHandle handle = 9;
@@ -436,7 +436,7 @@ TEST(TestCompositeBlock, test_md)
 TEST(TestHandlesTable, test_md)
 {
     EStoreIO eio;
-    eio.init(0, ModuleId::I, FiberGroupId::I_CONTROL);
+    eio.init(0, ModuleId::I, FiberGroupId::I_CONTROL, nullptr);
 
     ShardMd shard_md;
     shard_md.init(&eio);

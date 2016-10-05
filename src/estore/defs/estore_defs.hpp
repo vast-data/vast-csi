@@ -147,6 +147,8 @@ enum class EStoreRes {
     NOT_A_DATA_ELEMENT,      // request for a data operation from an element that is not a data element
     LOCKED,                  // operation is prohibited by locks held by other owner
     NOT_IN_INGEST,           // write buffer no in ingest state
+    REQUIRES_WRITE_LOCK,     // read - write lock is required to rewrite some data
+    DATA_CORRUPTION,         // read - CRC check failed
 };
 
 typedef uint64_t EHandle;

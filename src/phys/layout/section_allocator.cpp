@@ -71,6 +71,12 @@ P::IO::MirroredAddressToken SectionAllocator::translate(Address addr, size_t len
         : ReplicationFactor::DUPLICATE;
 }
 
+P::IO::MirroredAddressToken SectionAllocator::translate_block(P::ShardId shard_id, LAddrType type, P::Index index)
+{
+    LAddress addr = { .shard_id=shard_id, .addr_type=type, .offset=ADDR_TYPE_CONFIG[(int)type].block_size*index };
+    return translate(addr, ADDR_TYPE_CONFIG[(int)type].block_size);
+}
+
 uint32_t SectionAllocator::get_absolute_section(ReplicationFactor replication_factor, uint32_t logical_section_id)
 {
     uint32_t result;
@@ -104,6 +110,15 @@ uint64_t SectionAllocator::get_total_addr_type_size(P::ShardId shard_id, AddrTyp
     uint32_t total_type_blocks = get_total_section_count(type) * addr_type_config->block_count;
     uint32_t shard_blocks = total_type_blocks / get_shard_count(addr_type_config) + (shard_id < total_type_blocks % get_shard_count(addr_type_config));
     return shard_blocks * addr_type_config->block_size;
+}
+
+uint32_t SectionAllocator::get_addr_type_block_size(AddrType type) {
+    return ADDR_TYPE_CONFIG[(int)type].block_size;
+}
+
+uint32_t SectionAllocator::get_addr_type_shard_count(AddrType type) {
+    const AddrTypeConfig *addr_type_config = &ADDR_TYPE_CONFIG[(int)type];
+    return get_shard_count(addr_type_config);
 }
 
 } // namespace Layout

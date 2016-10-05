@@ -92,9 +92,12 @@ public:
      * \param addr address to translate.
      */
     P::IO::MirroredAddressToken translate(Address addr, size_t len);
+    P::IO::MirroredAddressToken translate_block(P::ShardId shard_id, LAddrType type, P::Index index);
     uint64_t get_total_addr_type_size(P::ShardId shard_id, AddrType type);
     uint32_t get_total_section_count(AddrType type);
     static ReplicationFactor get_section_replication_factor(uint32_t section_id);
+    uint32_t get_addr_type_block_size(AddrType type);
+    uint32_t get_addr_type_shard_count(AddrType type);
 
     // RPC Calls
     void activate(SectionAllocatorActivateParams::RootReader *args, P::VProto::Empty::RootBuilder *res);

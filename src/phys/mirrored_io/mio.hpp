@@ -20,10 +20,10 @@ typedef uint64_t WorkerID;
 class MIO {
 public:
     enum class ReadRet {
-        Success,
-        RequiresWriteLock,
-        IOError,
-        DataCorruption
+        SUCCESS,
+        REQUIRES_WRITE_LOCK,
+        IO_ERROR,
+        DATA_CORRUPTION,
     };
 
     static constexpr size_t DEFAULT_CONCURRENT_READERS = 10;

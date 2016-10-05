@@ -9,7 +9,7 @@ using EStoreRes::OK;
 
 void EStore::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id)
 {
-    _eio.init(silo_id, module_id, rpc_fiber_group_id);
+    _eio.init(silo_id, module_id, rpc_fiber_group_id, nullptr);
     _shard_md.init(&_eio);
     _handles_table.init(&_eio, &_shard_md);
     _ingest.init(&_eio, &_shard_md, &_handles_table);
@@ -26,6 +26,7 @@ void EStore::destroy()
 void EStore::create_estore()
 {
     _shard_md.create();
+    _eio.create_block_allocator(LAddrType::MD_BLOCKS);
     EStoreRes res = _handles_table.create();
     ASSERT(res == OK);
     res = _ingest.create_root();

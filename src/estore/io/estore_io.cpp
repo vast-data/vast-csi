@@ -12,12 +12,14 @@ using P::IO::IOVecs;
 using MirroredIO::MIO;
 using P::FiberSync::FutureRes;
 
-void EStoreIO::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id)
+void EStoreIO::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id, MirroredIO::MIO *mio)
 {
+    _mio = mio;
     _md_pool.init(N_DATA_BUFFERS, NVRAM_MD_BLOCK_SIZE, IO_ALIGNMENT);
     _data_pool.init(N_DATA_BUFFERS, ALLOCATED_DATA_BUFFER_SIZE, IO_ALIGNMENT);
 
     _section_allocator.init(silo_id, module_id, rpc_fiber_group_id);
+    _block_allocator.init(mio, &_section_allocator);
 }
 
 void EStoreIO::destroy()
@@ -29,19 +31,21 @@ void EStoreIO::destroy()
 EStoreRes EStoreIO::mio_to_estore_res(MIO::ReadRet res)
 {
     switch (res) {
-        case MIO::ReadRet::Success:
+        case MIO::ReadRet::SUCCESS:
             return EStoreRes::OK;
-        case MIO::ReadRet::RequiresWriteLock:
-        case MIO::ReadRet::IOError:
-        case MIO::ReadRet::DataCorruption:
-            PANIC();
+        case MIO::ReadRet::REQUIRES_WRITE_LOCK:
+            return EStoreRes::REQUIRES_WRITE_LOCK;
+        case MIO::ReadRet::IO_ERROR:
+            return EStoreRes::IO_ERROR;
+        case MIO::ReadRet::DATA_CORRUPTION:
+            return EStoreRes::DATA_CORRUPTION;
     }
 }
 
 EStoreRes EStoreIO::bool_to_estore_res(bool res)
 {
-    if (!res)
-        PANIC();
+    if (res == false)
+        return EStoreRes::IO_ERROR;
     return EStoreRes::OK;
 }
 
@@ -102,14 +106,25 @@ void EStoreIO::free_data_buffers(IOVecs *iovecs)
     }
 }
 
-LAddress EStoreIO::alloc_md_block(P::ShardId shard_id, LAddrType type, VirtualBucketId virt_bucket)
+EStoreRes EStoreIO::create_block_allocator(LAddrType type)
 {
-    return LAddress();
+    LOOP(_section_allocator.get_addr_type_shard_count(type), i) {
+        bool res = _block_allocator.create(i, type);
+        if (res == false) {
+            return EStoreRes::IO_ERROR;
+        }
+    }
+    return EStoreRes::OK;
 }
 
-void EStoreIO::free_md_block(LAddress addr)
+EStoreRes EStoreIO::alloc_md_block(P::ShardId shard_id, LAddrType type, LAddress *addr)
 {
+    return _block_allocator.alloc(shard_id, type, addr);
+}
 
+EStoreRes EStoreIO::free_md_block(LAddress addr)
+{
+    return bool_to_estore_res(_block_allocator.free(&addr));
 }
 
 uint64_t EStoreIO::get_total_addr_type_size(P::ShardId shard_id, LAddrType type)

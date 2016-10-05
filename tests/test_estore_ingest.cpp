@@ -15,7 +15,7 @@ using P::IO::IOVecs;
 TEST(TestCreate, test_ingest)
 {
     EStoreIO eio;
-    eio.init(0, ModuleId::I, FiberGroupId::I_CONTROL);
+    eio.init(0, ModuleId::I, FiberGroupId::I_CONTROL, nullptr);
 
     ShardMd shard_md;
     shard_md.init(&eio);

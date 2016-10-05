@@ -112,7 +112,7 @@ MIO::ReadRet MIO::protected_read(MirroredAddressToken address, Buffer *mio_buff,
         async = false;
         future = &future_res;
         future->init();
-        future_res.res = ReadRet::Success;
+        future_res.res = ReadRet::SUCCESS;
     }
 
     internal_read(address, &buff, has_wlock, (P::FiberSync::Future *)future, async);
@@ -599,7 +599,7 @@ void MIO::Reader::read_with_header(Buffer *mio_buff, P::FiberSync::FutureRes<MIO
     bool read_success = read_internal(_address, &buffers, &phys_addr_set, &read_idx);
     _agent->done_read(_address, &phys_addr_set);
     if (!read_success) {
-        future->res = ReadRet::IOError;
+        future->res = ReadRet::IO_ERROR;
         return;
     }
 
@@ -607,19 +607,19 @@ void MIO::Reader::read_with_header(Buffer *mio_buff, P::FiberSync::FutureRes<MIO
         // Todo: fix this log up (should add some device ID) + Notify control!
         PT_WARN(DATA, "Detected data corruption in device BLA. Attempting to recover using mirrored copies!");
         if (!_has_wlock) {
-            future->res = ReadRet::RequiresWriteLock;
+            future->res = ReadRet::REQUIRES_WRITE_LOCK;
             return;
         }
 
         if(!recover_corrupted_data(_address, mio_buff)) {
-            future->res = ReadRet::IOError;
+            future->res = ReadRet::IO_ERROR;
             return;
         }
     }
 
     if (!is_data_committed(mio_buff)) {
         if (!_has_wlock) {
-            future->res = ReadRet::RequiresWriteLock;
+            future->res = ReadRet::REQUIRES_WRITE_LOCK;
             return;
         }
 
@@ -632,7 +632,7 @@ void MIO::Reader::read_with_header(Buffer *mio_buff, P::FiberSync::FutureRes<MIO
         writer->init(_address, &buff, _agent, _writers, _future_pool);
         writer->run();
     }
-    future->res = ReadRet::Success;
+    future->res = ReadRet::SUCCESS;
 }
 
 

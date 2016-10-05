@@ -22,7 +22,7 @@ using P::IO::IOVecs;
 using P::FiberSync::FutureRes;
 using MirroredIO::MIO;
 
-void EStoreIO::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id)
+void EStoreIO::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id, MirroredIO::MIO *mio)
 {
     system("rm -rf /tmp/eio_mock_data");
     system("mkdir /tmp/eio_mock_data");
@@ -169,19 +169,23 @@ void EStoreIO::free_data_buffers(IOVecs *iovecs)
     iovecs->count = 0;
 }
 
-LAddress EStoreIO::alloc_md_block(P::ShardId shard_id, LAddrType type, VirtualBucketId virt_bucket)
+EStoreRes EStoreIO::create_block_allocator(LAddrType type)
 {
-    LAddress addr;
-    addr.shard_id = shard_id;
-    addr.addr_type = type;
-    addr.offset = current_addr;
-    current_addr += 1;
-    return addr;
+    return EStoreRes::OK;
 }
 
-void EStoreIO::free_md_block(LAddress addr)
+EStoreRes EStoreIO::alloc_md_block(P::ShardId shard_id, LAddrType type, LAddress *addr)
 {
+    addr->shard_id = shard_id;
+    addr->addr_type = type;
+    addr->offset = current_addr;
+    current_addr += 1;
+    return EStoreRes::OK;
+}
 
+EStoreRes EStoreIO::free_md_block(LAddress addr)
+{
+    return EStoreRes::OK;
 }
 
 uint64_t EStoreIO::get_total_addr_type_size(P::ShardId shard_id, LAddrType type)
