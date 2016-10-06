@@ -19,7 +19,7 @@ namespace EStore {
 
 class EStore {
 public:
-    void init();
+    void init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id);
     void destroy();
 
     /*!
@@ -308,7 +308,7 @@ public:
      * \note Rename updates both the src and the dest parent directories mtime and ctime.
      */
     EStoreRes rename(OpCallback op_cb, void *cb_ctx, EHandle src_handle, const char *src_name,
-                     EHandle dst_handle, const char *dst_name, SystemAttr *pre_src_attr OUT, 
+                     EHandle dst_handle, const char *dst_name, SystemAttr *pre_src_attr OUT,
                      SystemAttr *post_src_attr OUT, SystemAttr *pre_dst_attr OUT, SystemAttr *post_dst_attr OUT);
 
     /*!
@@ -322,7 +322,7 @@ public:
      *         STALE in case the provided handle points to a non existing element
      */
     EStoreRes get_stats(OpCallback op_cb, void *cb_ctx, EHandle handle, EStoreStats *stats OUT, SystemAttr *attr OUT);
-    
+
     /*!
      * Get element store statistics
      * \param op_cb - operation callback, called with the provided handle attributes

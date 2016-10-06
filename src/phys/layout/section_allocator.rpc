@@ -1,0 +1,9 @@
+class: SectionAllocator
+include: ["section_allocator.vproto.hpp", "plasma/vproto/empty.vproto.hpp"]
+api_version: 1
+namespaces: ["Layout"]
+methods:
+- method: activate
+  op_id: 0
+  arg: SectionAllocatorActivateParams
+  res: P::VProto::Empty

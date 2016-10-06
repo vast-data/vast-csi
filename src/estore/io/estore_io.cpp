@@ -12,10 +12,12 @@ using P::IO::IOVecs;
 using MirroredIO::MIO;
 using P::FiberSync::FutureRes;
 
-void EStoreIO::init()
+void EStoreIO::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id)
 {
     _md_pool.init(N_DATA_BUFFERS, NVRAM_MD_BLOCK_SIZE, IO_ALIGNMENT);
     _data_pool.init(N_DATA_BUFFERS, ALLOCATED_DATA_BUFFER_SIZE, IO_ALIGNMENT);
+
+    _section_allocator.init(silo_id, module_id, rpc_fiber_group_id);
 }
 
 void EStoreIO::destroy()
@@ -45,25 +47,25 @@ EStoreRes EStoreIO::bool_to_estore_res(bool res)
 
 EStoreRes WARN_UNUSED EStoreIO::read_md(LAddress addr, MIOBuffer *buff, bool locked, FutureRes<MIO::ReadRet> *future)
 {
-    P::IO::MirroredAddressToken mir_addr = _section_allocator->translate(addr, buff->get_data_size());
+    P::IO::MirroredAddressToken mir_addr = _section_allocator.translate(addr, buff->get_data_size());
     return mio_to_estore_res(_mio->protected_read(mir_addr, buff, locked, future));
 }
 
 EStoreRes WARN_UNUSED EStoreIO::read_data(LAddress addr, IOVecs *iovecs, FutureRes<bool> *future)
 {
-    P::IO::MirroredAddressToken mir_addr = _section_allocator->translate(addr, iovecs->total_length());
+    P::IO::MirroredAddressToken mir_addr = _section_allocator.translate(addr, iovecs->total_length());
     return bool_to_estore_res(_mio->read(mir_addr, iovecs, future));
 }
 
 EStoreRes EStoreIO::write_md(LAddress addr, MIOBuffer *buff, FutureRes<bool> *future)
 {
-    P::IO::MirroredAddressToken mir_addr = _section_allocator->translate(addr, buff->get_data_size());
+    P::IO::MirroredAddressToken mir_addr = _section_allocator.translate(addr, buff->get_data_size());
     return bool_to_estore_res(_mio->protected_write(mir_addr, buff, future, nullptr));
 }
 
 EStoreRes EStoreIO::write_data(LAddress addr, IOVecs *iovecs, FutureRes<bool> *future)
 {
-    P::IO::MirroredAddressToken mir_addr = _section_allocator->translate(addr, iovecs->total_length());
+    P::IO::MirroredAddressToken mir_addr = _section_allocator.translate(addr, iovecs->total_length());
     return bool_to_estore_res(_mio->write(mir_addr, iovecs, future));
 }
 
@@ -112,7 +114,7 @@ void EStoreIO::free_md_block(LAddress addr)
 
 uint64_t EStoreIO::get_total_addr_type_size(P::ShardId shard_id, LAddrType type)
 {
-    return _section_allocator->get_total_addr_type_size(shard_id, type);
+    return _section_allocator.get_total_addr_type_size(shard_id, type);
 }
 
 }

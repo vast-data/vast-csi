@@ -40,8 +40,8 @@ public:
         _lock_info = *lock_info;
         _lock_info.owner = (char *)&_owner;
         std::memcpy(&_owner, lock_info->owner, lock_info->owner_len);
-    } 
-    
+    }
+
     bool no_overlap(const LockInfo* lock) {
         return _lock_info.end < lock->start || lock->end <= _lock_info.start;
     }
@@ -57,7 +57,7 @@ public:
     LockInfo* get_info() {
         return &_lock_info;
     }
-    
+
 private:
     LockInfo _lock_info;
     char _owner[MAX_OWNER_SIZE]; // MAXNETOBJ_SZ+1
@@ -233,7 +233,7 @@ static XAttrMap _handle_to_proto_xattrs;
 
 static uint64_t _current_handle = 2;
 
-void EStore::init()
+void EStore::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id)
 {
     _data_pool.init(N_DATA_BUFFERS, DATA_BUFFER_SIZE);
     _handle_container.init();
@@ -680,8 +680,8 @@ EStoreRes EStore::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
 }
 
 
-EStoreRes EStore::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, uint64_t len, 
-                       P::IO::IOVecs *res_vecs, P::IO::IOVecs *alloc_vecs, uint32_t *bytes_read, bool *eof, 
+EStoreRes EStore::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, uint64_t len,
+                       P::IO::IOVecs *res_vecs, P::IO::IOVecs *alloc_vecs, uint32_t *bytes_read, bool *eof,
                        SystemAttr *pre_attr, SystemAttr *post_attr)
 {
     int fd;
@@ -966,7 +966,7 @@ EStoreRes EStore::lock(OpCallback op_cb, void *cb_ctx, EHandle handle, bool bloc
 {
     Lock new_lock;
     LocksVector *locks = _handle_container.get_locks(handle);
-    
+
     if (locks == nullptr) {
         locks = _handle_container.add_locks(handle);
     }
@@ -985,7 +985,7 @@ EStoreRes EStore::lock(OpCallback op_cb, void *cb_ctx, EHandle handle, bool bloc
             }
         }
     }
-    
+
     new_lock.init(lock);
     locks->push_back(new_lock);
     return EStoreRes::OK;
@@ -1028,7 +1028,7 @@ EStoreRes EStore::test_lock(OpCallback op_cb, void *cb_ctx, EHandle handle, Lock
             return EStoreRes::LOCKED;
         }
     }
-    
+
     return EStoreRes::OK;
 }
 

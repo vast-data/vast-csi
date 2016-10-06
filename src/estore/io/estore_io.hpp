@@ -18,7 +18,7 @@ typedef MirroredIO::MIO::Buffer MIOBuffer;
 
 class EStoreIO {
 public:
-    void init();
+    void init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id);
     void destroy();
 
     // All IO operations must be aligned to P::DevIO::O_DIRECT_ALIGNMENT size
@@ -56,7 +56,7 @@ private:
     EStoreRes bool_to_estore_res(bool res);
 
     MirroredIO::MIO *_mio;
-    Layout::SectionAllocator *_section_allocator;
+    Layout::SectionAllocator _section_allocator;
     P::Pool _md_pool;
     P::Pool _data_pool;
 };

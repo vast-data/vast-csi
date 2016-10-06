@@ -1,0 +1,6 @@
+$namespace Layout
+
+struct SectionAllocatorActivateParams {
+    @0 max_section_id uint32_t;
+    @1 estore_shard_count uint32_t;
+};

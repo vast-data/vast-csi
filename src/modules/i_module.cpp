@@ -13,14 +13,14 @@ void IModule::init(Silo *silo, ConfigSetting *setting)
     // allows us to know if this is the first module initialized.
     static bool first_init = true;
 
-    _estore.init();
-    _estore.load();
     _nfs.init(&_estore, P::Env::get()->get_tcp_acceptor(), first_init);
     _dev_agent.init(silo->get_id(), get_id(), FiberGroupId::I_IO_POLLING);
     _mio.init(silo->get_id(), get_id(), (P::Index)FiberGroupId::I_IO_POLLING, &_dev_agent,
               MirroredIO::MIO::DEFAULT_CONCURRENT_READERS, MirroredIO::MIO::DEFAULT_CONCURRENT_WRITERS,
               MirroredIO::MIO::DEFAULT_DEVICES_ASYNCLY_WRITTEN);
     _agent.init(silo->get_id(), get_id(), FiberGroupId::I_CONTROL);
+    _estore.init(silo->get_id(), get_id(), FiberGroupId::I_CONTROL);
+    _estore.load();
     first_init = false;
 }
 

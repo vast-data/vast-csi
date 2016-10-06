@@ -22,7 +22,7 @@ using P::IO::IOVecs;
 using P::FiberSync::FutureRes;
 using MirroredIO::MIO;
 
-void EStoreIO::init()
+void EStoreIO::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id)
 {
     system("rm -rf /tmp/eio_mock_data");
     system("mkdir /tmp/eio_mock_data");

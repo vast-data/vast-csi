@@ -21,7 +21,7 @@ namespace Layout {
 
 constexpr AddrTypeConfig SectionAllocator::ADDR_TYPE_CONFIG[];
 
-void SectionAllocator::init()
+void SectionAllocator::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id)
 {
     LOOP(ReplicationFactor::COUNT, i) {
         SectionTypeConfig *conf = &_section_type_config[i];
@@ -33,22 +33,35 @@ void SectionAllocator::init()
         }
         ASSERT_OP(offset, <, SECTION_SIZE);
     }
+
+    register_server(silo_id, module_id, rpc_fiber_group_id);
 }
 
-void SectionAllocator::activate(uint32_t shard_count, uint32_t max_section_id)
+void SectionAllocator::do_activate(uint32_t estore_shard_count, uint32_t max_section_id)
 {
-    _shard_count = shard_count;
+    _estore_shard_count = estore_shard_count;
     _max_section_id = max_section_id;
+}
+
+void SectionAllocator::activate(SectionAllocatorActivateParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
+{
+    do_activate(args->get_estore_shard_count(), args->get_max_section_id());
+}
+
+uint32_t SectionAllocator::get_shard_count(const AddrTypeConfig *type_config)
+{
+    return type_config->shard_type == ShardType::ESTORE ? _estore_shard_count : 1;
 }
 
 P::IO::MirroredAddressToken SectionAllocator::translate(Address addr, size_t len)
 {
     const AddrTypeConfig *addr_type_config = &ADDR_TYPE_CONFIG[(int)addr.addr_type];
     SectionTypeConfig *section_type_config = &_section_type_config[(int)addr_type_config->replication_factor];
+    ASSERT_OP(addr.shard_id, <, get_shard_count(addr_type_config));
 
     uint64_t block_offset = addr.offset % addr_type_config->block_size;
     ASSERT_OP(block_offset + len, <=, addr_type_config->block_size);
-    uint64_t block_index = ((addr.offset / addr_type_config->block_size) + 1) * addr.shard_id;
+    uint64_t block_index = addr.offset / addr_type_config->block_size * get_shard_count(addr_type_config) + addr.shard_id;
 
     P::IO::MirroredAddressToken ret_addr;
     ret_addr.token_type = addr_type_config->token_type;
@@ -95,7 +108,7 @@ uint64_t SectionAllocator::get_total_addr_type_size(P::ShardId shard_id, AddrTyp
 {
     const AddrTypeConfig *addr_type_config = &ADDR_TYPE_CONFIG[(int)type];
     uint32_t total_type_blocks = get_total_section_count(type) * addr_type_config->block_count;
-    uint32_t shard_blocks = total_type_blocks / _shard_count + (shard_id < total_type_blocks % _shard_count);
+    uint32_t shard_blocks = total_type_blocks / get_shard_count(addr_type_config) + (shard_id < total_type_blocks % get_shard_count(addr_type_config));
     return shard_blocks * addr_type_config->block_size;
 }
 

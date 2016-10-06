@@ -164,6 +164,8 @@ void VMsg::copy_env_addresses(EnvId env_id, EnvAddresses::Builder *addresses)
 
 void VMsg::register_server(RpcServer *server, SiloId silo_id, ModuleId module_id)
 {
+    if (this == nullptr)
+        return;
     RpcServerId server_id = server->get_server_id();
     ASSERT(_silos_context[silo_id].rpc_servers[(int)module_id][(int)server_id] == nullptr);
     _silos_context[silo_id].rpc_servers[(int)module_id][(int)server_id] = server;
