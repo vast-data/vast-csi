@@ -17,7 +17,7 @@ void DataRangeBlock::init(EStore::MIOBuffer *buffer)
     ranges->n_ranges = 0;
 }
 
-EStoreRes DataRangeBlock::add_range(uint64_t offset, EAddress addr)
+EStoreRes DataRangeBlock::add_range(uint64_t offset, LAddress addr)
 {
     Ranges *ranges = (Ranges *)payload_start();
     uint16_t range_index = 0;
@@ -45,18 +45,18 @@ EStoreRes DataRangeBlock::add_range(uint64_t offset, EAddress addr)
     return OK;
 }
 
-EAddress DataRangeBlock::get_range(uint64_t offset, uint64_t *len)
+LAddress DataRangeBlock::get_range(uint64_t offset, uint64_t *len)
 {
     Ranges *ranges = (Ranges *)payload_start();
     if (ranges->n_ranges == 0) {
-        return EMPTY_EADDRESS;
+        return Layout::EMPTY_ADDRESS;
     }
     uint16_t range_index = find_range_index(offset);
     if (ranges->ranges[range_index]._offset + DATA_RANGE_SHARD_SIZE < offset) {
         PTC_DEBUG("range is out of shard, range_index=%hu range offset=%lu offset=%lu", range_index,
                   ranges->ranges[range_index]._offset, offset);
         // offset is outside the shard range
-        return EMPTY_EADDRESS;
+        return Layout::EMPTY_ADDRESS;
     }
     if (len) {
         uint64_t available_len;
@@ -96,4 +96,3 @@ void DataRangeBlock::trace_ranges()
 }
 
 }
-

@@ -8,7 +8,7 @@
 namespace EStore {
 
 struct Range {
-    EAddress data_bitmap_addr;
+    LAddress data_bitmap_addr;
     uint64_t _offset;
 } PACKED;
 
@@ -21,9 +21,9 @@ class DataRangeBlock : public BaseBlock {
 public:
     void init(MIOBuffer *buffer) override;
 
-    EStoreRes WARN_UNUSED add_range(uint64_t offset, EAddress addr);
+    EStoreRes WARN_UNUSED add_range(uint64_t offset, LAddress addr);
     // if len is passed it will be set to the part, the returned range applies to
-    EAddress get_range(uint64_t offset, uint64_t *len = nullptr INOUT);
+    LAddress get_range(uint64_t offset, uint64_t *len = nullptr INOUT);
     void trace_ranges();
 
 private:
@@ -31,6 +31,3 @@ private:
 };
 
 }
-
-
-

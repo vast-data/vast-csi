@@ -43,27 +43,27 @@ EStoreRes EStoreIO::bool_to_estore_res(bool res)
     return EStoreRes::OK;
 }
 
-EStoreRes WARN_UNUSED EStoreIO::read_md(EAddress addr, MIOBuffer *buff, bool locked, FutureRes<MIO::ReadRet> *future)
+EStoreRes WARN_UNUSED EStoreIO::read_md(LAddress addr, MIOBuffer *buff, bool locked, FutureRes<MIO::ReadRet> *future)
 {
-    P::IO::MirroredAddressToken mir_addr = _shard_layout->translate(addr, buff->get_data_size());
+    P::IO::MirroredAddressToken mir_addr = _section_allocator->translate(addr, buff->get_data_size());
     return mio_to_estore_res(_mio->protected_read(mir_addr, buff, locked, future));
 }
 
-EStoreRes WARN_UNUSED EStoreIO::read_data(EAddress addr, IOVecs *iovecs, FutureRes<bool> *future)
+EStoreRes WARN_UNUSED EStoreIO::read_data(LAddress addr, IOVecs *iovecs, FutureRes<bool> *future)
 {
-    P::IO::MirroredAddressToken mir_addr = _shard_layout->translate(addr, iovecs->total_length());
+    P::IO::MirroredAddressToken mir_addr = _section_allocator->translate(addr, iovecs->total_length());
     return bool_to_estore_res(_mio->read(mir_addr, iovecs, future));
 }
 
-EStoreRes EStoreIO::write_md(EAddress addr, MIOBuffer *buff, FutureRes<bool> *future)
+EStoreRes EStoreIO::write_md(LAddress addr, MIOBuffer *buff, FutureRes<bool> *future)
 {
-    P::IO::MirroredAddressToken mir_addr = _shard_layout->translate(addr, buff->get_data_size());
+    P::IO::MirroredAddressToken mir_addr = _section_allocator->translate(addr, buff->get_data_size());
     return bool_to_estore_res(_mio->protected_write(mir_addr, buff, future, nullptr));
 }
 
-EStoreRes EStoreIO::write_data(EAddress addr, IOVecs *iovecs, FutureRes<bool> *future)
+EStoreRes EStoreIO::write_data(LAddress addr, IOVecs *iovecs, FutureRes<bool> *future)
 {
-    P::IO::MirroredAddressToken mir_addr = _shard_layout->translate(addr, iovecs->total_length());
+    P::IO::MirroredAddressToken mir_addr = _section_allocator->translate(addr, iovecs->total_length());
     return bool_to_estore_res(_mio->write(mir_addr, iovecs, future));
 }
 
@@ -100,20 +100,19 @@ void EStoreIO::free_data_buffers(IOVecs *iovecs)
     }
 }
 
-EAddress EStoreIO::alloc_md_block(P::ShardId shard_id, EAddrType type, VirtualBucketId virt_bucket)
+LAddress EStoreIO::alloc_md_block(P::ShardId shard_id, LAddrType type, VirtualBucketId virt_bucket)
 {
-    return EAddress();
+    return LAddress();
 }
 
-void EStoreIO::free_md_block(EAddress addr)
+void EStoreIO::free_md_block(LAddress addr)
 {
 
 }
 
-void EStoreIO::get_addr_type_info(P::ShardId shard_id, EAddrType type, uint64_t *size_bytes)
+uint64_t EStoreIO::get_total_addr_type_size(P::ShardId shard_id, LAddrType type)
 {
-    _shard_layout->get_addr_type_info(shard_id, type, size_bytes);
+    return _section_allocator->get_total_addr_type_size(shard_id, type);
 }
 
 }
-

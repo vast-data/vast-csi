@@ -57,29 +57,29 @@ private:
 
 class WriteBuffer {
 public:
-    void init(EStoreIO *eio, EAddress wb_addr);
-    void update_address(EAddress wb_addr) { _wb_addr = wb_addr; }
+    void init(EStoreIO *eio, LAddress wb_addr);
+    void update_address(LAddress wb_addr) { _wb_addr = wb_addr; }
 
     EStoreRes WARN_UNUSED reset();
     EStoreRes WARN_UNUSED move_to_migrate_state();
 
-    EStoreRes WARN_UNUSED alloc_md_block(BuffersGuard *buffers_guard, EAddress *addr);
+    EStoreRes WARN_UNUSED alloc_md_block(BuffersGuard *buffers_guard, LAddress *addr);
     // internally lock, read, modify, write, unlock, returns as output the address of the content block the name
     // was appended to
-    EStoreRes WARN_UNUSED append_name_content(BuffersGuard *buffers_guard, const char *name, EHandle handle, EAddress *addr OUT);
+    EStoreRes WARN_UNUSED append_name_content(BuffersGuard *buffers_guard, const char *name, EHandle handle, LAddress *addr OUT);
     EStoreRes WARN_UNUSED append_data_content(BuffersGuard *buffers_guard, EHandle handle, uint64_t offset,
-                                              uint32_t len, EAddress data_addr, EAddress *addr OUT);
-    EStoreRes WARN_UNUSED alloc_data_chunk(BuffersGuard *buffers_guard, uint64_t len, EAddress *addr);
-    EAddress get_content_addr(WBHeaderBlock *headerBlock, WBHeader::MDType type);
+                                              uint32_t len, LAddress data_addr, LAddress *addr OUT);
+    EStoreRes WARN_UNUSED alloc_data_chunk(BuffersGuard *buffers_guard, uint64_t len, LAddress *addr);
+    LAddress get_content_addr(WBHeaderBlock *headerBlock, WBHeader::MDType type);
 
 
 private:
 
-    EStoreRes WARN_UNUSED alloc_md_internal(BuffersGuard *buffers_guard, WBHeader::MDType type, EAddress *addr);
+    EStoreRes WARN_UNUSED alloc_md_internal(BuffersGuard *buffers_guard, WBHeader::MDType type, LAddress *addr);
     EStoreRes WARN_UNUSED read_md_header(BuffersGuard *buffers_guard, WBHeaderBlock *header_block);
 
     EStoreIO *_eio;
-    EAddress _wb_addr;
+    LAddress _wb_addr;
 };
 
 }

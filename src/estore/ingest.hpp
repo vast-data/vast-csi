@@ -2,10 +2,11 @@
 
 #pragma once
 
-#include "estore/metadata/shard_md.hpp"
 #include "plasma/utils/compiler.hpp"
-#include "estore/metadata/handles_table.hpp"
+#include "phys/layout/address.hpp"
 #include "estore/io/estore_io.hpp"
+#include "estore/metadata/shard_md.hpp"
+#include "estore/metadata/handles_table.hpp"
 #include "estore/metadata/handle_block.hpp"
 #include "estore/metadata/composite_block.hpp"
 #include "estore/metadata/name_range_block.hpp"
@@ -47,13 +48,13 @@ public:
                                    ExtendedAttrs *user_xattr OUT, ExtendedAttrs *proto_xattr OUT);
 
 private:
-    EStoreRes WARN_UNUSED read_block(CompositeBlock *composite_block, EAddress addr, EHandle owner, BaseBlock *block);
+    EStoreRes WARN_UNUSED read_block(CompositeBlock *composite_block, LAddress addr, EHandle owner, BaseBlock *block);
     EStoreRes WARN_UNUSED write_new_handle(BuffersGuard *buffers_guard, const char *name, SettableAttr *sattr,
-                                           CreateFlags create_flags, EAddress *content_addr, EHandle *new_handle,
+                                           CreateFlags create_flags, LAddress *content_addr, EHandle *new_handle,
                                            SystemAttr *element_attr);
-    EStoreRes WARN_UNUSED update_parent(BuffersGuard *buffers_guard, EAddress range_addr, NameRangeBlock *range_block,
+    EStoreRes WARN_UNUSED update_parent(BuffersGuard *buffers_guard, LAddress range_addr, NameRangeBlock *range_block,
                                         bool range_updated, NameBitmapBlock *bitmap_block, EHandle parent,
-                                        CompositeBlock *parent_composite_block, const char *name, EAddress content_addr);
+                                        CompositeBlock *parent_composite_block, const char *name, LAddress content_addr);
     EStoreRes WARN_UNUSED get_attr_internal(EHandle handle, SystemAttr *attr, BuffersGuard *buffers_guard);
     EStoreRes WARN_UNUSED read_handle_block(EHandle handle, CompositeBlock *composite_block, HandleBlock *handle_block,
                                             BuffersGuard *buffers_guard);
@@ -81,6 +82,3 @@ private:
 };
 
 }
-
-
-

@@ -52,11 +52,12 @@ bool Cluster::address_already_exists(char *host)
     return false;
 }
 
-void Cluster::init(P::SiloId silo_id, ModuleId module_id, TreeDB *tree, System *system, MIOControl *mio_control)
+void Cluster::init(P::SiloId silo_id, ModuleId module_id, TreeDB *tree, System *system, MIOControl *mio, EStoreControl *estore)
 {
     _tree = tree;
     _system = system;
-    _mio_control = mio_control;
+    _mio = mio;
+    _estore = estore;
     register_server(silo_id, module_id);
     _local_env_obj = _tree->create<EnvObj>(P::GUID::create(), nullptr);
     _tree->create<CModuleObj>(P::GUID::create(), _local_env_obj);
@@ -190,6 +191,7 @@ void Cluster::system_activate(SystemActivateParams::RootReader *args, SystemActi
         return;
     }
 
+    _system->set_shard_count(args->get_shard_count());
     _system->set_state(SystemState::ONLINE);
     PT_INFO(CONTROL, "System activated. State is now ONLINE.");
 
@@ -198,6 +200,7 @@ void Cluster::system_activate(SystemActivateParams::RootReader *args, SystemActi
         calc_cnode_state(cnode);
     });
 
+    _estore->activate(args->get_shard_count());
     initialize_all_dnodes();
 }
 
@@ -713,7 +716,7 @@ void Cluster::connect_env_to_device(EnvObj *env, NVRAM *nvram, char *local_path)
 
         client.free_device_add(result);
 
-        _mio_control->on_device_addition(module, nvram);
+        _mio->on_device_addition(module, nvram);
     });
 }
 
@@ -734,7 +737,7 @@ void Cluster::disconnect_env_from_device(EnvObj *env, NVRAM *nvram)
         client.free_device_prepare_remove(result);
 
         // 2. Wait for MIO to finish pending IOs.
-        _mio_control->on_device_removal(module, nvram);
+        _mio->on_device_removal(module, nvram);
 
         // 3. Remove the device.
         DeviceRemoveParams::RootBuilder *remove_params = client.alloc_device_remove();

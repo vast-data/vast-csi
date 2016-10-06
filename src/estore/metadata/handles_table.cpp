@@ -40,7 +40,7 @@ EStoreRes HandlesTable::create()
         ASSERT_EQUAL(buckets_per_shard, shard_phys_buckets);
         _total_phys_buckets += shard_phys_buckets;
         LOOP(shard_phys_buckets, i) {
-            EAddress addr = phys_bucket_to_addr(i, shard_id);
+            LAddress addr = phys_bucket_to_addr(i, shard_id);
             EStoreRes res = _eio->write_md(addr, composite_block.get_buffer());
             PT_RETURN(res != OK, res, "write to addr=0x%lx failed", *(uint64_t *)&addr);
         }
@@ -65,7 +65,7 @@ EStoreRes HandlesTable::resize(uint32_t n_buckets)
 
 EStoreRes HandlesTable::write(EHandle handle, MIOBuffer *bucket_data)
 {
-    EAddress addr = handle_to_addr(handle);
+    LAddress addr = handle_to_addr(handle);
     PT_DEBUG(DATA, "write to addr=0x%lx", addr.as_number());
     EStoreRes res = _eio->write_md(addr, bucket_data);
     PT_RETURN(res != OK, res, "write to addr=0x%lx failed", addr.as_number());
@@ -82,14 +82,14 @@ EStoreRes HandlesTable::read(EHandle handle, MIOBuffer *bucket_data)
 EStoreRes HandlesTable::read_by_virt_bucket(VirtualBucketId virt_bucket, MIOBuffer *bucket_data)
 {
 
-    EAddress addr = virt_bucket_to_addr(virt_bucket);
+    LAddress addr = virt_bucket_to_addr(virt_bucket);
     PT_DEBUG(DATA, "read from addr=0x%lx", addr.as_number());
     EStoreRes res = _eio->read_md(addr, bucket_data, false, nullptr);
     PT_RETURN(res != OK, res, "read from addr=0x%lx failed", addr.as_number());
     return OK;
 }
 
-EAddress HandlesTable::virt_bucket_to_addr(VirtualBucketId virt_bucket)
+LAddress HandlesTable::virt_bucket_to_addr(VirtualBucketId virt_bucket)
 {
     // TODO consistent hash
     P::ShardId shard_id = virt_bucket % P::N_SHARDS;
@@ -99,17 +99,17 @@ EAddress HandlesTable::virt_bucket_to_addr(VirtualBucketId virt_bucket)
     return phys_bucket_to_addr(phys_bucket, shard_id);
 }
 
-EAddress HandlesTable::phys_bucket_to_addr(uint64_t phys_bucket, P::ShardId shard_id)
+LAddress HandlesTable::phys_bucket_to_addr(uint64_t phys_bucket, P::ShardId shard_id)
 {
-    EAddress addr {
-        .addr_type = EAddrType::HANDLE_TABLE,
+    LAddress addr {
+        .addr_type = LAddrType::HANDLE_TABLE,
         .shard_id = shard_id,
         .offset = phys_bucket * NVRAM_MD_BLOCK_SIZE,
     };
     return addr;
 }
 
-EAddress HandlesTable::handle_to_addr(EStore::EHandle handle)
+LAddress HandlesTable::handle_to_addr(EStore::EHandle handle)
 {
     VirtualBucketId virt_id = handle_to_virt_bucket(handle);
     return virt_bucket_to_addr(virt_id);

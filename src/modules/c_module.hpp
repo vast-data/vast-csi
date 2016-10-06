@@ -8,7 +8,6 @@
  */
 #pragma once
 
-#include "c_module.hpp"
 #include "plasma/execution/silo.hpp"
 #include "control/agent.hpp"
 #include "control/imdb/component.hpp"
@@ -55,8 +54,9 @@ private:
     BaseAgent _agent;
     System *_system;
     TreeDB _tree;
-    Cluster _cluster;
     MIOControl _mio_control;
+    EStoreControl _estore_control;
+    Cluster _cluster;
 };
 
 } // namespace Control

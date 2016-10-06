@@ -28,5 +28,3 @@ void BaseBlock::set_buffer(MIOBuffer *buffer)
 
 
 }
-
-

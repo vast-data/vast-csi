@@ -30,13 +30,13 @@ SystemAttr *HandleBlock::get_attr()
     return &handle_info->attr;
 }
 
-EAddress HandleBlock::get_ranges_addr()
+LAddress HandleBlock::get_ranges_addr()
 {
     HandleInfo *handle_info = (HandleInfo *)payload_start();
     return handle_info->ranges_addr;
 }
 
-void HandleBlock::set_ranges_addr(EAddress ranges_addr)
+void HandleBlock::set_ranges_addr(LAddress ranges_addr)
 {
     HandleInfo *handle_info = (HandleInfo *)payload_start();
     handle_info->ranges_addr = ranges_addr;

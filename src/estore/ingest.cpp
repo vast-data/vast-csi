@@ -59,7 +59,7 @@ EStoreRes Ingest::create_root()
 
     handle_block.init(buffers_guard.get_next());
     handle_block.set_handle(ROOT_HANDLE);
-    handle_block.set_ranges_addr(EMPTY_EADDRESS);
+    handle_block.set_ranges_addr(Layout::EMPTY_ADDRESS);
     SystemAttr *attr = handle_block.get_attr();
     set_default_attr(attr, ROOT_HANDLE, true);
     attr->element_flags = (uint64_t)ElementFlags::DIR;
@@ -99,12 +99,12 @@ void Ingest::set_default_attr(SystemAttr *attr, EHandle handle, bool is_containe
     // attr->byte md5_hash[16]; is left zero
 }
 
-EStoreRes Ingest::read_block(CompositeBlock *composite_block, EAddress addr, EHandle owner, BaseBlock *block)
+EStoreRes Ingest::read_block(CompositeBlock *composite_block, LAddress addr, EHandle owner, BaseBlock *block)
 {
     PTC_DEBUG("addr=0x%lx owner handle=0x%lx type=%hhu", addr.as_number(), owner, (uint8_t)block->get_type());
-    if (addr.addr_type == EAddrType::NONE) {
+    if (addr.addr_type == LAddrType::NONE) {
         return OK;
-    } else if (addr.addr_type == EAddrType::CONTAINED) {
+    } else if (addr.addr_type == LAddrType::CONTAINED) {
         EStoreRes res = composite_block->export_contained_block(owner, block->get_type(), block);
         PT_RETURN(res != OK, res, "export_contained_block failed owner=0x%lx", owner);
     } else {
@@ -136,12 +136,12 @@ EStoreRes Ingest::create(OpCallback op_cb, void *cb_ctx, EHandle parent, const c
     OP_CALLBACK_RETURN(op_cb, cb_ctx, parent_handle_block.get_attr());
 
     // allocate a new handle and append it to the write buffer
-    EAddress content_addr;
+    LAddress content_addr;
     res = write_new_handle(&buffers_guard, name, sattr, create_flags, &content_addr, element_handle, element_attr);
     PT_RETURN(res != OK, res, "write_new_handle failed name=%s content_addr=0x%lx", name, content_addr.as_number());
 
     update_mc_times(&parent_handle_block);
-    EAddress range_addr = parent_handle_block.get_ranges_addr();
+    LAddress range_addr = parent_handle_block.get_ranges_addr();
     res = update_parent(&buffers_guard, range_addr, &range_block, range_updated, &bitmap_block, parent,
                         &parent_composite_block, name, content_addr);
     PT_RETURN(res != OK, res, "update_parent failed");
@@ -165,7 +165,7 @@ EStoreRes Ingest::lookup(OpCallback op_cb, void *cb_ctx, EHandle parent, const c
     HandleBlock parent_handle_block;
     EStoreRes res = read_handle_block(parent, &parent_composite_block, &parent_handle_block, &buffers_guard);
     PT_RETURN(res != OK, res, "read_handle_block failed handle=0x%lx", parent);
-    
+
     // Verify the parent is allowed to have children
     if (!parent_handle_block.is_container_element()) {
         PT_ERROR(DATA, "element 0x%lx is not allowed to have children", parent);
@@ -177,11 +177,11 @@ EStoreRes Ingest::lookup(OpCallback op_cb, void *cb_ctx, EHandle parent, const c
     // get ranges block
     NameRangeBlock range_block;
     range_block.init(buffers_guard.get_next());
-    EAddress range_addr = parent_handle_block.get_ranges_addr();
+    LAddress range_addr = parent_handle_block.get_ranges_addr();
     res = read_block(&parent_composite_block, range_addr, parent, &range_block);
     PT_RETURN(res != OK, res, "failed to read block addr=0x%lx", range_addr.as_number());
 
-    if (range_addr.addr_type == EAddrType::NONE) {
+    if (range_addr.addr_type == LAddrType::NONE) {
         // if the ranges block does not exist
         PT_INFO(DATA, "handle=0x%lx does not have a range block", parent);
         return EStoreRes::NOENT;
@@ -190,17 +190,17 @@ EStoreRes Ingest::lookup(OpCallback op_cb, void *cb_ctx, EHandle parent, const c
     // get bitmap block
     NameBitmapBlock bitmap_block;
     bitmap_block.init(buffers_guard.get_next());
-    EAddress bitmap_addr = range_block.get_address(name);
+    LAddress bitmap_addr = range_block.get_address(name);
     res = read_block(&parent_composite_block, bitmap_addr, parent, &bitmap_block);
     PT_RETURN(res != OK, res, "failed to read block addr=0x%lx", bitmap_addr.as_number());
 
-    if (bitmap_addr.addr_type == EAddrType::NONE) {
+    if (bitmap_addr.addr_type == LAddrType::NONE) {
         PT_INFO(DATA, "failed to get bitmap block handle=0x%lx", parent);
         return EStoreRes::NOENT;
     }
 
     // get content block addr
-    EAddress content_addr;
+    LAddress content_addr;
     res = bitmap_block.get_addr(name, &content_addr);
     if (res == EStoreRes::NOENT) {
         PT_INFO(DATA, "element not found handle=0x%lx name=%s", parent, name);
@@ -234,7 +234,7 @@ EStoreRes Ingest::list_elements(OpCallback op_cb, void *cb_ctx, EHandle handle, 
 }
 
 EStoreRes Ingest::write_new_handle(BuffersGuard *buffers_guard, const char *name, SettableAttr *sattr,
-                                   CreateFlags create_flags, EAddress *content_addr, EHandle *new_handle,
+                                   CreateFlags create_flags, LAddress *content_addr, EHandle *new_handle,
                                    SystemAttr *element_attr)
 {
     // TODO lock handle bucket
@@ -263,7 +263,7 @@ EStoreRes Ingest::write_new_handle(BuffersGuard *buffers_guard, const char *name
     HandleBlock new_handle_block;
     new_handle_block.init(buffers_guard->get_next());
     new_handle_block.set_handle(*new_handle);
-    new_handle_block.set_ranges_addr(EMPTY_EADDRESS);
+    new_handle_block.set_ranges_addr(Layout::EMPTY_ADDRESS);
     set_default_attr(new_handle_block.get_attr(), *new_handle, create_flags & CreateFlags::HAS_CHILDREN);
     set_handle_attr(sattr, new_handle_block.get_attr());
 
@@ -281,12 +281,12 @@ EStoreRes Ingest::write_new_handle(BuffersGuard *buffers_guard, const char *name
     return OK;
 }
 
-EStoreRes Ingest::update_parent(BuffersGuard *buffers_guard, EAddress range_addr, NameRangeBlock *range_block,
+EStoreRes Ingest::update_parent(BuffersGuard *buffers_guard, LAddress range_addr, NameRangeBlock *range_block,
                                 bool range_updated, NameBitmapBlock *bitmap_block, EHandle parent,
-                                CompositeBlock *parent_composite_block, const char *name, EAddress content_addr)
+                                CompositeBlock *parent_composite_block, const char *name, LAddress content_addr)
 {
-    EAddress bitmap_addr = range_block->get_address(name);
-    if (bitmap_addr.addr_type == EAddrType::CONTAINED) {
+    LAddress bitmap_addr = range_block->get_address(name);
+    if (bitmap_addr.addr_type == LAddrType::CONTAINED) {
         // bitmap block is contained within a composite block, replace its buffer so it will have space to contain new
         // names
         bitmap_block->replace_buffer(buffers_guard->get_next());
@@ -303,23 +303,23 @@ EStoreRes Ingest::update_parent(BuffersGuard *buffers_guard, EAddress range_addr
 
     bool update_table = false;
     if (range_updated) {
-        if (range_addr.addr_type == EAddrType::CONTAINED || range_addr.addr_type == EAddrType::NONE) {
+        if (range_addr.addr_type == LAddrType::CONTAINED || range_addr.addr_type == LAddrType::NONE) {
             res = parent_composite_block->replace_contained_block(parent, range_block);
             // TODO handle the case the composite block has no space
             PT_RETURN(res != OK, res, "replace_contained_block failed parent=0x%lx", parent);
             update_table = true;
         } else {
-            ASSERT(range_addr.addr_type == EAddrType::MD_BLOCKS);
+            ASSERT(range_addr.addr_type == LAddrType::MD_BLOCKS);
         }
     }
 
-    if (bitmap_addr.addr_type == EAddrType::CONTAINED || bitmap_addr.addr_type == EAddrType::NONE) {
+    if (bitmap_addr.addr_type == LAddrType::CONTAINED || bitmap_addr.addr_type == LAddrType::NONE) {
         res = parent_composite_block->replace_contained_block(parent, bitmap_block);
         // TODO handle the case the composite block has no space
         PT_RETURN(res != OK, res, "replace_contained_block failed parent=0x%lx", parent);
         update_table = true;
     } else {
-        ASSERT(bitmap_addr.addr_type == EAddrType::MD_BLOCKS);
+        ASSERT(bitmap_addr.addr_type == LAddrType::MD_BLOCKS);
     }
 
     if (update_table) {
@@ -327,11 +327,11 @@ EStoreRes Ingest::update_parent(BuffersGuard *buffers_guard, EAddress range_addr
         PT_RETURN(res != OK, res, "_handles_table->write failed parent=0x%lx", parent);
     }
 
-    if (bitmap_addr.addr_type == EAddrType::MD_BLOCKS) {
+    if (bitmap_addr.addr_type == LAddrType::MD_BLOCKS) {
         res = _eio->write_md(bitmap_addr, bitmap_block->get_buffer());
         PT_RETURN(res != OK, res, "_eio->write failed addr=0x%lx", bitmap_addr.as_number());
     }
-    if (range_updated && range_addr.addr_type == EAddrType::MD_BLOCKS) {
+    if (range_updated && range_addr.addr_type == LAddrType::MD_BLOCKS) {
         res = _eio->write_md(range_addr, range_block->get_buffer());
         PT_RETURN(res != OK, res, "_eio->write failed addr=0x%lx", range_addr.as_number());
     }
@@ -412,34 +412,34 @@ EStoreRes Ingest::read_parent_blocks(EHandle parent, const char *name, BuffersGu
 
     // get ranges block
     range_block->init(buffers_guard->get_next());
-    EAddress range_addr = handle_block->get_ranges_addr();
+    LAddress range_addr = handle_block->get_ranges_addr();
     res = read_block(composite_block, range_addr, parent, range_block);
     PT_RETURN(res != OK, res, "failed to read block addr=0x%lx", range_addr.as_number());
 
     // get bitmap block
     bitmap_block->init(buffers_guard->get_next());
-    EAddress bitmap_addr = range_block->get_address(name);
+    LAddress bitmap_addr = range_block->get_address(name);
     res = read_block(composite_block, bitmap_addr, parent, bitmap_block);
     PT_RETURN(res != OK, res, "failed to read block addr=0x%lx", bitmap_addr.as_number());
 
     *range_updated = false;
-    if (range_addr.addr_type == EAddrType::NONE) {
+    if (range_addr.addr_type == LAddrType::NONE) {
         // if the ranges block does not exist attempt to add it to the handle composite block
-        handle_block->set_ranges_addr(CONTAINED_EADDRESS);
+        handle_block->set_ranges_addr(Layout::CONTAINED_ADDRESS);
         *range_updated = true;
     }
     // TODO lock bitmap (should use guards for locks)
 
-    if (bitmap_addr.addr_type == EAddrType::NONE) {
+    if (bitmap_addr.addr_type == LAddrType::NONE) {
         // if the bitmap block did not exist we'll attempt to add it to the handle composite block
         // TODO will " " range always be first?
-        res = range_block->add_range(" ", CONTAINED_EADDRESS);
+        res = range_block->add_range(" ", Layout::CONTAINED_ADDRESS);
         PT_RETURN(res != OK, res, "add_range failed");
         *range_updated = true;
     }
 
     // get content block
-    EAddress content_addr;
+    LAddress content_addr;
     res = bitmap_block->get_addr(name, &content_addr);
     PT_RETURN(res != OK && res != EStoreRes::NOENT, res, "failed to get content block addr name=%s", name);
     if (res == EStoreRes::OK) {
@@ -472,13 +472,13 @@ EStoreRes Ingest::io_start(EHandle handle, uint64_t offset, BuffersGuard *buffer
 
     // TODO locks
     range_block->init(buffers_guard->get_next());
-    EAddress range_addr = handle_block->get_ranges_addr();
+    LAddress range_addr = handle_block->get_ranges_addr();
     res = read_block(composite_block, range_addr, handle, range_block);
     PT_RETURN(res != OK, res, "failed to read range block addr=0x%lx", range_addr.as_number());
 
     // read bitmap block
     bitmap_block->init(buffers_guard->get_next());
-    EAddress bitmap_addr = range_block->get_range(offset);
+    LAddress bitmap_addr = range_block->get_range(offset);
     PTC_DEBUG("bitmap_addr=0x%lx offset=%lu", bitmap_addr.as_number(), offset);
     res = read_block(composite_block, bitmap_addr, handle, bitmap_block);
     PT_RETURN(res != OK, res, "failed to read bitmap block addr=0x%lx", bitmap_addr.as_number());
@@ -513,11 +513,11 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
     // align write to allowed IO size
     io_vecs->iovecs[io_vecs->count - 1].iov_len = IO_ALIGN_UP(io_vecs->iovecs[io_vecs->count - 1].iov_len);
     bool range_updated = false;
-    EAddress range_addr = handle_block.get_ranges_addr();
-    if (range_addr.addr_type == EAddrType::NONE) {
+    LAddress range_addr = handle_block.get_ranges_addr();
+    if (range_addr.addr_type == LAddrType::NONE) {
         PTC_DEBUG("need to create a range block for handle=0x%lx", handle);
         // need to create a range block, try to do it in the composite block
-        range_addr.addr_type = EAddrType::CONTAINED;
+        range_addr.addr_type = LAddrType::CONTAINED;
         handle_block.set_ranges_addr(range_addr);
         range_updated = true;
     }
@@ -528,12 +528,12 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
     WriteBuffer *write_buffer = _shard_md->get_ingest_buffer(shard_id);
 
     uint64_t range_len = data_len;
-    EAddress bitmap_addr = range_block.get_range(offset, &range_len);
-    if (bitmap_addr.addr_type != EAddrType::NONE) {
+    LAddress bitmap_addr = range_block.get_range(offset, &range_len);
+    if (bitmap_addr.addr_type != LAddrType::NONE) {
         PTC_DEBUG("data_len=%lu range_len=%lu", data_len, range_len);
         ASSERT_EQUAL(data_len, range_len);
     }
-    if (bitmap_addr.addr_type == EAddrType::NONE) {
+    if (bitmap_addr.addr_type == LAddrType::NONE) {
         uint64_t base_offset = (offset / DATA_RANGE_SHARD_SIZE) * DATA_RANGE_SHARD_SIZE;
         // need to create a new bitmap block, try to do it in the composite block
         PTC_DEBUG("need to create a bitmap block for handle=0x%lx base_offset=%lu offset=%lu",
@@ -541,7 +541,7 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
 
         if (base_offset == 0) {
             // the first bitmap is contained in the handle composite block
-            bitmap_addr.addr_type = EAddrType::CONTAINED;
+            bitmap_addr.addr_type = LAddrType::CONTAINED;
         } else {
             res = write_buffer->alloc_md_block(&buffers_guard, &bitmap_addr);
             // TODO handle write buffer switch?
@@ -550,7 +550,7 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
         }
         bitmap_block.set_base_offset(base_offset);
 
-        if (range_addr.addr_type == EAddrType::CONTAINED) {
+        if (range_addr.addr_type == LAddrType::CONTAINED) {
             range_block.replace_buffer(buffers_guard.get_next());
         }
         res = range_block.add_range(base_offset, bitmap_addr);
@@ -562,7 +562,7 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
     // TODO write short data (less than 512) bytes inline
 
     // write data
-    EAddress data_addr;
+    LAddress data_addr;
     res = write_buffer->alloc_data_chunk(&buffers_guard, IO_ALIGN_UP(data_len), &data_addr);
     // TODO handle switching write buffer
     PT_RETURN(res != OK, res, "failed to allocate data chunk handle=0x%lx data_len=%lu", handle, data_len);
@@ -571,9 +571,9 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
     res = _eio->write_data(data_addr, io_vecs);
     PT_RETURN(res != OK, res, "write_data failed handle=0x%lx addr=0x%lx data_len=%lu",
               handle, data_addr.as_number(), data_len);
-    
+
     // update content block
-    EAddress content_addr;
+    LAddress content_addr;
     res = write_buffer->append_data_content(&buffers_guard, handle, offset, data_len, data_addr, &content_addr);
     PT_RETURN(res != OK, res, "append_data_content failed handle=0x%lx addr=0x%lx data_len=%lu",
               handle, data_addr.as_number(), data_len);
@@ -592,7 +592,7 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
         handle_block.get_attr()->size = offset + data_len;
     }
 
-    if (range_updated && range_addr.addr_type == EAddrType::CONTAINED) {
+    if (range_updated && range_addr.addr_type == LAddrType::CONTAINED) {
         res = composite_block.replace_contained_block(handle, &range_block);
         if (res != OK) {
             composite_block.trace_contained_blocks("out of space during write");
@@ -602,7 +602,7 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
     }
 
     // write bitmap, range and handle blocks
-    if (bitmap_addr.addr_type == EAddrType::CONTAINED) {
+    if (bitmap_addr.addr_type == LAddrType::CONTAINED) {
         PTC_DEBUG("updating bitmap block");
         res = composite_block.replace_contained_block(handle, &bitmap_block);
         // TODO handle composite block being out of space
@@ -614,11 +614,11 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
     res = _handles_table->write(handle, composite_block.get_buffer());
     PT_RETURN(res != OK, res, "_handles_table->write failed parent=0x%lx", handle);
 
-    if (bitmap_addr.addr_type == EAddrType::MD_BLOCKS || bitmap_addr.addr_type == EAddrType::WRITE_BUFFER) {
+    if (bitmap_addr.addr_type == LAddrType::MD_BLOCKS || bitmap_addr.addr_type == LAddrType::WRITE_BUFFER) {
         res = _eio->write_md(bitmap_addr, bitmap_block.get_buffer());
         PT_RETURN(res != OK, res, "_eio->write_md failed addr=0x%lx", bitmap_addr.as_number());
     }
-    if (range_updated && range_addr.addr_type == EAddrType::MD_BLOCKS) {
+    if (range_updated && range_addr.addr_type == LAddrType::MD_BLOCKS) {
         res = _eio->write_md(range_addr, range_block.get_buffer());
         PT_RETURN(res != OK, res, "_eio->write_md failed addr=0x%lx", range_addr.as_number());
     }
@@ -701,7 +701,7 @@ EStoreRes Ingest::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t 
     // TODO handle the case in which there are more than n_content_addrs (make this iterative)
 #define MAX_ADDR_PER_READ 32
     uint16_t n_content_addrs = MAX_ADDR_PER_READ;
-    EAddress content_addrs[MAX_ADDR_PER_READ];
+    LAddress content_addrs[MAX_ADDR_PER_READ];
     // get content blocks that contain relevant extents
     res = bitmap_block.get_content_addrs(offset, len, &n_content_addrs, content_addrs);
     PT_RETURN(res != OK, res, "get_content_addrs failed handle=0x%lx offset=%lu len=%u", handle, offset, len);
@@ -767,7 +767,7 @@ EStoreRes Ingest::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t 
         read_vecs[curr_read_vecs].iovecs = &read_vec[curr_read_vec];
         read_vecs[curr_read_vecs].count = 0;
         // align read offset
-        EAddress read_addr = extent->_data_addr;
+        LAddress read_addr = extent->_data_addr;
         read_addr.offset = IO_ALIGN_DOWN(read_addr.offset);
         uint64_t offset_diff = extent->_data_addr.offset - read_addr.offset;
         PTC_DEBUG("offset_diff=%lu", offset_diff);

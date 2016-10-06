@@ -33,8 +33,8 @@ public:
 
 static void fill_range_block(NameRangeBlock *range_block)
 {
-    EAddress addr {
-        .addr_type = EAddrType::WRITE_BUFFER,
+    LAddress addr {
+        .addr_type = LAddrType::WRITE_BUFFER,
         .shard_id = 0,
         .offset = 0,
     };
@@ -55,7 +55,7 @@ TEST(TestNameRangeBlock, test_md)
     ASSERT(range_block.get_type() == BlockType::NAME_RANGE_BLOCK);
 
     fill_range_block(&range_block);
-    EAddress addr_res = range_block.get_address("aab");
+    LAddress addr_res = range_block.get_address("aab");
     ASSERT_EQ(addr_res.shard_id, 0);
     addr_res = range_block.get_address("ccc");
     ASSERT_EQ(addr_res.shard_id, 1);
@@ -72,14 +72,14 @@ TEST(TestDataRangeBlock, test_md)
     range_block.init(&buff);
     ASSERT(range_block.get_type() == BlockType::DATA_RANGE_BLOCK);
 
-    EAddress addr {
-        .addr_type = EAddrType::CONTAINED,
+    LAddress addr {
+        .addr_type = LAddrType::CONTAINED,
         .shard_id = 0,
         .offset = 0,
     };
     EStoreRes res = range_block.add_range(0, addr);
     ASSERT_OK(res);
-    EAddress res_addr = range_block.get_range(0);
+    LAddress res_addr = range_block.get_range(0);
     ASSERT_EQ(addr.as_number(), res_addr.as_number());
     res_addr = range_block.get_range(2000);
     ASSERT_EQ(addr.as_number(), res_addr.as_number());
@@ -226,7 +226,7 @@ TEST(TestDataBitmapBlock, test_md)
     bitmap_block.init(&buff);
     bitmap_block.set_base_offset(0);
 
-    EAddress addr = { EAddrType::CONTAINED, 5, 6 };
+    LAddress addr = { LAddrType::CONTAINED, 5, 6 };
     EStoreRes res = bitmap_block.add_extent(0, 4, addr);
     ASSERT_OK(res);
     res = bitmap_block.add_extent(3, 8, addr);
@@ -235,7 +235,7 @@ TEST(TestDataBitmapBlock, test_md)
     res = bitmap_block.add_extent(10, 8, addr);
     ASSERT_OK(res);
 
-    EAddress addresses[MAX_ADDRESSES];
+    LAddress addresses[MAX_ADDRESSES];
     uint16_t n_addrs = MAX_ADDRESSES;
     res = bitmap_block.get_content_addrs(1, 5, &n_addrs, addresses);
     ASSERT_OK(res);
@@ -244,7 +244,7 @@ TEST(TestDataBitmapBlock, test_md)
 
     res = bitmap_block.add_extent(100, 8, addr);
     ASSERT_OK(res);
-    EAddress addr2 = { EAddrType::CONTAINED, 51, 36 };
+    LAddress addr2 = { LAddrType::CONTAINED, 51, 36 };
     res = bitmap_block.add_extent(100, 8, addr2);
     ASSERT_OK(res);
 
@@ -269,8 +269,8 @@ TEST(TestNameHash, test_md)
     bitmap_block.init(&buff);
     ASSERT(bitmap_block.get_type() == BlockType::NAME_BITMAP_BLOCK);
 
-    EAddress addr {
-        .addr_type = EAddrType::WRITE_BUFFER,
+    LAddress addr {
+        .addr_type = LAddrType::WRITE_BUFFER,
         .shard_id = 0,
         .offset = 0,
     };
@@ -282,7 +282,7 @@ TEST(TestNameHash, test_md)
     addr.shard_id = 3;
     ASSERT(EStoreRes::OK == bitmap_block.add_name("2314351cf", addr));
 
-    EAddress addr_res;
+    LAddress addr_res;
     ASSERT(EStoreRes::OK == bitmap_block.get_addr("2314351cf", &addr_res));
     ASSERT_EQ(3, addr_res.shard_id);
     ASSERT(EStoreRes::OK == bitmap_block.get_addr("adsasdsa", &addr_res));
@@ -322,7 +322,7 @@ TEST(TestDataContent, test_md)
     content_block.init(&buff);
     ASSERT(content_block.get_type() == BlockType::DATA_CONTENT_BLOCK);
 
-    EAddress data_addr = {EAddrType::CONTAINED, 0, 0};
+    LAddress data_addr = {LAddrType::CONTAINED, 0, 0};
     EStoreRes res = content_block.add_extent(8, 1 ,2, data_addr);
     ASSERT_OK(res);
     res = content_block.add_extent(8, 2 ,6, data_addr);
@@ -345,7 +345,7 @@ TEST(TestDataContent, test_md)
         extents_container.init(0, 400);
         content_block.init(&buff);
         EHandle handle = 1;
-        data_addr = {EAddrType::CONTAINED, 0, 0};
+        data_addr = {LAddrType::CONTAINED, 0, 0};
         LOOP(100, i) {
             uint32_t len = rand() % 100 + 1;
             data_addr.offset += len;
@@ -398,8 +398,8 @@ TEST(TestCompositeBlock, test_md)
     NameBitmapBlock bitmap_block;
     bitmap_block.init(buffers_guard.get_next());
     ASSERT(bitmap_block.get_type() == BlockType::NAME_BITMAP_BLOCK);
-    EAddress addr1 = {
-        .addr_type = EAddrType::CONTAINED,
+    LAddress addr1 = {
+        .addr_type = LAddrType::CONTAINED,
         .offset = 1,
         .shard_id = 2
     };
@@ -416,8 +416,8 @@ TEST(TestCompositeBlock, test_md)
     ASSERT_EQ(0, res_block1.space_left());
 
     res_block1.replace_buffer(buffers_guard.get_next());
-    EAddress addr {
-        .addr_type = EAddrType::WRITE_BUFFER,
+    LAddress addr {
+        .addr_type = LAddrType::WRITE_BUFFER,
         .shard_id = 8,
         .offset = 0,
     };
@@ -428,7 +428,7 @@ TEST(TestCompositeBlock, test_md)
     ASSERT(EStoreRes::OK == composite_block.export_contained_block(handle, BlockType::NAME_RANGE_BLOCK, &res_block2));
 
     ASSERT(res_block2.get_type() == BlockType::NAME_RANGE_BLOCK);
-    EAddress addr2 = res_block2.get_address("batata");
+    LAddress addr2 = res_block2.get_address("batata");
     ASSERT_EQ(addr.as_number(), addr2.as_number());
 }
 

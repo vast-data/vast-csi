@@ -17,7 +17,7 @@ void DataContentBlock::init(EStore::MIOBuffer *buffer)
     extents->n_extents = 0;
 }
 
-EStoreRes DataContentBlock::add_extent(EHandle handle, uint64_t offset, uint32_t len, EAddress data_addr)
+EStoreRes DataContentBlock::add_extent(EHandle handle, uint64_t offset, uint32_t len, LAddress data_addr)
 {
     DEBUG_ASSERT(len > 0);
     ContentExtents *extents = (ContentExtents *)payload_start();

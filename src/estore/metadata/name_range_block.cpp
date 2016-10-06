@@ -30,7 +30,7 @@ NameRange *NameRangeBlock::find_range(const char *name)
     return res;
 }
 
-EStoreRes NameRangeBlock::add_range(const char *name, EAddress addr)
+EStoreRes NameRangeBlock::add_range(const char *name, LAddress addr)
 {
     size_t name_len = strnlen(name, get_size());
     if (name_len + sizeof(NameRange) + sizeof(uint16_t) > space_left()) {
@@ -59,10 +59,10 @@ EStoreRes NameRangeBlock::add_range(const char *name, EAddress addr)
     return EStoreRes::OK;
 }
 
-EAddress NameRangeBlock::get_address(const char *name)
+LAddress NameRangeBlock::get_address(const char *name)
 {
     if (!has_ranges()) {
-        return EMPTY_EADDRESS;
+        return Layout::EMPTY_ADDRESS;
     }
     return find_range(name)->bitmap_addr;
 }
@@ -84,4 +84,3 @@ void NameRangeBlock::trace_ranges()
 }
 
 }
-

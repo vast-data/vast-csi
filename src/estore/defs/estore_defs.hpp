@@ -31,32 +31,7 @@ static const uint64_t ELEMENT_STORE_ID = 1;
 // 0 is reserved
 static uint64_t ROOT_HANDLE = 1;
 
-enum class EAddrType : uint64_t {
-    NONE                = 0,
-    HANDLE_TABLE        = 1,
-    SHARD_MD            = 2, // a single block
-    MD_BLOCKS           = 3,
-    WRITE_BUFFER        = 4,
-    TOKEN_MAPPER        = 5, // ?
-    CONTAINED           = 6,
-    FLASH               = 7,
-
-    COUNT
-};
-static_assert((uint64_t)EAddrType::COUNT < 16, "EAddrType cannot take more than 4 bits");
-
 typedef uint64_t VirtualBucketId;
-
-// TODO might need to support flash addr here
-struct EAddress {
-    EAddrType addr_type:4;
-    uint64_t shard_id:16;
-    uint64_t offset:44;
-
-    uint64_t as_number() { return *(uint64_t *)this; }
-};
-static const EAddress EMPTY_EADDRESS     = { EAddrType::NONE, 0, 0 };
-static const EAddress CONTAINED_EADDRESS = { EAddrType::CONTAINED, 0, 0 };
 
 // Protocol defined element flags, the meaning of these flags is opaque to the element store
 enum class ElementFlags : uint64_t {

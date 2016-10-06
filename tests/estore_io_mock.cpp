@@ -33,7 +33,7 @@ void EStoreIO::destroy()
     // TODO free mem
 }
 
-static int get_mock_fd(EAddress addr)
+static int get_mock_fd(LAddress addr)
 {
     if (fd_map.size() > 500) {
         for (auto fd_iter : fd_map) {
@@ -56,7 +56,7 @@ static int get_mock_fd(EAddress addr)
     return fd;
 }
 
-EStoreRes WARN_UNUSED EStoreIO::read_md(EAddress addr, MIOBuffer *buff, bool locked, FutureRes<MIO::ReadRet> *future)
+EStoreRes WARN_UNUSED EStoreIO::read_md(LAddress addr, MIOBuffer *buff, bool locked, FutureRes<MIO::ReadRet> *future)
 {
 //    PT_DEBUG(DATA, "read addr=0x%lx", addr.as_number());
     int fd = get_mock_fd(addr);
@@ -70,7 +70,7 @@ EStoreRes WARN_UNUSED EStoreIO::read_md(EAddress addr, MIOBuffer *buff, bool loc
     return OK;
 }
 
-EStoreRes EStoreIO::write_md(EAddress addr, MIOBuffer *buff, FutureRes<bool> *future)
+EStoreRes EStoreIO::write_md(LAddress addr, MIOBuffer *buff, FutureRes<bool> *future)
 {
 //    PT_DEBUG(DATA, "write addr=0x%lx", addr.as_number());
     int fd = get_mock_fd(addr);
@@ -86,7 +86,7 @@ EStoreRes EStoreIO::write_md(EAddress addr, MIOBuffer *buff, FutureRes<bool> *fu
 }
 
 
-EStoreRes WARN_UNUSED EStoreIO::read_data(EAddress addr, IOVecs *iovecs, FutureRes<bool> *future)
+EStoreRes WARN_UNUSED EStoreIO::read_data(LAddress addr, IOVecs *iovecs, FutureRes<bool> *future)
 {
     int fd = get_mock_fd(addr);
     LOOP(iovecs->count, i) {
@@ -105,7 +105,7 @@ EStoreRes WARN_UNUSED EStoreIO::read_data(EAddress addr, IOVecs *iovecs, FutureR
     return OK;
 }
 
-EStoreRes EStoreIO::write_data(EAddress addr, P::IO::IOVecs *iovecs, FutureRes<bool> *future)
+EStoreRes EStoreIO::write_data(LAddress addr, P::IO::IOVecs *iovecs, FutureRes<bool> *future)
 {
     int fd = get_mock_fd(addr);
     LOOP(iovecs->count, i) {
@@ -169,9 +169,9 @@ void EStoreIO::free_data_buffers(IOVecs *iovecs)
     iovecs->count = 0;
 }
 
-EAddress EStoreIO::alloc_md_block(P::ShardId shard_id, EAddrType type, VirtualBucketId virt_bucket)
+LAddress EStoreIO::alloc_md_block(P::ShardId shard_id, LAddrType type, VirtualBucketId virt_bucket)
 {
-    EAddress addr;
+    LAddress addr;
     addr.shard_id = shard_id;
     addr.addr_type = type;
     addr.offset = current_addr;
@@ -179,17 +179,17 @@ EAddress EStoreIO::alloc_md_block(P::ShardId shard_id, EAddrType type, VirtualBu
     return addr;
 }
 
-void EStoreIO::free_md_block(EAddress addr)
+void EStoreIO::free_md_block(LAddress addr)
 {
 
 }
 
-void EStoreIO::get_addr_type_info(P::ShardId shard_id, EAddrType type, uint64_t *size_bytes)
+uint64_t EStoreIO::get_total_addr_type_size(P::ShardId shard_id, LAddrType type)
 {
-    if (type == EAddrType::WRITE_BUFFER) {
-        *size_bytes = WRITE_BUFFER_SIZE * N_WRITE_BUFFERS;
+    if (type == LAddrType::WRITE_BUFFER) {
+        return WRITE_BUFFER_SIZE * N_WRITE_BUFFERS;
     } else {
-        *size_bytes = NVRAM_MD_BLOCK_SIZE * 256;
+        return NVRAM_MD_BLOCK_SIZE * 256;
     }
 }
 

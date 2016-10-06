@@ -102,7 +102,7 @@ TEST(TestCreate, test_ingest)
     iovecs.iovecs = iovec;
     uint64_t offset = 0;
 
-    #define N_WRITES 10000
+    #define N_WRITES 100
     uint32_t lens[N_WRITES];
     LOOP(N_WRITES, i) {
         lens[i] = rand() % (DATA_BUFFER_SIZE * WRITE_SIZE_FACTOR) + 1;

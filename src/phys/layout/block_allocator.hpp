@@ -6,15 +6,11 @@
  */
 #pragma once
 
-namespace Phys {
 namespace Layout {
 
 class BlockAllocator {
-    bool alloc(EAddress *eaddr INOUT);
-    void free(const EAddress *eaddr);
+    bool alloc(LAddress *addr INOUT);
+    void free(const LAddress *addr);
 };
 
 }
-}
-
-

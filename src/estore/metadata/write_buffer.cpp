@@ -69,7 +69,7 @@ uint64_t WBHeaderBlock::alloc_data_chunk(uint64_t len)
     return UINT64_MAX;
 }
 
-void WriteBuffer::init(EStoreIO *eio, EAddress wb_addr)
+void WriteBuffer::init(EStoreIO *eio, LAddress wb_addr)
 {
     _eio = eio;
     _wb_addr = wb_addr;
@@ -86,7 +86,7 @@ EStoreRes WriteBuffer::reset()
 
     NameContentBlock name_content_block;
     name_content_block.init(buffers_guard.get_next());
-    EAddress addr = _wb_addr;
+    LAddress addr = _wb_addr;
     addr.offset += header_block.alloc_md(WBHeader::MDType::NAME_CONTENT);
     EStoreRes res = _eio->write_md(addr, name_content_block.get_buffer());
     PT_RETURN(res != OK, res, "write_md failed addr=0x%lx", addr.as_number());
@@ -123,12 +123,12 @@ EStoreRes WARN_UNUSED WriteBuffer::move_to_migrate_state()
     return OK;
 }
 
-EStoreRes WriteBuffer::alloc_md_block(BuffersGuard *buffers_guard, EAddress *addr)
+EStoreRes WriteBuffer::alloc_md_block(BuffersGuard *buffers_guard, LAddress *addr)
 {
     return alloc_md_internal(buffers_guard, WBHeader::MDType::MD_BLOCK, addr);
 }
 
-EStoreRes WARN_UNUSED WriteBuffer::alloc_md_internal(BuffersGuard *buffers_guard, WBHeader::MDType type, EAddress *addr)
+EStoreRes WARN_UNUSED WriteBuffer::alloc_md_internal(BuffersGuard *buffers_guard, WBHeader::MDType type, LAddress *addr)
 {
     // TODO lock
     WBHeaderBlock header_block;
@@ -148,9 +148,9 @@ EStoreRes WARN_UNUSED WriteBuffer::alloc_md_internal(BuffersGuard *buffers_guard
     return OK;
 }
 
-EAddress WriteBuffer::get_content_addr(WBHeaderBlock *header_block, WBHeader::MDType type)
+LAddress WriteBuffer::get_content_addr(WBHeaderBlock *header_block, WBHeader::MDType type)
 {
-    EAddress addr = _wb_addr;
+    LAddress addr = _wb_addr;
     uint64_t content_offset = header_block->get_content_offset(type);
     if (content_offset == UINT64_MAX) {
         // TODO need to move to the next write buffer
@@ -160,7 +160,7 @@ EAddress WriteBuffer::get_content_addr(WBHeaderBlock *header_block, WBHeader::MD
     return addr;
 }
 
-EStoreRes WriteBuffer::append_name_content(BuffersGuard *buffers_guard, const char *name, EHandle handle, EAddress *addr)
+EStoreRes WriteBuffer::append_name_content(BuffersGuard *buffers_guard, const char *name, EHandle handle, LAddress *addr)
 {
     // TODO lock
     WBHeaderBlock header_block;
@@ -193,7 +193,7 @@ EStoreRes WriteBuffer::append_name_content(BuffersGuard *buffers_guard, const ch
 }
 
 EStoreRes WriteBuffer::append_data_content(BuffersGuard *buffers_guard, EHandle handle, uint64_t offset, uint32_t len,
-                                           EAddress data_addr, EAddress *addr)
+                                           LAddress data_addr, LAddress *addr)
 {
     // TODO try to reduce code duplication with append_name_content
     // TODO lock
@@ -226,7 +226,7 @@ EStoreRes WriteBuffer::append_data_content(BuffersGuard *buffers_guard, EHandle 
     return OK;
 }
 
-EStoreRes WriteBuffer::alloc_data_chunk(BuffersGuard *buffers_guard, uint64_t len, EAddress *addr)
+EStoreRes WriteBuffer::alloc_data_chunk(BuffersGuard *buffers_guard, uint64_t len, LAddress *addr)
 {
     DEBUG_ASSERT(len % IO_ALIGNMENT == 0);
     // TODO lock

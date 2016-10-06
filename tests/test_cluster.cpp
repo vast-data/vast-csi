@@ -24,6 +24,7 @@ static const VMsg::ModuleAddress dest = {
 static void system_activate(ClusterClient *client)
 {
     SystemActivateParams::RootBuilder *activate_params = client->alloc_system_activate();
+    activate_params->set_shard_count(1024);
     SystemActivateResult::RootReader *activate_result;
     ASSERT_EQ(VMsg::VMsgRes::OK, client->system_activate_sync(dest, activate_params, &activate_result));
     ASSERT_EQ(activate_result->get_code(), SystemActivateResultCode::SUCCESS);

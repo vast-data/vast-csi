@@ -12,7 +12,7 @@ class ExtentsContainer;
 
 class ContentExtent : public P::Extent<uint64_t> {
 public:
-    EAddress _data_addr;
+    LAddress _data_addr;
     // TODO optimize by keeping each handle only once in the block
     EHandle _handle;
 } PACKED;
@@ -27,7 +27,7 @@ class DataContentBlock : public BaseBlock {
 public:
     void init(MIOBuffer *buffer) override;
     // add an extent to the end of the block
-    EStoreRes WARN_UNUSED add_extent(EHandle handle, uint64_t offset, uint32_t len, EAddress data_addr);
+    EStoreRes WARN_UNUSED add_extent(EHandle handle, uint64_t offset, uint32_t len, LAddress data_addr);
     EStoreRes WARN_UNUSED get_extents(EHandle handle, uint64_t offset, uint32_t len, uint16_t *n_extents INOUT,
                                       ContentExtent *extents OUT);
     EStoreRes WARN_UNUSED export_extents(EHandle handle, uint64_t offset, uint32_t len,
@@ -47,7 +47,7 @@ public:
         _len = content_extent->_len;
     }
 
-    EAddress _data_addr;
+    LAddress _data_addr;
     P::IList::Node _node;
 };
 

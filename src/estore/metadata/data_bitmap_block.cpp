@@ -24,7 +24,7 @@ void DataBitmapBlock::set_base_offset(uint64_t base_offset)
     bitmap_info->base_offset = base_offset;
 }
 
-EStoreRes DataBitmapBlock::add_extent(uint64_t offset, uint32_t len, EAddress addr)
+EStoreRes DataBitmapBlock::add_extent(uint64_t offset, uint32_t len, LAddress addr)
 {
     // adding an extend might overwrite a part or one or even multiple existing extents
     DataBitmapInfo *bitmap_info = (DataBitmapInfo *)payload_start();
@@ -60,7 +60,7 @@ EStoreRes DataBitmapBlock::add_extent(uint64_t offset, uint32_t len, EAddress ad
     return OK;
 }
 
-EStoreRes DataBitmapBlock::get_content_addrs(uint64_t offset, uint32_t len, uint16_t *n_addrs, EAddress *content_addrs)
+EStoreRes DataBitmapBlock::get_content_addrs(uint64_t offset, uint32_t len, uint16_t *n_addrs, LAddress *content_addrs)
 {
     DataBitmapInfo *bitmap_info = (DataBitmapInfo *)payload_start();
     DEBUG_ASSERT(bitmap_info->base_offset != UINT64_MAX);

@@ -10,7 +10,7 @@ namespace EStore {
 class BitmapExtent : public P::Extent<uint32_t> {
 public:
     // TODO optimize by keeping each content address only once in the block
-    EAddress _content_addr;
+    LAddress _content_addr;
 } PACKED;
 ASSERT_NO_VTABLE(BitmapExtent);
 
@@ -30,9 +30,9 @@ public:
     void init(MIOBuffer *buffer) override;
 
     void set_base_offset(uint64_t base_offset);
-    EStoreRes WARN_UNUSED add_extent(uint64_t offset, uint32_t len, EAddress addr);
+    EStoreRes WARN_UNUSED add_extent(uint64_t offset, uint32_t len, LAddress addr);
     EStoreRes WARN_UNUSED get_content_addrs(uint64_t offset, uint32_t len, uint16_t *n_addrs INOUT,
-                                            EAddress *content_addrs OUT);
+                                            LAddress *content_addrs OUT);
     void trace();
 };
 

@@ -10,7 +10,7 @@ namespace EStore {
 
 struct HandleInfo {
     EHandle handle;
-    EAddress ranges_addr;
+    LAddress ranges_addr;
     SystemAttr attr;
 } PACKED;
 
@@ -20,8 +20,8 @@ public:
 
     void set_handle(EHandle handle);
     EHandle get_handle();
-    EAddress get_ranges_addr();
-    void set_ranges_addr(EAddress ranges_addr);
+    LAddress get_ranges_addr();
+    void set_ranges_addr(LAddress ranges_addr);
 
     bool is_data_element() { return has_internal_flag(InternalFlags::DATA); }
     bool is_container_element() { return has_internal_flag(InternalFlags::CONTAINER); }

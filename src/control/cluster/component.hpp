@@ -15,6 +15,7 @@
 #include "control/imdb/nvram.hpp"
 #include "control/imdb/env.hpp"
 #include "control/imdb/module.hpp"
+#include "control/estore/estore.hpp"
 #include "control/mio/mio.hpp"
 #include "cluster.rpc.server.hpp"
 
@@ -22,7 +23,7 @@ namespace Control {
 
 class Cluster : public ClusterServer {
 public:
-    void init(P::SiloId silo_id, ModuleId module_id, TreeDB *imdb, System *system, MIOControl *mio_control);
+    void init(P::SiloId silo_id, ModuleId module_id, TreeDB *imdb, System *system, MIOControl *mio, EStoreControl *estore);
     void start();
     void connect_envs();
 
@@ -86,7 +87,8 @@ private:
 
     TreeDB *_tree;
     System *_system;
-    MIOControl *_mio_control;
+    MIOControl *_mio;
+    EStoreControl *_estore;
     EnvObj *_local_env_obj;
 };
 

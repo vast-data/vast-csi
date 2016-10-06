@@ -19,7 +19,7 @@ void NameBitmapBlock::init(MIOBuffer *buffer)
     ZERO_LAST(NameHash);
 }
 
-EStoreRes NameBitmapBlock::add_name(const char *name, EAddress addr)
+EStoreRes NameBitmapBlock::add_name(const char *name, LAddress addr)
 {
     size_t name_len = strnlen(name, get_size());
     uint32_t hash;
@@ -39,7 +39,7 @@ EStoreRes NameBitmapBlock::add_name(const char *name, EAddress addr)
     return EStoreRes::OK;
 }
 
-EStoreRes NameBitmapBlock::get_addr(const char *name, EAddress *addr)
+EStoreRes NameBitmapBlock::get_addr(const char *name, LAddress *addr)
 {
     uint32_t hash;
     MurmurHash3_x86_32(name, strlen(name), SEED, &hash);

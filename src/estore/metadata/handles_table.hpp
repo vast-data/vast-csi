@@ -34,9 +34,9 @@ public:
     }
 
 private:
-    EAddress handle_to_addr(EHandle handle);
-    EAddress virt_bucket_to_addr(VirtualBucketId virt_bucket);
-    EAddress phys_bucket_to_addr(uint64_t phys_bucket, P::ShardId shard_id);
+    LAddress handle_to_addr(EHandle handle);
+    LAddress virt_bucket_to_addr(VirtualBucketId virt_bucket);
+    LAddress phys_bucket_to_addr(uint64_t phys_bucket, P::ShardId shard_id);
 
 private:
 
