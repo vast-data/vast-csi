@@ -1,6 +1,7 @@
 #include "data_range_block.hpp"
 
 #define CURRENT_COMPONENT ComponentId::ESTORE
+#define CURRENT_CHANNEL DATA
 
 namespace EStore {
 
@@ -23,7 +24,7 @@ EStoreRes DataRangeBlock::add_range(uint64_t offset, EAddress addr)
     if (ranges->n_ranges > 0) {
         range_index = find_range_index(offset);
         if (ranges->ranges[range_index]._offset == offset) {
-            PT_DEBUG(DATA, "replacing address for offset=%lu", offset);
+            PTC_INFO("replacing address for offset=%lu", offset);
             ranges->ranges[range_index].data_bitmap_addr = addr;
             return OK;
         }
@@ -44,7 +45,7 @@ EStoreRes DataRangeBlock::add_range(uint64_t offset, EAddress addr)
     return OK;
 }
 
-EAddress DataRangeBlock::get_range(uint64_t offset)
+EAddress DataRangeBlock::get_range(uint64_t offset, uint64_t *len)
 {
     Ranges *ranges = (Ranges *)payload_start();
     if (ranges->n_ranges == 0) {
@@ -52,10 +53,20 @@ EAddress DataRangeBlock::get_range(uint64_t offset)
     }
     uint16_t range_index = find_range_index(offset);
     if (ranges->ranges[range_index]._offset + DATA_RANGE_SHARD_SIZE < offset) {
-        PT_DEBUG(DATA, "found range is out of shard, range_index=%hu range offset=%lu offset=%lu", range_index,
-                 ranges->ranges[range_index]._offset, offset);
+        PTC_DEBUG("range is out of shard, range_index=%hu range offset=%lu offset=%lu", range_index,
+                  ranges->ranges[range_index]._offset, offset);
         // offset is outside the shard range
         return EMPTY_EADDRESS;
+    }
+    if (len) {
+        uint64_t available_len;
+        if (range_index + 1 == ranges->n_ranges) {
+            available_len = POW2_ROUND_UP(ranges->ranges[range_index]._offset + 1, DATA_RANGE_SHARD_SIZE) - offset;
+        } else {
+            available_len = ranges->ranges[range_index + 1]._offset - offset;
+        }
+        DEBUG_ASSERT_OP(available_len, <=, DATA_RANGE_SHARD_SIZE);
+        *len = P_MIN(*len, available_len);
     }
     return ranges->ranges[range_index].data_bitmap_addr;
 }
@@ -80,7 +91,7 @@ void DataRangeBlock::trace_ranges()
     Ranges *ranges = (Ranges *)payload_start();
     for (uint16_t i = 0; i < ranges->n_ranges; ++i) {
         Range *range = &ranges->ranges[i];
-        PT_DEBUG(DATA, "range(%u) offset=%lu addr=0x%lx",i, range->_offset, range->data_bitmap_addr.as_number());
+        PTC_DEBUG("range(%u) offset=%lu addr=0x%lx",i, range->_offset, range->data_bitmap_addr.as_number());
     }
 }
 

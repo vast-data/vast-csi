@@ -10,6 +10,7 @@ using EStoreRes::OK;
 using P::IO::IOVec;
 using P::IO::IOVecs;
 
+#define CURRENT_COMPONENT ComponentId::TEST
 
 TEST(TestCreate, test_ingest)
 {
@@ -94,44 +95,45 @@ TEST(TestCreate, test_ingest)
     ASSERT_EQ(7, handle_attr.gid);
     printf("created handle 0x%lx\n", handle);
 
-    IOVec iovec[16];
+    #define WRITE_SIZE_FACTOR 12
+    #define IOVEC_SIZE 64
+    IOVec iovec[IOVEC_SIZE];
     IOVecs iovecs;
     iovecs.iovecs = iovec;
     uint64_t offset = 0;
-#define N_WRITES 100
+
+    #define N_WRITES 10000
     uint32_t lens[N_WRITES];
     LOOP(N_WRITES, i) {
-        iovecs.count = 16;
+        lens[i] = rand() % (DATA_BUFFER_SIZE * WRITE_SIZE_FACTOR) + 1;
+        uint32_t len = lens[i];
+        iovecs.count = (len / DATA_BUFFER_SIZE) + (len % DATA_BUFFER_SIZE ? 1 : 0);
         ingest.alloc_data_buffers(&iovecs);
         LOOP(iovecs.count, j) {
             memset(iovecs.iovecs[j].iov_base, i+1, DATA_BUFFER_SIZE);
+            iovecs.iovecs[j].iov_len = P_MIN(len, DATA_BUFFER_SIZE);
+            len -= iovecs.iovecs[j].iov_len;
         }
-        lens[i] = rand() % (DATA_BUFFER_SIZE * 16);
-        uint32_t len = lens[i];
-        iovecs.count = 0;
-        while (len > 0) {
-            iovecs.iovecs[iovecs.count].iov_len = P_MIN(len, DATA_BUFFER_SIZE);
-            len -= iovecs.iovecs[iovecs.count].iov_len;
-            iovecs.count++;
-        }
+        ASSERT_EQ(lens[i], iovecs.total_length());
         res = ingest.write(nullptr, nullptr, handle, offset, &iovecs, nullptr, nullptr);
         ASSERT(res == OK);
         offset += lens[i];
-    }
 
-    res = ingest.get_attr(nullptr, nullptr, handle, &handle_attr, nullptr, nullptr);
-    ASSERT(res == OK);
-    ASSERT_EQ(handle_attr.size, offset);
+        res = ingest.get_attr(nullptr, nullptr, handle, &handle_attr, nullptr, nullptr);
+        ASSERT(res == OK);
+        ASSERT_EQ(handle_attr.size, offset);
+    }
 
     IOVecs alloc_vecs;
     offset = 0;
     uint32_t bytes_read;
     bool eof;
-    // TODO check holes, reads should cover multiple writes, check overwrites
+    // TODO check holes, reads should cover multiple writes, check overwrites, test vec len being too small
     LOOP(N_WRITES, i) {
-        iovecs.count = 16;
+        iovecs.iovecs = iovec;
+        iovecs.count = IOVEC_SIZE;
         uint32_t read_offset = lens[i] - (rand() % (lens[i] / 2));
-        printf("lens[i]=%u read_offset=%u\n", lens[i], read_offset);
+        PT_DEBUG(DATA, "lens[i]=%u read_offset=%u", lens[i], read_offset);
         res = ingest.read(nullptr, nullptr, handle, offset + read_offset, lens[i] - read_offset, &iovecs, &alloc_vecs,
                           &bytes_read, &eof, nullptr, nullptr);
         ASSERT(res == OK);
@@ -141,17 +143,19 @@ TEST(TestCreate, test_ingest)
         } else {
             ASSERT_TRUE(eof);
         }
-        LOOP(iovecs.count, j) {
-            LOOP(iovecs.iovecs[j].iov_len, k) {
-                if ((char)(i+1) != ((char *)(iovecs.iovecs[j].iov_base))[k]) {
-                    printf("i=%lu j=%lu k=%lu val=%hhu\n", i,j,k, ((char *)(iovecs.iovecs[j].iov_base))[k]);
-                    PANIC("data cmp failure");
+        if (bytes_read > 0) {
+            LOOP(iovecs.count, j) {
+                LOOP(iovecs.iovecs[j].iov_len, k) {
+                    if ((char)(i + 1) != ((char *)(iovecs.iovecs[j].iov_base))[k]) {
+                        printf("i=%lu j=%lu k=%lu val=%hhu\n", i, j, k, ((char *)(iovecs.iovecs[j].iov_base))[k]);
+                        PANIC("data cmp failure");
+                    }
                 }
             }
+            ingest.free_data_buffers(&alloc_vecs);
         }
 
         offset += lens[i];
-        ingest.free_data_buffers(&alloc_vecs);
     }
 }
 

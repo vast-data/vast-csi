@@ -37,15 +37,22 @@
 
 // Convenience macros for specific severities:
 // Example: PT_INFO(DATA, "Here's the data: %d", i);
-#define PT_DEV(channel, ...) PT_HELPER(channel, DEV, __VA_ARGS__)
-#define PT_DEBUG(channel, ...) PT_HELPER(channel, _DEBUG, __VA_ARGS__)
-#define PT_INFO(channel, ...) PT_HELPER(channel, INFO, __VA_ARGS__)
-#define PT_WARN(channel, ...) PT_HELPER(channel, WARN, __VA_ARGS__)
-#define PT_ERROR(channel, ...) PT_HELPER(channel, ERROR, __VA_ARGS__)
+#define PT_DEV(channel, ...)    PT_HELPER(channel, DEV, __VA_ARGS__)
+#define PT_DEBUG(channel, ...)  PT_HELPER(channel, _DEBUG, __VA_ARGS__)
+#define PT_INFO(channel, ...)   PT_HELPER(channel, INFO, __VA_ARGS__)
+#define PT_WARN(channel, ...)   PT_HELPER(channel, WARN, __VA_ARGS__)
+#define PT_ERROR(channel, ...)  PT_HELPER(channel, ERROR, __VA_ARGS__)
+
+// Convenience macros for specific severities that uses the CURRENT_CHANNEL define
+#define PTC_DEV(...)    PT_HELPER(CURRENT_CHANNEL, DEV, __VA_ARGS__)
+#define PTC_DEBUG(...)  PT_HELPER(CURRENT_CHANNEL, _DEBUG, __VA_ARGS__)
+#define PTC_INFO(...)   PT_HELPER(CURRENT_CHANNEL, INFO, __VA_ARGS__)
+#define PTC_WARN(...)   PT_HELPER(CURRENT_CHANNEL, WARN, __VA_ARGS__)
+#define PTC_ERROR(...)  PT_HELPER(CURRENT_CHANNEL, ERROR, __VA_ARGS__)
 
 #define PT_RETURN(COND, RETVAL, FMT, ...)    \
     if (COND) {                         \
-        PT_ERROR(DATA, FMT " - retval=%lu", ##__VA_ARGS__, (uint64_t)RETVAL);    \
+        PT_ERROR(CURRENT_CHANNEL, FMT " - retval=%lu", ##__VA_ARGS__, (uint64_t)RETVAL);    \
         return RETVAL;                  \
     }
 

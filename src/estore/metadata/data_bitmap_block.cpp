@@ -28,7 +28,9 @@ EStoreRes DataBitmapBlock::add_extent(uint64_t offset, uint32_t len, EAddress ad
 {
     // adding an extend might overwrite a part or one or even multiple existing extents
     DataBitmapInfo *bitmap_info = (DataBitmapInfo *)payload_start();
-    DEBUG_ASSERT(bitmap_info->base_offset != UINT64_MAX);
+    DEBUG_ASSERT_OP(bitmap_info->base_offset, !=, UINT64_MAX);
+    DEBUG_ASSERT_OP(bitmap_info->base_offset, <=, offset);
+    DEBUG_ASSERT_OP(bitmap_info->base_offset + DATA_RANGE_SHARD_SIZE, >, offset + len);
 
     ASSERT(offset - bitmap_info->base_offset < UINT32_MAX);
     uint32_t relative_offset = (uint32_t)(offset - bitmap_info->base_offset);

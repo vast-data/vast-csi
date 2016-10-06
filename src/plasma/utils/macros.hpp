@@ -11,9 +11,12 @@
 
 #define P_MIN(a, b) ((a) > (b) ? (b) : (a))
 #define P_MAX(a, b) ((a) < (b) ? (b) : (a))
-// round up to A, A must be power of 2
+
+// round up to A
+#define ROUND_UP(X, A) ((((X) + (A) - 1) / (A)) * (A))
+// round up to A, A must be a power of 2
 #define POW2_ROUND_UP(X, A) ( ((X) + A-1)  & (~(A-1)) )
-// round down to A, A must be power of 2
+// round down to A, A must be a power of 2
 #define POW2_ROUND_DOWN(X, A) ( (X) & (~(A-1)) )
 
 #define NUM_ELEMENTS(array) (sizeof(array) / sizeof((array)[0]))

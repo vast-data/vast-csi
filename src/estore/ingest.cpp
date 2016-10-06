@@ -11,6 +11,7 @@
 #include "ingest.hpp"
 
 #define CURRENT_COMPONENT ComponentId::ESTORE
+#define CURRENT_CHANNEL DATA
 
 // TODO add locking
 // TODO handle read failures that require locks
@@ -100,7 +101,7 @@ void Ingest::set_default_attr(SystemAttr *attr, EHandle handle, bool is_containe
 
 EStoreRes Ingest::read_block(CompositeBlock *composite_block, EAddress addr, EHandle owner, BaseBlock *block)
 {
-    PT_DEBUG(DATA, "addr=0x%lx owner handle=0x%lx type=%hhu", addr.as_number(), owner, (uint8_t)block->get_type());
+    PTC_DEBUG("addr=0x%lx owner handle=0x%lx type=%hhu", addr.as_number(), owner, (uint8_t)block->get_type());
     if (addr.addr_type == EAddrType::NONE) {
         return OK;
     } else if (addr.addr_type == EAddrType::CONTAINED) {
@@ -373,7 +374,7 @@ EStoreRes Ingest::get_attr_internal(EHandle handle, SystemAttr *attr, BuffersGua
     if (!attr) {
         return OK;
     }
-    PT_DEBUG(DATA, "get attr for handle=0x%lx", handle);
+    PTC_DEBUG("get attr for handle=0x%lx", handle);
     CompositeBlock composite_block;
     HandleBlock handle_block;
     EStoreRes res = read_handle_block(handle, &composite_block, &handle_block, buffers_guard);
@@ -478,9 +479,9 @@ EStoreRes Ingest::io_start(EHandle handle, uint64_t offset, BuffersGuard *buffer
     // read bitmap block
     bitmap_block->init(buffers_guard->get_next());
     EAddress bitmap_addr = range_block->get_range(offset);
+    PTC_DEBUG("bitmap_addr=0x%lx offset=%lu", bitmap_addr.as_number(), offset);
     res = read_block(composite_block, bitmap_addr, handle, bitmap_block);
     PT_RETURN(res != OK, res, "failed to read bitmap block addr=0x%lx", bitmap_addr.as_number());
-
 
     return OK;
 }
@@ -508,39 +509,44 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
         copy_attr(&handle_block, post_attr);
         return OK;
     }
-    // align write to allowed IO size
-    printf("io_vecs->count=%u io_vecs->iovecs[io_vecs->count - 1].iov_len=%lu\n", io_vecs->count, io_vecs->iovecs[io_vecs->count - 1].iov_len);
-    io_vecs->iovecs[io_vecs->count - 1].iov_len = IO_ALIGN_UP(io_vecs->iovecs[io_vecs->count - 1].iov_len);
-    printf("io_vecs->iovecs[io_vecs->count - 1].iov_len=%lu\n", io_vecs->iovecs[io_vecs->count - 1].iov_len);
 
+    // align write to allowed IO size
+    io_vecs->iovecs[io_vecs->count - 1].iov_len = IO_ALIGN_UP(io_vecs->iovecs[io_vecs->count - 1].iov_len);
     bool range_updated = false;
     EAddress range_addr = handle_block.get_ranges_addr();
     if (range_addr.addr_type == EAddrType::NONE) {
-        PT_DEBUG(DATA, "need to create a range block for handle=0x%lx", handle);
+        PTC_DEBUG("need to create a range block for handle=0x%lx", handle);
         // need to create a range block, try to do it in the composite block
         range_addr.addr_type = EAddrType::CONTAINED;
         handle_block.set_ranges_addr(range_addr);
         range_updated = true;
     }
 
+    // TODO write might cover multiple bitmap blocks
     ShardId shard_id = resolve_shard_id(handle, offset);
-    PT_DEBUG(DATA, "handle=0x%lx offset=%lu shard_id=%hu", handle, offset, shard_id);
+    PTC_DEBUG("handle=0x%lx offset=%lu shard_id=%hu", handle, offset, shard_id);
     WriteBuffer *write_buffer = _shard_md->get_ingest_buffer(shard_id);
 
-    EAddress bitmap_addr = range_block.get_range(offset);
+    uint64_t range_len = data_len;
+    EAddress bitmap_addr = range_block.get_range(offset, &range_len);
+    if (bitmap_addr.addr_type != EAddrType::NONE) {
+        PTC_DEBUG("data_len=%lu range_len=%lu", data_len, range_len);
+        ASSERT_EQUAL(data_len, range_len);
+    }
     if (bitmap_addr.addr_type == EAddrType::NONE) {
         uint64_t base_offset = (offset / DATA_RANGE_SHARD_SIZE) * DATA_RANGE_SHARD_SIZE;
         // need to create a new bitmap block, try to do it in the composite block
-        PT_DEBUG(DATA, "need to create a bitmap block for handle=0x%lx base_offset=%lu offset=%lu",
-                 handle, base_offset, offset);
+        PTC_DEBUG("need to create a bitmap block for handle=0x%lx base_offset=%lu offset=%lu",
+                  handle, base_offset, offset);
 
         if (base_offset == 0) {
-            // the first bitmap is
+            // the first bitmap is contained in the handle composite block
             bitmap_addr.addr_type = EAddrType::CONTAINED;
         } else {
             res = write_buffer->alloc_md_block(&buffers_guard, &bitmap_addr);
             // TODO handle write buffer switch?
             PT_RETURN(res != OK, res, "alloc_internal failed handle=0x%lx offset=%lu", handle, offset);
+            PTC_DEBUG("new bitmap block address=0x%lx", bitmap_addr.as_number());
         }
         bitmap_block.set_base_offset(base_offset);
 
@@ -553,7 +559,6 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
         range_updated = true;
 
     }
-    // TODO write might cover multiple bitmap blocks
     // TODO write short data (less than 512) bytes inline
 
     // write data
@@ -562,7 +567,7 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
     // TODO handle switching write buffer
     PT_RETURN(res != OK, res, "failed to allocate data chunk handle=0x%lx data_len=%lu", handle, data_len);
 
-    PT_DEBUG(DATA, "writing data handle=0x%lx addr=0x%lx data_len=%lu", handle, data_addr.as_number(), data_len);
+    PTC_DEBUG("writing data handle=0x%lx addr=0x%lx data_len=%lu", handle, data_addr.as_number(), data_len);
     res = _eio->write_data(data_addr, io_vecs);
     PT_RETURN(res != OK, res, "write_data failed handle=0x%lx addr=0x%lx data_len=%lu",
               handle, data_addr.as_number(), data_len);
@@ -598,7 +603,7 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
 
     // write bitmap, range and handle blocks
     if (bitmap_addr.addr_type == EAddrType::CONTAINED) {
-        PT_DEBUG(DATA, "updating bitmap block");
+        PTC_DEBUG("updating bitmap block");
         res = composite_block.replace_contained_block(handle, &bitmap_block);
         // TODO handle composite block being out of space
         PT_RETURN(res != OK, res, "replace_contained_block for bitmap block failed handle=0x%lx", handle);
@@ -611,11 +616,11 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
 
     if (bitmap_addr.addr_type == EAddrType::MD_BLOCKS || bitmap_addr.addr_type == EAddrType::WRITE_BUFFER) {
         res = _eio->write_md(bitmap_addr, bitmap_block.get_buffer());
-        PT_RETURN(res != OK, res, "_eio->write failed addr=0x%lx", bitmap_addr.as_number());
+        PT_RETURN(res != OK, res, "_eio->write_md failed addr=0x%lx", bitmap_addr.as_number());
     }
     if (range_updated && range_addr.addr_type == EAddrType::MD_BLOCKS) {
         res = _eio->write_md(range_addr, range_block.get_buffer());
-        PT_RETURN(res != OK, res, "_eio->write failed addr=0x%lx", range_addr.as_number());
+        PT_RETURN(res != OK, res, "_eio->write_md failed addr=0x%lx", range_addr.as_number());
     }
 
     copy_attr(&handle_block, post_attr);
@@ -681,25 +686,33 @@ EStoreRes Ingest::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t 
         len = handle_block.get_attr()->size - offset;
     }
     if (len == 0) {
-        *eof = true;
+        // TODO make this less ugly
+        if (offset + len >= handle_block.get_attr()->size) {
+            *eof = true;
+        }
+        PTC_DEBUG("zero length read offset=%lu element_size=%lu", offset, handle_block.get_attr()->size);
+        res_vecs->count = 0;
+        alloc_vecs->count = 0;
         copy_attr(&handle_block, post_attr);
         return OK;
     }
 
     // build the extents list that composes the read
-    uint16_t n_addrs = 64;
-    EAddress content_addrs[n_addrs];
+    // TODO handle the case in which there are more than n_content_addrs (make this iterative)
+#define MAX_ADDR_PER_READ 32
+    uint16_t n_content_addrs = MAX_ADDR_PER_READ;
+    EAddress content_addrs[MAX_ADDR_PER_READ];
     // get content blocks that contain relevant extents
-    res = bitmap_block.get_content_addrs(offset, len, &n_addrs, content_addrs);
-    // TODO handle the case in which there are more than n_addrs 
+    res = bitmap_block.get_content_addrs(offset, len, &n_content_addrs, content_addrs);
     PT_RETURN(res != OK, res, "get_content_addrs failed handle=0x%lx offset=%lu len=%u", handle, offset, len);
+    PTC_DEBUG("n_content_addrs=%hu", n_content_addrs);
 
     // feed the extents into the extents container which deals internally with data overwrites and aligns the
     // extents to the extent being read
     ExtentsContainer extents_container;
     extents_container.init(offset, len);
     MIOBuffer *buffer = buffers_guard.get_next();
-    LOOP(n_addrs, i) {
+    LOOP(n_content_addrs, i) {
         DataContentBlock content_block;
         content_block.init(buffer);
         res = _eio->read_md(content_addrs[i], content_block.get_buffer());
@@ -711,7 +724,7 @@ EStoreRes Ingest::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t 
     }
 
     // allocate data buffers
-    uint32_t n_buffers = (len / DATA_BUFFER_SIZE) + (len % DATA_BUFFER_SIZE ? 1 : 0) + 1;
+    uint32_t n_buffers = (len / DATA_BUFFER_SIZE) + (len % DATA_BUFFER_SIZE ? 1 : 0);
     ASSERT(n_buffers <= res_vecs->count);
     alloc_vecs->count = n_buffers;
     alloc_vecs->iovecs = res_vecs->iovecs;
@@ -726,9 +739,12 @@ EStoreRes Ingest::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t 
     uint32_t max_results = res_vecs->count - alloc_vecs->count;
     res_vecs->iovecs = &alloc_vecs->iovecs[alloc_vecs->count];
     // vectors used for reading the data in an aligned manner
-    IOVec read_vec[res_vecs->count];
+
+    // TODO get rid of MAX_READ_VEC
+    #define MAX_READ_VEC 64
+    IOVec read_vec[MAX_READ_VEC];
     uint16_t curr_read_vec = 0;
-    IOVecs read_vecs[res_vecs->count];
+    IOVecs read_vecs[MAX_READ_VEC];
     uint16_t curr_read_vecs = 0;
 
     uint16_t curr_buffer = 0;
@@ -737,10 +753,12 @@ EStoreRes Ingest::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t 
 
     // read the extents
     uint64_t prev_offset = offset;
-    DataExtent *extent = extents_container.get_next(nullptr);
     // since reads must be aligned both on disk and in memory we need to manage 3 iovecs. one for the memory we use
     // (alloc_vecs) the second for the read operations (read_vec) and the last for the data we return (res_vecs).
-    for (; extent != nullptr; extent = extents_container.get_next(extent)) {
+    for (DataExtent *extent = extents_container.get_next(nullptr);
+         extent != nullptr && curr_buffer < n_buffers && res_vecs->count < max_results;
+         extent = extents_container.get_next(extent))
+    {
         if (prev_offset < extent->_offset) {
             // we got a hole, need to fill the result buffer with zeros
             *bytes_read += fill_hole(prev_offset, extent->_offset, res_vecs, alloc_vecs, n_buffers,
@@ -752,10 +770,9 @@ EStoreRes Ingest::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t 
         EAddress read_addr = extent->_data_addr;
         read_addr.offset = IO_ALIGN_DOWN(read_addr.offset);
         uint64_t offset_diff = extent->_data_addr.offset - read_addr.offset;
-        printf("offset_diff=%lu\n", offset_diff);
-        while (extent->_len > 0) {
+        PTC_DEBUG("offset_diff=%lu", offset_diff);
+        while (extent->_len > 0 && curr_buffer < n_buffers && res_vecs->count < max_results && curr_read_vec < MAX_READ_VEC) {
             DEBUG_ASSERT(curr_buffer < n_buffers);
-            // TODO make sure the reads are aligned
             read_vec[curr_read_vec].iov_base = (char *)alloc_vecs->iovecs[curr_buffer].iov_base + buffer_offset;
             res_vecs->iovecs[res_vecs->count].iov_base = (char *)read_vec[curr_read_vec].iov_base + offset_diff;
             uint32_t read_len = P_MIN(extent->_len, DATA_BUFFER_SIZE - buffer_offset);
@@ -763,8 +780,8 @@ EStoreRes Ingest::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t 
             // the size relevant to the user is the min value between what he asked to read and what we are going to read
             uint32_t res_vec_len = P_MIN(read_vec[curr_read_vec].iov_len - offset_diff, extent->_len);
             res_vecs->iovecs[res_vecs->count].iov_len = res_vec_len;
-            printf("extent->_len=%u read_len=%u res_vec_len=%u buffer_offset=%u iov_len=%lu\n",
-                   extent->_len, read_len, res_vec_len, buffer_offset, read_vec[curr_read_vec].iov_len);
+            PTC_DEBUG("extent->_len=%u read_len=%u res_vec_len=%u buffer_offset=%u iov_len=%lu",
+                      extent->_len, read_len, res_vec_len, buffer_offset, read_vec[curr_read_vec].iov_len);
             buffer_offset += read_vec[curr_read_vec].iov_len;
             read_vecs[curr_read_vecs].count++;
             res_vecs->count++;
@@ -814,7 +831,6 @@ void Ingest::alloc_data_buffers(IOVecs *iovecs)
 
 void Ingest::free_data_buffers(IOVecs *iovecs)
 {
-    printf("count=%u\n", iovecs->count);
     _eio->free_data_buffers(iovecs);
 }
 

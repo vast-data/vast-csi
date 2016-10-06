@@ -58,7 +58,7 @@ static int get_mock_fd(EAddress addr)
 
 EStoreRes WARN_UNUSED EStoreIO::read_md(EAddress addr, MIOBuffer *buff, bool locked, FutureRes<MIO::ReadRet> *future)
 {
-    PT_DEBUG(DATA, "read addr=0x%lx", addr.as_number());
+//    PT_DEBUG(DATA, "read addr=0x%lx", addr.as_number());
     int fd = get_mock_fd(addr);
     ASSERT(buff->get_raw_size() == NVRAM_MD_BLOCK_SIZE);
     ASSERT((size_t)buff->get_mio_vec()->iov_base % IO_ALIGNMENT == 0);
@@ -72,7 +72,7 @@ EStoreRes WARN_UNUSED EStoreIO::read_md(EAddress addr, MIOBuffer *buff, bool loc
 
 EStoreRes EStoreIO::write_md(EAddress addr, MIOBuffer *buff, FutureRes<bool> *future)
 {
-    PT_DEBUG(DATA, "write addr=0x%lx", addr.as_number());
+//    PT_DEBUG(DATA, "write addr=0x%lx", addr.as_number());
     int fd = get_mock_fd(addr);
     ASSERT(buff->get_raw_size() == NVRAM_MD_BLOCK_SIZE);
     ASSERT((size_t)buff->get_mio_vec()->iov_base % IO_ALIGNMENT == 0);
@@ -90,7 +90,7 @@ EStoreRes WARN_UNUSED EStoreIO::read_data(EAddress addr, IOVecs *iovecs, FutureR
 {
     int fd = get_mock_fd(addr);
     LOOP(iovecs->count, i) {
-        printf("iov_len=%lu iov_base=%lu\n", iovecs->iovecs[i].iov_len, (size_t)iovecs->iovecs[i].iov_base);
+//        PT_DEBUG(DATA, "iov_len=%lu iov_base=%lu", iovecs->iovecs[i].iov_len, (size_t)iovecs->iovecs[i].iov_base);
         ASSERT(iovecs->iovecs[i].iov_len % IO_ALIGNMENT == 0);
         ASSERT((size_t)iovecs->iovecs[i].iov_base % IO_ALIGNMENT == 0);
 //        PT_DEBUG(DATA, "vec(%lu) len=%lu", i, iovecs->iovecs[i].iov_len);
@@ -109,7 +109,7 @@ EStoreRes EStoreIO::write_data(EAddress addr, P::IO::IOVecs *iovecs, FutureRes<b
 {
     int fd = get_mock_fd(addr);
     LOOP(iovecs->count, i) {
-        printf("iov_len=%lu iov_base=%lu\n", iovecs->iovecs[i].iov_len, (size_t)iovecs->iovecs[i].iov_base);
+        PT_DEBUG(DATA, "iov_len=%lu iov_base=%lu", iovecs->iovecs[i].iov_len, (size_t)iovecs->iovecs[i].iov_base);
         ASSERT(iovecs->iovecs[i].iov_len % IO_ALIGNMENT == 0);
         ASSERT((size_t)iovecs->iovecs[i].iov_base % IO_ALIGNMENT == 0);
 //        PT_DEBUG(DATA, "vec(%lu) len=%lu", i, iovecs->iovecs[i].iov_len);
@@ -128,7 +128,7 @@ EStoreRes EStoreIO::write_data(EAddress addr, P::IO::IOVecs *iovecs, FutureRes<b
 void EStoreIO::alloc_md_buffers(uint16_t n_buffers, MIOBuffer *buffers)
 {
     ASSERT(n_buffers > 0);
-    PT_DEBUG(DATA, "alloc %hu buffers", n_buffers);
+//    PT_DEBUG(DATA, "alloc %hu buffers", n_buffers);
     LOOP(n_buffers, i) {
         buffers[i].init((P::byte *)aligned_alloc(IO_ALIGNMENT, NVRAM_MD_BLOCK_SIZE), NVRAM_MD_BLOCK_SIZE);
     }
@@ -142,13 +142,14 @@ void EStoreIO::free_md_buffers(uint16_t n_buffers, MIOBuffer *buffers)
         free(buffers[i].get_mio_vec()->iov_base);
         buffers[i].get_mio_vec()->iov_base = nullptr;
     }
-    PT_DEBUG(DATA, "free %hu buffers", n_buffers);
+//    PT_DEBUG(DATA, "free %hu buffers", n_buffers);
 }
 
 
 void EStoreIO::alloc_data_buffers(IOVecs *iovecs)
 {
     ASSERT(iovecs->count > 0);
+//    PT_DEBUG(DATA, "alloc %u buffers", iovecs->count);
     LOOP(iovecs->count, i) {
         iovecs->iovecs[i].iov_base = (char *)aligned_alloc(IO_ALIGNMENT, ALLOCATED_DATA_BUFFER_SIZE);
         memset(iovecs->iovecs[i].iov_base, 0, ALLOCATED_DATA_BUFFER_SIZE);
@@ -159,6 +160,7 @@ void EStoreIO::alloc_data_buffers(IOVecs *iovecs)
 void EStoreIO::free_data_buffers(IOVecs *iovecs)
 {
     ASSERT(iovecs->count > 0);
+    PT_DEBUG(DATA, "free %u buffers", iovecs->count);
     LOOP(iovecs->count, i) {
         if (iovecs->iovecs[i].iov_base) {
             free(iovecs->iovecs[i].iov_base);

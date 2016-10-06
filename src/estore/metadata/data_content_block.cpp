@@ -1,6 +1,7 @@
 #include "data_content_block.hpp"
 
 #define CURRENT_COMPONENT ComponentId::ESTORE
+#define CURRENT_CHANNEL DATA
 
 namespace EStore {
 

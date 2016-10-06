@@ -22,7 +22,8 @@ public:
     void init(MIOBuffer *buffer) override;
 
     EStoreRes WARN_UNUSED add_range(uint64_t offset, EAddress addr);
-    EAddress get_range(uint64_t offset);
+    // if len is passed it will be set to the part, the returned range applies to
+    EAddress get_range(uint64_t offset, uint64_t *len = nullptr INOUT);
     void trace_ranges();
 
 private:

@@ -2,6 +2,7 @@
 #include "shard_md.hpp"
 
 #define CURRENT_COMPONENT ComponentId::ESTORE
+#define CURRENT_CHANNEL DATA
 
 namespace EStore {
 
