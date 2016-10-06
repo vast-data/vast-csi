@@ -68,17 +68,21 @@ private:
     void set_default_attr(SystemAttr *attr, EHandle handle, bool is_container);
     void set_handle_attr(SettableAttr *sattr, SystemAttr *handle_attr);
     void update_mc_times(HandleBlock *handle_block);
+    void update_element_size(uint64_t offset, uint64_t len, HandleBlock *handle_block);
     void copy_attr(HandleBlock *handle_block, SystemAttr *attr);
-    uint32_t alloc_read_buffers(uint32_t len, P::IO::IOVecs *io_vecs);
     P::ShardId resolve_shard_id(EHandle handle, uint64_t offset) const;
     uint32_t fill_hole(uint64_t prev_offset, uint64_t extent_offset, P::IO::IOVecs *res_vecs, P::IO::IOVecs *alloc_vecs,
                        uint32_t n_buffers, uint16_t *curr_buffer, uint32_t *buffer_offset);
+    EStoreRes add_data_bitmap_block(BuffersGuard *buffers_guard, WriteBuffer *write_buffer, DataRangeBlock *range_block,
+                                    LAddress range_addr, DataBitmapBlock *bitmap_block, LAddress *bitmap_addr,
+                                    EHandle handle, uint64_t offset, bool *range_updated);
+    EStoreRes write_data(BuffersGuard *buffers_guard, WriteBuffer *write_buffer, uint64_t data_len, EHandle handle,
+                         uint64_t offset, P::IO::IOVecs *io_vecs, LAddress bitmap_addr, DataBitmapBlock *bitmap_block);
 
 private:
     EStoreIO *_eio;
     ShardMd *_shard_md;
     HandlesTable *_handles_table;
-
 };
 
 }

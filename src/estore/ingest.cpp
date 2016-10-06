@@ -459,6 +459,13 @@ void Ingest::update_mc_times(HandleBlock *handle_block)
     attr->mtime = attr->ctime;
 }
 
+void Ingest::update_element_size(uint64_t offset, uint64_t len, HandleBlock *handle_block)
+{
+    if (offset + len > handle_block->get_attr()->size) {
+        handle_block->get_attr()->size = offset + len;
+    }
+}
+
 EStoreRes Ingest::io_start(EHandle handle, uint64_t offset, BuffersGuard *buffers_guard, CompositeBlock *composite_block,
                            HandleBlock *handle_block, DataRangeBlock *range_block, DataBitmapBlock *bitmap_block)
 {
@@ -486,13 +493,78 @@ EStoreRes Ingest::io_start(EHandle handle, uint64_t offset, BuffersGuard *buffer
     return OK;
 }
 
+EStoreRes Ingest::add_data_bitmap_block(BuffersGuard *buffers_guard, WriteBuffer *write_buffer,
+                                        DataRangeBlock *range_block, LAddress range_addr, DataBitmapBlock *bitmap_block,
+                                        LAddress *bitmap_addr, EHandle handle, uint64_t offset, bool *range_updated)
+{
+    if (bitmap_addr->addr_type != LAddrType::NONE) {
+        return OK;
+    }
+    uint64_t base_offset = (offset / DATA_RANGE_SHARD_SIZE) * DATA_RANGE_SHARD_SIZE;
+    // need to create a new bitmap block, try to do it in the composite block
+    PTC_DEBUG("need to create a bitmap block for handle=0x%lx base_offset=%lu offset=%lu",
+              handle, base_offset, offset);
+
+    if (base_offset == 0) {
+        // the first bitmap is contained in the handle composite block
+        bitmap_addr->addr_type = LAddrType::CONTAINED;
+    } else {
+        EStoreRes res = write_buffer->alloc_md_block(buffers_guard, bitmap_addr);
+        // TODO handle write buffer switch?
+        PT_RETURN(res != OK, res, "alloc_internal failed handle=0x%lx offset=%lu", handle, offset);
+        PTC_DEBUG("new bitmap block address=0x%lx", bitmap_addr->as_number());
+    }
+    bitmap_block->set_base_offset(base_offset);
+
+    if (range_addr.addr_type == LAddrType::CONTAINED) {
+        range_block->replace_buffer(buffers_guard->get_next());
+    }
+    EStoreRes res = range_block->add_range(base_offset, *bitmap_addr);
+    // TODO handle range block full outside of the composite block
+    PT_RETURN(res != OK, res, "add_range failed to handle=0x%lx offset=%lu", handle, offset);
+    *range_updated = true;
+
+    return OK;
+}
+
+EStoreRes Ingest::write_data(BuffersGuard *buffers_guard, WriteBuffer *write_buffer, uint64_t data_len, EHandle handle,
+                             uint64_t offset, IOVecs *io_vecs, LAddress bitmap_addr, DataBitmapBlock *bitmap_block)
+{
+    LAddress data_addr;
+    EStoreRes res = write_buffer->alloc_data_chunk(buffers_guard, IO_ALIGN_UP(data_len), &data_addr);
+    // TODO handle switching write buffer
+    PT_RETURN(res != OK, res, "failed to allocate data chunk handle=0x%lx data_len=%lu", handle, data_len);
+
+    PTC_DEBUG("writing data handle=0x%lx addr=0x%lx data_len=%lu", handle, data_addr.as_number(), data_len);
+    res = _eio->write_data(data_addr, io_vecs);
+    PT_RETURN(res != OK, res, "write_data failed handle=0x%lx addr=0x%lx data_len=%lu",
+              handle, data_addr.as_number(), data_len);
+
+    // update content block
+    LAddress content_addr;
+    res = write_buffer->append_data_content(buffers_guard, handle, offset, data_len, data_addr, &content_addr);
+    PT_RETURN(res != OK, res, "append_data_content failed handle=0x%lx addr=0x%lx data_len=%lu",
+              handle, data_addr.as_number(), data_len);
+
+    // TODO if the extent can be internally merged there is no need to replace the buffer and add it again to the
+    // composite block
+    if (bitmap_addr.addr_type == LAddrType::CONTAINED) {
+        bitmap_block->replace_buffer(buffers_guard->get_next());
+    }
+    res = bitmap_block->add_extent(offset, data_len, content_addr);
+    // TODO handle bitmap being out of space
+    PT_RETURN(res != OK, res, "add_extent failed handle=0x&lx offset=%lu offset=%lu data_len=%lu addr=0x%lx",
+              handle, offset, data_len, content_addr.as_number());
+
+    return OK;
+}
+
 EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, IOVecs *io_vecs,
                         SystemAttr *pre_attr, SystemAttr *post_attr)
 {
     PT_INFO(DATA, "write handle=0x%lx offset=%lu", handle, offset);
     // TODO reduce num of buffers by supporting return_buffer in the guard
     BuffersGuard buffers_guard(_eio, 10);
-
     CompositeBlock composite_block;
     HandleBlock handle_block;
     DataRangeBlock range_block;
@@ -523,74 +595,26 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
     }
 
     // TODO write might cover multiple bitmap blocks
-    ShardId shard_id = resolve_shard_id(handle, offset);
-    PTC_DEBUG("handle=0x%lx offset=%lu shard_id=%hu", handle, offset, shard_id);
-    WriteBuffer *write_buffer = _shard_md->get_ingest_buffer(shard_id);
-
     uint64_t range_len = data_len;
     LAddress bitmap_addr = range_block.get_range(offset, &range_len);
     if (bitmap_addr.addr_type != LAddrType::NONE) {
         PTC_DEBUG("data_len=%lu range_len=%lu", data_len, range_len);
         ASSERT_EQUAL(data_len, range_len);
     }
-    if (bitmap_addr.addr_type == LAddrType::NONE) {
-        uint64_t base_offset = (offset / DATA_RANGE_SHARD_SIZE) * DATA_RANGE_SHARD_SIZE;
-        // need to create a new bitmap block, try to do it in the composite block
-        PTC_DEBUG("need to create a bitmap block for handle=0x%lx base_offset=%lu offset=%lu",
-                  handle, base_offset, offset);
 
-        if (base_offset == 0) {
-            // the first bitmap is contained in the handle composite block
-            bitmap_addr.addr_type = LAddrType::CONTAINED;
-        } else {
-            res = write_buffer->alloc_md_block(&buffers_guard, &bitmap_addr);
-            // TODO handle write buffer switch?
-            PT_RETURN(res != OK, res, "alloc_internal failed handle=0x%lx offset=%lu", handle, offset);
-            PTC_DEBUG("new bitmap block address=0x%lx", bitmap_addr.as_number());
-        }
-        bitmap_block.set_base_offset(base_offset);
+    ShardId shard_id = resolve_shard_id(handle, offset);
+    PTC_DEBUG("handle=0x%lx offset=%lu shard_id=%hu", handle, offset, shard_id);
+    WriteBuffer *write_buffer = _shard_md->get_ingest_buffer(shard_id);
 
-        if (range_addr.addr_type == LAddrType::CONTAINED) {
-            range_block.replace_buffer(buffers_guard.get_next());
-        }
-        res = range_block.add_range(base_offset, bitmap_addr);
-        // TODO handle range block full outside of the composite block
-        PT_RETURN(res != OK, res, "add_range failed to handle=0x%lx offset=%lu", handle, offset);
-        range_updated = true;
-
-    }
+    res = add_data_bitmap_block(&buffers_guard, write_buffer, &range_block, range_addr, &bitmap_block, &bitmap_addr,
+                                handle, offset, &range_updated);
+    PT_RETURN(res != OK, res, "add_data_bitmap_block failed handle=0x%lx", handle);
     // TODO write short data (less than 512) bytes inline
+    res = write_data(&buffers_guard, write_buffer, data_len, handle, offset, io_vecs, bitmap_addr, &bitmap_block);
+    PT_RETURN(res != OK, res, "write_data failed handle=0x%lx data_len=%lu", handle, data_len);
 
-    // write data
-    LAddress data_addr;
-    res = write_buffer->alloc_data_chunk(&buffers_guard, IO_ALIGN_UP(data_len), &data_addr);
-    // TODO handle switching write buffer
-    PT_RETURN(res != OK, res, "failed to allocate data chunk handle=0x%lx data_len=%lu", handle, data_len);
-
-    PTC_DEBUG("writing data handle=0x%lx addr=0x%lx data_len=%lu", handle, data_addr.as_number(), data_len);
-    res = _eio->write_data(data_addr, io_vecs);
-    PT_RETURN(res != OK, res, "write_data failed handle=0x%lx addr=0x%lx data_len=%lu",
-              handle, data_addr.as_number(), data_len);
-
-    // update content block
-    LAddress content_addr;
-    res = write_buffer->append_data_content(&buffers_guard, handle, offset, data_len, data_addr, &content_addr);
-    PT_RETURN(res != OK, res, "append_data_content failed handle=0x%lx addr=0x%lx data_len=%lu",
-              handle, data_addr.as_number(), data_len);
-
-    // TODO if the extent can be internally merged there is no need to replace the buffer and add it again to the composite block
-    bitmap_block.replace_buffer(buffers_guard.get_next());
-    res = bitmap_block.add_extent(offset, data_len, content_addr);
-    // TODO handle bitmap being out of space
-    PT_RETURN(res != OK, res, "add_extent failed handle=0x&lx offset=%lu offset=%lu data_len=%lu addr=0x%lx",
-              handle, offset, data_len, content_addr.as_number());
-
-    // update mtime and ctime
     update_mc_times(&handle_block);
-    if (offset + data_len > handle_block.get_attr()->size) {
-        // increase file size if needed
-        handle_block.get_attr()->size = offset + data_len;
-    }
+    update_element_size(offset, data_len, &handle_block);
 
     if (range_updated && range_addr.addr_type == LAddrType::CONTAINED) {
         res = composite_block.replace_contained_block(handle, &range_block);
@@ -699,7 +723,7 @@ EStoreRes Ingest::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t 
 
     // build the extents list that composes the read
     // TODO handle the case in which there are more than n_content_addrs (make this iterative)
-#define MAX_ADDR_PER_READ 32
+    #define MAX_ADDR_PER_READ 32
     uint16_t n_content_addrs = MAX_ADDR_PER_READ;
     LAddress content_addrs[MAX_ADDR_PER_READ];
     // get content blocks that contain relevant extents

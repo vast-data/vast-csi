@@ -28,6 +28,7 @@ public:
 
 private:
     uint16_t find_range_index(uint64_t offset);
+    void set_output_len(uint16_t found_index, uint64_t offset, uint64_t *len);
 };
 
 }

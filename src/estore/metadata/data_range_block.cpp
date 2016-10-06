@@ -45,10 +45,31 @@ EStoreRes DataRangeBlock::add_range(uint64_t offset, LAddress addr)
     return OK;
 }
 
+void DataRangeBlock::set_output_len(uint16_t found_index, uint64_t offset, uint64_t *len)
+{
+    if (len == nullptr) {
+        return;
+    }
+    if (found_index == UINT16_MAX) {
+        *len = P_MIN(POW2_ROUND_UP(offset + 1, DATA_RANGE_SHARD_SIZE) - offset, *len);
+        return;
+    }
+    uint64_t available_len;
+    Ranges *ranges = (Ranges *)payload_start();
+    if (found_index + 1 == ranges->n_ranges) {
+        available_len = POW2_ROUND_UP(ranges->ranges[found_index]._offset + 1, DATA_RANGE_SHARD_SIZE) - offset;
+    } else {
+        available_len = ranges->ranges[found_index + 1]._offset - offset;
+    }
+    DEBUG_ASSERT_OP(available_len, <=, DATA_RANGE_SHARD_SIZE);
+    *len = P_MIN(*len, available_len);
+}
+
 LAddress DataRangeBlock::get_range(uint64_t offset, uint64_t *len)
 {
     Ranges *ranges = (Ranges *)payload_start();
     if (ranges->n_ranges == 0) {
+        set_output_len(UINT16_MAX, offset, len);
         return Layout::EMPTY_ADDRESS;
     }
     uint16_t range_index = find_range_index(offset);
@@ -56,18 +77,10 @@ LAddress DataRangeBlock::get_range(uint64_t offset, uint64_t *len)
         PTC_DEBUG("range is out of shard, range_index=%hu range offset=%lu offset=%lu", range_index,
                   ranges->ranges[range_index]._offset, offset);
         // offset is outside the shard range
+        set_output_len(UINT16_MAX, offset, len);
         return Layout::EMPTY_ADDRESS;
     }
-    if (len) {
-        uint64_t available_len;
-        if (range_index + 1 == ranges->n_ranges) {
-            available_len = POW2_ROUND_UP(ranges->ranges[range_index]._offset + 1, DATA_RANGE_SHARD_SIZE) - offset;
-        } else {
-            available_len = ranges->ranges[range_index + 1]._offset - offset;
-        }
-        DEBUG_ASSERT_OP(available_len, <=, DATA_RANGE_SHARD_SIZE);
-        *len = P_MIN(*len, available_len);
-    }
+    set_output_len(range_index, offset, len);
     return ranges->ranges[range_index].data_bitmap_addr;
 }
 
