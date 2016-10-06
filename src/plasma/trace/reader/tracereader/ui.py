@@ -61,7 +61,7 @@ def print_error(msg):
     print(term.red + 'READER ERROR: ' + msg + term.normal)
 
 Trace = collections.namedtuple('Trace', ['info', 'header', 'params', 'channel', 'pid', 'tid'])
-def handle_path(path):
+def handle_path(path, verbose):
     assert os.path.exists(path), 'File does not exist: {}'.format(path)
     match = file_re.search(path)
     assert match is not None, 'Not a trace file: {}'.format(path)
@@ -73,7 +73,7 @@ def handle_path(path):
 
 def safe_handle_path(path, verbose):
     try:
-        yield from handle_path(path)
+        yield from handle_path(path, verbose)
     except Exception as e:
         if verbose:
             traceback.print_exc()
@@ -88,12 +88,12 @@ def paths_to_files(paths):
         else:
             yield path
 
-def run(paths, verbose):
+def run(paths, verbose, debug):
     for path in paths_to_files(paths):
         if verbose:
             print("found {}".format(path))
 
-    for trace in merge_sort([safe_handle_path(path, verbose) for path in paths_to_files(paths)],
+    for trace in merge_sort([(handle_path if debug else safe_handle_path)(path, verbose) for path in paths_to_files(paths)],
                             lambda trace: trace.header.time):
         print_trace(trace, verbose)
 
@@ -103,7 +103,7 @@ def run(paths, verbose):
 @click.option('-d', '--debug', is_flag=True)
 def main(paths, verbose, debug):
     try:
-        run(paths, verbose)
+        run(paths, verbose, debug)
     except:
         if debug:
             import pdb

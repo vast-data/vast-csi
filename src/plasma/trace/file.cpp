@@ -66,7 +66,8 @@ void TraceFile::emit(TraceRecord *record, P_DBUFFER_LENGTH_TYPE length)
 {
     if (_file == nullptr)
         create_file();
-    rotate_chunk_if_needed(length + P_DBUFFER_LENGTH_BYTES);
+    // add one length for the record itself and one length for zero padding
+    rotate_chunk_if_needed(length + P_DBUFFER_LENGTH_BYTES * 2);
     rotate_file_if_needed(length + P_DBUFFER_LENGTH_BYTES);
     write_file(&length, P_DBUFFER_LENGTH_BYTES);
     write_file(record, length);
@@ -144,6 +145,7 @@ void TraceFile::rotate_chunk_if_needed(P_DBUFFER_LENGTH_TYPE length)
 {
     if (length > _bytes_left_in_chunk) {
         ASSERT_EQUAL(fseek(_file, _bytes_left_in_chunk, SEEK_CUR), 0);
+        // +2 for version and +2 for trace info count
         ASSERT_EQUAL(ftell(_file) % CHUNK_SIZE, get_trace_section_size() + 2 + 2);
         _file_offset += _bytes_left_in_chunk;
         _bytes_left_in_chunk = CHUNK_SIZE;
