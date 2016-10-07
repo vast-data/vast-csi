@@ -43,18 +43,6 @@ static SystemState get_system_state(ClusterClient *client)
     return result;
 }
 
-static void system_activate_start_func(void *ctx)
-{
-    ClusterClient client;
-    client.init();
-
-    ASSERT_EQ(get_system_state(&client), SystemState::INIT);
-    system_activate(&client);
-    ASSERT_EQ(get_system_state(&client), SystemState::ONLINE);
-
-    env_stop = true;
-}
-
 static void add_cnode(ClusterClient *client, GUID guid, uint16_t platform_port, uint16_t data_port)
 {
     CNodeAddParams::RootBuilder *cnode_add_params = client->alloc_cnode_add();
@@ -309,16 +297,11 @@ void cluster_test(StartFunc start_func)
     P::Env::get()->run("dist/env", "tests/cluster_test.config");
 }
 
-TEST(Cluster, system_activate)
-{
-    cluster_test(system_activate_start_func);
-}
-
-TEST(Cluster, cnode_activation)
-{
-    ::Test::EnvProcess platform("tests/platform1.config");
-    cluster_test(cnode_activation_start_func);
-}
+//TEST(Cluster, cnode_activation)
+//{
+//    ::Test::EnvProcess platform("tests/platform1.config");
+//    cluster_test(cnode_activation_start_func);
+//}
 
 TEST(Cluster, dbox_activation)
 {

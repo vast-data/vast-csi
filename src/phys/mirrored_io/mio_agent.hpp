@@ -21,11 +21,6 @@ struct PhysAddr {
 };
 
 class MIOAgent : public MIOAgentServer {
-public:
-    // TODO(ido): these will probably move to vproto:
-    static constexpr uint32_t MAX_SECTION_ID = 16384;
-    static constexpr uint32_t MAX_DEVS = 2048;  // Used for section 0.
-
 private:
     struct SectionMappingData;
 

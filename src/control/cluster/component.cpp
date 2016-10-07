@@ -5,6 +5,7 @@
 #include "plasma/fiber/fiber.hpp"
 #include "plasma/fiber/runnable.hpp"
 #include "plasma/utils/macros.hpp"
+#include "plasma/utils/units.hpp"
 #include "plasma/execution/env.hpp"
 #include "plasma/vproto/vproto.hpp"
 #include "modules/p_module_agent.rpc.client.hpp"
@@ -197,6 +198,8 @@ void Cluster::system_activate(SystemActivateParams::RootReader *args, SystemActi
     PT_INFO(CONTROL, "System activated. State is now ONLINE.");
 
     initialize_all_dnodes();
+
+    _mio->activate();
 
     // potentially activate all nodes
     IMDB_ITER_CHILDREN(_system, cnode, CNode, {
@@ -550,6 +553,7 @@ void Cluster::dbox_add(DBoxAddParams::RootReader *args, DBoxAddResult::RootBuild
 
         LOOP(P::DNODE_NVRAM_COUNT, j) {
             NVRAM *nvram = _tree->create<NVRAM>(P::GUID::create(), dnode);
+            nvram->set_size(600 * UNIT_GiB);  // TODO: get size from the DNode
         }
 
         // create the child EnvObjs
@@ -669,6 +673,8 @@ void Cluster::nvram_activate(NVRAM *nvram)
 {
     map_on_cnodes(&Cluster::connect_cnode_to_device, nvram);
 
+    _mio->on_device_activated(nvram);
+
     char guid_string[P::GUID::STRING_SIZE];
     nvram->get_guid().to_string(guid_string);
     PT_INFO(CONTROL, "Activated nvram=%s", guid_string);
@@ -716,8 +722,23 @@ void Cluster::connect_env_to_device(EnvObj *env, NVRAM *nvram, char *local_path)
         }
 
         client.free_device_add(result);
+    });
+}
 
-        _mio->on_device_addition(module, nvram);
+void Cluster::prepare_disconnect_env_from_device(EnvObj *env, NVRAM *nvram)
+{
+    DevAgentClient client;
+    client.init();
+
+    IMDB_ITER_CHILDREN(env, module, IModuleObj, {
+        DevicePrepareRemoveParams::RootBuilder *prepare_params = client.alloc_device_prepare_remove();
+        prepare_params->set_guid_count(1);
+        *(prepare_params->get_guids(0)) = nvram->get_guid();
+        P::VProto::Empty::RootReader *result;
+        if (client.device_prepare_remove_sync(module->get_address(), prepare_params, &result) != P::VMsg::VMsgRes::OK) {
+            PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
+        }
+        client.free_device_prepare_remove(result);
     });
 }
 
@@ -727,27 +748,23 @@ void Cluster::disconnect_env_from_device(EnvObj *env, NVRAM *nvram)
     client.init();
 
     IMDB_ITER_CHILDREN(env, module, IModuleObj, {
-        // 1. Prepare device for removal.
-        DevicePrepareRemoveParams::RootBuilder *prepare_params = client.alloc_device_prepare_remove();
-        prepare_params->set_guid_count(1);
-        *(prepare_params->get_guids(0)) = nvram->get_guid();
-        P::VProto::Empty::RootReader *result;
-        if (client.device_prepare_remove_sync(module->get_address(), prepare_params, &result) != P::VMsg::VMsgRes::OK) {
-            PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
-        }
-        client.free_device_prepare_remove(result);
-
-        // 2. Wait for MIO to finish pending IOs.
-        _mio->on_device_removal(module, nvram);
-
-        // 3. Remove the device.
         DeviceRemoveParams::RootBuilder *remove_params = client.alloc_device_remove();
         remove_params->set_guid_count(1);
         *(remove_params->get_guids(0)) = nvram->get_guid();
+        P::VProto::Empty::RootReader *result;
         if (client.device_remove_sync(module->get_address(), remove_params, &result) != P::VMsg::VMsgRes::OK) {
             PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
         }
         client.free_device_remove(result);
+    });
+}
+
+void Cluster::prepare_disconnect_cnode_from_device(CNode *cnode, NVRAM *nvram)
+{
+    IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
+        if (env->is_platform())
+            continue;
+        Cluster::prepare_disconnect_env_from_device(env, nvram);
     });
 }
 
@@ -775,6 +792,8 @@ void Cluster::disconnect_cnode_from_device(CNode *cnode, NVRAM *nvram)
 
 void Cluster::nvram_deactivate(NVRAM *nvram)
 {
+    map_on_cnodes(&Cluster::prepare_disconnect_cnode_from_device, nvram);
+    _mio->on_device_deactivated(nvram);
     map_on_cnodes(&Cluster::disconnect_cnode_from_device, nvram);
 
     char guid_string[P::GUID::STRING_SIZE];

@@ -16,7 +16,7 @@
 #include "control/imdb/env.hpp"
 #include "control/imdb/module.hpp"
 #include "control/estore/estore.hpp"
-#include "control/mio/mio.hpp"
+#include "control/mio/mioc.hpp"
 #include "cluster.rpc.server.hpp"
 
 namespace Control {
@@ -45,8 +45,10 @@ private:
     void nvram_activate(NVRAM *nvram);
     void nvram_deactivate(NVRAM *nvram);
     void connect_cnode_to_device(CNode *cnode, NVRAM *nvram);
+    void prepare_disconnect_cnode_from_device(CNode *cnode, NVRAM *nvram);
     void disconnect_cnode_from_device(CNode *cnode, NVRAM *nvram);
     void connect_env_to_device(EnvObj *env, NVRAM *nvram, char *local_path);
+    void prepare_disconnect_env_from_device(EnvObj *env, NVRAM *nvram);
     void disconnect_env_from_device(EnvObj *env, NVRAM *nvram);
 
     EnvObj *create_env(BaseNode *node, P::byte silo_count, uint16_t port);

@@ -1,9 +1,11 @@
 $namespace MirroredIO
 
 
-$const uint32_t MAX_SECTION_CONFIGS_PER_RPC = 40;
-$const uint32_t MAX_SECTION_REBUILDS_PER_RPC = 100;
-$const uint32_t MAX_DEVS_PER_SECTION = 3;
+$const uint16_t MAX_SECTION_CONFIGS_PER_RPC = 40;
+$const uint16_t MAX_SECTION_REBUILDS_PER_RPC = 100;
+$const uint16_t MAX_DEVS_PER_SECTION = 3;
+$const uint32_t MAX_SECTION_ID = 16384;
+$const uint32_t MAX_DEVS = 2048;  // Used for section 0.
 
 struct PhysicalAddress {
     @0 device_guid GUID;

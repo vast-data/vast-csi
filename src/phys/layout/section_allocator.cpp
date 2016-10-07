@@ -63,7 +63,7 @@ P::IO::MirroredAddressToken SectionAllocator::translate(Address addr, size_t len
     return ret_addr;
 }
 
-ReplicationFactor SectionAllocator::get_section_replication_factor(uint32_t section_id)
+/* static */ ReplicationFactor SectionAllocator::get_section_replication_factor(uint32_t section_id)
 {
     ASSERT_OP(section_id, !=, 0);
     return section_id % (DUPLICATION_TO_TRIPLICATION_SECTION_COUNT_RATIO + 1) == 0

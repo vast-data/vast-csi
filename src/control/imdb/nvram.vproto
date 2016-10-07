@@ -5,5 +5,5 @@ $namespace Control
 struct NVRAMProto {
     @0 base_proto BaseObjectProto;
     @1 version uint32_t;
-    @2 size uint32_t;
+    @2 size uint64_t;
 };

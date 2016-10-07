@@ -8,6 +8,7 @@
 
 #include "plasma/vmsg/vmsg_defs.hpp"
 #include "module.vproto.hpp"
+#include "env.hpp"
 #include "object.hpp"
 
 namespace Control {
@@ -69,10 +70,7 @@ public:
 
 class IModuleObj : public BaseModuleObj<IModuleProto, TypeId::IModuleObj, ModuleId::I> {
 public:
-    void activate()
-    {
-
-    }
+    void activate();
 };
 
 class TModuleObj : public BaseModuleObj<TModuleProto, TypeId::TModuleObj, ModuleId::TEST> {

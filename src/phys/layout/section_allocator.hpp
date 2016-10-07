@@ -26,6 +26,7 @@
 
 #pragma once
 
+#include "plasma/utils/assert.hpp"
 #include "plasma/utils/units.hpp"
 #include "plasma/utils/io.hpp"
 #include "address.hpp"
@@ -40,10 +41,26 @@ enum class ShardType : uint8_t {
 };
 
 enum class ReplicationFactor : uint8_t {
+    // Update get_replication_factor_value() and get_max_replication_factor_value() when updating this enum.
     DUPLICATE,
     TRIPLICATE,
     COUNT
 };
+
+static constexpr uint8_t get_max_replication_factor_value() { return 3; }
+static uint8_t get_replication_factor_value(ReplicationFactor replication_factor)
+{
+    switch (replication_factor) {
+        case ReplicationFactor::DUPLICATE:
+            return 2;
+        case ReplicationFactor::TRIPLICATE:
+            return 3;
+        case ReplicationFactor::COUNT:
+            PANIC("get_replication_factor_value isn't supposed to be called on COUNT");
+        default:
+            PANIC("get_replication_factor_value called on an unknown value??");
+    }
+}
 
 // This struct is used for configuring each AddrType
 struct AddrTypeConfig {
@@ -64,6 +81,8 @@ struct SectionTypeConfig {
 
 class SectionAllocator : public SectionAllocatorServer {
 public:
+    static const size_t SECTION_SIZE = 64 * UNIT_GiB;
+
     void init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id);
     void do_activate(uint32_t estore_shard_count, uint32_t max_section_id);
 
@@ -75,7 +94,7 @@ public:
     P::IO::MirroredAddressToken translate(Address addr, size_t len);
     uint64_t get_total_addr_type_size(P::ShardId shard_id, AddrType type);
     uint32_t get_total_section_count(AddrType type);
-    ReplicationFactor get_section_replication_factor(uint32_t section_id);
+    static ReplicationFactor get_section_replication_factor(uint32_t section_id);
 
     // RPC Calls
     void activate(SectionAllocatorActivateParams::RootReader *args, P::VProto::Empty::RootBuilder *res);
@@ -98,7 +117,6 @@ private:
 
     // third of the sections are triplicated, the rest are duplicated
     static const size_t DUPLICATION_TO_TRIPLICATION_SECTION_COUNT_RATIO = 2;
-    static const size_t SECTION_SIZE = 64 * UNIT_GiB;
     SectionTypeConfig _section_type_config[(int)ReplicationFactor::COUNT];
 
     uint32_t get_shard_count(const AddrTypeConfig *type_config);

@@ -36,6 +36,8 @@ public:
     static void generate_config(P::Conf::ConfigSetting *module_config);
     static void get_vmsg_module_resources(P::VMsg::ModuleResources *vmsg_module_resources);
 
+    MIOControl* get_mio_control() { return &_mio_control; }
+
     static constexpr TypeConfig TYPE_CONFIGS[] = {{TypeId::System, sizeof(System), 1},
                                                   {TypeId::CNode, sizeof(CNode), P::MAX_CNODES_PER_SYSTEM},
                                                   {TypeId::EnvObj, sizeof(EnvObj), P::MAX_CNODES_PER_SYSTEM * P::MAX_ENVS_PER_CNODE},

@@ -44,7 +44,7 @@ void CModule::init(P::Silo *silo, P::Conf::ConfigSetting *module_setting)
 
     _agent.init(silo->get_id(), get_id(), FiberGroupId::C);
 
-    _mio_control.init();
+    _mio_control.init(_system);
     _estore_control.init(_system);
     _cluster.init(silo->get_id(), get_id(), &_tree, _system, &_mio_control, &_estore_control);
 }
