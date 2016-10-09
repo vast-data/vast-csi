@@ -22,7 +22,7 @@ public:
     LAddress get_address(const char *name);
     bool has_ranges();
 
-    void trace_ranges();
+    void trace();
 
 private:
     NameRange *find_range(const char *name);

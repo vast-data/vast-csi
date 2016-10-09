@@ -3,7 +3,8 @@
 #include "plasma/trace/emitter.hpp"
 #include "name_range_block.hpp"
 
-#define CURRENT_COMPONENT ComponentId::EStore
+#define CURRENT_COMPONENT ComponentId::ESTORE
+#define CURRENT_CHANNEL DATA
 
 namespace EStore {
 
@@ -73,12 +74,11 @@ bool NameRangeBlock::has_ranges()
     return range->len > 0;
 }
 
-void NameRangeBlock::trace_ranges()
+void NameRangeBlock::trace()
 {
     int i = 0;
     TRAVERSE_CONTENT(NameRange, range) {
-//        PT_DEBUG(DATA, "range(%lu) name=%s bitmap_addr=%lx", i, range->name, *(uint64_t*)&range->bitmap_addr);
-        printf("range(%d) len=%u name=%s bitmap_addr=0x%lx\n", i, range->len, range->name, *(uint64_t*)&range->bitmap_addr);
+        PTC_DEBUG("range(%d) name=%s bitmap_addr=%lx", i, range->name, *(uint64_t*)&range->bitmap_addr);
         ++i;
     }
 }

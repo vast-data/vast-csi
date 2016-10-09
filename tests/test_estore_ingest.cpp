@@ -102,7 +102,7 @@ TEST(TestCreate, test_ingest)
     iovecs.iovecs = iovec;
     uint64_t offset = 0;
 
-    #define N_WRITES 100
+    #define N_WRITES 20000
     uint32_t lens[N_WRITES];
     LOOP(N_WRITES, i) {
         lens[i] = rand() % (DATA_BUFFER_SIZE * WRITE_SIZE_FACTOR) + 1;
@@ -119,10 +119,15 @@ TEST(TestCreate, test_ingest)
         ASSERT(res == OK);
         offset += lens[i];
 
-        res = ingest.get_attr(nullptr, nullptr, handle, &handle_attr, nullptr, nullptr);
-        ASSERT(res == OK);
-        ASSERT_EQ(handle_attr.size, offset);
+        if (i % 1000 == 0) {
+            res = ingest.get_attr(nullptr, nullptr, handle, &handle_attr, nullptr, nullptr);
+            ASSERT(res == OK);
+            ASSERT_EQ(handle_attr.size, offset);
+        }
     }
+    res = ingest.get_attr(nullptr, nullptr, handle, &handle_attr, nullptr, nullptr);
+    ASSERT(res == OK);
+    ASSERT_EQ(handle_attr.size, offset);
 
     IOVecs alloc_vecs;
     offset = 0;
@@ -132,7 +137,7 @@ TEST(TestCreate, test_ingest)
     LOOP(N_WRITES, i) {
         iovecs.iovecs = iovec;
         iovecs.count = IOVEC_SIZE;
-        uint32_t read_offset = 0; //lens[i] - (rand() % (lens[i] / 2));
+        uint32_t read_offset =lens[i] - (rand() % (lens[i] / 2));
         PT_DEBUG(DATA, "lens[i]=%u read_offset=%u", lens[i], read_offset);
         res = ingest.read(nullptr, nullptr, handle, offset + read_offset, lens[i] - read_offset, &iovecs, &alloc_vecs,
                           &bytes_read, &eof, nullptr, nullptr);

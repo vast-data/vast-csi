@@ -211,6 +211,7 @@ EStoreRes WriteBuffer::append_data_content(BuffersGuard *buffers_guard, EHandle 
     res = content_block.add_extent(handle, offset, len, data_addr);
     if (res == EStoreRes::NO_MEM) {
         // alloc a new content block
+        PTC_DEBUG("allocating new content block for handle=0x%lx", handle);
         res = alloc_md_internal(buffers_guard, WBHeader::MDType::DATA_CONTENT, addr);
         PT_RETURN(res != OK, res, "alloc_md_internal failed");
 

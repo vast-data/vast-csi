@@ -23,6 +23,8 @@ EStoreRes DataContentBlock::add_extent(EHandle handle, uint64_t offset, uint32_t
     ContentExtents *extents = (ContentExtents *)payload_start();
     ContentExtent *extent = &extents->extents[extents->n_extents];
     if (space_left() < sizeof(ContentExtent)) {
+        PTC_DEBUG("out of space space_left=%hu", space_left());
+        trace();
         return EStoreRes::NO_MEM;
     }
     extent->_handle = handle;
@@ -64,6 +66,15 @@ EStoreRes DataContentBlock::export_extents(EHandle handle, uint64_t offset, uint
         }
     }
     return OK;
+}
+
+void DataContentBlock::trace()
+{
+    ContentExtents *block_extents = (ContentExtents *)payload_start();
+    LOOP(block_extents->n_extents, i) {
+        ContentExtent *extent = &block_extents->extents[i];
+        PTC_DEBUG("extent(%lu) offset=%lu len=%u addr=0x%lx", i, extent->_offset, extent->_len, extent->_data_addr.as_number());
+    }
 }
 
 void ExtentsContainer::init(uint64_t offset, uint32_t len)

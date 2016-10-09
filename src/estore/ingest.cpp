@@ -603,8 +603,8 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
     uint64_t write_offset = offset;
     while (write_len > 0) {
         // writes might be broken between multiple bitmap blocks / shards. The range block returns the length that
-        // can be written // to the bitmap with the current offset. Note: that write are also split at the
-        // DATA_RANGE_SHARD_SIZE even if // there is still room in the bitmap block.
+        // can be written to the bitmap with the current offset. Note: that write are also split at the
+        // DATA_RANGE_SHARD_SIZE even if there is still room in the bitmap block.
         uint64_t range_len = write_len;
         LAddress bitmap_addr = range_block.get_range(write_offset, &range_len);
         PTC_DEBUG("bitmap_addr=0x%lx write_offset=%lu data_len=%lu range_len=%lu", bitmap_addr.as_number(),
@@ -714,6 +714,7 @@ uint32_t Ingest::fill_hole(uint64_t prev_offset, uint64_t extent_offset, IOVecs 
             (*curr_buffer)++;
         }
     }
+    PTC_DEBUG("extent_offset=%lu prev_offset=%lu bytes_filled=%u", extent_offset, prev_offset, bytes_filled);
     return bytes_filled;
 }
 
@@ -759,7 +760,7 @@ EStoreRes Ingest::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t 
     }
 
     // build the extents list that composes the read
-    bitmap_block.init(buffers_guard.get_next());
+    MIOBuffer *bitmap_buffer = buffers_guard.get_next();
     #define MAX_ADDR_PER_READ 64
     // TODO handle the case in which there are more than n_content_addrs (make this iterative)
     uint16_t n_content_addrs = 0;
@@ -767,13 +768,12 @@ EStoreRes Ingest::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t 
     uint64_t read_len = len;
     uint64_t read_offset = offset;
     while (read_len > 0) {
-        // writes might be broken between multiple bitmap blocks / shards. The range block returns the length that
-        // can be written // to the bitmap with the current offset. Note: that write are also split at the
-        // DATA_RANGE_SHARD_SIZE even if // there is still room in the bitmap block.
+        // reads might be broken between multiple bitmap blocks / shards.
         uint64_t range_len = read_len;
         LAddress bitmap_addr = range_block.get_range(read_offset, &range_len);
-        PTC_DEBUG("bitmap_addr=0x%lx write_offset=%lu len=%u range_len=%lu", bitmap_addr.as_number(),
+        PTC_DEBUG("bitmap_addr=0x%lx read_offset=%lu len=%u range_len=%lu", bitmap_addr.as_number(),
                   read_offset, len, range_len);
+        bitmap_block.init(bitmap_buffer);
         res = read_block(&composite_block, bitmap_addr, handle, &bitmap_block);
         PT_RETURN(res != OK, res, "failed to read bitmap block addr=0x%lx", bitmap_addr.as_number());
 
@@ -843,6 +843,8 @@ EStoreRes Ingest::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t 
             *bytes_read += fill_hole(prev_offset, extent->_offset, res_vecs, alloc_vecs, n_buffers,
                                      &curr_buffer, &buffer_offset);
         }
+        prev_offset = extent->_offset + extent->_len;
+
         read_vecs[curr_read_vecs].iovecs = &read_vec[curr_read_vec];
         read_vecs[curr_read_vecs].count = 0;
         // align read offset

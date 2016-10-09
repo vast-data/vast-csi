@@ -2,6 +2,7 @@
 #include "data_range_block.hpp"
 
 #define CURRENT_COMPONENT ComponentId::ESTORE
+#define CURRENT_CHANNEL DATA
 
 namespace EStore {
 
@@ -47,6 +48,8 @@ EStoreRes DataBitmapBlock::add_extent(uint64_t offset, uint32_t len, LAddress ad
     }
     // need to add a new extent
     if (space_left() < sizeof(BitmapExtent)) {
+        PTC_WARN("out of extent space space_left=%hu", space_left());
+        trace();
         return EStoreRes::NO_MEM;
     }
     BitmapExtent *extent = &extents->extents[extents->n_extents];
@@ -88,7 +91,8 @@ void DataBitmapBlock::trace()
     DataBitmapInfo *bitmap_info = (DataBitmapInfo *)payload_start();
     LOOP(bitmap_info->extents.n_extents, i) {
         BitmapExtent *extent = &bitmap_info->extents.extents[i];
-        PT_DEBUG(DATA, "extents(%lu offset=%u len=%u", i, extent->_offset, extent->_len);
+        PT_DEBUG(DATA, "extent(%lu) offset=%u len=%u addr=0x%lx",
+                 i, extent->_offset, extent->_len, extent->_content_addr.as_number());
     }
 }
 

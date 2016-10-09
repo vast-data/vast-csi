@@ -32,6 +32,7 @@ public:
                                       ContentExtent *extents OUT);
     EStoreRes WARN_UNUSED export_extents(EHandle handle, uint64_t offset, uint32_t len,
                                          ExtentsContainer *extents_container);
+    void trace();
 };
 
 class DataExtent : public P::Extent<uint64_t> {
