@@ -5,6 +5,16 @@
 
 using namespace Layout;
 
+TEST(SectionAlloc, get_section_replication_factor)
+{
+    SectionAllocator allocator;
+    allocator.init(0, ModuleId::I, FiberGroupId::I_CONTROL);
+
+    ASSERT_EQ(allocator.get_section_replication_factor(1), ReplicationFactor::DUPLICATE);
+    ASSERT_EQ(allocator.get_section_replication_factor(2), ReplicationFactor::DUPLICATE);
+    ASSERT_EQ(allocator.get_section_replication_factor(3), ReplicationFactor::TRIPLICATE);
+}
+
 TEST(SectionAlloc, translate)
 {
     SectionAllocator allocator;

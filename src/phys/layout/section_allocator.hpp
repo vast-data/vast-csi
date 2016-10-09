@@ -75,6 +75,7 @@ public:
     P::IO::MirroredAddressToken translate(Address addr, size_t len);
     uint64_t get_total_addr_type_size(P::ShardId shard_id, AddrType type);
     uint32_t get_total_section_count(AddrType type);
+    ReplicationFactor get_section_replication_factor(uint32_t section_id);
 
     // RPC Calls
     void activate(SectionAllocatorActivateParams::RootReader *args, P::VProto::Empty::RootBuilder *res);
