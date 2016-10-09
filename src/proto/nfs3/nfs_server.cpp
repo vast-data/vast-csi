@@ -1037,7 +1037,7 @@ void NfsServer::link(RpcRequest *request, LINK3args *args, LINK3res *res)
     fill_wcc_data(&res->LINK3res_u.resok.linkdir_wcc, &pre_pattr, &post_pattr);
 }
 
-static bool readdir_cb(EStore::ReaddirEntry *entry, void *ctx)
+static bool readdir_cb(EStore::ListEntry *entry, void *ctx)
 {
     ReaddirState *rd_state = (ReaddirState *)ctx;
     PT_DEBUG(DATA, "add entry handle=%lx name=%s dir_mem_left=%lu mem_left=%lu", entry->handle, entry->name,
@@ -1082,19 +1082,20 @@ static bool readdir_cb(EStore::ReaddirEntry *entry, void *ctx)
 }
 
 
-static bool readdir_plus_cb_func(EStore::ReaddirEntry *entry, void *ctx)
+static bool readdir_plus_cb_func(EStore::ListEntry *entry, void *ctx)
 {
     ReaddirState *rd_state = (ReaddirState *)ctx;
     return rd_state->srv->readdir_plus_cb(entry, ctx);
 }
 
-bool NfsServer::readdir_plus_cb(EStore::ReaddirEntry *entry, void *ctx)
+bool NfsServer::readdir_plus_cb(EStore::ListEntry *entry, void *ctx)
 {
     ReaddirState *rd_state = (ReaddirState *)ctx;
     PT_DEBUG(DATA, "add entry handle=%lx name=%s dir_mem_left=%lu mem_left=%lu", entry->handle, entry->name,
            rd_state->dir_mem_left, rd_state->mem_left);
     rd_state->last_retval = false;
     // check if we have dir space left to store the name and file id (dir space only relates to directory information)
+    // TODO use name len from entry
     uint64_t name_len = strnlen(entry->name, PATH_MAX) + 1;
     uint64_t required_space = name_len + sizeof(fileid3);
     if (rd_state->dir_mem_left < required_space) {
@@ -1385,6 +1386,8 @@ nfsstat3 NfsServer::eres_to_nfs_status(EStore::EStoreRes res)
     switch (res) {
         case EStoreRes::OK:
             return NFS3_OK;
+        case EStoreRes::STOP:
+            return NFS3ERR_SERVERFAULT;
         case EStoreRes::PERM_ERROR:
             return NFS3ERR_PERM;
         case EStoreRes::STALE:
@@ -1496,7 +1499,7 @@ void NfsServer::sys_attr_to_wcc_attr(EStore::SystemAttr *attr, wcc_attr *wcc_att
 EStore::EStoreRes NfsServer::add_dot_files(EStore::EHandle handle, uint64_t offset,
                                            ReaddirState *rd_state, ListCallback cb)
 {
-    EStore::ReaddirEntry entry = {
+    EStore::ListEntry entry = {
         .handle = handle,
         .name = ".",
         .offset = 1,

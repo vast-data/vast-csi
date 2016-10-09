@@ -120,7 +120,7 @@ EStoreRes Ingest::create(OpCallback op_cb, void *cb_ctx, EHandle parent, const c
 {
     PT_INFO(DATA, "create parent=0x%lx name=%s", parent, name);
     // TODO reduce the number of required buffer by returning no longer used buffers to the guard
-    BuffersGuard buffers_guard(_eio, 8);
+    BuffersGuard buffers_guard(_eio, 9);
 
     CompositeBlock parent_composite_block;
     HandleBlock parent_handle_block;
@@ -137,7 +137,7 @@ EStoreRes Ingest::create(OpCallback op_cb, void *cb_ctx, EHandle parent, const c
 
     // allocate a new handle and append it to the write buffer
     LAddress content_addr;
-    res = write_new_handle(&buffers_guard, name, sattr, create_flags, &content_addr, element_handle, element_attr);
+    res = write_new_handle(&buffers_guard, name, sattr, create_flags, &content_addr, parent, element_handle, element_attr);
     PT_RETURN(res != OK, res, "write_new_handle failed name=%s content_addr=0x%lx", name, content_addr.as_number());
 
     update_mc_times(&parent_handle_block);
@@ -225,22 +225,142 @@ EStoreRes Ingest::lookup(OpCallback op_cb, void *cb_ctx, EHandle parent, const c
     return OK;
 }
 
+struct ListElementsCtx {
+    Ingest *ingest;
+    ListCallback list_cb;
+    void *caller_ctx;
+    ListOffset list_offset;
+    ListOffset res_offset;
+    EHandle handle;
+    CompositeBlock *composite_block;
+    NameBitmapBlock *bitmap_block;
+    NameContentBlock *content_block;
+};
+
+EStoreRes name_content_traverse_func(const char *name, uint16_t name_len, uint32_t hash, EHandle handle, void *ctx)
+{
+    ListElementsCtx *list_ctx = (ListElementsCtx *)ctx;
+    list_ctx->res_offset.name_hash = hash;
+    ListEntry entry = {
+        .handle = handle,
+        .name = name,
+        .name_len = name_len,
+        .is_common_prefix = false,
+        .offset = list_ctx->res_offset.as_number(),
+    };
+
+    bool cont = list_ctx->list_cb(&entry, list_ctx->caller_ctx);
+    if (!cont) {
+        return EStoreRes::STOP;
+    }
+    return OK;
+}
+
+static EStoreRes name_bitmap_traverse_func(Layout::Address addr, void *ctx)
+{
+    ListElementsCtx *list_elements_ctx = (ListElementsCtx *)ctx;
+    return list_elements_ctx->ingest->name_bitmap_traverse(addr, ctx);
+}
+
+EStoreRes Ingest::name_bitmap_traverse(Layout::Address addr, void *ctx)
+{
+    DEBUG_ASSERT(addr.addr_type != Layout::AddrType::NONE);
+    ListElementsCtx *list_ctx = (ListElementsCtx *)ctx;
+    EStoreRes res = read_block(list_ctx->composite_block, addr, list_ctx->handle, list_ctx->content_block);
+    PT_RETURN(res != OK, res, "read_block failed");
+
+    // TODO define name hash size
+    res = list_ctx->content_block->traverse((uint32_t)list_ctx->list_offset.name_hash, name_content_traverse_func, ctx);
+    PT_RETURN(res != OK && res != EStoreRes::STOP, res, "content_block traverse failed");
+
+    return OK;
+}
+
+static EStoreRes name_range_traverse_func(Layout::Address addr, uint16_t idx, void *ctx)
+{
+    ListElementsCtx *list_elements_ctx = (ListElementsCtx *)ctx;
+    return list_elements_ctx->ingest->name_range_traverse(addr, idx, ctx);
+}
+
+EStoreRes Ingest::name_range_traverse(Layout::Address addr, uint16_t idx, void *ctx)
+{
+    DEBUG_ASSERT(addr.addr_type != Layout::AddrType::NONE);
+    ListElementsCtx *list_ctx = (ListElementsCtx *)ctx;
+    EStoreRes res = read_block(list_ctx->composite_block, addr, list_ctx->handle, list_ctx->bitmap_block);
+    PT_RETURN(res != OK, res, "read_block failed");
+
+    list_ctx->res_offset.bitmap_idx = idx;
+    res = list_ctx->bitmap_block->traverse((uint32_t)list_ctx->list_offset.name_hash, name_bitmap_traverse_func, ctx);
+    PT_RETURN(res != OK && res != EStoreRes::STOP, res, "bitmap_block traverse failed");
+    // just used for the first bitmap
+    list_ctx->list_offset.name_hash = 0;
+
+    return OK;
+}
+
 EStoreRes Ingest::list_elements(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, uint64_t element_version,
-                                ListCallback rd_cb, void *rd_ctx, const char *prefix, char delimiter,
+                                ListCallback list_cb, void *list_ctx, const char *prefix, char delimiter,
                                 uint64_t *current_element_version, SystemAttr *post_attr)
 {
+    PTC_INFO("handle=0x%lx offset=0x%lx element_version=%lu", handle, offset, element_version);
+    BuffersGuard buffers_guard(_eio, 5);
+
+    CompositeBlock composite_block;
+    HandleBlock handle_block;
+    EStoreRes res = read_handle_block(handle, &composite_block, &handle_block, &buffers_guard);
+    PT_RETURN(res != OK, res, "read_handle_block failed handle=0x%lx", handle);
+
+    // Verify the parent is allowed to have children
+    if (!handle_block.is_container_element()) {
+        PT_ERROR(DATA, "element 0x%lx is not allowed to have children", handle);
+        return EStoreRes::NOT_A_CONTAINER;
+    }
+    OP_CALLBACK_RETURN(op_cb, cb_ctx, handle_block.get_attr());
+
+    NameBitmapBlock bitmap_block;
+    bitmap_block.init(buffers_guard.get_next());
+    NameContentBlock content_block;
+    content_block.init(buffers_guard.get_next());
+
+    ListOffset list_offset = *(ListOffset *)&offset;
+    ListElementsCtx ctx = {
+        .ingest = this,
+        .list_cb = list_cb,
+        .caller_ctx = list_ctx,
+        .list_offset = list_offset,
+        .handle = handle,
+        .composite_block = &composite_block,
+        .bitmap_block = &bitmap_block,
+        .content_block = &content_block,
+    };
+    // get ranges block
+    NameRangeBlock range_block;
+    range_block.init(buffers_guard.get_next());
+    LAddress range_addr = handle_block.get_ranges_addr();
+    res = read_block(&composite_block, range_addr, handle, &range_block);
+    PT_RETURN(res != OK, res, "failed to read block addr=0x%lx", range_addr.as_number());
+
+    if (range_addr.addr_type == LAddrType::NONE) {
+        // if the ranges block does not exist
+        PTC_INFO("handle=0x%lx does not have a range block", handle);
+        return OK;
+    }
+    // TODO support multiple range blocks
+
+    res = range_block.traverse(list_offset.bitmap_idx, name_range_traverse_func, &ctx);
+    PT_RETURN(res != OK && res != EStoreRes::STOP, res, "range_block traverse failed");
 
     return OK;
 }
 
 EStoreRes Ingest::write_new_handle(BuffersGuard *buffers_guard, const char *name, SettableAttr *sattr,
-                                   CreateFlags create_flags, LAddress *content_addr, EHandle *new_handle,
-                                   SystemAttr *element_attr)
+                                   CreateFlags create_flags, LAddress *content_addr, EHandle parent_handle,
+                                   EHandle *new_handle, SystemAttr *element_attr)
 {
     // TODO lock handle bucket
     CompositeBlock handle_composite_block;
     handle_composite_block.init(buffers_guard->get_next());
-    // TODO is rand() good enough?
+    // TODO find something better than rand() (RAND_MAX is smaller than N_VIRTUAL_BUCKETS)
     VirtualBucketId virt_bucket = rand() % N_VIRTUAL_BUCKETS;
     EStoreRes res = _handles_table->read_by_virt_bucket(virt_bucket, handle_composite_block.get_buffer());
     PT_RETURN(res != OK, res, "read_by_virt_bucket failed virt_id=%lu", virt_bucket);
@@ -250,7 +370,7 @@ EStoreRes Ingest::write_new_handle(BuffersGuard *buffers_guard, const char *name
     *new_handle = _handles_table->build_handle(1, virt_bucket);
     // TODO in case the bucket has too many handles retry
 
-    ShardId shard_id = HandlesTable::handle_to_shard_id(*new_handle);
+    ShardId shard_id = HandlesTable::handle_to_shard_id(parent_handle);
     // name does not exist, add it to the content block on the write buffer
     WriteBuffer *write_buffer = _shard_md->get_ingest_buffer(shard_id);
     ASSERT_NOT_NULL(write_buffer);
@@ -271,6 +391,7 @@ EStoreRes Ingest::write_new_handle(BuffersGuard *buffers_guard, const char *name
     // TODO deal with no space
     PT_RETURN(res != OK, res, "add_contained_block failed");
 
+    // TODO handle the case in which the parent and child reside in the same bucket
     res = _handles_table->write(*new_handle, handle_composite_block.get_buffer());
     PT_RETURN(res != OK, res, "failed to write new handle bucket");
 
@@ -316,6 +437,9 @@ EStoreRes Ingest::update_parent(BuffersGuard *buffers_guard, LAddress range_addr
     if (bitmap_addr.addr_type == LAddrType::CONTAINED || bitmap_addr.addr_type == LAddrType::NONE) {
         res = parent_composite_block->replace_contained_block(parent, bitmap_block);
         // TODO handle the case the composite block has no space
+        if (res != OK) {
+            bitmap_block->trace();
+        }
         PT_RETURN(res != OK, res, "replace_contained_block failed parent=0x%lx", parent);
         update_table = true;
     } else {
@@ -432,7 +556,7 @@ EStoreRes Ingest::read_parent_blocks(EHandle parent, const char *name, BuffersGu
 
     if (bitmap_addr.addr_type == LAddrType::NONE) {
         // if the bitmap block did not exist we'll attempt to add it to the handle composite block
-        // TODO will " " range always be first?
+        // TODO will the " " range always be first?
         res = range_block->add_range(" ", Layout::CONTAINED_ADDRESS);
         PT_RETURN(res != OK, res, "add_range failed");
         *range_updated = true;

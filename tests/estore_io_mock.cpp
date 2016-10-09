@@ -12,7 +12,6 @@
 namespace EStore {
 
 #define N_WRITE_BUFFERS 4
-std::map<uint64_t, char *> data_map;
 std::map<std::string, int> fd_map;
 uint64_t current_addr = 2 + N_WRITE_BUFFERS;
 
@@ -24,13 +23,17 @@ using MirroredIO::MIO;
 
 void EStoreIO::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id, MirroredIO::MIO *mio)
 {
+    current_addr = 2 + N_WRITE_BUFFERS;
     system("rm -rf /tmp/eio_mock_data");
     system("mkdir /tmp/eio_mock_data");
 }
 
 void EStoreIO::destroy()
 {
-    // TODO free mem
+    for (auto fd_iter : fd_map) {
+        close(fd_iter.second);
+    }
+    fd_map.clear();
 }
 
 static int get_mock_fd(LAddress addr)

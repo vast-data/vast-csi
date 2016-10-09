@@ -77,7 +77,6 @@ void WriteBuffer::init(EStoreIO *eio, LAddress wb_addr)
 
 EStoreRes WriteBuffer::reset()
 {
-    PT_INFO(DATA, "resetting write buffer");
     BuffersGuard buffers_guard(_eio, 3);
 
     WBHeaderBlock header_block;
@@ -163,6 +162,7 @@ LAddress WriteBuffer::get_content_addr(WBHeaderBlock *header_block, WBHeader::MD
 EStoreRes WriteBuffer::append_name_content(BuffersGuard *buffers_guard, const char *name, EHandle handle, LAddress *addr)
 {
     // TODO lock
+    // GDB
     WBHeaderBlock header_block;
     EStoreRes res = read_md_header(buffers_guard, &header_block);
     PT_RETURN(res != OK, res, "read_md_header failed");
@@ -181,6 +181,7 @@ EStoreRes WriteBuffer::append_name_content(BuffersGuard *buffers_guard, const ch
         res = alloc_md_internal(buffers_guard, WBHeader::MDType::NAME_CONTENT, addr);
         PT_RETURN(res != OK, res, "alloc_md_internal failed");
 
+        PTC_DEBUG("alloc new content block addr=0x%lx", addr->as_number());
         content_block.init(content_block.get_buffer());
         res = content_block.add_handle(name, handle);
     }

@@ -35,7 +35,7 @@ public:
     virtual void set_xdr_procs(RpcRequest *request) override;
     virtual void run_procedure(RpcRequest *request) override;
 
-    bool readdir_plus_cb(EStore::ReaddirEntry *entry, void *ctx);
+    bool readdir_plus_cb(EStore::ListEntry *entry, void *ctx);
 
 private:
     // nfs procedures

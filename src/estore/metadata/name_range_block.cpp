@@ -68,6 +68,21 @@ LAddress NameRangeBlock::get_address(const char *name)
     return find_range(name)->bitmap_addr;
 }
 
+EStoreRes NameRangeBlock::traverse(uint16_t start_idx, TraverseCallback cb, void *cb_ctx)
+{
+    uint16_t curr = 0;
+    TRAVERSE_CONTENT(NameRange, range) {
+        if (start_idx <= curr) {
+            EStoreRes res = cb(range->bitmap_addr, curr, cb_ctx);
+            if (res != EStoreRes::OK) {
+                return res;
+            }
+        }
+        ++curr;
+    }
+    return EStoreRes::OK;
+}
+
 bool NameRangeBlock::has_ranges()
 {
     NameRange *range = (NameRange *)payload_start();

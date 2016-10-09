@@ -11,6 +11,64 @@ using P::IO::IOVec;
 using P::IO::IOVecs;
 
 #define CURRENT_COMPONENT ComponentId::TEST
+#define CURRENT_CHANNEL DATA
+
+static bool list_callback(ListEntry *entry, void *ctx)
+{
+    uint64_t *n_files = (uint64_t *)ctx;
+    PTC_DEBUG("got element handle=0x%lx name=%s offset=0x%lx n_files=%lu",
+              entry->handle, entry->name, entry->offset, *n_files);
+    (*n_files)++;
+    return true;
+}
+
+TEST(TestList, test_ingest)
+{
+    // TODO use setup
+    EStoreIO eio;
+    eio.init(0, ModuleId::I, FiberGroupId::I_CONTROL);
+
+    ShardMd shard_md;
+    shard_md.init(&eio);
+    shard_md.create();
+
+    HandlesTable handles_table;
+    handles_table.init(&eio, &shard_md);
+    EStoreRes res = handles_table.create();
+    ASSERT(res == OK);
+
+    Ingest ingest;
+    ingest.init(&eio, &shard_md, &handles_table);
+
+    res = ingest.create_root();
+    ASSERT(res == OK);
+
+    char name[64];
+    SettableAttr sattr;
+    sattr.mode = 0444;
+    sattr.flags = MODE;
+    SystemAttr handle_attr;
+    SystemAttr parent_pre_attr;
+    SystemAttr parent_post_attr;
+    EHandle handle;
+
+#define N_FILES 700
+    LOOP(N_FILES, i) {
+        sprintf(name, "file_%lu", i);
+        res = ingest.create(nullptr, nullptr, ROOT_HANDLE, name, CreateFlags::HAS_CHILDREN, 0, &sattr, nullptr,
+                            nullptr, &handle, &handle_attr, &parent_pre_attr, &parent_post_attr);
+        ASSERT(res == OK);
+    }
+
+    uint64_t n_files = 0;
+    uint64_t curr_version = 0;
+    res = ingest.list_elements(nullptr, nullptr, ROOT_HANDLE, 0, 0, list_callback, &n_files, nullptr, 0, &curr_version,
+                               nullptr);
+    ASSERT(res == OK);
+    ASSERT_EQ(n_files, N_FILES);
+
+    eio.destroy();
+}
 
 TEST(TestCreate, test_ingest)
 {
@@ -46,7 +104,7 @@ TEST(TestCreate, test_ingest)
     ASSERT_EQ(handle_attr.mode, sattr.mode);
     ASSERT_GT(parent_post_attr.mtime, parent_pre_attr.mtime);
     ASSERT_GT(parent_post_attr.ctime, parent_pre_attr.ctime);
-    printf("created handle 0x%lx\n", handle);
+    PTC_DEBUG("created handle 0x%lx", handle);
 
     EHandle res_handle = 0;
     SystemAttr res_attr;
@@ -71,7 +129,7 @@ TEST(TestCreate, test_ingest)
     ASSERT_EQ(0555, handle_attr.mode);
     ASSERT_EQ(7, handle_attr.uid);
     ASSERT_EQ(7, handle_attr.gid);
-    printf("created handle 0x%lx\n", handle);
+    PTC_DEBUG("created handle 0x%lx", handle);
     res = ingest.lookup(nullptr, nullptr, ROOT_HANDLE, "gamp", false, &res_handle, &res_attr, &parent_attr);
     ASSERT(res == OK);
     ASSERT_EQ(res_handle, handle);
@@ -84,16 +142,40 @@ TEST(TestCreate, test_ingest)
     ASSERT_EQ(0333, handle_attr.mode);
     ASSERT_EQ(7, handle_attr.uid);
     ASSERT_EQ(7, handle_attr.gid);
-    printf("created handle 0x%lx\n", handle);
+    PTC_DEBUG("created handle 0x%lx", handle);
 
+    eio.destroy();
+}
+
+TEST(TestIO, test_ingest)
+{
+    EStoreIO eio;
+    eio.init(0, ModuleId::I, FiberGroupId::I_CONTROL);
+
+    ShardMd shard_md;
+    shard_md.init(&eio);
+    shard_md.create();
+
+    HandlesTable handles_table;
+    handles_table.init(&eio, &shard_md);
+    EStoreRes res = handles_table.create();
+    ASSERT(res == OK);
+
+    Ingest ingest;
+    ingest.init(&eio, &shard_md, &handles_table);
+
+    res = ingest.create_root();
+    ASSERT(res == OK);
+
+    SettableAttr sattr;
+    sattr.flags = MODE;
     sattr.mode = 0333;
-    res = ingest.create(nullptr, nullptr, handle, "data", CreateFlags::HAS_DATA, 0, &sattr, nullptr, nullptr,
+    EHandle handle;
+    SystemAttr handle_attr;
+    res = ingest.create(nullptr, nullptr, ROOT_HANDLE, "data", CreateFlags::HAS_DATA, 0, &sattr, nullptr, nullptr,
                         &handle, &handle_attr, nullptr, nullptr);
     ASSERT(res == OK);
-    ASSERT_EQ(0333, handle_attr.mode);
-    ASSERT_EQ(7, handle_attr.uid);
-    ASSERT_EQ(7, handle_attr.gid);
-    printf("created handle 0x%lx\n", handle);
+    PTC_DEBUG("created handle 0x%lx", handle);
 
     #define WRITE_SIZE_FACTOR 12
     #define IOVEC_SIZE 64
@@ -162,6 +244,7 @@ TEST(TestCreate, test_ingest)
 
         offset += lens[i];
     }
+    eio.destroy();
 }
 
 int main(int argc, char **argv)

@@ -2,6 +2,7 @@
 #include "composite_block.hpp"
 
 #define CURRENT_COMPONENT ComponentId::ESTORE
+#define CURRENT_CHANNEL DATA
 
 namespace EStore {
 
@@ -24,6 +25,7 @@ EStoreRes CompositeBlock::add_contained_block(EHandle owner, const BaseBlock *bl
         return EStoreRes::NO_MEM;
     }
 
+    PTC_DEBUG("adding block type=%hhu used_bytes=%hu", block->get_type(), block->get_used_bytes());
     // TODO verify its not already there
     ContainedBlock *contained_block = (ContainedBlock *)(payload_end());
     contained_block->owner = owner;

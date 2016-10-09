@@ -1,4 +1,4 @@
-#/* Copyright (C) Vast Data Ltd. */
+/* Copyright (C) Vast Data Ltd. */
 
 #pragma once
 
@@ -17,9 +17,10 @@ struct BlockHeader {
 
 // helper macros to deal with blocks holding variable size content list, assumes each content struct has a len field
 // and that the list is finalized with a content struct with len 0
-#define NEXT_CONTENT(TYPE, X) (TYPE *)((char*)X + (sizeof(TYPE) + X->len))
-#define TRAVERSE_CONTENT(CONTENT_TYPE, X) \
-    for (CONTENT_TYPE *X = (CONTENT_TYPE *)payload_start(); X->len > 0; X = NEXT_CONTENT(CONTENT_TYPE, X))
+#define NEXT_CONTENT(TYPE, X) ((TYPE *)((char*)X + (sizeof(TYPE) + X->len)))
+#define TRAVERSE_CONTENT_FROM(CONTENT_TYPE, X, FROM) \
+    for (CONTENT_TYPE *X = (CONTENT_TYPE *)FROM; X->len > 0; X = NEXT_CONTENT(CONTENT_TYPE, X))
+#define TRAVERSE_CONTENT(CONTENT_TYPE, X) TRAVERSE_CONTENT_FROM(CONTENT_TYPE, X, payload_start())
 
 #define ZERO_LAST(CONTENT_TYPE) ((CONTENT_TYPE *)(payload_end()))->len = 0;
 

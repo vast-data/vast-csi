@@ -769,10 +769,11 @@ EStoreRes EStore::list_elements(OpCallback op_cb, void *cb_ctx, EHandle handle, 
             ent = ::readdir(dir);
             continue;
         }
-        ReaddirEntry entry;
+        ListEntry entry;
         entry.name = ent->d_name;
         entry.is_common_prefix = false;
         entry.offset = telldir(dir);
+        entry.name_len = strlen(entry.name) + 1;
         _handle_container.add_handle(path + "/" + entry.name, &entry.handle);
         read_more = rd_cb(&entry, rd_ctx);
         if (read_more) {

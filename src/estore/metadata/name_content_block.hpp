@@ -1,4 +1,4 @@
-#/* Copyright (C) Vast Data Ltd. */
+/* Copyright (C) Vast Data Ltd. */
 
 #pragma once
 
@@ -19,7 +19,12 @@ public:
 
     EStoreRes add_handle(const char *name, EHandle handle);
     EStoreRes get_handle(const char *name, EHandle *handle);
-    void trace_handles();
+
+    typedef EStoreRes (*TraverseCallback)(const char *name, uint16_t name_len, uint32_t hash, EHandle handle, void *ctx);
+    EStoreRes traverse(uint32_t start_hash, TraverseCallback cb, void *cb_ctx);
+
+
+    void trace();
 };
 
 }

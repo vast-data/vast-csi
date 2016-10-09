@@ -14,6 +14,9 @@
 #include "estore/metadata/name_range_block.hpp"
 #include "utils.hpp"
 
+#define CURRENT_COMPONENT ComponentId::ESTORE
+#define CURRENT_CHANNEL DATA
+
 using namespace EStore;
 using EStoreRes::OK;
 
@@ -262,6 +265,14 @@ TEST(TestDataBitmapBlock, test_md)
     ASSERT_EQ(2, n_addrs);
 }
 
+
+static EStoreRes name_bitmap_traverse_cb(Layout::Address addr, void *ctx)
+{
+    uint64_t *found_blocks = (uint64_t *)ctx;
+    (*found_blocks)++;
+    return OK;
+}
+
 TEST(TestNameHash, test_md)
 {
     TestMIOBuffer buff;
@@ -269,18 +280,23 @@ TEST(TestNameHash, test_md)
     bitmap_block.init(&buff);
     ASSERT(bitmap_block.get_type() == BlockType::NAME_BITMAP_BLOCK);
 
-    LAddress addr {
-        .addr_type = LAddrType::WRITE_BUFFER,
-        .shard_id = 0,
-        .offset = 0,
-    };
+    LAddress addr{.addr_type = LAddrType::WRITE_BUFFER, .shard_id = 0, .offset = 0,};
     ASSERT(EStoreRes::OK == bitmap_block.add_name("aaa", addr));
+    ASSERT(EStoreRes::OK == bitmap_block.add_name("bbb", addr));
     addr.shard_id = 1;
     ASSERT(EStoreRes::OK == bitmap_block.add_name("adsasdsa", addr));
+    ASSERT(EStoreRes::OK == bitmap_block.add_name("fff", addr));
+    addr.shard_id = 0;
+    ASSERT(EStoreRes::OK == bitmap_block.add_name("ddd", addr));
+    ASSERT(EStoreRes::OK == bitmap_block.add_name("eee", addr));
     addr.shard_id = 2;
     ASSERT(EStoreRes::OK == bitmap_block.add_name("zdfgsdew", addr));
+    addr.shard_id = 0;
+    ASSERT(EStoreRes::OK == bitmap_block.add_name("fff", addr));
+    ASSERT(EStoreRes::OK == bitmap_block.add_name("gggggggg", addr));
     addr.shard_id = 3;
     ASSERT(EStoreRes::OK == bitmap_block.add_name("2314351cf", addr));
+    bitmap_block.trace();
 
     LAddress addr_res;
     ASSERT(EStoreRes::OK == bitmap_block.get_addr("2314351cf", &addr_res));
@@ -289,6 +305,32 @@ TEST(TestNameHash, test_md)
     ASSERT_EQ(1, addr_res.shard_id);
 
     ASSERT(EStoreRes::NOENT == bitmap_block.get_addr("adljklasdfafsasdsa", &addr_res));
+
+    bitmap_block.init(&buff);
+    char name[64];
+    uint64_t n_blocks = rand() % 12;
+    uint64_t n_names = 0;
+    LOOP(10000, i) {
+        addr.shard_id = i % n_blocks;
+        sprintf(name, "baba_%lu", i);
+        EStoreRes res = bitmap_block.add_name(name, addr);
+        if (res == EStoreRes::NO_MEM) {
+            PTC_DEBUG("bitmap block out of mem");
+            break;
+        }
+        n_names++;
+    }
+    bitmap_block.trace();
+    uint64_t found_blocks = 0;
+    EStoreRes res = bitmap_block.traverse(0, name_bitmap_traverse_cb, &found_blocks);
+    ASSERT(res == OK);
+    ASSERT_EQ(n_blocks, found_blocks);
+
+    LOOP(n_names, i) {
+        sprintf(name, "baba_%lu", i);
+        ASSERT(EStoreRes::OK == bitmap_block.get_addr(name, &addr_res));
+        ASSERT_EQ(i % n_blocks, addr_res.shard_id);
+    }
 }
 
 TEST(TestNameContent, test_md)
@@ -398,14 +440,21 @@ TEST(TestCompositeBlock, test_md)
     NameBitmapBlock bitmap_block;
     bitmap_block.init(buffers_guard.get_next());
     ASSERT(bitmap_block.get_type() == BlockType::NAME_BITMAP_BLOCK);
-    LAddress addr1 = {
-        .addr_type = LAddrType::CONTAINED,
-        .offset = 1,
-        .shard_id = 2
-    };
+    LAddress addr1 = { .addr_type = LAddrType::CONTAINED, .offset = 1, .shard_id = 2 };
     EStoreRes res = bitmap_block.add_name("asasa", addr1);
     ASSERT_OK(res);
     ASSERT(EStoreRes::OK == composite_block.add_contained_block(handle, &bitmap_block));
+    res = bitmap_block.add_name("asasaaaa", addr1);
+    res = bitmap_block.add_name("asaqaa1a", addr1);
+    addr1.offset = 3;
+    res = bitmap_block.add_name("asadaa2a", addr1);
+    res = bitmap_block.add_name("asafaaa4", addr1);
+    addr1.offset = 1;
+    res = bitmap_block.add_name("asagaaa3a", addr1);
+    res = bitmap_block.add_name("asaeaa5a", addr1);
+    addr1.offset = 2;
+    res = bitmap_block.add_name("asagaaasdasa3a", addr1);
+    res = bitmap_block.add_name("asafafaeaa5a", addr1);
 
     NameRangeBlock res_block1;
     ASSERT(EStoreRes::NOENT == composite_block.export_contained_block(handle + 1, BlockType::NAME_RANGE_BLOCK, &res_block1));
@@ -430,6 +479,10 @@ TEST(TestCompositeBlock, test_md)
     ASSERT(res_block2.get_type() == BlockType::NAME_RANGE_BLOCK);
     LAddress addr2 = res_block2.get_address("batata");
     ASSERT_EQ(addr.as_number(), addr2.as_number());
+
+    NameBitmapBlock res_block3;
+    ASSERT(EStoreRes::OK == composite_block.export_contained_block(handle, BlockType::NAME_BITMAP_BLOCK, &res_block3));
+    res_block3.trace();
 }
 
 #define BUCKET_SIZE 1024

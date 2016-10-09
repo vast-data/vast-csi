@@ -1,8 +1,9 @@
-#/* Copyright (C) Vast Data Ltd. */
+/* Copyright (C) Vast Data Ltd. */
 
 #pragma once
 
 #include <stdint.h>
+#include <phys/layout/address.hpp>
 #include "plasma/utils/types.hpp"
 #include "plasma/utils/units.hpp"
 #include "plasma/utils/assert.hpp"
@@ -133,6 +134,7 @@ struct ExtendedAttrs {
 
 enum class EStoreRes {
     OK,
+    STOP,                    // request to stop an iteration (not an error)
     PERM_ERROR,              // access to the request element is not permitted
     STALE,                   // invalid / stale handle
     NOENT,                   // name / path not found
@@ -170,15 +172,24 @@ enum class BlockType : uint8_t {
 static const uint16_t INITIAL_BLOCK_VER = 0;
 
 // Structure describing an element passed to the ListCallback
-struct ReaddirEntry {
+struct ListEntry {
     EHandle handle;
     const char *name;
+    uint16_t name_len;
     uint64_t offset;
     // when set to true this entry represents a common prefix
     bool is_common_prefix;
 };
-// Callback to provide to the read dir operation
-typedef bool (*ListCallback)(ReaddirEntry *entry, void *ctx);
+
+struct ListOffset {
+    uint64_t bitmap_idx : 16;
+    uint64_t name_hash  : 40;
+
+    uint64_t as_number() { return *(uint64_t *)this; }
+};
+
+// Callback to provide to the list elements operation
+typedef bool (*ListCallback)(ListEntry *entry, void *ctx);
 
 // Operation callback function, provided as a parameter for most operations.
 // In case the callback return code is not OK the operation fails and returns the status code returned
