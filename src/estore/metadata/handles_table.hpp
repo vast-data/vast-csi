@@ -25,13 +25,14 @@ public:
     static const uint64_t HANDLE_INDEX_MASK = 0xffff000000000000;
     static const uint64_t BUCKET_MASK       = 0x0000ffffffffffff;
     static VirtualBucketId handle_to_virt_bucket(EHandle handle) { return handle & BUCKET_MASK; }
-    static P::ShardId handle_to_shard_id(EHandle handle) { return handle_to_virt_bucket(handle) % P::N_SHARDS; }
     static uint64_t handle_to_handle_index(EHandle handle) { return handle >> 48; }
-    static EHandle build_handle(uint64_t handle_index, VirtualBucketId virt_bucket) {
+    static EHandle build_handle(uint64_t handle_index, VirtualBucketId virt_bucket)
+    {
         EHandle handle = handle_index << 48;
         handle = handle | (virt_bucket & BUCKET_MASK);
         return handle;
     }
+    P::ShardId handle_to_shard_id(EHandle handle) { return handle_to_virt_bucket(handle) % _eio->get_shard_count(); }
 
 private:
     LAddress handle_to_addr(EHandle handle);

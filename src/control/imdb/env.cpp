@@ -8,6 +8,7 @@
 #include "plasma/execution/config_internal.hpp"
 #include "plasma/execution/env.hpp"
 #include "plasma/utils/os.hpp"
+#include "globals.hpp"
 
 namespace Control {
 
@@ -16,6 +17,7 @@ using P::Conf::conf_setting_add;
 using P::Conf::conf_setting_add_group;
 using P::Conf::conf_setting_set_string;
 using P::Conf::conf_setting_set_int32;
+using P::Conf::conf_setting_set_bool;
 
 /* static */ constexpr char EnvObj::DATA_DIR_PATH[];
 
@@ -28,6 +30,11 @@ void EnvObj::generate_config(char *buffer, size_t buf_size)
 
     ConfigSetting *data_dir = conf_setting_add(root, "data_dir", CONFIG_TYPE_STRING);
     conf_setting_set_string(data_dir, DATA_DIR_PATH);
+
+    if (global_test_mode) {
+        ConfigSetting *test_mode_setting = conf_setting_add(root, "test_mode", CONFIG_TYPE_BOOL);
+        conf_setting_set_bool(test_mode_setting, true);
+    }
 
     ConfigSetting *vmsg = conf_setting_add_group(root, "vmsg");
     ConfigSetting *env_id = conf_setting_add(vmsg, "env_id", CONFIG_TYPE_INT32);
@@ -49,7 +56,7 @@ void EnvObj::generate_config(char *buffer, size_t buf_size)
     ConfigSetting *silo_types = conf_setting_add_group(root, "silo_types");
     ConfigSetting *silos = conf_setting_add(root, "silos", CONFIG_TYPE_LIST);
 
-    ASSERT_OP(get_silo_count(), <, ENV_MAX_SILOS);
+    ASSERT_OP(get_silo_count(), <, P::MAX_SILOS_PER_ENV);
     for (int i = 0; i < get_silo_count(); ++i) {
         ConfigSetting *silo = conf_setting_add_group(silos, nullptr /* name */);
         ConfigSetting *type = conf_setting_add(silo, "type", CONFIG_TYPE_STRING);

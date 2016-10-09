@@ -10,9 +10,11 @@
 
 #include "globals.hpp"
 #include "scheduler.hpp"
+#include "plasma/trace/emitter.hpp"
 #include "plasma/utils/assert.hpp"
 #include "plasma/utils/compiler.hpp"
 #include "plasma/utils/time.hpp"
+#include "plasma/internal.hpp"
 
 namespace P {
 
@@ -40,7 +42,7 @@ uint64_t Fiber::get_switch_time()
 {
     Fiber *fiber = Fiber::get_current();
     ASSERT(fiber->_state != State::RUNNING, "Cannot suspend a fiber that isn't running");
-    if (likely(!debugging)) {
+    if (likely(!global_debugging)) {
         // don't want to measure time while debugging
         ASSERT_OP(P::get_time_nano() - fiber->_switch_time, <, STARVATION_THRESHOLD_NS, "Fiber took longer than expected");
     }
@@ -118,8 +120,10 @@ Fiber *Fiber::init(Index group_index, void (*func)(void *arg), void *arg, bool p
     DEBUG_ASSERT_OP(group_index, <, sched->_group_count, "out of bounds group index");
     FiberGroup *group = &sched->_groups[group_index];
     Index fiber_index = sched->_fiber_pool.partitioned_alloc(group_index);
-    if (fiber_index == INVALID_INDEX)
+    if (fiber_index == INVALID_INDEX) {
+        PT_WARN(DATA, "Out of fibers for fiber_group=%d", group_index);
         return nullptr;
+    }
     Fiber *fiber = (Fiber*) sched->_fiber_pool.index_to_address(fiber_index);
     void *stack = group->stacks->partitioned_alloc_address(group->stacks_partition);
 #ifdef DEBUG

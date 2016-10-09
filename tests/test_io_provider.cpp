@@ -195,7 +195,7 @@ static void io_submitter(void *arg)
 
     multiple_async_rw(device);
 
-    env_stop = true;
+    global_env_stop = true;
 }
 
 TEST(TestIOProvider, test)

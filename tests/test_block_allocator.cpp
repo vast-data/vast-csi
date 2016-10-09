@@ -222,7 +222,7 @@ static void test_block_allocator(void *ctx)
     _test_out_of_memory(&estore_io);
     _test_complex(&estore_io);
 
-    env_stop = true;
+    global_env_stop = true;
 }
 
 TEST(TestMio, test_block_allocator) {
@@ -230,12 +230,13 @@ TEST(TestMio, test_block_allocator) {
     TestModule::set_init_func(init_func, &dev_agent);
     TestModule::set_start_func(test_block_allocator, &dev_agent);
 
-    env_stop = false;
+    global_env_stop = false;
     P::Env::get()->run("dist/env", "tests/test_block_allocator.config");
     dev_agent.destroy();
 }
 
 int main(int argc, char **argv) {
+    global_test_mode = true;
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }

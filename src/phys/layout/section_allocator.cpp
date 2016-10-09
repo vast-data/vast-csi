@@ -2,6 +2,7 @@
 
 #include "plasma/utils/macros.hpp"
 #include "plasma/utils/assert.hpp"
+#include "globals.hpp"
 
 namespace Layout {
 
@@ -9,24 +10,29 @@ constexpr AddrTypeConfig SectionAllocator::ADDR_TYPE_CONFIG[];
 
 void SectionAllocator::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id)
 {
-    LOOP(ReplicationFactor::COUNT, i) {
-        SectionTypeConfig *conf = &_section_type_config[i];
-        uint64_t offset = 0;
-        LOOP(AddrType::COUNT, j) {
-            conf->addr_type_offset[j] = offset;
-            conf->addr_type_size[j] = ADDR_TYPE_CONFIG[j].block_count * ADDR_TYPE_CONFIG[j].block_size;
-            offset += conf->addr_type_size[j];
-        }
-        ASSERT_OP(offset, <, SECTION_SIZE);
-    }
-
+    _active = false;
     register_server(silo_id, module_id, rpc_fiber_group_id);
 }
 
 void SectionAllocator::do_activate(uint32_t estore_shard_count, uint32_t max_section_id)
 {
+    if (estore_shard_count < MAXIMUM_SHARDS_PER_SECTION)
+        ASSERT(global_test_mode);
     _estore_shard_count = estore_shard_count;
     _max_section_id = max_section_id;
+    _active = true;
+
+    LOOP(ReplicationFactor::COUNT, i) {
+        SectionTypeConfig *conf = &_section_type_config[i];
+        uint64_t offset = 0;
+        LOOP(AddrType::COUNT, j) {
+            conf->addr_type_offset[j] = offset;
+            conf->addr_type_blocks[j] = ADDR_TYPE_CONFIG[j].shard_block_count * P_MIN(MAXIMUM_SHARDS_PER_SECTION, get_shard_count(&ADDR_TYPE_CONFIG[j]));
+            conf->addr_type_size[j] = conf->addr_type_blocks[j] * ADDR_TYPE_CONFIG[j].block_size;
+            offset += conf->addr_type_size[j];
+        }
+        ASSERT_OP(offset, <, SECTION_SIZE);
+    }
 }
 
 void SectionAllocator::activate(SectionAllocatorActivateParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
@@ -36,6 +42,7 @@ void SectionAllocator::activate(SectionAllocatorActivateParams::RootReader *args
 
 uint32_t SectionAllocator::get_shard_count(const AddrTypeConfig *type_config)
 {
+    ASSERT(_active);
     return type_config->shard_type == ShardType::ESTORE ? _estore_shard_count : 1;
 }
 
@@ -43,7 +50,8 @@ P::IO::MirroredAddressToken SectionAllocator::translate(Address addr, size_t len
 {
     const AddrTypeConfig *addr_type_config = &ADDR_TYPE_CONFIG[(int)addr.addr_type];
     SectionTypeConfig *section_type_config = &_section_type_config[(int)addr_type_config->replication_factor];
-    ASSERT_OP(addr.shard_id, <, get_shard_count(addr_type_config));
+    DEBUG_ASSERT_OP(addr.shard_id, <, get_shard_count(addr_type_config));
+    DEBUG_ASSERT_OP(addr.offset, <, get_total_addr_type_size(addr.shard_id, addr.addr_type));
 
     uint64_t block_offset = addr.offset % addr_type_config->block_size;
     ASSERT_OP(block_offset + len, <=, addr_type_config->block_size);
@@ -51,13 +59,12 @@ P::IO::MirroredAddressToken SectionAllocator::translate(Address addr, size_t len
 
     P::IO::MirroredAddressToken ret_addr;
     ret_addr.token_type = addr_type_config->token_type;
-    ret_addr.section_id = get_absolute_section(addr_type_config->replication_factor, block_index / addr_type_config->block_count);
-    ASSERT_OP(ret_addr.section_id, <, _max_section_id);
+    ret_addr.section_id = get_absolute_section(addr_type_config->replication_factor, block_index / section_type_config->addr_type_blocks[(int)addr.addr_type]);
 
     // offset to start of address type
     ret_addr.byte_offset = section_type_config->addr_type_offset[(int)addr.addr_type];
     // + offset to blocks of previous shards
-    ret_addr.byte_offset += block_index % addr_type_config->block_count * addr_type_config->block_size;
+    ret_addr.byte_offset += block_index % section_type_config->addr_type_blocks[(int)addr.addr_type] * addr_type_config->block_size;
     // + offset into specific block
     ret_addr.byte_offset += block_offset;
     return ret_addr;
@@ -73,7 +80,7 @@ P::IO::MirroredAddressToken SectionAllocator::translate(Address addr, size_t len
 
 P::IO::MirroredAddressToken SectionAllocator::translate_block(P::ShardId shard_id, LAddrType type, P::Index index)
 {
-    LAddress addr = { .shard_id=shard_id, .addr_type=type, .offset=ADDR_TYPE_CONFIG[(int)type].block_size*index };
+    LAddress addr = {.shard_id=shard_id, .addr_type=type, .offset=ADDR_TYPE_CONFIG[(int)type].block_size * index};
     return translate(addr, ADDR_TYPE_CONFIG[(int)type].block_size);
 }
 
@@ -107,9 +114,9 @@ uint32_t SectionAllocator::get_total_section_count(AddrType type)
 uint64_t SectionAllocator::get_total_addr_type_size(P::ShardId shard_id, AddrType type)
 {
     const AddrTypeConfig *addr_type_config = &ADDR_TYPE_CONFIG[(int)type];
-    uint32_t total_type_blocks = get_total_section_count(type) * addr_type_config->block_count;
-    uint32_t shard_blocks = total_type_blocks / get_shard_count(addr_type_config) + (shard_id < total_type_blocks % get_shard_count(addr_type_config));
-    return shard_blocks * addr_type_config->block_size;
+    SectionTypeConfig *section_type_config = &_section_type_config[(int)addr_type_config->replication_factor];
+    uint32_t total_blocks = get_total_section_count(type) * section_type_config->addr_type_blocks[(int)type];
+    return total_blocks / get_shard_count(addr_type_config) * addr_type_config->block_size;
 }
 
 uint32_t SectionAllocator::get_addr_type_block_size(AddrType type) {

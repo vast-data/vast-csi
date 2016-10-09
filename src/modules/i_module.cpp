@@ -12,6 +12,7 @@ void IModule::init(Silo *silo, ConfigSetting *setting)
 {
     // allows us to know if this is the first module initialized.
     static bool first_init = true;
+    _created_estore = false;
 
     // Verify that the i-module config matches that of NFS.
     ConfigSetting *fibers_setting = conf_setting_lookup_required(setting, "fibers");
@@ -31,13 +32,12 @@ void IModule::init(Silo *silo, ConfigSetting *setting)
     ASSERT_EQUAL(NfsProto::get_nfs_conf()->requests_per_silo, i_proto_fiber_count);
 
     _nfs.init(&_estore, P::Env::get()->get_tcp_acceptor(), first_init);
-    _dev_agent.init(silo->get_id(), get_id(), FiberGroupId::I_IO_POLLING);
-    _mio.init(silo->get_id(), get_id(), (P::Index)FiberGroupId::I_IO_POLLING, &_dev_agent,
+    _dev_agent.init(silo->get_id(), get_id(), FiberGroupId::I_CONTROL);
+    _mio.init(silo->get_id(), get_id(), (P::Index)FiberGroupId::I_MIO, &_dev_agent,
               MirroredIO::MIO::DEFAULT_CONCURRENT_READERS, MirroredIO::MIO::DEFAULT_CONCURRENT_WRITERS,
               MirroredIO::MIO::DEFAULT_DEVICES_ASYNCLY_WRITTEN);
-    _agent.init(silo->get_id(), get_id(), FiberGroupId::I_CONTROL);
-    _estore.init(silo->get_id(), get_id(), FiberGroupId::I_CONTROL);
-    _estore.load();
+    _agent.init(silo->get_id(), this);
+    _estore.init(silo->get_id(), get_id(), FiberGroupId::I_CONTROL, &_mio);
     first_init = false;
 }
 
@@ -47,15 +47,28 @@ static void nfs_poll_fiber(void *nfs_proto)
     while (true) {
         nfs->poll();
         P::Fiber::yield();
-        if (unlikely(env_stop)) {
+        if (unlikely(global_env_stop)) {
             break;
         }
     }
 }
 
+void IModule::activate()
+{
+    if (!_created_estore)
+        _estore.load();
+    P::Fiber::init((P::Index)FiberGroupId::I_NFS_POLLING, nfs_poll_fiber, &_nfs, false);
+}
+
+void IModule::create_estore()
+{
+    _created_estore = true;
+    _estore.create_estore();
+}
+
 void IModule::start()
 {
-    P::Fiber::init((P::Index)FiberGroupId::I_NFS_POLLING, nfs_poll_fiber, &_nfs, false);
+    _dev_agent.start(FiberGroupId::I_IO_POLLING);
 }
 
 /* static */ void IModule::generate_config(P::Conf::ConfigSetting *module_config)
@@ -63,7 +76,9 @@ void IModule::start()
     // TODO: this will later be part of the fixed config (see ORION-63), so it's OK that it's hard-coded for now:
     add_fiber_group_config(module_config, 1, "I_NFS_POLLING");
     add_fiber_group_config(module_config, NfsProto::DEFAULT_REQUESTS_PER_SILO, "I_PROTO", 131072);
-    add_fiber_group_config(module_config, 8, "I_CONTROL");
+    add_fiber_group_config(module_config, 1, "I_IO_POLLING");
+    add_fiber_group_config(module_config, 16, "I_MIO");
+    add_fiber_group_config(module_config, 16, "I_CONTROL");
 }
 
 /* static */ void IModule::get_vmsg_module_resources(P::VMsg::ModuleResources *vmsg_module_resources)

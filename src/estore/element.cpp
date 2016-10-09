@@ -86,7 +86,7 @@ EStoreRes Element::write_new_handle(const char *name, SettableAttr *sattr, Creat
     *new_handle = _handles_table->build_handle(1, virt_bucket);
     // TODO in case the bucket has too many handles retry
 
-    ShardId shard_id = HandlesTable::handle_to_shard_id(parent_handle);
+    ShardId shard_id = _handles_table->handle_to_shard_id(parent_handle);
     // name does not exist, add it to the content block on the write buffer
     WriteBuffer *write_buffer = _shard_md->get_ingest_buffer(shard_id);
     ASSERT_NOT_NULL(write_buffer);
@@ -196,4 +196,3 @@ void Element::set_attr(SettableAttr *sattr)
 }
 
 }
-

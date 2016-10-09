@@ -196,6 +196,7 @@ void Cluster::system_activate(SystemActivateParams::RootReader *args, SystemActi
     initialize_all_dnodes();
 
     _mio->activate();
+    PT_INFO(CONTROL, "MIO Activated.");
 
     // potentially activate all nodes
     IMDB_ITER_CHILDREN(_system, cnode, CNode, {
@@ -362,7 +363,18 @@ void Cluster::cnode_activate(CNode *cnode)
     connect_all_cnodes_to_node(cnode);
     connect_all_dnodes_to_node(cnode);
 
-    // 3. activate the envs.
+    // 3. connect the cnode to the NVRAMs
+    IMDB_ITER_CHILDREN(_system, dbox, DBox, {
+        IMDB_ITER_CHILDREN(dbox, dnode, DNode, {
+            if (dnode->get_base_node()->get_state() == NodeState::ACTIVE) {
+                IMDB_ITER_CHILDREN(dnode, nvram, NVRAM, {
+                    connect_cnode_to_device(cnode, nvram);
+                });
+            }
+        });
+    });
+
+    // 4. activate the envs.
     IMDB_ITER_CHILDREN(cnode, env, EnvObj, {
         env_activate(env);
     });
@@ -545,11 +557,6 @@ void Cluster::dbox_add(DBoxAddParams::RootReader *args, DBoxAddResult::RootBuild
         dnode->get_base_node()->set_state(NodeState::INIT);
         dnode->get_base_node()->set_enabled(false);
 
-        LOOP(P::DNODE_NVRAM_COUNT, j) {
-            NVRAM *nvram = _tree->create<NVRAM>(P::GUID::create(), dnode);
-            nvram->set_size(600 * UNIT_GiB);  // TODO: get size from the DNode
-        }
-
         // create the child EnvObjs
         EnvConfig::Reader env_config;
         SiloConfig::Reader silo_config;
@@ -622,7 +629,29 @@ void Cluster::initialize_all_dnodes()
 
 void Cluster::dnode_initialize(DNode *dnode)
 {
-    //TODO: query the dnode platform for the NVRAM size and version
+    P::PModuleAgentClient client;
+    client.init();
+
+    PModuleObj *module = dnode->get_platform_module();
+
+    RpcGuard<P::ListNVRAMsResult::RootReader> result;
+    if (client.list_nvrams_sync(module->get_address(), nullptr, &result) != P::VMsg::VMsgRes::OK) {
+        PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
+    }
+
+    P::NVRAMInfo::Reader nvram_info;
+    LOOP(result->get_nvrams_count(), i) {
+        NVRAM *nvram = _tree->create<NVRAM>(P::GUID::create(), dnode);
+        result->get_nvrams(&nvram_info, i);
+        nvram->set_size(nvram_info.get_size());
+        nvram->set_version(nvram_info.get_version());
+        strcpy(nvram->get_path(), nvram_info.get_path());
+
+        char guid_string[P::GUID::STRING_SIZE];
+        nvram->get_guid().to_string(guid_string);
+        PT_INFO(CONTROL, "Created nvram=%s with size=%lu and path=%s", guid_string, nvram->get_size(), nvram->get_path());
+    }
+
     dnode_activate(dnode);
 }
 
@@ -708,6 +737,7 @@ void Cluster::connect_env_to_device(EnvObj *env, NVRAM *nvram, char *local_path)
         RemoteDeviceProto::Builder *device = params->get_devices(0);
         device->set_guid(nvram->get_guid());
         strncpy(device->get_path(), local_path, device->get_path_count());
+        device->set_size(nvram->get_size());
 
         if (client.device_add_sync(module->get_address(), params) != P::VMsg::VMsgRes::OK) {
             PANIC("VMsg failure"); //TODO: unify handling of VMsg errors

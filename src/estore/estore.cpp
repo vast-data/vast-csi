@@ -7,9 +7,9 @@ using P::IO::IOVecs;
 
 using EStoreRes::OK;
 
-void EStore::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id)
+void EStore::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id, MirroredIO::MIO *mio)
 {
-    _eio.init(silo_id, module_id, rpc_fiber_group_id, nullptr);
+    _eio.init(silo_id, module_id, rpc_fiber_group_id, mio);
     _shard_md.init(&_eio);
     _handles_table.init(&_eio, &_shard_md);
     _ingest.init(&_eio, &_shard_md, &_handles_table);

@@ -307,6 +307,7 @@ static const ModulePair module_pairs[] = {
         { .src = ModuleId::TEST, .dest = ModuleId::C, .type = VMsg::TransportType::RDMA },
         { .src = ModuleId::TEST, .dest = ModuleId::E, .type = VMsg::TransportType::RDMA },
         { .src = ModuleId::TEST, .dest = ModuleId::P, .type = VMsg::TransportType::RDMA },
+        { .src = ModuleId::TEST, .dest = ModuleId::I, .type = VMsg::TransportType::RDMA },
         { .src = ModuleId::TEST, .dest = ModuleId::TEST, .type = VMsg::TransportType::RDMA },
     };
 

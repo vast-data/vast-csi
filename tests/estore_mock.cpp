@@ -233,7 +233,7 @@ static XAttrMap _handle_to_proto_xattrs;
 
 static uint64_t _current_handle = 2;
 
-void EStore::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id)
+void EStore::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id, MirroredIO::MIO *mio)
 {
     _data_pool.init(N_DATA_BUFFERS, DATA_BUFFER_SIZE);
     _handle_container.init();

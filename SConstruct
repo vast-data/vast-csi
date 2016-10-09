@@ -184,6 +184,7 @@ def vproto_emitter(target, source, env):
     source.extend([vproto_gen,
                    'src/plasma/vproto/vproto/main.py',
                    'src/plasma/vproto/vproto/struct.py',
+                   'src/plasma/vproto/vproto/module.py',
                    'src/plasma/vproto/vproto/parser.py',
                    'src/plasma/vproto/vproto/templates/header.jin'])
     return str(source[0]) + '.hpp', source
@@ -265,12 +266,12 @@ AddCppTest(target='dist/tests/vmsg', source=['tests/vmsg_test.cpp'] + test_rpc_s
 AddCppTest(target='dist/tests/vmsg_ping', source=['tests/test_vmsg_ping.cpp'])
 AddCppTest(target='dist/tests/vproto', source=['tests/test_vproto.cpp'])
 AddCppTest(target='dist/tests/nfs_rpc', source=['tests/test_nfs_rpc.cpp', estore_mock])
-AddCppTest(target='dist/tests/nfs_estore_mock', source=[nfs_test, estore_mock], group_alias='nfstest')
-AddCppTest(target='dist/tests/nfs_eio_mock', source=[nfs_test, eio_mock], group_alias='nfstest')
+AddCppTest(target='dist/tests/nfs_estore_mock', source=[nfs_test, estore_mock], group_alias='nfs_test')
+AddCppTest(target='dist/tests/nfs_eio_mock', source=[nfs_test, eio_mock], group_alias='nfs_test')
 AddCppTest(target='dist/tests/os', source=['tests/os_test.cpp'])
 AddCppTest(target='dist/tests/box', source=['tests/test_box.cpp'])
 AddCppTest(target='dist/tests/imdb', source=['tests/test_imdb.cpp'])
-AddCppTest(target='dist/tests/cluster', source=['tests/test_cluster.cpp'])
+AddCppTest(target='dist/tests/cluster', source=['tests/test_cluster.cpp'], group_alias='cluster_test')
 AddCppTest(target='dist/tests/env_config', source=['tests/test_env_config.cpp'])
 AddCppTest(target='dist/tests/mio', source=['tests/test_mio.cpp', io_utils])
 AddCppTest(target='dist/tests/dev_agent', source=['tests/test_dev_agent.cpp', io_utils])

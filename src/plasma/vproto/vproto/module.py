@@ -1,5 +1,6 @@
 import os
 import datetime
+from collections import OrderedDict
 from .parser import parse, Struct, Enum, Directive
 from .struct import VProtoStruct, VProtoEnum, TypeRegistry, SchemaError
 from jinja2 import Environment, PackageLoader, StrictUndefined

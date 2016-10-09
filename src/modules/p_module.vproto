@@ -2,6 +2,7 @@ $import e_module.vproto
 $import control/dev_agent/dev_agent.vproto as dev
 $import control/imdb/node.vproto as node
 $import plasma/vmsg/vmsg.vproto as VMsg
+$import defs.vproto as defs
 
 $namespace P
 
@@ -58,4 +59,14 @@ struct DisconnectDeviceParams {
 
 struct DisconnectDeviceResult {
 
+};
+
+struct NVRAMInfo {
+    @0 size uint64_t;
+    @1 version uint32_t;
+    @2 path char[dev.DEVICE_MAX_PATH];
+};
+
+struct ListNVRAMsResult {
+    @0 nvrams NVRAMInfo[defs.DNODE_NVRAM_COUNT];
 };

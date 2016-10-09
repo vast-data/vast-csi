@@ -12,7 +12,7 @@ namespace P {
 
 class PModuleAgentServerImpl : public PModuleAgentServer {
 public:
-    void init(SiloId silo_id, ModuleId module_id);
+    void init(SiloId silo_id, ModuleId module_id, Conf::ConfigSetting *module_setting);
 
 private:
     struct EnvData {
@@ -30,6 +30,7 @@ private:
     void run_leader(VProto::Empty::RootReader *args, EnvStartResult::RootBuilder *res);
     void connect_device(ConnectDeviceParams::RootReader *args, ConnectDeviceResult::RootBuilder *res);
     void disconnect_device(DisconnectDeviceParams::RootReader *args, DisconnectDeviceResult::RootBuilder *res);
+    void list_nvrams(VProto::Empty::RootReader *args, ListNVRAMsResult::RootBuilder *res);
 
     /*!
      * Helper function, used by env_start and run_leader to start an env.
@@ -47,6 +48,14 @@ private:
     // generalizing it (by creating a template data structure) if it seems like it will be reused.
     EnvData _envs[MAX_ENVS_PER_CNODE - 1];  // We don't need an entry for our own env.
     uint16_t _n_envs = 0;
+
+    // TODO: consider moving this state and logic to a class initialized only on the DNode (includes list_nvrams/test_add_nvram)
+    void init_test_drives(Conf::ConfigSetting *nvrams_setting);
+    void init_drives();
+
+    NVRAMInfo::RootBuilder _nvrams[DNODE_NVRAM_COUNT];
+    bool _nvrams_initialized;
+
 };  // class PModuleAgentServerImpl
 
 }  // namespace P

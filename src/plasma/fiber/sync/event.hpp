@@ -41,6 +41,8 @@ public:
      */
     void set();
 
+    bool is_set() { return _state == State::SET; }
+
     /*!
      * Clear the event. Can only be called if the event was previously set.
      */

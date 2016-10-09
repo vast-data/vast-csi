@@ -85,7 +85,7 @@ static void test_lock_manager(void *arg)
     while (step < 6)
         P::TimerQueues::fast_sleep(1000);
 
-    env_stop = true;
+    global_env_stop = true;
 }
 
 TEST(TestBox, lock_manager)

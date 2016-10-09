@@ -1,3 +1,6 @@
+#include <cstdio>
+#include <fcntl.h>
+#include <unistd.h>
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -7,13 +10,21 @@
 #include "plasma/execution/env.hpp"
 #include "plasma/trace/emitter.hpp"
 #include "plasma/utils/os.hpp"
+#include "globals.hpp"
 
 #define CURRENT_COMPONENT ComponentId::PLASMA
 
 namespace P {
 
-void PModuleAgentServerImpl::init(SiloId silo_id, ModuleId module_id)
+void PModuleAgentServerImpl::init(SiloId silo_id, ModuleId module_id, Conf::ConfigSetting *module_setting)
 {
+    _nvrams_initialized = false;
+    Conf::ConfigSetting *nvrams_setting = Conf::conf_setting_lookup_optional(module_setting, "nvrams");
+    if (nvrams_setting == nullptr)
+        init_drives();
+    else
+        init_test_drives(nvrams_setting);
+
     int res = snprintf(_config_dir, PATH_MAX, "%s/config", Env::get()->get_data_dir());
     ASSERT_OP(res, >, 0, "Error writing config dir");
     ASSERT_OP(res, <, PATH_MAX, "data dir path is too long for creating a config dir");
@@ -22,9 +33,33 @@ void PModuleAgentServerImpl::init(SiloId silo_id, ModuleId module_id)
     ensure_directory_exists(_config_dir);
 
     _n_envs = 0;
-    register_server(silo_id, module_id, FiberGroupId::P);
+    register_server(silo_id, module_id);
 
     ASSERT(VMsg::RDMATransport::fork_init());
+}
+
+void PModuleAgentServerImpl::init_drives()
+{
+    //TODO: how to scan for NVRAMs?
+}
+
+void PModuleAgentServerImpl::init_test_drives(Conf::ConfigSetting *nvrams_setting)
+{
+    ASSERT(global_test_mode);
+
+    LOOP(Conf::conf_setting_length(nvrams_setting), i) {
+        Conf::ConfigSetting *nvram_setting = Conf::conf_setting_get_element(nvrams_setting, (uint32_t) i);
+        Conf::ConfigSetting *path_setting = Conf::conf_setting_lookup_required(nvram_setting, "path");
+        const char *path = Conf::conf_setting_get_string(path_setting);
+        Conf::ConfigSetting *size_setting = Conf::conf_setting_lookup_required(nvram_setting, "size");
+
+        _nvrams[i].init();
+        strcpy(_nvrams[i].get_path(), path);
+        _nvrams[i].set_size(Conf::conf_setting_get_int64(size_setting));
+        _nvrams[i].set_version(0);
+    }
+
+    _nvrams_initialized = true;
 }
 
 void PModuleAgentServerImpl::set_local_env_id(SetLocalEnvIdParams::RootReader *args, VProto::Empty::RootBuilder *res)
@@ -149,11 +184,27 @@ void PModuleAgentServerImpl::connect_device(ConnectDeviceParams::RootReader *arg
 {
     // TODO: this function should connect the device using its guid (marks the subsystem) and dnode addresses
     // and return the path it's mounted on. if the device is already mounted, return its path anyways.
+    if (global_test_mode) {
+        char guid_string[P::GUID::STRING_SIZE];
+        args->get_guid().to_string(guid_string);
+        sprintf(res->get_path(), "/tmp/drives/%s", guid_string);
+        close(open(res->get_path(), O_CREAT, S_IRUSR | S_IWUSR));
+    } else {
+        PANIC("Not implemented!");
+    }
 }
 
 void PModuleAgentServerImpl::disconnect_device(DisconnectDeviceParams::RootReader *args, DisconnectDeviceResult::RootBuilder *res)
 {
     // TODO: remove the nvme device
+}
+
+void PModuleAgentServerImpl::list_nvrams(VProto::Empty::RootReader *args, ListNVRAMsResult::RootBuilder *res)
+{
+    ASSERT(_nvrams_initialized);
+    LOOP(res->get_nvrams_count(), i) {
+        res->get_nvrams(i)->init_from_root(&_nvrams[i]);
+    }
 }
 
 }  // namespace P

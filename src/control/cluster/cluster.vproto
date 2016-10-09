@@ -3,7 +3,7 @@ $namespace Control
 $import control/imdb/cnode.vproto as cnode
 $import control/imdb/dbox.vproto as dbox
 $import control/imdb/dnode.vproto as dnode
-$import control/imdb/env.vproto as env
+$import defs.vproto as defs
 
 struct SystemActivateParams {
     @0 guid GUID;
@@ -50,7 +50,7 @@ struct SiloConfig {
 };
 
 struct EnvConfig {
-    @0 silo_configs SiloConfig[env.ENV_MAX_SILOS];
+    @0 silo_configs SiloConfig[defs.MAX_SILOS_PER_ENV];
     @1 silo_count byte;
     @2 port uint16_t;
 };

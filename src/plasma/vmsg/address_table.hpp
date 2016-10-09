@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include "plasma/sync/rw_spinlock.hpp"
 #include "vmsg_defs.hpp"
+#include "defs.vproto.hpp"
 
 namespace P {
 namespace VMsg {

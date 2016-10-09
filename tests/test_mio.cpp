@@ -79,7 +79,7 @@ static void test_locking_start_func(void *ctx)
     ASSERT_TRUE(got_lock);
     mio.unlock(test_address, other_test_workerID);
 
-    env_stop = true;
+    global_env_stop = true;
 }
 
 void allocate_test_buffer(IOVec *buff)
@@ -197,7 +197,7 @@ static void test_rw_start_func(void *ctx)
 
     compare_buffers(&read_buff, &write_buff);
 
-    env_stop = true;
+    global_env_stop = true;
 }
 
 static void verify_phys_addr_set(MIOAgent::MappingSet *phys_addr_set, PhysAddr *expected_addresses,
@@ -214,7 +214,7 @@ static void verify_phys_addr_set(MIOAgent::MappingSet *phys_addr_set, PhysAddr *
 
 static void test_agent_start_func(void *ctx)
 {
-    debugging = true;  // EXPECT_DEATH takes a long time - disable the check for starvation.
+    global_debugging = true;  // EXPECT_DEATH takes a long time - disable the check for starvation.
     P::VMsg::RDMATransport::fork_init();
     constexpr size_t total_dev_count = 5;
     constexpr size_t mapping_dev_count = 3;
@@ -361,7 +361,7 @@ static void test_agent_start_func(void *ctx)
     verify_phys_addr_set(&phys_addr_set, expected_addresses, mapping_dev_count);
     mio_agent.done_write(section, &phys_addr_set);
 
-    env_stop = true;
+    global_env_stop = true;
 }
 
 TEST(TestMio, test_locking) {
@@ -369,7 +369,7 @@ TEST(TestMio, test_locking) {
     TestModule::set_init_func(init_func, &dev_agent);
     TestModule::set_start_func(test_locking_start_func, &dev_agent);
 
-    env_stop = false;
+    global_env_stop = false;
     P::Env::get()->run("dist/env", "tests/test_dev_agent.config");
     dev_agent.destroy();
 }
@@ -379,7 +379,7 @@ TEST(TestMio, test_rw) {
     TestModule::set_init_func(init_func, &dev_agent);
     TestModule::set_start_func(test_rw_start_func, &dev_agent);
 
-    env_stop = false;
+    global_env_stop = false;
     P::Env::get()->run("dist/env", "tests/test_dev_agent.config");
     dev_agent.destroy();
 }
@@ -389,7 +389,7 @@ TEST(TestMio, test_agent) {
     TestModule::set_init_func(init_func, &dev_agent);
     TestModule::set_start_func(test_agent_start_func, &dev_agent);
 
-    env_stop = false;
+    global_env_stop = false;
     P::Env::get()->run("dist/env", "tests/test_dev_agent.config");
     dev_agent.destroy();
 }

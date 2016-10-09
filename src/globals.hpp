@@ -6,5 +6,6 @@
  */
 #pragma once
 
-extern bool debugging;
-extern bool env_stop;
+extern bool global_debugging;
+extern bool global_env_stop;
+extern bool global_test_mode;

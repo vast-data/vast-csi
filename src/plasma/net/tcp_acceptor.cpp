@@ -95,6 +95,8 @@ void TcpAcceptor::poll()
     while (!_stop) {
         n_events = _epoll.wait(_events, MAX_EVENTS, -1);
         if (n_events < 0) {
+            if (errno == EINTR)
+                continue;
             PT_ERROR(DATA, "epoll failed errno=%d", errno);
             return;
         }

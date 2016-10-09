@@ -6,7 +6,7 @@ namespace P {
 
 void PModule::init(Silo *silo, Conf::ConfigSetting *module_setting)
 {
-    _agent.init(silo->get_id(), get_id());
+    _agent.init(silo->get_id(), get_id(), module_setting);
 }
 
 /* static */ void PModule::generate_config(P::Conf::ConfigSetting *module_config)

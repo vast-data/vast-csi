@@ -9,9 +9,9 @@ namespace P {
 
 class PModuleAgent : public Control::BaseAgent {
 public:
-    void init(SiloId silo_id, ModuleId module_id) {
+    void init(SiloId silo_id, ModuleId module_id, Conf::ConfigSetting *module_setting) {
         Control::BaseAgent::init(silo_id, module_id, FiberGroupId::P);
-        _rpc_server.init(silo_id, module_id);
+        _rpc_server.init(silo_id, module_id, module_setting);
     }
 
 private:

@@ -53,8 +53,8 @@ private:
 
 private:
     EStoreIO *_eio;
-    ShardMdHeader _shard_md[P::N_SHARDS];
-    WriteBuffer _ingest_buffers[P::N_SHARDS];
+    ShardMdHeader _shard_md[P::MAX_SHARDS];
+    WriteBuffer _ingest_buffers[P::MAX_SHARDS];
 };
 
 }

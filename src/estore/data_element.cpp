@@ -40,7 +40,7 @@ EStoreRes DataElement::io_start(EHandle handle, uint64_t offset)
 
 P::ShardId DataElement::resolve_shard_id(EHandle handle, uint64_t offset) const
 {
-    return (HandlesTable::handle_to_shard_id(handle) + (offset / DATA_RANGE_SHARD_SIZE)) % P::N_SHARDS;
+    return _handles_table->handle_to_shard_id(handle) + (offset / DATA_RANGE_SHARD_SIZE) % _eio->get_shard_count();
 }
 
 EStoreRes DataElement::add_data_bitmap_block(WriteBuffer *write_buffer, LAddress range_addr, LAddress *bitmap_addr,
@@ -493,4 +493,3 @@ EStoreRes DataElement::truncate(uint64_t size)
 }
 
 }
-

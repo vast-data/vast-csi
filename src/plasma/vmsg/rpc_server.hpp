@@ -13,6 +13,7 @@ enum class RpcServerId: uint8_t {
     PModuleAgent,
     BModuleAgent,
     EModuleAgent,
+    IModuleAgent,
     LockManager,
     DevAgent,
     SectionAllocator,

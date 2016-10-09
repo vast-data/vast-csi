@@ -123,7 +123,10 @@ def parse_params(format, buffer):
         if specifier == 's':
             size, = struct.unpack(STR_LENGTH_TYPE, buffer[pos:pos + STR_LENGTH_SIZE])
             pos += STR_LENGTH_SIZE
-            params.append(buffer[pos:pos + size].decode('utf-8'))
+            try:
+                params.append(buffer[pos:pos + size].decode('utf-8'))
+            except UnicodeError:
+                params.append('NON UNICODE STRING!!!')
             pos += size
         else:
             dtype = specifier_map[specifier]

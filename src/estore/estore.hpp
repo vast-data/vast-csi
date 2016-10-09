@@ -19,7 +19,7 @@ namespace EStore {
 
 class EStore {
 public:
-    void init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id);
+    void init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id, MirroredIO::MIO *mio);
     void destroy();
 
     /*!

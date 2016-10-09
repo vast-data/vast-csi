@@ -10,16 +10,6 @@
 
 namespace P {
 
-static const uint16_t DNODE_NVRAM_COUNT = 2;
-static const uint16_t MAX_ENVS_PER_CNODE = 4;
-static const uint16_t MAX_CNODES_PER_SYSTEM = 1024;
-static const uint16_t MAX_DBOXES_PER_SYSTEM = 64;
-static const uint16_t MAX_DNODES_PER_SYSTEM = MAX_DBOXES_PER_SYSTEM * 2;
-static const uint16_t MAX_ENVS_PER_SYSTEM = MAX_CNODES_PER_SYSTEM * MAX_ENVS_PER_CNODE;
-static const uint16_t MAX_DRIVES_PER_DBOX = 256;
-static const uint16_t MAX_NVRAMS_PER_SYSTEM = MAX_DNODES_PER_SYSTEM * DNODE_NVRAM_COUNT;
-static const uint16_t MAX_DRIVES_PER_SYSTEM = MAX_DBOXES_PER_SYSTEM * MAX_DRIVES_PER_DBOX;
-
 static const char *LOCALHOST = "127.0.0.1";
 static const uint16_t PLATFORM_ENV_PORT = 4000;
 static const uint16_t PLATFORM_ENV_INITIAL_ID = 0;
@@ -36,7 +26,7 @@ static const char LEADER_ENV_GUID[] = "12345678-9abc-def1-aaaa-bbbbccccdddd";
     X(NFS),                                     \
     X(CLUSTER),                                 \
     X(ESTORE),                                  \
-	X(IO_MIRRORING),                            \
+    X(IO_MIRRORING),                            \
     X(COUNT)
 
 DEFINE_LOOKUP_PROTOTYPES(COMPONENT_LIST,
@@ -53,6 +43,7 @@ DEFINE_LOOKUP_PROTOTYPES(COMPONENT_LIST,
     X(I_NFS_POLLING),                        \
     X(I_PROTO),                              \
     X(I_IO_POLLING),                         \
+    X(I_MIO),                                \
     X(I_CONTROL),                            \
     X(TEST),                                 \
     X(COUNT)

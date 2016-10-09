@@ -37,14 +37,16 @@ public:
     static void get_vmsg_module_resources(P::VMsg::ModuleResources *vmsg_module_resources);
 
     MIOControl* get_mio_control() { return &_mio_control; }
+    EStoreControl *get_estore_control() { return &_estore_control; }
 
+private:
     static constexpr TypeConfig TYPE_CONFIGS[] = {{TypeId::System, sizeof(System), 1},
                                                   {TypeId::CNode, sizeof(CNode), P::MAX_CNODES_PER_SYSTEM},
-                                                  {TypeId::EnvObj, sizeof(EnvObj), P::MAX_CNODES_PER_SYSTEM * P::MAX_ENVS_PER_CNODE},
-                                                  {TypeId::EModuleObj, sizeof(EModuleObj), 65536},
-                                                  {TypeId::PModuleObj, sizeof(PModuleObj), P::MAX_CNODES_PER_SYSTEM},
+                                                  {TypeId::EnvObj, sizeof(EnvObj), P::MAX_ENVS_PER_SYSTEM},
+                                                  {TypeId::EModuleObj, sizeof(EModuleObj), P::MAX_SILOS_PER_SYSTEM},
+                                                  {TypeId::PModuleObj, sizeof(PModuleObj), P::MAX_CNODES_PER_SYSTEM + P::MAX_DNODES_PER_SYSTEM},
                                                   {TypeId::BModuleObj, sizeof(BModuleObj), P::MAX_DNODES_PER_SYSTEM},
-                                                  {TypeId::IModuleObj, sizeof(IModuleObj), 32768},
+                                                  {TypeId::IModuleObj, sizeof(IModuleObj), P::MAX_SILOS_PER_SYSTEM},
                                                   {TypeId::TModuleObj, sizeof(TModuleObj), 16},
                                                   {TypeId::CModuleObj, sizeof(CModuleObj), 1},
                                                   {TypeId::DBox, sizeof(DBox), P::MAX_DBOXES_PER_SYSTEM},
@@ -52,9 +54,6 @@ public:
                                                   {TypeId::NVRAM, sizeof(NVRAM), P::MAX_NVRAMS_PER_SYSTEM},
                                                   {TypeId::Drive, sizeof(Drive), P::MAX_DRIVES_PER_SYSTEM}};
 
-    EStoreControl *get_estore_control() { return &_estore_control; }
-
-private:
     BaseAgent _agent;
     System *_system;
     TreeDB _tree;

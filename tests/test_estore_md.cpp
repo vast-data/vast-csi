@@ -441,6 +441,7 @@ TEST(TestCompositeBlock, test_md)
 {
     EStoreIO eio;
     eio.init(0, ModuleId::I, FiberGroupId::I_CONTROL, nullptr);
+    eio.get_section_allocator()->do_activate(1024, 16);
 
     BuffersGuard buffers_guard(&eio, 5);
     EHandle handle = 9;
@@ -512,6 +513,7 @@ TEST(TestHandlesTable, test_md)
 {
     EStoreIO eio;
     eio.init(0, ModuleId::I, FiberGroupId::I_CONTROL, nullptr);
+    eio.get_section_allocator()->do_activate(1024, 16);
 
     ShardMd shard_md;
     shard_md.init(&eio);

@@ -1,6 +1,8 @@
 /* Copyright (C) Vast Data Ltd. */
 #include "dev_agent.hpp"
 
+#define CURRENT_COMPONENT ComponentId::CLUSTER
+
 namespace Control {
 
 static const TypeConfig TYPE_CONFIGS[] = {{TypeId::RemoteDevice, sizeof(RemoteDevice), MAX_DEVICES_PER_SYSTEM}};
@@ -22,6 +24,7 @@ void DevAgent::destroy()
 void DevAgent::start(FiberGroupId io_provider_fiber_group)
 {
     _ioprovider.start(io_provider_fiber_group);
+    PT_INFO(CONTROL, "IOProvider started.");
 }
 
 void DevAgent::device_add(DeviceAddParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
@@ -37,6 +40,10 @@ void DevAgent::device_add(DeviceAddParams::RootReader *args, P::VProto::Empty::R
         ASSERT_NOT_NULL(device);
 
         device->set_devio(devio);
+
+        char guid_string[P::GUID::STRING_SIZE];
+        device->get_guid().to_string(guid_string);
+        PT_INFO(CONTROL, "Added device=%s path=%s", guid_string, device_reader.get_path());
     }
 }
 
@@ -44,6 +51,11 @@ void DevAgent::device_remove(DeviceRemoveParams::RootReader *args, P::VProto::Em
 {
     LOOP(args->get_guid_count(), i) {
         RemoteDevice *device = _db.get<RemoteDevice>(*args->get_guids(i));
+
+        char guid_string[P::GUID::STRING_SIZE];
+        device->get_guid().to_string(guid_string);
+        PT_INFO(CONTROL, "Removed device=%s", guid_string);
+
         _db.remove(device);
     }
 }

@@ -41,7 +41,7 @@ void ShardMd::load()
     ShardMdBlock md_block;
     md_block.init(buffers_guard.get_next());
 
-    LOOP(P::N_SHARDS, i) {
+    LOOP(_eio->get_shard_count(), i) {
         LAddress wbs_start_addr = {LAddrType::WRITE_BUFFER, i, 0};
 
         LAddress shard_md_addr = {LAddrType::SHARD_MD, i, 0};
@@ -66,7 +66,7 @@ void ShardMd::create()
     md_block.init(buffers_guard.get_next());
     md_block.reset();
 
-    LOOP(P::N_SHARDS, i) {
+    LOOP(_eio->get_shard_count(), i) {
         LAddress wbs_start_addr = {LAddrType::WRITE_BUFFER, i, 0};
         uint32_t n_write_buffers = _eio->get_total_addr_type_size(i, LAddrType::WRITE_BUFFER) / WRITE_BUFFER_SIZE;
         // reset all write buffers

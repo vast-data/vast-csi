@@ -26,6 +26,7 @@ class IngestTest : public ::testing::Test {
 public:
     IngestTest() {
         eio.init(0, ModuleId::I, FiberGroupId::I_CONTROL, nullptr);
+        eio.get_section_allocator()->do_activate(1024, 16);
         shard_md.init(&eio);
         shard_md.create();
 
@@ -168,7 +169,6 @@ TEST_F(IngestTest, test_create)
     res = ingest.set_attr(nullptr, nullptr, handle, &sattr, post_attr.ctime + 1, nullptr, nullptr, &pre_attr, &post_attr);
     ASSERT(res == EStoreRes::NOT_SYNC);
 }
-
 
 TEST_F(IngestTest, test_simple_io)
 {

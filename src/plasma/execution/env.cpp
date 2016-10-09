@@ -13,6 +13,7 @@
 #include "plasma/utils/os.hpp"
 #include "plasma/internal.hpp"
 #include "config_internal.hpp"
+#include "globals.hpp"
 #include "config.hpp"
 #include "silo.hpp"
 #include "env.hpp"
@@ -102,6 +103,10 @@ void Env::init_vmsg(Config *config, uint32_t n_silos)
 
 void Env::init(Config *config)
 {
+    ConfigSetting *test_mode_setting = conf_lookup(config, "test_mode");
+    if (test_mode_setting != nullptr)
+        global_test_mode = conf_setting_get_bool(test_mode_setting);
+
     ConfigSetting *data_dir_setting = conf_lookup(config, "data_dir");
     ASSERT_NOT_NULL(data_dir_setting);
     const char *data_dir = conf_setting_get_string(data_dir_setting);

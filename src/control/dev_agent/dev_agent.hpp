@@ -11,12 +11,13 @@
 #include "plasma/data/ilist.hpp"
 #include "control/imdb/component.hpp"
 #include "control/imdb/object.hpp"
+#include "defs.vproto.hpp"
 
 namespace Control {
 
 static const size_t DEVICE_IO_DEPTH = 64;
 static const size_t CONCURRENT_IOS = 65536;
-static const size_t MAX_DEVICES_PER_SYSTEM = P::MAX_NVRAMS_PER_SYSTEM + P::MAX_DRIVES_PER_DBOX;
+static const size_t MAX_DEVICES_PER_SYSTEM = P::MAX_NVRAMS_PER_SYSTEM + P::MAX_DRIVES_PER_SYSTEM;
 
 class RemoteDevice : public RemoteObject<TypeId::RemoteDevice> {
 public:
@@ -41,7 +42,12 @@ public:
     void init(P::SiloId silo_id, ModuleId module_id, FiberGroupId fiber_group_id);
     void destroy();
     void start(FiberGroupId io_provider_fiber_group);
-    RemoteDevice *get_device(P::GUID guid) { return _db.get<RemoteDevice>(guid); }
+    RemoteDevice *get_device(P::GUID guid)
+    {
+        RemoteDevice *result = _db.get<RemoteDevice>(guid);
+        ASSERT_NOT_NULL(result, "Unknown device");
+        return result;
+    }
 
     void device_add(DeviceAddParams::RootReader *args, P::VProto::Empty::RootBuilder *res);
     void device_remove(DeviceRemoveParams::RootReader *args, P::VProto::Empty::RootBuilder *res);

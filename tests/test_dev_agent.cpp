@@ -48,9 +48,8 @@ static void start_func(void *ctx)
     remove_params.set_guid_count(1);
     *remove_params.get_guids(0) = guid;
     dev_agent->device_remove(remove_params.as_reader(), nullptr);
-    ASSERT_EQ(dev_agent->get_device(guid), nullptr);
 
-    env_stop = true;
+    global_env_stop = true;
 }
 
 TEST(DevAgent, test)
@@ -59,7 +58,7 @@ TEST(DevAgent, test)
     TestModule::set_init_func(init_func, &dev_agent);
     TestModule::set_start_func(start_func, &dev_agent);
 
-    env_stop = false;
+    global_env_stop = false;
     P::Env::get()->run("dist/env", "tests/test_dev_agent.config");
 }
 

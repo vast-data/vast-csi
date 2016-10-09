@@ -137,7 +137,7 @@ static void update_config_port(char *config, uint16_t port)
 
 static void env_start_stop_start_func(void *ctx)
 {
-    env_stop = false;
+    global_env_stop = false;
 
     if (P::Silo::get()->get_id() > 0) {
         return;
@@ -174,12 +174,12 @@ static void env_start_stop_start_func(void *ctx)
         EXPECT_EQ(P::EnvStopResultCode::SUCCESS, send_env_stop(env_guids[i]));
     }
 
-    env_stop = true;
+    global_env_stop = true;
 }
 
 static void run_leader_start_func(void *ctx)
 {
-    env_stop = false;
+    global_env_stop = false;
 
     if (P::Silo::get()->get_id() > 0) {
         return;
@@ -222,7 +222,7 @@ static void run_leader_start_func(void *ctx)
     EXPECT_EQ(P::EnvStopResultCode::SUCCESS, send_env_stop(leader_env_guid));
     EXPECT_EQ(P::EnvStopResultCode::GUID_NOT_FOUND, send_env_stop(leader_env_guid));
 
-    env_stop = true;
+    global_env_stop = true;
 }
 
 TEST(TestEnv, env_start_stop)

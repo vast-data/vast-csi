@@ -18,8 +18,7 @@ typedef uint8_t byte;
 typedef int32_t Index;
 static const Index INVALID_INDEX = -1;
 typedef uint16_t ShardId;
-// TODO this should be provided by control
-static const ShardId N_SHARDS = 32;
+static const ShardId MAX_SHARDS = 8192;
 
 using std::size_t;
 

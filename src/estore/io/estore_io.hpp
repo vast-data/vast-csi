@@ -81,6 +81,8 @@ public:
     // returns the size of the write buffers for the specified shard
     uint64_t get_total_addr_type_size(P::ShardId shard_id, LAddrType type);
 
+    uint32_t get_shard_count() { return _section_allocator.get_estore_shard_count(); }
+    Layout::SectionAllocator *get_section_allocator() { return &_section_allocator; }
 private:
     EStoreRes mio_to_estore_res(MirroredIO::MIO::ReadRet res);
     EStoreRes bool_to_estore_res(bool res);

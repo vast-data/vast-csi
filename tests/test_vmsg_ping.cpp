@@ -83,7 +83,7 @@ static void run_vmsg_ping(void *arg)
         Guard g1(&ctx->total_vmsg_time);
         Future::wait_all(futures, ctx->n_fibers);
     }
-    env_stop = true;
+    global_env_stop = true;
 }
 
 int main(int argc, char **argv) {

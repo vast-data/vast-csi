@@ -1,0 +1,14 @@
+class: IModuleAgent
+include: ["plasma/vproto/empty.vproto.hpp"]
+api_version: 1
+namespaces: []
+default_fiber_group: I_CONTROL
+methods:
+- method: activate
+  op_id: 1
+  arg: P::VProto::Empty
+  res: P::VProto::Empty
+- method: create_estore
+  op_id: 2
+  arg: P::VProto::Empty
+  res: P::VProto::Empty

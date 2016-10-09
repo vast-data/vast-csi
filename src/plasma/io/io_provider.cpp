@@ -66,7 +66,7 @@ static void io_poll_fiber(void *io_provider)
         if (!p_io_provider->test_and_reset_was_suspended()) {
             Fiber::yield();
         }
-        if (unlikely(env_stop)) {
+        if (unlikely(global_env_stop)) {
             break;
         }
     }

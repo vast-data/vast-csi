@@ -49,7 +49,7 @@ public:
 void VMsgTest::init()
 {
     srand(time(0));
-    debugging = true;
+    global_debugging = true;
     _lock.init();
     _first_silo = true;
     _finished_silos.store(0);
@@ -137,7 +137,7 @@ void VMsgTest::add_addresses(EnvId id, uint16_t port)
 
 static void finish()
 {
-    env_stop = true;
+    global_env_stop = true;
 }
 
 static void sync_call(TestRpcClient *client, uint64_t i, uint32_t n_silos, EnvId dest_env)

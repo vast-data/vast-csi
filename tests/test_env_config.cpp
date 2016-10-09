@@ -183,7 +183,17 @@ silo_types :
             group_id = "I_PROTO";
           },
           {
-            count = 8;
+            count = 1;
+            stack_size = 65536;
+            group_id = "I_IO_POLLING";
+          },
+          {
+            count = 16;
+            stack_size = 65536;
+            group_id = "I_MIO";
+          },
+          {
+            count = 16;
             stack_size = 65536;
             group_id = "I_CONTROL";
           } );
@@ -221,10 +231,17 @@ nfs3 :
 
 }  // namespace
 
+static const TypeConfig TYPE_CONFIGS[] = {{TypeId::CNode, sizeof(CNode), 1},
+                                          {TypeId::EnvObj, sizeof(EnvObj), 1},
+                                          {TypeId::EModuleObj, sizeof(EModuleObj), 10},
+                                          {TypeId::PModuleObj, sizeof(PModuleObj), 10},
+                                          {TypeId::IModuleObj, sizeof(IModuleObj), 10},
+                                          {TypeId::TModuleObj, sizeof(TModuleObj), 10}};
+
 TEST(TestEnvConfig, test)
 {
     IMDB db;
-    db.init(NUM_ELEMENTS(CModule::TYPE_CONFIGS), CModule::TYPE_CONFIGS);
+    db.init(NUM_ELEMENTS(TYPE_CONFIGS), TYPE_CONFIGS);
 
     GUID cnode_guid;
     cnode_guid.init();

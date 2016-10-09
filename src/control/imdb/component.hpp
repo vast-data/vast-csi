@@ -6,6 +6,7 @@
  */
 #pragma once
 
+#include "plasma/utils/math.hpp"
 #include "plasma/memory/pool.hpp"
 #include "plasma/data/ilist.hpp"
 #include "plasma/data/hash.hpp"
@@ -86,7 +87,7 @@ public:
             P::Index objects = type_configs[i].max_objects;
             _pools[(size_t)type_id] = new P::Pool;
             _pools[(size_t)type_id]->init(objects, type_configs[i].object_size);
-            P::Index buckets = std::max(objects / 2, 1);
+            P::Index buckets = P::round_to_next_power_of_two(objects / 2);
             _hashes[(size_t)type_id] = new P::Hash;
             _hashes[(size_t)type_id]->init_custom(buckets, objects, match_object, _pools[(size_t)type_id], object_hash_func);
         }

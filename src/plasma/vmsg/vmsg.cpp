@@ -84,7 +84,7 @@ static void vmsg_poll_fiber(void *vmsg)
     while (true) {
         p_vmsg->poll();
         P::Fiber::yield();
-        if (unlikely(env_stop)) {
+        if (unlikely(global_env_stop)) {
             break;
         }
     }

@@ -28,3 +28,7 @@ methods:
   op_id: 6
   arg: DisconnectDeviceParams
   res: DisconnectDeviceResult
+- method: list_nvrams
+  op_id: 7
+  arg: VProto::Empty
+  res: ListNVRAMsResult

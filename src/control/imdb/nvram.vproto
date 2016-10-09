@@ -1,4 +1,5 @@
 $import object.vproto
+$import control/dev_agent/dev_agent.vproto as dev
 
 $namespace Control
 
@@ -6,4 +7,5 @@ struct NVRAMProto {
     @0 base_proto BaseObjectProto;
     @1 version uint32_t;
     @2 size uint64_t;
+    @3 path char[dev.DEVICE_MAX_PATH];
 };

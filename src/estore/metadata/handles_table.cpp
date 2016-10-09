@@ -34,10 +34,11 @@ EStoreRes HandlesTable::create()
     composite_block.init(bucket_buffer);
 
     uint32_t buckets_per_shard = _shard_md->get_shard_n_phys_buckets(0);
-    LOOP(P::N_SHARDS, shard_id) {
+    LOOP(_eio->get_shard_count(), shard_id) {
         uint32_t shard_phys_buckets = _shard_md->get_shard_n_phys_buckets(shard_id);
         // TODO support a different number of buckets per shard? as long as we don't verify so there will be no surprises
-        ASSERT_EQUAL(buckets_per_shard, shard_phys_buckets);
+        ASSERT_EQUAL(buckets_per_shard, shard_phys_buckets,
+                     "shard_id=" << shard_id << " has an invalid number of buckets");
         _total_phys_buckets += shard_phys_buckets;
         LOOP(shard_phys_buckets, i) {
             LAddress addr = phys_bucket_to_addr(i, shard_id);
@@ -51,7 +52,7 @@ EStoreRes HandlesTable::create()
 
 void HandlesTable::load()
 {
-    LOOP(P::N_SHARDS, shard_id) {
+    LOOP(_eio->get_shard_count(), shard_id) {
         uint32_t shard_phys_buckets = _shard_md->get_shard_n_phys_buckets(shard_id);
         _total_phys_buckets += shard_phys_buckets;
     }
@@ -92,9 +93,9 @@ EStoreRes HandlesTable::read_by_virt_bucket(VirtualBucketId virt_bucket, MIOBuff
 LAddress HandlesTable::virt_bucket_to_addr(VirtualBucketId virt_bucket)
 {
     // TODO consistent hash
-    P::ShardId shard_id = virt_bucket % P::N_SHARDS;
+    P::ShardId shard_id = virt_bucket % _eio->get_shard_count();
     uint64_t phys_bucket_idx = virt_bucket / _total_phys_buckets;
-    uint64_t phys_bucket_per_shard = _total_phys_buckets / P::N_SHARDS;
+    uint64_t phys_bucket_per_shard = _total_phys_buckets / _eio->get_shard_count();
     uint64_t phys_bucket = phys_bucket_idx % phys_bucket_per_shard;
     return phys_bucket_to_addr(phys_bucket, shard_id);
 }
