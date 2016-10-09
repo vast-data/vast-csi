@@ -5,20 +5,6 @@
 
 namespace Layout {
 
-/*!
- * Each section has a replication factor of 2 or 3. Third of the sections are triplicated (indices which are multiples of 3).
- * ---------------------------------------------------------------------------------------------------------------------------------
- * |section 1: duplicate|section 2: duplicate|section 3: triplicate|section 4: duplicate|section 5: duplicate|section 6: triplicate|
- * ---------------------------------------------------------------------------------------------------------------------------------
- * Each of the section types (duplicate|triplicate) has different address types. For example, the triplets contain the folowing:
- * ------------------------------------------------
- * | SHARD_MD | SYSTEM_STATE | WRITE_BUFFER | ... |
- * ------------------------------------------------
- *
- * Each address type has a block_size and block_count where each block is assigned to a shard:
- * block number X on sector 1 is mapped to shard X. block number X on sector 2 is mapped to shard X*2.
- */
-
 constexpr AddrTypeConfig SectionAllocator::ADDR_TYPE_CONFIG[];
 
 void SectionAllocator::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id)

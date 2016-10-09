@@ -191,21 +191,22 @@ void Cluster::system_activate(SystemActivateParams::RootReader *args, SystemActi
         return;
     }
 
-    _system->set_shard_count(args->get_shard_count());
+    _system->set_estore_shard_count(args->get_estore_shard_count());
     _system->set_state(SystemState::ONLINE);
+
     PT_INFO(CONTROL, "System activated. State is now ONLINE.");
+
+    initialize_all_dnodes();
 
     // potentially activate all nodes
     IMDB_ITER_CHILDREN(_system, cnode, CNode, {
         calc_cnode_state(cnode);
     });
-
-    _estore->activate(args->get_shard_count());
-    initialize_all_dnodes();
 }
 
 void Cluster::system_redist(SystemRedistParams::RootReader *args, SystemRedistResult::RootBuilder *res)
 {
+    //TODO: enlarge section count and redistribute the data
     initialize_all_dnodes();
     res->set_code(SystemRedistResultCode::SUCCESS);
 }

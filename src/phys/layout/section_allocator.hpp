@@ -2,8 +2,28 @@
 
 /*!
  * \file section_allocator.hpp
- * \brief
+ * \brief The section allocator maps addresses of different types of data (LAddress) to addresses on sections (that can be passed to MIO).
+ *
+ * The section allocator is used by several entities (EStore, System State, etc') that need to persist data on flash or memory.
+ * Since multiple entities need to write data to the same sections, each section is hard-partiotioned between different types of data.
+ * Each data type has the following configuration (SectionAllocator::ADDR_TYPE_CONFIG):
+ * 1. How many times should it be replicated (2 or 3).
+ * 2. Where should it be written: NVRAM or Memory.
+ * 3. How many shards does it have.
+ * 4. How is it layed out in a section: what is the block_size and block_count.
+ *
+ * Since each section has a replication factor, the data types are grouped by their replication factor to different section types.
+ * Each section has a replication factor of 2 or 3. Currently, third of the sections are triplicated (indices which are multiples of 3):
+ * ---------------------------------------------------------------------------------------------------------------------------------
+ * |section 1: duplicate|section 2: duplicate|section 3: triplicate|section 4: duplicate|section 5: duplicate|section 6: triplicate|
+ * ---------------------------------------------------------------------------------------------------------------------------------
+ *
+ * When mapping a LAddress to a section, several factors are taken into consideration:
+ * 1. What logical block index it belongs to according to the address.shard_id and offset.
+ * 2. What section offset it belongs to according to the block count and offset into the section.
+ * 3. What section it belongs to according to the data type's replication factor and section index.
  */
+
 #pragma once
 
 #include "plasma/utils/units.hpp"
@@ -47,7 +67,11 @@ public:
     void init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id);
     void do_activate(uint32_t estore_shard_count, uint32_t max_section_id);
 
-    // len is for assert purposes. we don't allow access to a range that exceeds slice boundaries.
+    /*!
+     * Translate a Address(addr_type,shard_id,offset) to a MIO Address(section,offset).
+     * \param len used for asserting we don't exceed data type or sector boundaries.
+     * \param addr address to translate.
+     */
     P::IO::MirroredAddressToken translate(Address addr, size_t len);
     uint64_t get_total_addr_type_size(P::ShardId shard_id, AddrType type);
     uint32_t get_total_section_count(AddrType type);

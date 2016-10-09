@@ -17,5 +17,5 @@ struct SystemProto {
     @4 next_dnode_id uint16_t;
 
     @5 state SystemState;
-    @6 shard_count uint32_t;
+    @6 estore_shard_count uint32_t;
 };

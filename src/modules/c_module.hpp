@@ -50,6 +50,8 @@ public:
                                                   {TypeId::NVRAM, sizeof(NVRAM), P::MAX_NVRAMS_PER_SYSTEM},
                                                   {TypeId::Drive, sizeof(Drive), P::MAX_DRIVES_PER_SYSTEM}};
 
+    EStoreControl *get_estore_control() { return &_estore_control; }
+
 private:
     BaseAgent _agent;
     System *_system;
