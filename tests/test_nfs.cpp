@@ -13,7 +13,7 @@ TEST(TestNfs, test)
 {
     // create the element store
     EStore::EStore estore;
-    estore.init();
+    estore.init(0, ModuleId::I, FiberGroupId::I_CONTROL);
     estore.create_estore();
     estore.destroy();
 

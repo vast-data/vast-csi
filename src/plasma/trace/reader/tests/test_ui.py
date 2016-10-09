@@ -6,7 +6,7 @@ from tracereader.ui import handle_path, run, Trace
 test_file = os.path.join(os.path.dirname(__file__), 'PLASMA.20750.160601_085907_871.trace')
 
 def test_handle_path():
-    list(handle_path(test_file))
+    list(handle_path(test_file, verbose=True))
 
 def test_main():
-    run([test_file, test_file, test_file], verbose=True)
+    run([test_file, test_file, test_file], verbose=True, debug=True)
