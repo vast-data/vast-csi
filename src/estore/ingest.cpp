@@ -483,13 +483,6 @@ EStoreRes Ingest::io_start(EHandle handle, uint64_t offset, BuffersGuard *buffer
     res = read_block(composite_block, range_addr, handle, range_block);
     PT_RETURN(res != OK, res, "failed to read range block addr=0x%lx", range_addr.as_number());
 
-    // read bitmap block
-    bitmap_block->init(buffers_guard->get_next());
-    LAddress bitmap_addr = range_block->get_range(offset);
-    PTC_DEBUG("bitmap_addr=0x%lx offset=%lu", bitmap_addr.as_number(), offset);
-    res = read_block(composite_block, bitmap_addr, handle, bitmap_block);
-    PT_RETURN(res != OK, res, "failed to read bitmap block addr=0x%lx", bitmap_addr.as_number());
-
     return OK;
 }
 
@@ -530,18 +523,30 @@ EStoreRes Ingest::add_data_bitmap_block(BuffersGuard *buffers_guard, WriteBuffer
 EStoreRes Ingest::write_data(BuffersGuard *buffers_guard, WriteBuffer *write_buffer, uint64_t data_len, EHandle handle,
                              uint64_t offset, IOVecs *io_vecs, LAddress bitmap_addr, DataBitmapBlock *bitmap_block)
 {
-    LAddress data_addr;
-    EStoreRes res = write_buffer->alloc_data_chunk(buffers_guard, IO_ALIGN_UP(data_len), &data_addr);
-    // TODO handle switching write buffer
-    PT_RETURN(res != OK, res, "failed to allocate data chunk handle=0x%lx data_len=%lu", handle, data_len);
+    DEBUG_ASSERT_OP(data_len, ==, io_vecs->total_length());
 
-    PTC_DEBUG("writing data handle=0x%lx addr=0x%lx data_len=%lu", handle, data_addr.as_number(), data_len);
+    // align write to allowed IO size (only the first and last might be unaligned) first io_vec might also be unaligned
+    void *unaligned_base = io_vecs->iovecs[0].iov_base;
+    io_vecs->iovecs[0].iov_base = (void *)IO_ALIGN_DOWN((size_t)io_vecs->iovecs[0].iov_base);
+    uint64_t align_delta = (size_t)unaligned_base - (size_t)io_vecs->iovecs[0].iov_base;
+    io_vecs->iovecs[0].iov_len = IO_ALIGN_UP(io_vecs->iovecs[0].iov_len + align_delta);
+    io_vecs->iovecs[io_vecs->count - 1].iov_len = IO_ALIGN_UP(io_vecs->iovecs[io_vecs->count - 1].iov_len);
+
+    LAddress data_addr;
+    uint64_t write_len = io_vecs->total_length();
+    // TODO write short data (less than 512) bytes inline to the content block
+    EStoreRes res = write_buffer->alloc_data_chunk(buffers_guard, write_len, &data_addr);
+    // TODO handle switching write buffer
+    PT_RETURN(res != OK, res, "failed to allocate data chunk handle=0x%lx write_len=%lu", handle, write_len);
+
+    PTC_DEBUG("writing data handle=0x%lx addr=0x%lx data_len=%lu", handle, data_addr.as_number(), write_len);
     res = _eio->write_data(data_addr, io_vecs);
-    PT_RETURN(res != OK, res, "write_data failed handle=0x%lx addr=0x%lx data_len=%lu",
-              handle, data_addr.as_number(), data_len);
+    PT_RETURN(res != OK, res, "write_data failed handle=0x%lx addr=0x%lx write_len=%lu",
+              handle, data_addr.as_number(), write_len);
 
     // update content block
     LAddress content_addr;
+    data_addr.offset += align_delta;
     res = write_buffer->append_data_content(buffers_guard, handle, offset, data_len, data_addr, &content_addr);
     PT_RETURN(res != OK, res, "append_data_content failed handle=0x%lx addr=0x%lx data_len=%lu",
               handle, data_addr.as_number(), data_len);
@@ -562,9 +567,9 @@ EStoreRes Ingest::write_data(BuffersGuard *buffers_guard, WriteBuffer *write_buf
 EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, IOVecs *io_vecs,
                         SystemAttr *pre_attr, SystemAttr *post_attr)
 {
-    PT_INFO(DATA, "write handle=0x%lx offset=%lu", handle, offset);
     // TODO reduce num of buffers by supporting return_buffer in the guard
-    BuffersGuard buffers_guard(_eio, 10);
+    BuffersGuard buffers_guard(_eio, 14);
+    // TODO define a block set class to manage and pass blocks as a group
     CompositeBlock composite_block;
     HandleBlock handle_block;
     DataRangeBlock range_block;
@@ -577,13 +582,12 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
     OP_CALLBACK_RETURN(op_cb, cb_ctx, handle_block.get_attr());
 
     uint64_t data_len = io_vecs->total_length();
+    PT_INFO(DATA, "write handle=0x%lx offset=%lu len=%lu", handle, offset, data_len);
     if (data_len == 0) {
         copy_attr(&handle_block, post_attr);
         return OK;
     }
 
-    // align write to allowed IO size
-    io_vecs->iovecs[io_vecs->count - 1].iov_len = IO_ALIGN_UP(io_vecs->iovecs[io_vecs->count - 1].iov_len);
     bool range_updated = false;
     LAddress range_addr = handle_block.get_ranges_addr();
     if (range_addr.addr_type == LAddrType::NONE) {
@@ -594,24 +598,68 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
         range_updated = true;
     }
 
-    // TODO write might cover multiple bitmap blocks
-    uint64_t range_len = data_len;
-    LAddress bitmap_addr = range_block.get_range(offset, &range_len);
-    if (bitmap_addr.addr_type != LAddrType::NONE) {
-        PTC_DEBUG("data_len=%lu range_len=%lu", data_len, range_len);
-        ASSERT_EQUAL(data_len, range_len);
+    bitmap_block.init(buffers_guard.get_next());
+    uint64_t write_len = data_len;
+    uint64_t write_offset = offset;
+    while (write_len > 0) {
+        // writes might be broken between multiple bitmap blocks / shards. The range block returns the length that
+        // can be written // to the bitmap with the current offset. Note: that write are also split at the
+        // DATA_RANGE_SHARD_SIZE even if // there is still room in the bitmap block.
+        uint64_t range_len = write_len;
+        LAddress bitmap_addr = range_block.get_range(write_offset, &range_len);
+        PTC_DEBUG("bitmap_addr=0x%lx write_offset=%lu data_len=%lu range_len=%lu", bitmap_addr.as_number(),
+                  write_offset, data_len, range_len);
+        res = read_block(&composite_block, bitmap_addr, handle, &bitmap_block);
+        PT_RETURN(res != OK, res, "failed to read bitmap block addr=0x%lx", bitmap_addr.as_number());
+
+        IOVec write_vec[io_vecs->count];
+        IOVecs write_vecs = { .iovecs = io_vecs->iovecs, .count = io_vecs->count };
+        // fix the write vec according to the current range we are about to write
+        if (range_len != data_len) {
+            io_vecs->trace(); // TODO remove
+            uint64_t offset_delta = write_offset - offset;
+            uint64_t vec_idx = offset_delta / DATA_BUFFER_SIZE;
+            write_vecs.iovecs = write_vec;
+            write_vecs.count = 1;
+            write_vec[0].iov_base = (char *)io_vecs->iovecs[vec_idx].iov_base + (offset_delta % DATA_BUFFER_SIZE);
+            write_vec[0].iov_len = io_vecs->iovecs[vec_idx].iov_len - (offset_delta % DATA_BUFFER_SIZE);
+            write_vec[0].iov_len = P_MIN(write_vec[0].iov_len, range_len);
+            uint64_t remaining_len = range_len - write_vec[0].iov_len;
+            for (int i = 1; remaining_len > 0; ++i) {
+                write_vec[i].iov_base = io_vecs->iovecs[vec_idx + i].iov_base;
+                write_vec[i].iov_len = P_MIN(io_vecs->iovecs[vec_idx + i].iov_len, remaining_len);
+                remaining_len -= write_vec[i].iov_len;
+                ++write_vecs.count;
+            }
+            write_vecs.trace(); // TODO remove
+        }
+
+        write_len -= range_len;
+        ShardId shard_id = resolve_shard_id(handle, write_offset);
+        PTC_DEBUG("handle=0x%lx offset=%lu shard_id=%hu", handle, write_offset, shard_id);
+        WriteBuffer *write_buffer = _shard_md->get_ingest_buffer(shard_id);
+
+        res = add_data_bitmap_block(&buffers_guard, write_buffer, &range_block, range_addr, &bitmap_block, &bitmap_addr,
+                                    handle, write_offset, &range_updated);
+        PT_RETURN(res != OK, res, "add_data_bitmap_block failed handle=0x%lx", handle);
+
+        res = write_data(&buffers_guard, write_buffer, range_len, handle, write_offset, &write_vecs, bitmap_addr,
+                         &bitmap_block);
+        PT_RETURN(res != OK, res, "write_data failed handle=0x%lx range_len=%lu", handle, range_len);
+        write_offset += range_len;
+
+        // TODO review the correct write order of the blocks and verify it complies with the design of the bad path
+        if (bitmap_addr.addr_type == LAddrType::MD_BLOCKS || bitmap_addr.addr_type == LAddrType::WRITE_BUFFER) {
+            res = _eio->write_md(bitmap_addr, bitmap_block.get_buffer());
+            PT_RETURN(res != OK, res, "_eio->write_md failed addr=0x%lx", bitmap_addr.as_number());
+        }
+        if (bitmap_addr.addr_type == LAddrType::CONTAINED) {
+            PTC_DEBUG("updating contained bitmap block");
+            res = composite_block.replace_contained_block(handle, &bitmap_block);
+            // TODO handle composite block being out of space
+            PT_RETURN(res != OK, res, "replace_contained_block for bitmap block failed handle=0x%lx", handle);
+        }
     }
-
-    ShardId shard_id = resolve_shard_id(handle, offset);
-    PTC_DEBUG("handle=0x%lx offset=%lu shard_id=%hu", handle, offset, shard_id);
-    WriteBuffer *write_buffer = _shard_md->get_ingest_buffer(shard_id);
-
-    res = add_data_bitmap_block(&buffers_guard, write_buffer, &range_block, range_addr, &bitmap_block, &bitmap_addr,
-                                handle, offset, &range_updated);
-    PT_RETURN(res != OK, res, "add_data_bitmap_block failed handle=0x%lx", handle);
-    // TODO write short data (less than 512) bytes inline
-    res = write_data(&buffers_guard, write_buffer, data_len, handle, offset, io_vecs, bitmap_addr, &bitmap_block);
-    PT_RETURN(res != OK, res, "write_data failed handle=0x%lx data_len=%lu", handle, data_len);
 
     update_mc_times(&handle_block);
     update_element_size(offset, data_len, &handle_block);
@@ -625,23 +673,12 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
         PT_RETURN(res != OK, res, "replace_contained_block for range block failed handle=0x%lx", handle);
     }
 
-    // write bitmap, range and handle blocks
-    if (bitmap_addr.addr_type == LAddrType::CONTAINED) {
-        PTC_DEBUG("updating bitmap block");
-        res = composite_block.replace_contained_block(handle, &bitmap_block);
-        // TODO handle composite block being out of space
-        PT_RETURN(res != OK, res, "replace_contained_block for bitmap block failed handle=0x%lx", handle);
-    }
-
+    // write range and handle blocks
     // TODO deal with handle block being outside of composite
     // TODO don't always update table
     res = _handles_table->write(handle, composite_block.get_buffer());
     PT_RETURN(res != OK, res, "_handles_table->write failed parent=0x%lx", handle);
 
-    if (bitmap_addr.addr_type == LAddrType::MD_BLOCKS || bitmap_addr.addr_type == LAddrType::WRITE_BUFFER) {
-        res = _eio->write_md(bitmap_addr, bitmap_block.get_buffer());
-        PT_RETURN(res != OK, res, "_eio->write_md failed addr=0x%lx", bitmap_addr.as_number());
-    }
     if (range_updated && range_addr.addr_type == LAddrType::MD_BLOCKS) {
         res = _eio->write_md(range_addr, range_block.get_buffer());
         PT_RETURN(res != OK, res, "_eio->write_md failed addr=0x%lx", range_addr.as_number());
@@ -708,10 +745,10 @@ EStoreRes Ingest::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t 
 
     if (offset + len >= handle_block.get_attr()->size) {
         len = handle_block.get_attr()->size - offset;
+        // not setting eof here since we might be not be able to read all the requested data
     }
     if (len == 0) {
-        // TODO make this less ugly
-        if (offset + len >= handle_block.get_attr()->size) {
+        if (offset == handle_block.get_attr()->size) {
             *eof = true;
         }
         PTC_DEBUG("zero length read offset=%lu element_size=%lu", offset, handle_block.get_attr()->size);
@@ -722,15 +759,33 @@ EStoreRes Ingest::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t 
     }
 
     // build the extents list that composes the read
+    bitmap_block.init(buffers_guard.get_next());
+    #define MAX_ADDR_PER_READ 64
     // TODO handle the case in which there are more than n_content_addrs (make this iterative)
-    #define MAX_ADDR_PER_READ 32
-    uint16_t n_content_addrs = MAX_ADDR_PER_READ;
+    uint16_t n_content_addrs = 0;
     LAddress content_addrs[MAX_ADDR_PER_READ];
-    // get content blocks that contain relevant extents
-    res = bitmap_block.get_content_addrs(offset, len, &n_content_addrs, content_addrs);
-    PT_RETURN(res != OK, res, "get_content_addrs failed handle=0x%lx offset=%lu len=%u", handle, offset, len);
-    PTC_DEBUG("n_content_addrs=%hu", n_content_addrs);
+    uint64_t read_len = len;
+    uint64_t read_offset = offset;
+    while (read_len > 0) {
+        // writes might be broken between multiple bitmap blocks / shards. The range block returns the length that
+        // can be written // to the bitmap with the current offset. Note: that write are also split at the
+        // DATA_RANGE_SHARD_SIZE even if // there is still room in the bitmap block.
+        uint64_t range_len = read_len;
+        LAddress bitmap_addr = range_block.get_range(read_offset, &range_len);
+        PTC_DEBUG("bitmap_addr=0x%lx write_offset=%lu len=%u range_len=%lu", bitmap_addr.as_number(),
+                  read_offset, len, range_len);
+        res = read_block(&composite_block, bitmap_addr, handle, &bitmap_block);
+        PT_RETURN(res != OK, res, "failed to read bitmap block addr=0x%lx", bitmap_addr.as_number());
 
+        // get content blocks that contain relevant extents
+        uint16_t res_content_addrs = MAX_ADDR_PER_READ - n_content_addrs;
+        res = bitmap_block.get_content_addrs(read_offset, read_len, &res_content_addrs, &content_addrs[n_content_addrs]);
+        PT_RETURN(res != OK, res, "get_content_addrs failed handle=0x%lx offset=%lu len=%u", handle, offset, len);
+        PTC_DEBUG("n_content_addrs=%hu", n_content_addrs);
+        n_content_addrs += res_content_addrs;
+        read_len -= range_len;
+        read_offset += range_len;
+    }
     // feed the extents into the extents container which deals internally with data overwrites and aligns the
     // extents to the extent being read
     ExtentsContainer extents_container;

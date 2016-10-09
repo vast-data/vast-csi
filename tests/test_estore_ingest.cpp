@@ -132,7 +132,7 @@ TEST(TestCreate, test_ingest)
     LOOP(N_WRITES, i) {
         iovecs.iovecs = iovec;
         iovecs.count = IOVEC_SIZE;
-        uint32_t read_offset = lens[i] - (rand() % (lens[i] / 2));
+        uint32_t read_offset = 0; //lens[i] - (rand() % (lens[i] / 2));
         PT_DEBUG(DATA, "lens[i]=%u read_offset=%u", lens[i], read_offset);
         res = ingest.read(nullptr, nullptr, handle, offset + read_offset, lens[i] - read_offset, &iovecs, &alloc_vecs,
                           &bytes_read, &eof, nullptr, nullptr);

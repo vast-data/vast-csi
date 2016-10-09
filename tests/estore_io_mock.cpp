@@ -74,8 +74,8 @@ EStoreRes EStoreIO::write_md(LAddress addr, MIOBuffer *buff, FutureRes<bool> *fu
 {
 //    PT_DEBUG(DATA, "write addr=0x%lx", addr.as_number());
     int fd = get_mock_fd(addr);
-    ASSERT(buff->get_raw_size() == NVRAM_MD_BLOCK_SIZE);
-    ASSERT((size_t)buff->get_mio_vec()->iov_base % IO_ALIGNMENT == 0);
+    ASSERT_OP(buff->get_raw_size(), ==, NVRAM_MD_BLOCK_SIZE);
+    ASSERT_OP((size_t)buff->get_mio_vec()->iov_base % IO_ALIGNMENT, ==, 0);
     memset(buff->get_mio_vec()->iov_base, 0xff, MIO_OVERHEAD);
     ssize_t res = pwrite(fd, buff->get_mio_vec()->iov_base, buff->get_raw_size(), addr.offset);
     ASSERT_ERRNO(res == buff->get_raw_size());

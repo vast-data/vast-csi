@@ -27,6 +27,8 @@ public:
         }
         return ret;
     }
+
+    void trace();
 };
 
 typedef uint64_t Baddr;

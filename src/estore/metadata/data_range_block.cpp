@@ -73,7 +73,7 @@ LAddress DataRangeBlock::get_range(uint64_t offset, uint64_t *len)
         return Layout::EMPTY_ADDRESS;
     }
     uint16_t range_index = find_range_index(offset);
-    if (ranges->ranges[range_index]._offset + DATA_RANGE_SHARD_SIZE < offset) {
+    if (ranges->ranges[range_index]._offset + DATA_RANGE_SHARD_SIZE <= offset) {
         PTC_DEBUG("range is out of shard, range_index=%hu range offset=%lu offset=%lu", range_index,
                   ranges->ranges[range_index]._offset, offset);
         // offset is outside the shard range
@@ -86,7 +86,6 @@ LAddress DataRangeBlock::get_range(uint64_t offset, uint64_t *len)
 
 uint16_t DataRangeBlock::find_range_index(uint64_t offset)
 {
-    // TODO limit data ranges scope
     Ranges *ranges = (Ranges *)payload_start();
     DEBUG_ASSERT(ranges->n_ranges > 0);
     uint16_t res = 0;
