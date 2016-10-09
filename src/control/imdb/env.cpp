@@ -67,7 +67,7 @@ void EnvObj::generate_config(char *buffer, size_t buf_size)
     bool module_resources_configured[(int)ModuleId::COUNT] = { false };
 
     IMDB_ITER_MODULES(this, module, {
-        // Update silot_types
+        // Update silo_types
         ConfigSetting *silo_type = P::Conf::conf_setting_get_element(silo_types,
                                                                      module->get_base_module()->get_silo_id());
         ASSERT_NOT_NULL(silo_type);
@@ -92,6 +92,11 @@ void EnvObj::generate_config(char *buffer, size_t buf_size)
             conf_setting_set_int32(num_recv_buffers, vmsg_module_resources.num_recv_buffers);
         }
     });
+
+    // Generate NFS config if there's an I-Module
+    if (module_resources_configured[(P::Index)ModuleId::I]) {
+        P::Env::generate_nfs_config(root);
+    }
 
     char env_guid_str[P::GUID::STRING_SIZE];
     get_base_proto()->get_guid().to_string(env_guid_str);

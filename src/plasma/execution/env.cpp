@@ -265,4 +265,10 @@ void Env::init_nfs(Conf::Config *config)
     Nfs::NfsProto::global_init(nfs_setting, _tcp_acceptor);
 }
 
+/* static */ void Env::generate_nfs_config(Conf::ConfigSetting *config)
+{
+    ConfigSetting *nfs_setting = conf_setting_add_group(config, "nfs3");
+    Nfs::NfsProto::write_conf(nfs_setting);
+}
+
 }

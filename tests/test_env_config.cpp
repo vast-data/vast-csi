@@ -45,6 +45,11 @@ vmsg :
       name = "TEST";
       num_send_buffers = 64;
       num_recv_buffers = 64;
+    },
+    {
+      name = "I";
+      num_send_buffers = 64;
+      num_recv_buffers = 64;
     } );
 };
 global_traces :
@@ -72,14 +77,6 @@ silo_types :
             stack_size = 65536;
             group_id = "E_VMSG_POLLING";
           } );
-        io :
-        {
-          io_pool_count = 100;
-          io_provider :
-          {
-            devices = ( );
-          };
-        };
       };
       P :
       {
@@ -130,14 +127,6 @@ silo_types :
             stack_size = 65536;
             group_id = "E_VMSG_POLLING";
           } );
-        io :
-        {
-          io_pool_count = 100;
-          io_provider :
-          {
-            devices = ( );
-          };
-        };
       };
       TEST :
       {
@@ -176,14 +165,28 @@ silo_types :
             stack_size = 65536;
             group_id = "E_VMSG_POLLING";
           } );
-        io :
+      };
+      I :
+      {
+        components :
         {
-          io_pool_count = 100;
-          io_provider :
-          {
-            devices = ( );
-          };
         };
+        fibers = (
+          {
+            count = 1;
+            stack_size = 65536;
+            group_id = "I_NFS_POLLING";
+          },
+          {
+            count = 16;
+            stack_size = 131072;
+            group_id = "I_PROTO";
+          },
+          {
+            count = 8;
+            stack_size = 65536;
+            group_id = "I_CONTROL";
+          } );
       };
     };
     traces :
@@ -204,6 +207,16 @@ silos = (
     type = "silo_2";
     affinity = -1;
   } );
+nfs3 :
+{
+  max_read_size = 1048576;
+  max_write_size = 1048576;
+  nfs_port = 2049;
+  mount_port = 20048;
+  nlm_port = 40932;
+  connections_per_silo = 256;
+  requests_per_silo = 16;
+};
 )";
 
 }  // namespace
@@ -238,6 +251,7 @@ TEST(TestEnvConfig, test)
     create_module<EModuleObj>(&db, env, 1);
     create_module<TModuleObj>(&db, env, 1);
     create_module<EModuleObj>(&db, env, 2);
+    create_module<IModuleObj>(&db, env, 2);
 
     Env::get()->set_data_dir("/tmp");
 
@@ -260,6 +274,8 @@ TEST(TestEnvConfig, test)
     *dest = *src;  // '\0'
 
     db.destroy();
+
+    EXPECT_STREQ(expected_result, config_str);
 }
 
 int main(int argc, char **argv)

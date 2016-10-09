@@ -4,6 +4,7 @@
 #include "mount_server.hpp"
 #include "nlm_server.hpp"
 #include "nfs_server.hpp"
+#include "plasma/execution/config_internal.hpp"
 #include "plasma/fiber/provider.hpp"
 
 #define CURRENT_COMPONENT ComponentId::NFS
@@ -67,12 +68,31 @@ static void reg_program(uint64_t program, uint64_t ver, uint32_t port, bool reg_
     }
 }
 
+static void add_nfs_setting(P::Conf::ConfigSetting *nfs_setting, const char *name, int32_t value)
+{
+    ConfigSetting *setting = conf_setting_add(nfs_setting, name, CONFIG_TYPE_INT32);
+    conf_setting_set_int32(setting, value);
+}
+
 static uint32_t get_nfs_setting(P::Conf::ConfigSetting *nfs_setting, const char *name)
 {
     return conf_setting_get_int32(conf_setting_lookup_required(nfs_setting, name));
 }
 
-void NfsProto::read_conf(P::Conf::ConfigSetting *nfs_setting)
+/* static */ void NfsProto::write_conf(P::Conf::ConfigSetting *nfs_setting)
+{
+    ASSERT_NOT_NULL(nfs_setting);
+    // TODO: this will later be part of the fixed config (see ORION-63), so it's OK that it's hard-coded for now:
+    add_nfs_setting(nfs_setting, "max_read_size", DEFAULT_MAX_READ_SIZE);
+    add_nfs_setting(nfs_setting, "max_write_size", DEFAULT_MAX_WRITE_SIZE);
+    add_nfs_setting(nfs_setting, "nfs_port", DEFAULT_NFS_PORT);
+    add_nfs_setting(nfs_setting, "mount_port", DEFAULT_MOUNT_PORT);
+    add_nfs_setting(nfs_setting, "nlm_port", DEFAULT_NLM_PORT);
+    add_nfs_setting(nfs_setting, "connections_per_silo", DEFAULT_CONNECTIONS_PER_SILO);
+    add_nfs_setting(nfs_setting, "requests_per_silo", DEFAULT_REQUESTS_PER_SILO);
+}
+
+/* static */ void NfsProto::read_conf(P::Conf::ConfigSetting *nfs_setting)
 {
     _nfs_conf.port[ProtocolType::NFS3] = get_nfs_setting(nfs_setting, "nfs_port");
     _nfs_conf.port[ProtocolType::MOUNT3] = get_nfs_setting(nfs_setting, "mount_port");
@@ -83,7 +103,7 @@ void NfsProto::read_conf(P::Conf::ConfigSetting *nfs_setting)
     _nfs_conf.requests_per_silo = get_nfs_setting(nfs_setting, "requests_per_silo");
 }
 
-void NfsProto::global_init(P::Conf::ConfigSetting *nfs_setting, P::Net::TcpAcceptor *tcp_acceptor)
+/* static */ void NfsProto::global_init(P::Conf::ConfigSetting *nfs_setting, P::Net::TcpAcceptor *tcp_acceptor)
 {
     if (nfs_setting == nullptr) {
         _nfs_conf.enabled = false;

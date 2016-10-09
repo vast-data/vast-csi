@@ -81,6 +81,8 @@ public:
 
     const char *get_binary_path() { return _binary_path; }
 
+    static void generate_nfs_config(Conf::ConfigSetting *config);
+
 private:
 
     void init(Conf::Config *config);

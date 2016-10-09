@@ -24,6 +24,14 @@ class NfsServer;
 
 class NfsProto {
 public:
+    static constexpr int32_t DEFAULT_MAX_READ_SIZE = 1048576;
+    static constexpr int32_t DEFAULT_MAX_WRITE_SIZE = 1048576;
+    static constexpr int32_t DEFAULT_NFS_PORT = 2049;
+    static constexpr int32_t DEFAULT_MOUNT_PORT = 20048;
+    static constexpr int32_t DEFAULT_NLM_PORT = 40932;
+    static constexpr int32_t DEFAULT_CONNECTIONS_PER_SILO = 256;
+    static constexpr int32_t DEFAULT_REQUESTS_PER_SILO = 16;
+
     void init(EStore::EStore *estore, P::Net::TcpAcceptor *tcp_acceptor, bool primary_instance);
 
     void destroy();
@@ -31,11 +39,13 @@ public:
     void poll();
 
     static void global_init(P::Conf::ConfigSetting *nfs_setting, P::Net::TcpAcceptor *tcp_acceptor);
+    static void write_conf(P::Conf::ConfigSetting *nfs_setting);
+
+    static const Nfs::NfsConfig* get_nfs_conf() { return &_nfs_conf; }
 
 private:
     static void read_conf(P::Conf::ConfigSetting *nfs_setting);
 
-private:
     static Nfs::NfsConfig _nfs_conf;
     EStore::EStore *_estore;
     Rpc *_rpc;
