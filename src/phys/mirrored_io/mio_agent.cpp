@@ -153,7 +153,7 @@ void MIOAgent::config(ConfigParams::RootReader *args, P::VProto::Empty::RootBuil
         for (uint32_t mapping_idx = 0; mapping_idx < section_config.get_num_mappings(); ++mapping_idx) {
             PhysicalAddress::Reader physical_address;
             section_config.get_mappings(&physical_address, mapping_idx);
-            addresses[mapping_idx].dev = _dev_agent->get_device(physical_address.get_device_guid())->get_devio();
+            addresses[mapping_idx].dev = get_device_from_guid(physical_address.get_device_guid());
             addresses[mapping_idx].byte_offset = physical_address.get_base_offset();
         }
         config_section(section_config.get_section_id(), addresses, section_config.get_num_mappings(),
@@ -174,8 +174,7 @@ void MIOAgent::start_rebuilds(StartRebuildsParams::RootReader *args, P::VProto::
         args->get_section_rebuilds(&section_rebuild, i);
         PhysicalAddress::Reader new_mapping;
         section_rebuild.get_new_mapping(&new_mapping);
-        start_rebuild(section_rebuild.get_section_id(),
-                      _dev_agent->get_device(new_mapping.get_device_guid())->get_devio(),
+        start_rebuild(section_rebuild.get_section_id(), get_device_from_guid(new_mapping.get_device_guid()),
                       new_mapping.get_base_offset());
     }
 }
@@ -198,13 +197,13 @@ void MIOAgent::remove_mappings(RemoveMappingsParams::RootReader *args, P::VProto
         RemoveMapping::Reader remove_mapping;
         args->get_remove_mappings(&remove_mapping, i);
         remove_section_from_device(remove_mapping.get_section_id(),
-                                   _dev_agent->get_device(remove_mapping.get_device_guid())->get_devio());
+                                   get_device_from_guid(remove_mapping.get_device_guid()));
     }
 }
 
 void MIOAgent::remove_device(RemoveDeviceParams::RootReader *args, P::VProto::Empty::RootBuilder *res)
 {
-    remove_device_internal(_dev_agent->get_device(args->get_device_guid())->get_devio());
+    remove_device_internal(get_device_from_guid(args->get_device_guid()));
 }
 
 void MIOAgent::config_section(uint32_t section_id, const PhysAddr *addresses, P::Index num_addresses, bool in_rebuild)

@@ -243,6 +243,14 @@ private:
     void update_max_section_id(uint32_t section_id);
     void check_section_id_valid(uint32_t section_id);
 
+    inline P::IO::BaseIO *get_device_from_guid(P::GUID dev_guid) {
+        Control::RemoteDevice *remote_device = _dev_agent->get_device(dev_guid);
+        ASSERT_NOT_NULL(remote_device);
+        P::IO::DevIO *dev_io = remote_device->get_devio();
+        ASSERT_NOT_NULL(dev_io);
+        return dev_io;
+    }
+
     bool _is_activated = false;
 
     uint32_t _max_section_id;  // max active entry index in _section_mappings
