@@ -24,7 +24,7 @@ using MirroredIO::MIO;
 void EStoreIO::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id, MirroredIO::MIO *mio)
 {
     current_addr = 2 + N_WRITE_BUFFERS;
-    system("rm -rf /tmp/eio_mock_data");
+//    system("rm -rf /tmp/eio_mock_data");
     system("mkdir /tmp/eio_mock_data");
 }
 
@@ -112,10 +112,9 @@ EStoreRes EStoreIO::write_data(LAddress addr, P::IO::IOVecs *iovecs, FutureRes<b
 {
     int fd = get_mock_fd(addr);
     LOOP(iovecs->count, i) {
-        PT_DEBUG(DATA, "iov_len=%lu iov_base=%lu", iovecs->iovecs[i].iov_len, (size_t)iovecs->iovecs[i].iov_base);
+        PT_DEBUG(DATA, "vec(%lu) iov_len=%lu iov_base=%p", i, iovecs->iovecs[i].iov_len, iovecs->iovecs[i].iov_base);
         ASSERT(iovecs->iovecs[i].iov_len % IO_ALIGNMENT == 0);
         ASSERT((size_t)iovecs->iovecs[i].iov_base % IO_ALIGNMENT == 0);
-//        PT_DEBUG(DATA, "vec(%lu) len=%lu", i, iovecs->iovecs[i].iov_len);
     }
     PT_DEBUG(DATA, "write to fd=%d offset=%lu len=%lu", fd, addr.offset, iovecs->total_length());
     ASSERT(addr.offset % IO_ALIGNMENT == 0);
@@ -152,9 +151,10 @@ void EStoreIO::free_md_buffers(uint16_t n_buffers, MIOBuffer *buffers)
 void EStoreIO::alloc_data_buffers(IOVecs *iovecs)
 {
     ASSERT(iovecs->count > 0);
-//    PT_DEBUG(DATA, "alloc %u buffers", iovecs->count);
+    PT_DEBUG(DATA, "alloc %u buffers", iovecs->count);
     LOOP(iovecs->count, i) {
         iovecs->iovecs[i].iov_base = (char *)aligned_alloc(IO_ALIGNMENT, ALLOCATED_DATA_BUFFER_SIZE);
+        PT_DEBUG(DATA, "allocated buff(%lu) iov_base=%p buffers", i, iovecs->iovecs[i].iov_base);
         memset(iovecs->iovecs[i].iov_base, 0, ALLOCATED_DATA_BUFFER_SIZE);
         iovecs->iovecs[i].iov_len = DATA_BUFFER_SIZE;
     }

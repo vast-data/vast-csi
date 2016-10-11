@@ -11,7 +11,7 @@
 namespace EStore {
 
 // TODO move to configuration file
-static const uint32_t IO_ALIGNMENT = 512;
+static const uint64_t IO_ALIGNMENT = 512;
 static const uint32_t N_DATA_BUFFERS = 4 * UNIT_KiB;
 static const uint32_t DATA_BUFFER_SIZE = 16 * UNIT_KiB;
 static const uint32_t ALLOCATED_DATA_BUFFER_SIZE = 16 * UNIT_KiB + (2 * IO_ALIGNMENT);

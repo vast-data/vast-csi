@@ -438,7 +438,7 @@ EStoreRes Ingest::update_parent(BuffersGuard *buffers_guard, LAddress range_addr
         res = parent_composite_block->replace_contained_block(parent, bitmap_block);
         // TODO handle the case the composite block has no space
         if (res != OK) {
-            bitmap_block->trace();
+            bitmap_block->trace()
         }
         PT_RETURN(res != OK, res, "replace_contained_block failed parent=0x%lx", parent);
         update_table = true;
@@ -740,7 +740,6 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
         IOVecs write_vecs = { .iovecs = io_vecs->iovecs, .count = io_vecs->count };
         // fix the write vec according to the current range we are about to write
         if (range_len != data_len) {
-            io_vecs->trace(); // TODO remove
             uint64_t offset_delta = write_offset - offset;
             uint64_t vec_idx = offset_delta / DATA_BUFFER_SIZE;
             write_vecs.iovecs = write_vec;
@@ -755,7 +754,6 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
                 remaining_len -= write_vec[i].iov_len;
                 ++write_vecs.count;
             }
-            write_vecs.trace(); // TODO remove
         }
 
         write_len -= range_len;
