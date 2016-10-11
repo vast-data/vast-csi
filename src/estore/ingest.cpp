@@ -327,8 +327,6 @@ EStoreRes Ingest::list_elements(OpCallback op_cb, void *cb_ctx, EHandle handle, 
     PTC_INFO("handle=0x%lx offset=0x%lx element_version=%lu", handle, offset, element_version);
     BuffersGuard buffers_guard(_eio, 5);
 
-    // TODO check element_version
-
     CompositeBlock composite_block;
     HandleBlock handle_block;
     EStoreRes res = read_handle_block(handle, &composite_block, &handle_block, &buffers_guard);
@@ -340,6 +338,12 @@ EStoreRes Ingest::list_elements(OpCallback op_cb, void *cb_ctx, EHandle handle, 
         return EStoreRes::NOT_A_CONTAINER;
     }
     OP_CALLBACK_RETURN(op_cb, cb_ctx, handle_block.get_attr());
+
+    if (element_version != 0 && handle_block.get_attr()->ctime != element_version) {
+        PTC_INFO("invalid element_version=%lu handle=0x%lx current_version=%lu",
+                 element_version, handle, handle_block.get_attr()->ctime);
+        return EStoreRes::INVALID_ELEMENT_VERSION;
+    }
 
     NameBitmapBlock bitmap_block;
     bitmap_block.init(buffers_guard.get_next());
@@ -364,6 +368,12 @@ EStoreRes Ingest::list_elements(OpCallback op_cb, void *cb_ctx, EHandle handle, 
     res = read_block(&composite_block, range_addr, handle, &range_block);
     PT_RETURN(res != OK, res, "failed to read block addr=0x%lx", range_addr.as_number());
 
+    // TODO update dir atime?
+    copy_attr(&handle_block, post_attr);
+    if (current_element_version) {
+        *current_element_version = handle_block.get_attr()->ctime;
+    }
+
     if (range_addr.addr_type == LAddrType::NONE) {
         // if the ranges block does not exist
         PTC_INFO("handle=0x%lx does not have a range block", handle);
@@ -374,11 +384,6 @@ EStoreRes Ingest::list_elements(OpCallback op_cb, void *cb_ctx, EHandle handle, 
     res = range_block.traverse(list_offset.bitmap_idx, name_range_traverse_func, &ctx);
     PT_RETURN(res != OK && res != EStoreRes::STOP, res, "range_block traverse failed");
 
-    // TODO update dir atime?
-    copy_attr(&handle_block, post_attr);
-    if (current_element_version) {
-        *current_element_version = handle_block.get_attr()->ctime;
-    }
 
     return OK;
 }

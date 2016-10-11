@@ -1157,7 +1157,8 @@ void NfsServer::readdir(RpcRequest *request, READDIR3args *args, READDIR3res *re
 {
     EHandle handle;
     nfs_handle_to_ehandle(&args->dir, &handle);
-    PT_DEBUG(DATA, "list_elements handle=%lx offset=%ld", handle, args->cookie);
+    uint64_t dir_ver = *(uint64_t*)&args->cookieverf;
+    PT_DEBUG(DATA, "handle=%lx offset=0x%lx dir_ver=%lu", handle, args->cookie, dir_ver);
 
     res->READDIR3res_u.resok.reply.entries->fileid = EStore::INVALID_EHANDLE;
     ReaddirState rd_state = {
@@ -1169,7 +1170,6 @@ void NfsServer::readdir(RpcRequest *request, READDIR3args *args, READDIR3res *re
         .rdp_entry = nullptr,
         .last_retval = true,
     };
-    uint64_t dir_ver = (uint64_t)args->cookieverf;
     uint64_t current_dir_version = 0;
     SystemAttr post_attr;
     res->status = NFS3_OK;
@@ -1205,7 +1205,8 @@ void NfsServer::readdir_plus(RpcRequest *request, READDIRPLUS3args *args, READDI
 {
     EHandle handle;
     nfs_handle_to_ehandle(&args->dir, &handle);
-    PT_DEBUG(DATA, "readdir_plus handle=%lx offset=%ld", handle, args->cookie);
+    uint64_t dir_ver = *(uint64_t*)&args->cookieverf;
+    PT_DEBUG(DATA, "handle=%lx offset=0x%lx dir_ver=%lu", handle, args->cookie, dir_ver);
 
     res->READDIRPLUS3res_u.resok.reply.entries->fileid = EStore::INVALID_EHANDLE;
     ReaddirState rd_state = {
@@ -1217,7 +1218,6 @@ void NfsServer::readdir_plus(RpcRequest *request, READDIRPLUS3args *args, READDI
         .rdp_entry = nullptr,
         .last_retval = true,
     };
-    uint64_t dir_ver = (uint64_t)args->cookieverf;
     uint64_t current_dir_version = 0;
     SystemAttr post_attr;
     res->status = NFS3_OK;
