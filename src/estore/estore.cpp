@@ -79,8 +79,7 @@ EStoreRes EStore::lookup_parent(OpCallback op_cb, void *cb_ctx, EHandle handle, 
                                 SystemAttr *element_attr, SystemAttr *parent_attr)
 
 {
-    PANIC("not implemented");
-    return OK;
+    return _ingest.lookup_parent(op_cb, cb_ctx, handle, parent, element_attr, parent_attr);
 }
 
 EStoreRes EStore::create(OpCallback op_cb, void *cb_ctx, EHandle parent, const char *name, CreateFlags flags,
@@ -110,8 +109,8 @@ EStoreRes EStore::list_elements(OpCallback op_cb, void *cb_ctx, EHandle handle, 
                                 uint64_t element_version, ListCallback rd_cb, void *rd_ctx, const char *prefix,
                                 char delimiter, uint64_t *current_element_version, SystemAttr *post_attr)
 {
-    PANIC("not implemented");
-    return OK;
+    return _ingest.list_elements(op_cb, cb_ctx, handle, offset, element_version, rd_cb, rd_ctx, prefix, delimiter,
+                                 current_element_version, post_attr);
 }
 
 EStoreRes EStore::link(OpCallback op_cb, void *cb_ctx, EHandle link_target, EHandle parent, const char *name,

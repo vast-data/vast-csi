@@ -124,8 +124,8 @@ public:
      * \return OK on successes
      *         STALE in case the provided handle points to a non existing element
      */
-    EStoreRes lookup_parent(OpCallback op_cb, void *cb_ctx, EHandle handle,
-                     EHandle *parent OUT, SystemAttr *element_attr OUT, SystemAttr *parent_attr OUT);
+    EStoreRes lookup_parent(OpCallback op_cb, void *cb_ctx, EHandle handle, EHandle *parent OUT,
+                            SystemAttr *element_attr OUT, SystemAttr *parent_attr OUT);
 
     /*!
      * Create a new element

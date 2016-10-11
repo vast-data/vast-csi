@@ -33,6 +33,8 @@ public:
 
     EStoreRes WARN_UNUSED lookup(OpCallback op_cb, void *cb_ctx, EHandle parent, const char *name, bool case_sensitive,
                                  EHandle *element OUT, SystemAttr *element_attr OUT, SystemAttr *parent_attr OUT);
+    EStoreRes WARN_UNUSED lookup_parent(OpCallback op_cb, void *cb_ctx, EHandle handle, EHandle *parent OUT,
+                                        SystemAttr *element_attr OUT, SystemAttr *parent_attr OUT);
     EStoreRes WARN_UNUSED list_elements(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset,
                                         uint64_t element_version, ListCallback list_cb, void *list_ctx, const char *prefix,
                                         char delimiter, uint64_t *current_element_version, SystemAttr *post_attr OUT);
@@ -69,7 +71,7 @@ private:
     EStoreRes WARN_UNUSED io_start(EHandle handle, uint64_t offset, BuffersGuard *buffers_guard, CompositeBlock *composite_block,
                                    HandleBlock *handle_block, DataRangeBlock *range_block, DataBitmapBlock *bitmap_block);
 
-    void set_default_attr(SystemAttr *attr, EHandle handle, bool is_container);
+    void set_default_attr(SystemAttr *attr, EHandle parent, EHandle handle, bool is_container);
     void set_handle_attr(SettableAttr *sattr, SystemAttr *handle_attr);
     void update_mc_times(HandleBlock *handle_block);
     void update_element_size(uint64_t offset, uint64_t len, HandleBlock *handle_block);

@@ -34,6 +34,9 @@ static uint64_t ROOT_HANDLE = 1;
 
 typedef uint64_t VirtualBucketId;
 
+typedef uint64_t EHandle;
+static const uint64_t INVALID_EHANDLE = (uint64_t)-1;
+
 // Protocol defined element flags, the meaning of these flags is opaque to the element store
 enum class ElementFlags : uint64_t {
     NONE = 0,
@@ -87,6 +90,8 @@ struct SystemAttr {
     uint64_t element_flags;
     // internal element store flags
     uint64_t internal_flags;
+    // parent pointer TODO convert to a list
+    EHandle parent;
 };
 // TODO on disk --> static assert on size
 
@@ -152,9 +157,6 @@ enum class EStoreRes {
     REQUIRES_WRITE_LOCK,     // read - write lock is required to rewrite some data
     DATA_CORRUPTION,         // read - CRC check failed
 };
-
-typedef uint64_t EHandle;
-static const uint64_t INVALID_EHANDLE = (uint64_t)-1;
 
 enum class BlockType : uint8_t {
     INVALID_BLOCK_TYPE = 0xff,

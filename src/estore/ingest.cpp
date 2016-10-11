@@ -61,7 +61,7 @@ EStoreRes Ingest::create_root()
     handle_block.set_handle(ROOT_HANDLE);
     handle_block.set_ranges_addr(Layout::EMPTY_ADDRESS);
     SystemAttr *attr = handle_block.get_attr();
-    set_default_attr(attr, ROOT_HANDLE, true);
+    set_default_attr(attr, ROOT_HANDLE, ROOT_HANDLE, true);
     attr->element_flags = (uint64_t)ElementFlags::DIR;
 
     res = composite_block.add_contained_block(ROOT_HANDLE, &handle_block);
@@ -73,7 +73,7 @@ EStoreRes Ingest::create_root()
     return OK;
 }
 
-void Ingest::set_default_attr(SystemAttr *attr, EHandle handle, bool is_container)
+void Ingest::set_default_attr(SystemAttr *attr, EHandle parent, EHandle handle, bool is_container)
 {
     memset(attr, 0, sizeof(*attr));
     attr->mode = 0777;
@@ -82,6 +82,7 @@ void Ingest::set_default_attr(SystemAttr *attr, EHandle handle, bool is_containe
     attr->gid = 0;
     attr->used = 0;
     attr->fileid = handle;
+    attr->parent = parent;
     attr->atime = P::get_time_nano();
     attr->mtime = attr->atime;
     attr->ctime = attr->atime;
@@ -225,6 +226,27 @@ EStoreRes Ingest::lookup(OpCallback op_cb, void *cb_ctx, EHandle parent, const c
     return OK;
 }
 
+EStoreRes Ingest::lookup_parent(OpCallback op_cb, void *cb_ctx, EHandle handle, EHandle *parent,
+                                SystemAttr *element_attr, SystemAttr *parent_attr)
+{
+    BuffersGuard buffers_guard(_eio, 4);
+
+    SystemAttr tmp_element_attr;
+    EStoreRes res = get_attr_internal(handle, &tmp_element_attr, &buffers_guard);
+    PT_RETURN(res != OK, res, "get_attr_internal failed handle=0x%lx", handle);
+
+    OP_CALLBACK_RETURN(op_cb, cb_ctx, &tmp_element_attr);
+    *parent = tmp_element_attr.parent;
+    if (element_attr) {
+        *element_attr = tmp_element_attr;
+    }
+    if (parent_attr) {
+        res = get_attr_internal(*parent, parent_attr, &buffers_guard);
+        PT_RETURN(res != OK, res, "get_attr_internal failed handle=0x%lx", *parent);
+    }
+    return OK;
+}
+
 struct ListElementsCtx {
     Ingest *ingest;
     ListCallback list_cb;
@@ -305,6 +327,8 @@ EStoreRes Ingest::list_elements(OpCallback op_cb, void *cb_ctx, EHandle handle, 
     PTC_INFO("handle=0x%lx offset=0x%lx element_version=%lu", handle, offset, element_version);
     BuffersGuard buffers_guard(_eio, 5);
 
+    // TODO check element_version
+
     CompositeBlock composite_block;
     HandleBlock handle_block;
     EStoreRes res = read_handle_block(handle, &composite_block, &handle_block, &buffers_guard);
@@ -350,6 +374,12 @@ EStoreRes Ingest::list_elements(OpCallback op_cb, void *cb_ctx, EHandle handle, 
     res = range_block.traverse(list_offset.bitmap_idx, name_range_traverse_func, &ctx);
     PT_RETURN(res != OK && res != EStoreRes::STOP, res, "range_block traverse failed");
 
+    // TODO update dir atime?
+    copy_attr(&handle_block, post_attr);
+    if (current_element_version) {
+        *current_element_version = handle_block.get_attr()->ctime;
+    }
+
     return OK;
 }
 
@@ -384,7 +414,7 @@ EStoreRes Ingest::write_new_handle(BuffersGuard *buffers_guard, const char *name
     new_handle_block.init(buffers_guard->get_next());
     new_handle_block.set_handle(*new_handle);
     new_handle_block.set_ranges_addr(Layout::EMPTY_ADDRESS);
-    set_default_attr(new_handle_block.get_attr(), *new_handle, create_flags & CreateFlags::HAS_CHILDREN);
+    set_default_attr(new_handle_block.get_attr(), parent_handle, *new_handle, create_flags & CreateFlags::HAS_CHILDREN);
     set_handle_attr(sattr, new_handle_block.get_attr());
 
     res = handle_composite_block.add_contained_block(*new_handle, &new_handle_block);
@@ -438,7 +468,7 @@ EStoreRes Ingest::update_parent(BuffersGuard *buffers_guard, LAddress range_addr
         res = parent_composite_block->replace_contained_block(parent, bitmap_block);
         // TODO handle the case the composite block has no space
         if (res != OK) {
-            bitmap_block->trace()
+            bitmap_block->trace();
         }
         PT_RETURN(res != OK, res, "replace_contained_block failed parent=0x%lx", parent);
         update_table = true;
@@ -1020,9 +1050,8 @@ EStoreRes Ingest::get_attr(OpCallback op_cb, void *cb_ctx, EHandle handle, Syste
 
     EStoreRes res = get_attr_internal(handle, attr, &buffers_guard);
     PT_RETURN(res != OK, res, "get_attr_internal failed handle=0x%lx", handle);
-    if (op_cb) {
-        op_cb(attr, cb_ctx);
-    }
+
+    OP_CALLBACK_RETURN(op_cb, cb_ctx, attr);
 
     return OK;
 }

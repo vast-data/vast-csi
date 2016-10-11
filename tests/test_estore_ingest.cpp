@@ -26,7 +26,7 @@ TEST(TestList, test_ingest)
 {
     // TODO use setup
     EStoreIO eio;
-    eio.init(0, ModuleId::I, FiberGroupId::I_CONTROL);
+    eio.init(0, ModuleId::I, FiberGroupId::I_CONTROL, nullptr);
 
     ShardMd shard_md;
     shard_md.init(&eio);
@@ -119,6 +119,11 @@ TEST(TestCreate, test_ingest)
     ASSERT(memcmp(&res_attr, &handle_attr, sizeof(handle_attr)) == 0);
     ASSERT(memcmp(&parent_attr, &parent_post_attr, sizeof(parent_post_attr)) == 0);
 
+    EHandle parent;
+    res = ingest.lookup_parent(nullptr, nullptr, res_handle, &parent, &res_attr, &parent_attr);
+    ASSERT(res == OK);
+    ASSERT_EQ(parent, ROOT_HANDLE);
+
     sattr.mode = 0555;
     sattr.uid = 7;
     sattr.gid = 7;
@@ -150,7 +155,7 @@ TEST(TestCreate, test_ingest)
 TEST(TestIO, test_ingest)
 {
     EStoreIO eio;
-    eio.init(0, ModuleId::I, FiberGroupId::I_CONTROL);
+    eio.init(0, ModuleId::I, FiberGroupId::I_CONTROL, nullptr);
 
     ShardMd shard_md;
     shard_md.init(&eio);
