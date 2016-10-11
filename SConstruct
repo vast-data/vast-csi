@@ -276,6 +276,7 @@ AddCppTest(target='dist/tests/mio', source=['tests/test_mio.cpp', io_utils])
 AddCppTest(target='dist/tests/dev_agent', source=['tests/test_dev_agent.cpp', io_utils])
 AddCppTest(target='dist/tests/section_alloc', source=['tests/test_section_alloc.cpp'])
 AddCppTest(target='dist/tests/block_allocator', source=['tests/test_block_allocator.cpp', io_utils])
+AddCppTest(target='dist/tests/mio_control', source=['tests/test_mio_control.cpp'])
 
 cpp_env.AlwaysBuild('nfstest')
 cpp_env.AlwaysBuild('cpptest')

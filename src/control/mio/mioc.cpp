@@ -4,11 +4,9 @@
 #include "control/imdb/dbox.hpp"
 #include "control/imdb/dnode.hpp"
 #include "phys/layout/section_allocator.hpp"
-#include "phys/mirrored_io/mio_agent.rpc.client.hpp"
 
 namespace Control {
 
-using MirroredIO::ConfigParams;
 using MirroredIO::SectionConfig;
 using MirroredIO::MAX_DEVS_PER_SECTION;
 using MirroredIO::MAX_DEVS;
@@ -18,6 +16,7 @@ using MirroredIO::MAX_SECTION_CONFIGS_PER_RPC;
 void MIOControl::init(System *system)
 {
     _system = system;
+    _client.init();
 }
 
 void MIOControl::activate()
@@ -95,9 +94,6 @@ void MIOControl::activate_module(BaseModuleLogic *module)
     // and it's inefficient to build the RPC buffers from scratch for each module. Instead, we should do one of the
     // following: VMsg should either support the option not to free the buffer, or - better yet - support broadcasts.
 
-    MirroredIO::MIOAgentClient client;
-    client.init();
-
     // Configure:
 
     // 1. Section zero:
@@ -106,7 +102,7 @@ void MIOControl::activate_module(BaseModuleLogic *module)
         if (num_sections > MAX_SECTION_CONFIGS_PER_RPC) {
             num_sections = MAX_SECTION_CONFIGS_PER_RPC;
         }
-        ConfigParams::RootBuilder *config_params = client.alloc_config();
+        MirroredIO::ConfigParams::RootBuilder *config_params = alloc_config();
         config_params->set_num_sections(num_sections);
         for (uint16_t section_idx = 0; section_idx < num_sections; ++section_idx) {
             SectionConfig::Builder *section_config = config_params->get_section_configs(section_idx);
@@ -120,17 +116,13 @@ void MIOControl::activate_module(BaseModuleLogic *module)
                 ++device_idx;
             }
         }
-        P::VProto::Empty::RootReader *config_reply;
-        if (client.config_sync(module->get_address(), config_params, &config_reply) != P::VMsg::VMsgRes::OK) {
-            PANIC("VMsg failure");  //TODO: unify handling of VMsg errors
-        }
-        client.free_config(config_reply);
+        config_sync(module, config_params);
     }
 
     // 2. The rest of the sections:
     for (uint16_t section_idx = 1; section_idx < _num_sections; ) {  // Skip first entry (isn't used).
         uint16_t num_sections = std::min((uint16_t)(_num_sections - section_idx), MAX_SECTION_CONFIGS_PER_RPC);
-        ConfigParams::RootBuilder *config_params = client.alloc_config();
+        MirroredIO::ConfigParams::RootBuilder *config_params = alloc_config();
         config_params->set_num_sections(num_sections);
         for (uint16_t config_section_idx = 0; config_section_idx < num_sections; ++config_section_idx) {
             SectionConfig::Builder *section_config = config_params->get_section_configs(config_section_idx);
@@ -146,20 +138,11 @@ void MIOControl::activate_module(BaseModuleLogic *module)
             }
             ++section_idx;
         }
-        P::VProto::Empty::RootReader *config_reply;
-        if (client.config_sync(module->get_address(), config_params, &config_reply) != P::VMsg::VMsgRes::OK) {
-            PANIC("VMsg failure");  //TODO: unify handling of VMsg errors
-        }
-        client.free_config(config_reply);
+        config_sync(module, config_params);
     }
 
     // Activate:
-    P::VProto::Empty::RootBuilder *activate_args = client.alloc_activate();
-    P::VProto::Empty::RootReader *activate_reply;
-    if (client.activate_sync(module->get_address(), activate_args, &activate_reply) != P::VMsg::VMsgRes::OK) {
-        PANIC("VMsg failure");  //TODO: unify handling of VMsg errors
-    }
-    client.free_activate(activate_reply);
+    activate_sync(module);
 }
 
 void MIOControl::on_device_activated(NVRAM *nvram)
@@ -185,6 +168,30 @@ void MIOControl::on_device_deactivated(NVRAM *nvram)
      *
      * Implementation note: remember to skip the first entry in _section_mappings.
      */
+}
+
+MirroredIO::ConfigParams::RootBuilder* MIOControl::alloc_config()
+{
+    return _client.alloc_config();
+}
+
+void MIOControl::config_sync(BaseModuleLogic *module, MirroredIO::ConfigParams::RootBuilder *config_params)
+{
+    P::VProto::Empty::RootReader *config_reply;
+    if (_client.config_sync(module->get_address(), config_params, &config_reply) != P::VMsg::VMsgRes::OK) {
+        PANIC("VMsg failure");  //TODO: unify handling of VMsg errors
+    }
+    _client.free_config(config_reply);
+}
+
+void MIOControl::activate_sync(BaseModuleLogic *module)
+{
+    P::VProto::Empty::RootBuilder *activate_args = _client.alloc_activate();
+    P::VProto::Empty::RootReader *activate_reply;
+    if (_client.activate_sync(module->get_address(), activate_args, &activate_reply) != P::VMsg::VMsgRes::OK) {
+        PANIC("VMsg failure");  //TODO: unify handling of VMsg errors
+    }
+    _client.free_activate(activate_reply);
 }
 
 } // namespace Control
