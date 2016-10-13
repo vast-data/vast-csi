@@ -1,4 +1,4 @@
-#/* Copyright (C) Vast Data Ltd. */
+/* Copyright (C) Vast Data Ltd. */
 /*!
  * \file epoll.hpp
  * \brief A non thread safe wrapper c+ warpper for epoll.

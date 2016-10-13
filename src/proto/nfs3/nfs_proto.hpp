@@ -1,4 +1,4 @@
-#/* Copyright (C) Vast Data Ltd. */
+/* Copyright (C) Vast Data Ltd. */
 /*!
  * \file nfs_proto.hpp
  * \brief Main class of the NFS protocol component, manages the intialization and termination of the

@@ -1,4 +1,4 @@
-#/* Copyright (C) Vast Data Ltd. */
+/* Copyright (C) Vast Data Ltd. */
 /*!
  * \file nfs_server.hpp
  * \brief The nfs server, implements the nfs protocol as defined in https://tools.ietf.org/html/rfc1813.

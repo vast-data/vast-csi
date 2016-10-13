@@ -1,4 +1,4 @@
-#/* Copyright (C) Vast Data Ltd. */
+/* Copyright (C) Vast Data Ltd. */
 /*!
  * \file rpc.hpp
  * \brief An implementation for the SUN RPC server specification as defined in https://tools.ietf.org/html/rfc5531

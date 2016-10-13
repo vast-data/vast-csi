@@ -1,4 +1,4 @@
-#/* Copyright (C) Vast Data Ltd. */
+/* Copyright (C) Vast Data Ltd. */
 /*!
  * \file nfs_utils.hpp
  */

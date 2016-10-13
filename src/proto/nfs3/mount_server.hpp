@@ -1,4 +1,4 @@
-#/* Copyright (C) Vast Data Ltd. */
+/* Copyright (C) Vast Data Ltd. */
 /*!
  * \file mount_server.hpp
  * \brief The mount server, implements the mount protocol as defined in https://tools.ietf.org/html/rfc1813#page-106.
