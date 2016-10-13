@@ -10,6 +10,7 @@ void HandleBlock::init(MIOBuffer *buffer)
     set_version(INITIAL_BLOCK_VER);
     ASSERT(space_left() >= sizeof(HandleInfo));
     add_used_bytes(sizeof(HandleInfo));
+    set_handle(INVALID_EHANDLE);
 }
 
 void HandleBlock::set_handle(EHandle handle)
@@ -21,6 +22,7 @@ void HandleBlock::set_handle(EHandle handle)
 EHandle HandleBlock::get_handle()
 {
     HandleInfo *handle_info = (HandleInfo *)payload_start();
+    DEBUG_ASSERT(handle_info->handle != INVALID_EHANDLE);
     return handle_info->handle;
 }
 

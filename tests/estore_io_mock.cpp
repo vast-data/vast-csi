@@ -4,6 +4,7 @@
 #include <sys/uio.h>
 #include <unistd.h>
 #include "plasma/utils/assert.hpp"
+#include "plasma/utils/os.hpp"
 #include "estore/io/estore_io.hpp"
 #include "estore/metadata/write_buffer.hpp"
 
@@ -24,8 +25,7 @@ using MirroredIO::MIO;
 void EStoreIO::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id, MirroredIO::MIO *mio)
 {
     current_addr = 2 + N_WRITE_BUFFERS;
-//    system("rm -rf /tmp/eio_mock_data");
-    system("mkdir /tmp/eio_mock_data");
+    P::ensure_directory_exists("/tmp/eio_mock_data");
 }
 
 void EStoreIO::destroy()

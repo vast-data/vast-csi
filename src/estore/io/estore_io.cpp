@@ -100,7 +100,6 @@ void EStoreIO::alloc_data_buffers(IOVecs *iovecs)
 
 void EStoreIO::free_data_buffers(IOVecs *iovecs)
 {
-    DEBUG_ASSERT(iovecs->count > 0);
     LOOP(iovecs->count, i) {
         _data_pool.free_address(iovecs->iovecs[i].iov_base);
     }

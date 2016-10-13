@@ -32,7 +32,7 @@ public:
                                  SystemAttr *pre_pattr OUT, SystemAttr *post_pattr OUT);
 
     EStoreRes WARN_UNUSED lookup(OpCallback op_cb, void *cb_ctx, EHandle parent, const char *name, bool case_sensitive,
-                                 EHandle *element OUT, SystemAttr *element_attr OUT, SystemAttr *parent_attr OUT);
+                                 EHandle *handle OUT, SystemAttr *element_attr OUT, SystemAttr *parent_attr OUT);
     EStoreRes WARN_UNUSED lookup_parent(OpCallback op_cb, void *cb_ctx, EHandle handle, EHandle *parent OUT,
                                         SystemAttr *element_attr OUT, SystemAttr *parent_attr OUT);
     EStoreRes WARN_UNUSED list_elements(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset,
@@ -49,41 +49,8 @@ public:
     EStoreRes WARN_UNUSED get_attr(OpCallback op_cb, void *cb_ctx, EHandle handle, SystemAttr *attr OUT,
                                    ExtendedAttrs *user_xattr OUT, ExtendedAttrs *proto_xattr OUT);
 
-    // internal callbacks
-    EStoreRes name_range_traverse(Layout::Address addr, uint16_t idx, void *ctx);
-    EStoreRes name_bitmap_traverse(Layout::Address addr, void *ctx);
-
 private:
-    EStoreRes WARN_UNUSED read_block(CompositeBlock *composite_block, LAddress addr, EHandle owner, BaseBlock *block);
-    EStoreRes WARN_UNUSED write_new_handle(BuffersGuard *buffers_guard, const char *name, SettableAttr *sattr,
-                                           CreateFlags create_flags, LAddress *content_addr, EHandle parent_handle,
-                                           EHandle *new_handle, SystemAttr *element_attr);
-    EStoreRes WARN_UNUSED update_parent(BuffersGuard *buffers_guard, LAddress range_addr, NameRangeBlock *range_block,
-                                        bool range_updated, NameBitmapBlock *bitmap_block, EHandle parent,
-                                        CompositeBlock *parent_composite_block, const char *name, LAddress content_addr);
     EStoreRes WARN_UNUSED get_attr_internal(EHandle handle, SystemAttr *attr, BuffersGuard *buffers_guard);
-    EStoreRes WARN_UNUSED read_handle_block(EHandle handle, CompositeBlock *composite_block, HandleBlock *handle_block,
-                                            BuffersGuard *buffers_guard);
-    EStoreRes WARN_UNUSED read_parent_blocks(EHandle parent, const char *name, BuffersGuard *buffers_guard,
-                                             CompositeBlock *composite_block, HandleBlock *handle_block,
-                                             NameRangeBlock *range_block, NameBitmapBlock *bitmap_block,
-                                             bool *range_updated);
-    EStoreRes WARN_UNUSED io_start(EHandle handle, uint64_t offset, BuffersGuard *buffers_guard, CompositeBlock *composite_block,
-                                   HandleBlock *handle_block, DataRangeBlock *range_block, DataBitmapBlock *bitmap_block);
-
-    void set_default_attr(SystemAttr *attr, EHandle parent, EHandle handle, bool is_container);
-    void set_handle_attr(SettableAttr *sattr, SystemAttr *handle_attr);
-    void update_mc_times(HandleBlock *handle_block);
-    void update_element_size(uint64_t offset, uint64_t len, HandleBlock *handle_block);
-    void copy_attr(HandleBlock *handle_block, SystemAttr *attr);
-    P::ShardId resolve_shard_id(EHandle handle, uint64_t offset) const;
-    uint32_t fill_hole(uint64_t prev_offset, uint64_t extent_offset, P::IO::IOVecs *res_vecs, P::IO::IOVecs *alloc_vecs,
-                       uint32_t n_buffers, uint16_t *curr_buffer, uint32_t *buffer_offset);
-    EStoreRes add_data_bitmap_block(BuffersGuard *buffers_guard, WriteBuffer *write_buffer, DataRangeBlock *range_block,
-                                    LAddress range_addr, DataBitmapBlock *bitmap_block, LAddress *bitmap_addr,
-                                    EHandle handle, uint64_t offset, bool *range_updated);
-    EStoreRes write_data(BuffersGuard *buffers_guard, WriteBuffer *write_buffer, uint64_t data_len, EHandle handle,
-                         uint64_t offset, P::IO::IOVecs *io_vecs, LAddress bitmap_addr, DataBitmapBlock *bitmap_block);
 
 
 private:

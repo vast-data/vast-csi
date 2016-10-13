@@ -40,6 +40,33 @@ private:
     MIOBuffer _buffers[MAX_BUFFERS];
 };
 
+class DataBuffersGuard {
+public:
+    DataBuffersGuard(EStoreIO *eio, P::IO::IOVecs *iovecs) {
+        _eio = eio;
+        _iovecs = iovecs;
+    }
+
+    ~DataBuffersGuard() {
+        free();
+    }
+
+    void free() {
+        if (_iovecs) {
+            _eio->free_data_buffers(_iovecs);
+        }
+    }
+
+    void disown() {
+        _iovecs = nullptr;
+    }
+
+private:
+    EStoreIO *_eio;
+    P::IO::IOVecs *_iovecs;
+};
+
+
 }
 
 

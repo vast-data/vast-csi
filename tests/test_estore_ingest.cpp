@@ -101,10 +101,10 @@ TEST_F(IngestTest, test_create)
     SystemAttr res_attr;
     SystemAttr parent_attr;
 
-    res = ingest.lookup(nullptr, nullptr, ROOT_HANDLE, "gaga", false, &res_handle, &res_attr, &parent_attr);
+    res = ingest.lookup(nullptr, nullptr, ROOT_HANDLE, "gaga", true, &res_handle, &res_attr, &parent_attr);
     ASSERT(res == EStoreRes::NOENT);
 
-    res = ingest.lookup(nullptr, nullptr, ROOT_HANDLE, "baba", false, &res_handle, &res_attr, &parent_attr);
+    res = ingest.lookup(nullptr, nullptr, ROOT_HANDLE, "baba", true, &res_handle, &res_attr, &parent_attr);
     ASSERT(res == OK);
     ASSERT_EQ(res_handle, handle);
     ASSERT(memcmp(&res_attr, &handle_attr, sizeof(handle_attr)) == 0);
@@ -126,7 +126,7 @@ TEST_F(IngestTest, test_create)
     ASSERT_EQ(7, handle_attr.uid);
     ASSERT_EQ(7, handle_attr.gid);
     PTC_DEBUG("created handle 0x%lx", handle);
-    res = ingest.lookup(nullptr, nullptr, ROOT_HANDLE, "gamp", false, &res_handle, &res_attr, &parent_attr);
+    res = ingest.lookup(nullptr, nullptr, ROOT_HANDLE, "gamp", true, &res_handle, &res_attr, &parent_attr);
     ASSERT(res == OK);
     ASSERT_EQ(res_handle, handle);
     ASSERT(memcmp(&res_attr, &handle_attr, sizeof(handle_attr)) == 0);
@@ -232,9 +232,9 @@ TEST_F(IngestTest, test_random_io)
     iovecs.iovecs = iovec;
     uint64_t offset = 0;
 
-    #define N_WRITES 2000
-    uint32_t lens[N_WRITES];
-    LOOP(N_WRITES, i) {
+    const uint64_t n_writes = 4000;
+    uint32_t lens[n_writes];
+    LOOP(n_writes, i) {
         lens[i] = rand() % (DATA_BUFFER_SIZE * WRITE_SIZE_FACTOR) + 1;
         uint32_t len = lens[i];
         iovecs.count = (len / DATA_BUFFER_SIZE) + (len % DATA_BUFFER_SIZE ? 1 : 0);
@@ -264,7 +264,7 @@ TEST_F(IngestTest, test_random_io)
     uint32_t bytes_read;
     bool eof;
     // TODO check holes, reads should cover multiple writes, check overwrites, test vec len being too small
-    LOOP(N_WRITES, i) {
+    LOOP(n_writes, i) {
         iovecs.iovecs = iovec;
         iovecs.count = IOVEC_SIZE;
         uint32_t read_offset =lens[i] - (rand() % (lens[i] / 2));
@@ -273,7 +273,7 @@ TEST_F(IngestTest, test_random_io)
                           &bytes_read, &eof, nullptr, nullptr);
         ASSERT(res == OK);
         ASSERT_EQ(lens[i] - read_offset, bytes_read);
-        if (i != N_WRITES - 1) {
+        if (i != n_writes - 1) {
             ASSERT_FALSE(eof);
         } else {
             ASSERT_TRUE(eof);
@@ -296,6 +296,7 @@ TEST_F(IngestTest, test_random_io)
 
 int main(int argc, char **argv)
 {
+    system("rm -rf /tmp/eio_mock_data");
     Test::init_traces();
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
