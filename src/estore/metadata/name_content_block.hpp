@@ -8,8 +8,8 @@
 namespace EStore {
 
 struct NameHandle {
-    EHandle handle;
     uint16_t len;
+    EHandle handle;
     char name[0];
 } PACKED;
 

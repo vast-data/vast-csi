@@ -384,7 +384,6 @@ EStoreRes Ingest::list_elements(OpCallback op_cb, void *cb_ctx, EHandle handle, 
     res = range_block.traverse(list_offset.bitmap_idx, name_range_traverse_func, &ctx);
     PT_RETURN(res != OK && res != EStoreRes::STOP, res, "range_block traverse failed");
 
-
     return OK;
 }
 

@@ -308,7 +308,7 @@ TEST(TestNameHash, test_md)
 
     bitmap_block.init(&buff);
     char name[64];
-    uint64_t n_blocks = rand() % 12;
+    uint64_t n_blocks = rand() % 12 + 1;
     uint64_t n_names = 0;
     LOOP(10000, i) {
         addr.shard_id = i % n_blocks;
@@ -333,6 +333,13 @@ TEST(TestNameHash, test_md)
     }
 }
 
+EStoreRes name_content_cb(const char *name, uint16_t name_len, uint32_t hash, EHandle handle, void *ctx)
+{
+    uint64_t *n_files = (uint64_t *)ctx;
+    (*n_files)++;
+    return OK;
+}
+
 TEST(TestNameContent, test_md)
 {
     TestMIOBuffer buff;
@@ -354,6 +361,21 @@ TEST(TestNameContent, test_md)
     ASSERT_EQ(1, handle_res);
 
     ASSERT(EStoreRes::NOENT == content_block.get_handle("adljklasdfafsasdsa", &handle_res));
+
+    char name[64];
+    content_block.init(&buff);
+    int i = 0;
+    for (; i < 1000; ++i) {
+        sprintf(name, "file%d", i);
+        EStoreRes res = content_block.add_handle(name, handle);
+        ASSERT(res == OK || res == EStoreRes::NO_MEM);
+        if (res == EStoreRes::NO_MEM) {
+            break;
+        }
+    }
+    uint64_t n_files = 0;
+    content_block.traverse(0, name_content_cb, &n_files);
+    ASSERT_EQ(n_files, i);
 }
 
 #define N_CONTENT_EXTENTS 8

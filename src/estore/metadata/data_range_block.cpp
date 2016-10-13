@@ -50,14 +50,16 @@ void DataRangeBlock::set_output_len(uint16_t found_index, uint64_t offset, uint6
     if (len == nullptr) {
         return;
     }
-    if (found_index == UINT16_MAX) {
-        *len = P_MIN(POW2_ROUND_UP(offset + 1, DATA_RANGE_SHARD_SIZE) - offset, *len);
+    Ranges *ranges = (Ranges *)payload_start();
+    uint64_t next_shard_offset = POW2_ROUND_UP(offset + 1, DATA_RANGE_SHARD_SIZE);
+    uint64_t available_len;
+    if (found_index == UINT16_MAX || found_index + 1 == ranges->n_ranges) {
+        *len = P_MIN(next_shard_offset - offset, *len);
         return;
     }
-    uint64_t available_len;
-    Ranges *ranges = (Ranges *)payload_start();
-    if (found_index + 1 == ranges->n_ranges) {
-        available_len = POW2_ROUND_UP(ranges->ranges[found_index]._offset + 1, DATA_RANGE_SHARD_SIZE) - offset;
+    uint64_t next_offset = ranges->ranges[found_index + 1]._offset;
+    if (next_offset > next_shard_offset) {
+        available_len = next_shard_offset - offset;
     } else {
         available_len = ranges->ranges[found_index + 1]._offset - offset;
     }

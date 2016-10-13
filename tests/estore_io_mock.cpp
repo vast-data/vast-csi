@@ -112,7 +112,7 @@ EStoreRes EStoreIO::write_data(LAddress addr, P::IO::IOVecs *iovecs, FutureRes<b
 {
     int fd = get_mock_fd(addr);
     LOOP(iovecs->count, i) {
-        PT_DEBUG(DATA, "vec(%lu) iov_len=%lu iov_base=%p", i, iovecs->iovecs[i].iov_len, iovecs->iovecs[i].iov_base);
+//        PT_DEBUG(DATA, "vec(%lu) iov_len=%lu iov_base=%p", i, iovecs->iovecs[i].iov_len, iovecs->iovecs[i].iov_base);
         ASSERT(iovecs->iovecs[i].iov_len % IO_ALIGNMENT == 0);
         ASSERT((size_t)iovecs->iovecs[i].iov_base % IO_ALIGNMENT == 0);
     }
@@ -154,7 +154,6 @@ void EStoreIO::alloc_data_buffers(IOVecs *iovecs)
     PT_DEBUG(DATA, "alloc %u buffers", iovecs->count);
     LOOP(iovecs->count, i) {
         iovecs->iovecs[i].iov_base = (char *)aligned_alloc(IO_ALIGNMENT, ALLOCATED_DATA_BUFFER_SIZE);
-        PT_DEBUG(DATA, "allocated buff(%lu) iov_base=%p buffers", i, iovecs->iovecs[i].iov_base);
         memset(iovecs->iovecs[i].iov_base, 0, ALLOCATED_DATA_BUFFER_SIZE);
         iovecs->iovecs[i].iov_len = DATA_BUFFER_SIZE;
     }

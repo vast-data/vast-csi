@@ -9,6 +9,7 @@ namespace EStore {
 
 void NameContentBlock::init(MIOBuffer *buffer)
 {
+    // TODO add type and ver to base block init
     BaseBlock::init(buffer);
     set_type(BlockType::NAME_CONTENT_BLOCK);
     set_version(INITIAL_BLOCK_VER);

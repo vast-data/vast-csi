@@ -11,20 +11,20 @@
 namespace EStore {
 
 // TODO move to configuration file
+// Note these types are all intentionally defines as uint64_t since they are used in macros that negates them
 static const uint64_t IO_ALIGNMENT = 512;
-static const uint32_t N_DATA_BUFFERS = 4 * UNIT_KiB;
-static const uint32_t DATA_BUFFER_SIZE = 16 * UNIT_KiB;
-static const uint32_t ALLOCATED_DATA_BUFFER_SIZE = 16 * UNIT_KiB + (2 * IO_ALIGNMENT);
+static const uint64_t N_DATA_BUFFERS = 4 * UNIT_KiB;
+static const uint64_t DATA_BUFFER_SIZE = 16 * UNIT_KiB;
+static const uint64_t ALLOCATED_DATA_BUFFER_SIZE = 16 * UNIT_KiB + (2 * IO_ALIGNMENT);
 
-static const uint32_t MIO_OVERHEAD = 2; // TODO find a cleaner way to define this
-static const uint32_t NVRAM_MD_BLOCK_SIZE = 4 * UNIT_KiB;
-static const uint32_t NVRAM_USABLE_BLOCK_SIZE = NVRAM_MD_BLOCK_SIZE - MIO_OVERHEAD;
-static const uint32_t WRITE_BUFFER_SIZE = 100 * UNIT_MiB;
-static const uint32_t DATA_RANGE_SHARD_SIZE = 64 * UNIT_MiB;
-static const uint32_t N_VIRTUAL_BUCKETS = UINT32_MAX;
+static const uint64_t MIO_OVERHEAD = 2; // TODO find a cleaner way to define this
+static const uint64_t NVRAM_MD_BLOCK_SIZE = 4 * UNIT_KiB;
+static const uint64_t WRITE_BUFFER_SIZE = 100 * UNIT_MiB;
+static const uint64_t DATA_RANGE_SHARD_SIZE = 64 * UNIT_MiB;
+static const uint64_t N_VIRTUAL_BUCKETS = UINT32_MAX;
 
 // Element store limits
-static const uint32_t MAX_LINKS = UINT32_MAX;
+static const uint64_t MAX_LINKS = UINT32_MAX;
 static const uint64_t MAX_ELEMENT_SIZE = UINT64_MAX;
 // As long as we support only one this define will do
 static const uint64_t ELEMENT_STORE_ID = 1;

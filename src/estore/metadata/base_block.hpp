@@ -22,7 +22,9 @@ struct BlockHeader {
     for (CONTENT_TYPE *X = (CONTENT_TYPE *)FROM; X->len > 0; X = NEXT_CONTENT(CONTENT_TYPE, X))
 #define TRAVERSE_CONTENT(CONTENT_TYPE, X) TRAVERSE_CONTENT_FROM(CONTENT_TYPE, X, payload_start())
 
-#define ZERO_LAST(CONTENT_TYPE) ((CONTENT_TYPE *)(payload_end()))->len = 0;
+#define ZERO_LAST(CONTENT_TYPE) \
+    DEBUG_ASSERT(&(((CONTENT_TYPE *)(payload_end()))->len) < (uint16_t *)(get_buffer()->get_data() + get_size())) \
+    ((CONTENT_TYPE *)(payload_end()))->len = 0;
 
 class BaseBlock {
 public:
