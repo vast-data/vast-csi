@@ -34,6 +34,7 @@ enum class EnvState {
     INIT,
     START,
     RUN,
+    DONE,
     ERROR
 };
 

@@ -226,8 +226,22 @@ static void error_handler(int sig)
 }
 
 /*!
- * This function registers a signal handler for SIGSEGV: when the program generates a segmentation fault,
- * print the backtrace of the current running fiber or thread.
+ * This is used only in testing: after an env has forked and crashes (usually happens in death tests),
+ * it's stuck waiting for dumper threads to finish but they will never comeback as a forked process only contains
+ * the thread the called fork. Avoid error handling logic alltogether.
+ */
+static void after_fork()
+{
+    signal(SIGSEGV, SIG_DFL);
+    signal(SIGABRT, SIG_DFL);
+    signal(SIGTERM, SIG_DFL);
+    signal(SIGINT, SIG_DFL);
+    signal(SIGPIPE, SIG_DFL);
+}
+
+/*!
+ * This function registers a signal handler for SIGSEGV and other error conditions:
+ * upon failure, print the backtrace of the current running fiber or thread.
  */
 static void register_signals()
 {
@@ -236,6 +250,8 @@ static void register_signals()
     signal(SIGTERM, error_handler);
     signal(SIGINT, error_handler);
     signal(SIGPIPE, SIG_IGN);
+
+    pthread_atfork(nullptr, nullptr, after_fork);
 }
 
 void Env::run(const char *binary_path, const char *config_path)
@@ -244,6 +260,7 @@ void Env::run(const char *binary_path, const char *config_path)
     strcpy(_binary_path, binary_path);
 
     register_signals();
+
     Config *config = parse_config(config_path);
 
     set_state(EnvState::INIT);
@@ -256,6 +273,8 @@ void Env::run(const char *binary_path, const char *config_path)
 
     set_state(EnvState::RUN);
     wait_for_silos();
+
+    set_state(EnvState::DONE);
     destroy();
 }
 
