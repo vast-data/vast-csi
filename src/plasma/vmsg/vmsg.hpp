@@ -70,7 +70,7 @@ public:
      * In the common case this API should only be used by auto generated code.
      */
     VMsgRes send_sync(ModuleAddress dest_guid, RpcServerId server_id, uint8_t op_id, uint64_t timeout_usec,
-                      void *buffer, uint16_t len, void **reply, uint32_t *reply_len);
+                      void *buffer, uint16_t len, BaseRpcGuard *reply, uint32_t *reply_len);
 
     /*!
      * Low level API for sending an async RPC request.

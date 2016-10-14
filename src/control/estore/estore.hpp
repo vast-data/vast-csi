@@ -20,8 +20,7 @@ public:
         Layout::SectionAllocatorActivateParams::RootBuilder *params = client.alloc_activate();
         params->set_estore_shard_count(_system->get_estore_shard_count());
         params->set_max_section_id(get_section_count());
-        P::VProto::Empty::RootReader *result;
-        if (client.activate_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
+        if (client.activate_sync(module->get_address(), params) != P::VMsg::VMsgRes::OK) {
             PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
         }
     }

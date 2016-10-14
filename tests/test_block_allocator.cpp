@@ -24,6 +24,7 @@ using namespace P::Conf;
 using namespace MirroredIO;
 using namespace EStore;
 using namespace Layout;
+using P::VMsg::RpcGuard;
 
 static const LAddress head = { .shard_id=0, .addr_type=LAddrType::MD_BLOCKS, .offset=0 };
 static const LAddress block_1 = { .shard_id=0, .addr_type=LAddrType::MD_BLOCKS, .offset=1*4*1024 };
@@ -204,23 +205,16 @@ static void test_block_allocator(void *ctx)
             config_params->get_section_configs(0)->get_mappings(i)->set_device_guid(dev_guids[i]);
             config_params->get_section_configs(0)->get_mappings(i)->set_base_offset(i * DevIO::O_DIRECT_ALIGNMENT);
         }
-        P::VProto::Empty::RootReader *config_empty_reply;
-        EXPECT_EQ(P::VMsg::VMsgRes::OK, client.config_sync(dest, config_params, &config_empty_reply));
-        client.free_config(config_empty_reply);
-        P::VProto::Empty::RootBuilder *activate_empty_args = client.alloc_activate();
-        P::VProto::Empty::RootReader *activate_empty_reply;
-        EXPECT_EQ(P::VMsg::VMsgRes::OK, client.activate_sync(dest, activate_empty_args, &activate_empty_reply));
-        client.free_activate(activate_empty_reply);
+        EXPECT_EQ(P::VMsg::VMsgRes::OK, client.config_sync(dest, config_params));
+        EXPECT_EQ(P::VMsg::VMsgRes::OK, client.activate_sync(dest));
     }
 
     {
         section_alloc_client.init();
         SectionAllocatorActivateParams::RootBuilder *activate_config = section_alloc_client.alloc_activate();
-        P::VProto::Empty::RootReader *activate_empty_reply;
         activate_config->set_estore_shard_count(2);
         activate_config->set_max_section_id(2);
-        section_alloc_client.activate_sync(dest, activate_config, &activate_empty_reply);
-        client.free_activate(activate_empty_reply);
+        section_alloc_client.activate_sync(dest, activate_config);
     }
 
     _test_basic(&estore_io);

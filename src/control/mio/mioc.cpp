@@ -12,6 +12,7 @@ using MirroredIO::MAX_DEVS_PER_SECTION;
 using MirroredIO::MAX_DEVS;
 using MirroredIO::MAX_SECTION_ID;
 using MirroredIO::MAX_SECTION_CONFIGS_PER_RPC;
+using P::VMsg::RpcGuard;
 
 void MIOControl::init(System *system)
 {
@@ -177,21 +178,16 @@ MirroredIO::ConfigParams::RootBuilder* MIOControl::alloc_config()
 
 void MIOControl::config_sync(BaseModuleLogic *module, MirroredIO::ConfigParams::RootBuilder *config_params)
 {
-    P::VProto::Empty::RootReader *config_reply;
-    if (_client.config_sync(module->get_address(), config_params, &config_reply) != P::VMsg::VMsgRes::OK) {
+    if (_client.config_sync(module->get_address(), config_params) != P::VMsg::VMsgRes::OK) {
         PANIC("VMsg failure");  //TODO: unify handling of VMsg errors
     }
-    _client.free_config(config_reply);
 }
 
 void MIOControl::activate_sync(BaseModuleLogic *module)
 {
-    P::VProto::Empty::RootBuilder *activate_args = _client.alloc_activate();
-    P::VProto::Empty::RootReader *activate_reply;
-    if (_client.activate_sync(module->get_address(), activate_args, &activate_reply) != P::VMsg::VMsgRes::OK) {
+    if (_client.activate_sync(module->get_address()) != P::VMsg::VMsgRes::OK) {
         PANIC("VMsg failure");  //TODO: unify handling of VMsg errors
     }
-    _client.free_activate(activate_reply);
 }
 
 } // namespace Control

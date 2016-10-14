@@ -29,9 +29,8 @@ public:
     void init();
 {% for method in server.methods %}
     {{ method.arg }}::RootBuilder *alloc_{{ method.name }}();
-    P::VMsg::VMsgRes {{ method.name }}_sync(P::VMsg::ModuleAddress dest, {{ method.arg }}::RootBuilder *args, {{ method.res }}::RootReader **reply, uint64_t timeout_usec = P::VMsg::DEFUALT_MSG_TIMEOUT_USEC);
-    P::VMsg::VMsgRes {{ method.name }}_async(P::VMsg::ModuleAddress dest, {{ method.arg }}::RootBuilder *args, P::VMsg::VMsgFutureRes<{{ method.res }}::RootReader> **future, uint64_t timeout_usec = P::VMsg::DEFUALT_MSG_TIMEOUT_USEC);
-    void free_{{ method.name }}({{ method.res }}::RootReader *res);
+    P::VMsg::VMsgRes {{ method.name }}_sync(P::VMsg::ModuleAddress dest, {{ method.arg }}::RootBuilder *args{% if "VProto::Empty" in method.arg and "VProto::Empty" in method.res %} = nullptr{% endif %}, P::VMsg::RpcGuard<{{ method.res }}::RootReader> *reply{% if "VProto::Empty" in method.res %} = nullptr{% endif %}, uint64_t timeout_usec = P::VMsg::DEFUALT_MSG_TIMEOUT_USEC);
+    P::VMsg::VMsgRes {{ method.name }}_async(P::VMsg::ModuleAddress dest, P::VMsg::VMsgFutureRes<{{ method.res }}::RootReader> **future, {{ method.arg }}::RootBuilder *args{% if "VProto::Empty" in method.arg %} = nullptr{% endif %}, uint64_t timeout_usec = P::VMsg::DEFUALT_MSG_TIMEOUT_USEC);
 {% endfor %}
 private:
     P::VMsg::VMsg *_vmsg;

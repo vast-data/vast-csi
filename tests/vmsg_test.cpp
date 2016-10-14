@@ -154,11 +154,10 @@ static void sync_call(TestRpcClient *client, uint64_t i, uint32_t n_silos, EnvId
         (SiloId)(i % n_silos),
     };
 
-    AddRes::RootReader *add_res;
+    RpcGuard<AddRes::RootReader> add_res;
     VMsgRes res = client->add_sync(dest, args, &add_res);
     ASSERT(res == VMsgRes::OK);
     ASSERT_EQUAL(i * 2, add_res->get_sum());
-    client->free_add(add_res);
 }
 
 static void async_call(TestRpcClient *client, uint64_t i, uint32_t n_silos, EnvId dest_env)
@@ -181,15 +180,15 @@ static void async_call(TestRpcClient *client, uint64_t i, uint32_t n_silos, EnvI
         margs->set_c(i);
 
         dest.silo_id = (SiloId)(j % n_silos);
-        VMsgRes res = client->multiply_async(dest, margs, &futures[j]);
+        VMsgRes res = client->multiply_async(dest, &futures[j], margs);
         ASSERT(res == VMsgRes::OK);
     }
     P::FiberSync::Future::wait_all((P::FiberSync::Future **)futures, ASYNC_REQUESTS_PER_LOOP);
     LOOP(ASYNC_REQUESTS_PER_LOOP, j) {
         ASSERT(futures[j]->is_set());
-        MultiplyRes::RootReader *mul_res = futures[j]->get();
+        RpcGuard<MultiplyRes::RootReader> mul_res;
+        futures[j]->get(&mul_res);
         ASSERT_EQUAL((i + j) * (i - j) * i, mul_res->get_sum());
-        client->free_multiply(mul_res);
     }
 }
 

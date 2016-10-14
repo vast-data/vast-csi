@@ -394,7 +394,7 @@ VMsgRes VMsg::send_async(ModuleAddress dest_guid, RpcServerId server_id, uint8_t
 }
 
 VMsgRes VMsg::send_sync(ModuleAddress dest_guid, RpcServerId server_id, uint8_t op_id, uint64_t timeout_usec,
-                        void *buffer, uint16_t len, void **reply, uint32_t *reply_len)
+                        void *buffer, uint16_t len, BaseRpcGuard *reply, uint32_t *reply_len)
 {
     VMsgFuture *future;
     VMsgRes res = send_async(dest_guid, server_id, op_id, timeout_usec, buffer, len, &future);
@@ -403,7 +403,11 @@ VMsgRes VMsg::send_sync(ModuleAddress dest_guid, RpcServerId server_id, uint8_t 
     }
 
     future->wait();
-    *reply = future->buffer;
+    if (reply != nullptr) {
+        reply->init(future->buffer);
+    } else {
+        free_received_response(future->buffer);
+    }
     if (reply_len) {
         *reply_len = future->len;
     }

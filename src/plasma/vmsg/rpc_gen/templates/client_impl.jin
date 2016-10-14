@@ -39,21 +39,31 @@ static_assert(!std::is_polymorphic<{{ method.res }}::RootBuilder>::value, "metho
     return arg;
 }
 
-VMsgRes {{ server.name }}Client::{{ method.name }}_sync(ModuleAddress dest, {{ method.arg }}::RootBuilder *args, {{ method.res }}::RootReader **reply, uint64_t timeout_usec)
+VMsgRes {{ server.name }}Client::{{ method.name }}_sync(ModuleAddress dest, {{ method.arg }}::RootBuilder *args, P::VMsg::RpcGuard<{{ method.res }}::RootReader> *reply, uint64_t timeout_usec)
 {
     PT_INFO(CONTROL, "RPC Client sync method called: {{ server.name }}.{{ method.name }}");
-    return _vmsg->send_sync(dest, RpcServerId::{{ server.name }}, {{ method.op_id }}, timeout_usec, args, sizeof({{ method.arg }}::RootBuilder), (void **)reply, nullptr);
+{% if "VProto::Empty" in method.arg %}
+    if (args == nullptr)
+        args = alloc_{{ method.name }}();
+{% else %}
+    ASSERT_NOT_NULL(args, "RPC params of type {{ method.arg }} of function {{ method.name }} cannot be ignored.");
+{% endif %}
+{% if "VProto::Empty" not in method.res %}
+    ASSERT_NOT_NULL(reply, "RPC result of type {{ method.res }} of function {{ method.name }} cannot be ignored.");
+{% endif %}
+    return _vmsg->send_sync(dest, RpcServerId::{{ server.name }}, {{ method.op_id }}, timeout_usec, args, sizeof({{ method.arg }}::RootBuilder), reply, nullptr);
 }
 
-VMsgRes {{ server.name }}Client::{{ method.name }}_async(ModuleAddress dest, {{ method.arg }}::RootBuilder *args, VMsgFutureRes<{{ method.res }}::RootReader> **future, uint64_t timeout_usec)
+VMsgRes {{ server.name }}Client::{{ method.name }}_async(ModuleAddress dest, VMsgFutureRes<{{ method.res }}::RootReader> **future, {{ method.arg }}::RootBuilder *args, uint64_t timeout_usec)
 {
     PT_INFO(CONTROL, "RPC Client async method called: {{ server.name }}.{{ method.name }}");
+    {% if "VProto::Empty" in method.arg %}
+    if (args == nullptr)
+        args = alloc_{{ method.name }}();
+{% else %}
+    ASSERT_NOT_NULL(args, "RPC params of type {{ method.arg }} of function {{ method.name }} cannot be ignored.");
+{% endif %}
     return _vmsg->send_async(dest, RpcServerId::{{ server.name }}, {{ method.op_id }}, timeout_usec, args, sizeof({{ method.arg }}::RootBuilder), (VMsgFuture **)future);
-}
-
-void {{ server.name }}Client::free_{{ method.name }}({{ method.res }}::RootReader *res)
-{
-   _vmsg->free_received_response((void *)res);
 }
 
 {% endfor -%}

@@ -12,6 +12,8 @@
 #include "modules/e_module_agent.rpc.client.hpp"
 #include "control/dev_agent/dev_agent.rpc.client.hpp"
 
+using P::VMsg::RpcGuard;
+
 namespace Control {
 
 template  <class T>
@@ -19,6 +21,7 @@ static void set_env_modules(EnvObj *env, T connect_params) {
     LOOP(MODULES_COUNT, i) {
         *connect_params->get_modules(i) = false;
     }
+
     IMDB_ITER_MODULES(env, module, {
         *connect_params->get_modules((P::byte) module->get_module_id()) = true;
     });
@@ -99,11 +102,9 @@ void Cluster::connect_platform_env(EnvObj *env)
     set_env_modules(_local_env_obj, params->get_connect_params());
     // TODO: make sure this function can be called more than once on an env. (the leader might be down and the platform could restart)
     PModuleObj *module = env->get_only_child<PModuleObj>();
-    P::VProto::Empty::RootReader *result;
-    if (client.set_local_env_id_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
+    if (client.set_local_env_id_sync(module->get_address(), params) != P::VMsg::VMsgRes::OK) {
         PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
     }
-    client.free_set_local_env_id(result);
 }
 
 void Cluster::connect_data_env(EnvObj *env)
@@ -117,11 +118,9 @@ void Cluster::connect_data_env(EnvObj *env)
     P::Env::get()->get_vmsg()->copy_env_addresses(params->get_env_id(), params->get_addresses());
     set_env_modules(_local_env_obj, params);
     EModuleObj *module = env->get_only_child<EModuleObj>();
-    P::VProto::Empty::RootReader *result;
-    if (client.connect_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
+    if (client.connect_sync(module->get_address(), params) != P::VMsg::VMsgRes::OK) {
         PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
     }
-    client.free_connect(result);
 }
 
 void Cluster::connect_env_to_env(EnvObj *env1, EnvObj *env2)
@@ -136,11 +135,9 @@ void Cluster::connect_env_to_env(EnvObj *env1, EnvObj *env2)
     P::Env::get()->get_vmsg()->copy_env_addresses(env2->get_id(), params->get_addresses());
     set_env_modules(env2, params);
     EModuleObj *module = env1->get_only_child<EModuleObj>();
-    P::VProto::Empty::RootReader *result;
-    if (client.connect_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
+    if (client.connect_sync(module->get_address(), params) != P::VMsg::VMsgRes::OK) {
         PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
     }
-    client.free_connect(result);
 }
 
 void Cluster::connect_env(EnvObj *env)
@@ -167,7 +164,6 @@ void Cluster::connect_env(EnvObj *env)
     // connect to the env.
     P::Env::get()->get_vmsg()->set_env_addresses(env->get_id(), &addresses, &env_modules);
 
-    P::VProto::Empty::RootReader *result;
     // tell the env to connect back to me.
     if (env->is_platform()) {
         connect_platform_env(env);
@@ -284,14 +280,13 @@ void Cluster::env_start(EnvObj *env)
     P::EnvStartParams::RootBuilder *params = client.alloc_env_start();
     params->set_env_guid(env->get_guid());
     env->generate_config(params->get_config(), params->get_config_count());
-    P::EnvStartResult::RootReader *result;
+    RpcGuard<P::EnvStartResult::RootReader> result;
     CNode *cnode = env->get_parent<CNode>();
     PModuleObj *module = cnode->get_platform_module();
     if (client.env_start_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
         PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
     }
     P::EnvStartResultCode code = result->get_code();
-    client.free_env_start(result);
     if (code != P::EnvStartResultCode::SUCCESS)
         PT_ERROR(CONTROL, "Error starting env=%s with code=%hhd", guid_string, code);
 }
@@ -308,12 +303,11 @@ void Cluster::env_stop(EnvObj *env)
     params->set_env_guid(env->get_guid());
     CNode *cnode = env->get_parent<CNode>();
     PModuleObj *module = cnode->get_platform_module();
-    P::EnvStopResult::RootReader *result;
+    RpcGuard<P::EnvStopResult::RootReader> result;
     if (client.env_stop_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
         PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
     }
     P::EnvStopResultCode code = result->get_code();
-    client.free_env_stop(result);
     if (code != P::EnvStopResultCode::SUCCESS)
         PT_ERROR(CONTROL, "Error stoping env=%s with code=%hhd", guid_string, code);
 }
@@ -691,7 +685,7 @@ void Cluster::connect_cnode_to_device(CNode *cnode, NVRAM *nvram)
     LOOP(params->get_dnode_addresses_count(), i)
         *(params->get_dnode_addresses(i)) = *(nvram->get_parent<DNode>()->get_base_node()->get_addresses(i));
 
-    P::ConnectDeviceResult::RootReader *result;
+    RpcGuard<P::ConnectDeviceResult::RootReader> result;
     if (client.connect_device_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
         PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
     }
@@ -701,7 +695,6 @@ void Cluster::connect_cnode_to_device(CNode *cnode, NVRAM *nvram)
             continue;
         Cluster::connect_env_to_device(env, nvram, result->get_path());
     });
-    client.free_connect_device(result);
 }
 
 void Cluster::connect_env_to_device(EnvObj *env, NVRAM *nvram, char *local_path)
@@ -716,12 +709,9 @@ void Cluster::connect_env_to_device(EnvObj *env, NVRAM *nvram, char *local_path)
         device->set_guid(nvram->get_guid());
         strncpy(device->get_path(), local_path, device->get_path_count());
 
-        P::VProto::Empty::RootReader *result;
-        if (client.device_add_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
+        if (client.device_add_sync(module->get_address(), params) != P::VMsg::VMsgRes::OK) {
             PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
         }
-
-        client.free_device_add(result);
     });
 }
 
@@ -734,11 +724,9 @@ void Cluster::prepare_disconnect_env_from_device(EnvObj *env, NVRAM *nvram)
         DevicePrepareRemoveParams::RootBuilder *prepare_params = client.alloc_device_prepare_remove();
         prepare_params->set_guid_count(1);
         *(prepare_params->get_guids(0)) = nvram->get_guid();
-        P::VProto::Empty::RootReader *result;
-        if (client.device_prepare_remove_sync(module->get_address(), prepare_params, &result) != P::VMsg::VMsgRes::OK) {
+        if (client.device_prepare_remove_sync(module->get_address(), prepare_params) != P::VMsg::VMsgRes::OK) {
             PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
         }
-        client.free_device_prepare_remove(result);
     });
 }
 
@@ -751,11 +739,9 @@ void Cluster::disconnect_env_from_device(EnvObj *env, NVRAM *nvram)
         DeviceRemoveParams::RootBuilder *remove_params = client.alloc_device_remove();
         remove_params->set_guid_count(1);
         *(remove_params->get_guids(0)) = nvram->get_guid();
-        P::VProto::Empty::RootReader *result;
-        if (client.device_remove_sync(module->get_address(), remove_params, &result) != P::VMsg::VMsgRes::OK) {
+        if (client.device_remove_sync(module->get_address(), remove_params) != P::VMsg::VMsgRes::OK) {
             PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
         }
-        client.free_device_remove(result);
     });
 }
 
@@ -782,12 +768,10 @@ void Cluster::disconnect_cnode_from_device(CNode *cnode, NVRAM *nvram)
     PModuleObj *module = cnode->get_platform_module();
     P::DisconnectDeviceParams::RootBuilder *params = client.alloc_disconnect_device();
     params->set_guid(nvram->get_guid());
-    P::DisconnectDeviceResult::RootReader *result;
+    RpcGuard<P::DisconnectDeviceResult::RootReader> result;
     if (client.disconnect_device_sync(module->get_address(), params, &result) != P::VMsg::VMsgRes::OK) {
         PANIC("VMsg failure"); //TODO: unify handling of VMsg errors
     }
-
-    client.free_disconnect_device(result);
 }
 
 void Cluster::nvram_deactivate(NVRAM *nvram)

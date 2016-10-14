@@ -139,6 +139,70 @@ struct PiggybackData {
 };
 static_assert(sizeof(PiggybackData) == 8, "PiggybackData size should be 8 bytes");
 
+void free_vmsg_response(void *buffer);
+
+class BaseRpcGuard {
+public:
+    BaseRpcGuard() {}
+
+    void init(void *ptr)
+    {
+        _ptr = ptr;
+    }
+
+    void *get()
+    {
+        return _ptr;
+    }
+
+    void *release()
+    {
+        void *ptr = _ptr;
+        _ptr = nullptr;
+        return ptr;
+    }
+
+    ~BaseRpcGuard()
+    {
+        free_vmsg_response(_ptr);
+    }
+
+    BaseRpcGuard(const BaseRpcGuard&) = delete;
+    BaseRpcGuard& operator=(const BaseRpcGuard&) = delete;
+protected:
+    void *_ptr = nullptr;
+};
+
+/*!
+ * This class is used by the RPC framework to protect VMsg buffers from being lost.
+ * It's implemented in a similar manner to smart pointers, by overloading the -> operator.
+ */
+template<typename T>
+class RpcGuard : public BaseRpcGuard {
+public:
+    T *operator->() const {
+        return (T*) _ptr;
+    }
+
+    /*!
+     * Gets the underlying pointer. Use this function carefully as the underlying pointer
+     * will become dangling once its containing guard goes out of scope.
+     */
+    T *get()
+    {
+        return (T*) _ptr;
+    }
+
+    /*!
+     * Use this function to take ownership of the underlying pointer. It's the caller's
+     * responsibility to make sure it's freed using free_vmsg_response.
+     */
+    T *release()
+    {
+        return (T*) BaseRpcGuard::release();
+    }
+};
+
 class VMsgFuture : public FiberSync::Future {
 public:
     void *buffer;
@@ -148,8 +212,11 @@ public:
 template<typename T>
 class VMsgFutureRes : public VMsgFuture {
 public:
-    T *get()
-    { return (T *)buffer; }
+    void get(RpcGuard<T> *result)
+    {
+        result->init((T*)buffer);
+        buffer = nullptr;
+    }
 };
 
 // Holds the context for a pending message

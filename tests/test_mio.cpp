@@ -19,6 +19,7 @@ using namespace P::IO;
 using namespace P::FiberSync;
 using namespace P::Conf;
 using namespace MirroredIO;
+using P::VMsg::RpcGuard;
 
 const uint64_t test_sectionID = 8;
 const Baddr test_baddr = 512;
@@ -64,10 +65,7 @@ static void test_locking_start_func(void *ctx)
 
     mio.get_mio_agent()->config_section(test_address.section_id, phys_arr, NUM_ELEMENTS(phys_arr), false);
 
-    P::VProto::Empty::RootBuilder *activate_empty_args = client.alloc_activate();
-    P::VProto::Empty::RootReader *activate_empty_reply;
-    EXPECT_EQ(P::VMsg::VMsgRes::OK, client.activate_sync(dest, activate_empty_args, &activate_empty_reply));
-    client.free_activate(activate_empty_reply);
+    EXPECT_EQ(P::VMsg::VMsgRes::OK, client.activate_sync(dest));
 
     mio.lock(test_address, test_workerID);
     bool got_lock = mio.trylock(test_address, other_test_workerID);
@@ -143,14 +141,8 @@ static void test_rw_start_func(void *ctx)
         config_params->get_section_configs(0)->get_mappings(i)->set_device_guid(dev_guids[i]);
         config_params->get_section_configs(0)->get_mappings(i)->set_base_offset(i * DevIO::O_DIRECT_ALIGNMENT);
     }
-    P::VProto::Empty::RootReader *config_empty_reply;
-    EXPECT_EQ(P::VMsg::VMsgRes::OK, client.config_sync(dest, config_params, &config_empty_reply));
-    client.free_config(config_empty_reply);
-
-    P::VProto::Empty::RootBuilder *activate_empty_args = client.alloc_activate();
-    P::VProto::Empty::RootReader *activate_empty_reply;
-    EXPECT_EQ(P::VMsg::VMsgRes::OK, client.activate_sync(dest, activate_empty_args, &activate_empty_reply));
-    client.free_activate(activate_empty_reply);
+    EXPECT_EQ(P::VMsg::VMsgRes::OK, client.config_sync(dest, config_params));
+    EXPECT_EQ(P::VMsg::VMsgRes::OK, client.activate_sync(dest));
 
     IOVec write_buff;
     allocate_test_buffer(&write_buff);

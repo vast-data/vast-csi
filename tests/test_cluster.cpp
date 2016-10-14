@@ -12,6 +12,7 @@
 
 using namespace P;
 using namespace Control;
+using P::VMsg::RpcGuard;
 
 static const VMsg::ModuleAddress dest = {
     LEADER_ENV_ID,  // env_id
@@ -25,21 +26,19 @@ static void system_activate(ClusterClient *client)
 {
     SystemActivateParams::RootBuilder *activate_params = client->alloc_system_activate();
     activate_params->set_estore_shard_count(1024);
-    SystemActivateResult::RootReader *activate_result;
+    RpcGuard<SystemActivateResult::RootReader> activate_result;
     ASSERT_EQ(VMsg::VMsgRes::OK, client->system_activate_sync(dest, activate_params, &activate_result));
     ASSERT_EQ(activate_result->get_code(), SystemActivateResultCode::SUCCESS);
-    client->free_system_activate(activate_result);
 }
 
 static SystemState get_system_state(ClusterClient *client)
 {
     SystemStatusParams::RootBuilder *status_params = client->alloc_system_status();
-    SystemStatusResult::RootReader *status_result;
+    RpcGuard<SystemStatusResult::RootReader> status_result;
     EXPECT_EQ(VMsg::VMsgRes::OK, client->system_status_sync(dest, status_params, &status_result));
     SystemProto::Reader system;
     status_result->get_system(&system);
     auto result = system.get_state();
-    client->free_system_status(status_result);
     return result;
 }
 
@@ -72,10 +71,9 @@ static void add_cnode(ClusterClient *client, GUID guid, uint16_t platform_port, 
         *(silo_conf->get_modules_enabled(i)) = false;
     *(silo_conf->get_modules_enabled((uint16_t)ModuleId::E)) = true;
 
-    CNodeAddResult::RootReader *cnode_add_result;
+    RpcGuard<CNodeAddResult::RootReader> cnode_add_result;
     ASSERT_EQ(VMsg::VMsgRes::OK, client->cnode_add_sync(dest, cnode_add_params, &cnode_add_result));
     ASSERT_EQ(cnode_add_result->get_code(), CNodeAddResultCode::SUCCESS);
-    client->free_cnode_add(cnode_add_result);
 }
 
 static void add_dbox(ClusterClient *client, GUID guid, GUID dnode1_guid, GUID dnode2_guid,
@@ -112,10 +110,9 @@ static void add_dbox(ClusterClient *client, GUID guid, GUID dnode1_guid, GUID dn
         *(silo_conf->get_modules_enabled((uint16_t)ModuleId::E)) = true;
     }
 
-    DBoxAddResult::RootReader *dbox_add_result;
+    RpcGuard<DBoxAddResult::RootReader> dbox_add_result;
     ASSERT_EQ(VMsg::VMsgRes::OK, client->dbox_add_sync(dest, dbox_add_params, &dbox_add_result));
     ASSERT_EQ(dbox_add_result->get_code(), DBoxAddResultCode::SUCCESS);
-    client->free_dbox_add(dbox_add_result);
 }
 
 static void set_dnode_enabled(ClusterClient *client, GUID guid, bool enabled)
@@ -123,10 +120,9 @@ static void set_dnode_enabled(ClusterClient *client, GUID guid, bool enabled)
     DNodeModifyParams::RootBuilder *dnode_modify_params = client->alloc_dnode_modify();
     dnode_modify_params->set_guid(guid);
     dnode_modify_params->set_enabled(enabled);
-    DNodeModifyResult::RootReader *dnode_modify_result;
+    RpcGuard<DNodeModifyResult::RootReader> dnode_modify_result;
     ASSERT_EQ(VMsg::VMsgRes::OK, client->dnode_modify_sync(dest, dnode_modify_params, &dnode_modify_result));
     ASSERT_EQ(dnode_modify_result->get_code(), DNodeModifyResultCode::SUCCESS);
-    client->free_dnode_modify(dnode_modify_result);
 }
 
 static void set_cnode_enabled(ClusterClient *client, GUID guid, bool enabled)
@@ -134,13 +130,12 @@ static void set_cnode_enabled(ClusterClient *client, GUID guid, bool enabled)
     CNodeModifyParams::RootBuilder *cnode_modify_params = client->alloc_cnode_modify();
     cnode_modify_params->set_guid(guid);
     cnode_modify_params->set_enabled(enabled);
-    CNodeModifyResult::RootReader *cnode_modify_result;
+    RpcGuard<CNodeModifyResult::RootReader> cnode_modify_result;
     ASSERT_EQ(VMsg::VMsgRes::OK, client->cnode_modify_sync(dest, cnode_modify_params, &cnode_modify_result));
     ASSERT_EQ(cnode_modify_result->get_code(), CNodeModifyResultCode::SUCCESS);
-    client->free_cnode_modify(cnode_modify_result);
 }
 
-static void get_cnode(ClusterClient *client, GUID guid, CNodeGetResult::RootReader **cnode_get_result)
+static void get_cnode(ClusterClient *client, GUID guid, RpcGuard<CNodeGetResult::RootReader> *cnode_get_result)
 {
     CNodeGetParams::RootBuilder *cnode_get_params = client->alloc_cnode_get();
     cnode_get_params->set_guid(guid);
@@ -154,49 +149,57 @@ static void cnode_activation_start_func(void *ctx)
     client.init();
 
     GUID cnode_guid = GUID::create();
-    add_cnode(&client, cnode_guid, P::PLATFORM_ENV_PORT, 6001);
-
-    CNodeGetResult::RootReader *cnode_get_result;
-    get_cnode(&client, cnode_guid, &cnode_get_result);
     CNodeProto::Reader cnode;
     BaseNodeProto::Reader node;
-    cnode_get_result->get_cnode(&cnode);
-    cnode.get_base_node_proto(&node);
-    ASSERT_EQ(node.get_state(), NodeState::INIT);
-    ASSERT_FALSE(node.get_enabled());
-    client.free_cnode_get(cnode_get_result);
+
+    add_cnode(&client, cnode_guid, P::PLATFORM_ENV_PORT, 6001);
+
+    {
+        RpcGuard<CNodeGetResult::RootReader> cnode_get_result;
+        get_cnode(&client, cnode_guid, &cnode_get_result);
+        cnode_get_result->get_cnode(&cnode);
+        cnode.get_base_node_proto(&node);
+        ASSERT_EQ(node.get_state(), NodeState::INIT);
+        ASSERT_FALSE(node.get_enabled());
+    }
 
     set_cnode_enabled(&client, cnode_guid, true);
 
-    get_cnode(&client, cnode_guid, &cnode_get_result);
-    cnode_get_result->get_cnode(&cnode);
-    cnode.get_base_node_proto(&node);
-    ASSERT_EQ(node.get_state(), NodeState::INIT);
-    ASSERT_TRUE(node.get_enabled());
-    client.free_cnode_get(cnode_get_result);
+    {
+        RpcGuard<CNodeGetResult::RootReader> cnode_get_result;
+        get_cnode(&client, cnode_guid, &cnode_get_result);
+        cnode_get_result->get_cnode(&cnode);
+        cnode.get_base_node_proto(&node);
+        ASSERT_EQ(node.get_state(), NodeState::INIT);
+        ASSERT_TRUE(node.get_enabled());
+    }
 
     system_activate(&client);
 
-    get_cnode(&client, cnode_guid, &cnode_get_result);
-    cnode_get_result->get_cnode(&cnode);
-    cnode.get_base_node_proto(&node);
-    ASSERT_EQ(node.get_state(), NodeState::ACTIVE);
-    ASSERT_TRUE(node.get_enabled());
-    client.free_cnode_get(cnode_get_result);
+    {
+        RpcGuard<CNodeGetResult::RootReader> cnode_get_result;
+        get_cnode(&client, cnode_guid, &cnode_get_result);
+        cnode_get_result->get_cnode(&cnode);
+        cnode.get_base_node_proto(&node);
+        ASSERT_EQ(node.get_state(), NodeState::ACTIVE);
+        ASSERT_TRUE(node.get_enabled());
+    }
 
     set_cnode_enabled(&client, cnode_guid, false);
 
-    get_cnode(&client, cnode_guid, &cnode_get_result);
-    cnode_get_result->get_cnode(&cnode);
-    cnode.get_base_node_proto(&node);
-    ASSERT_EQ(node.get_state(), NodeState::INACTIVE);
-    ASSERT_FALSE(node.get_enabled());
-    client.free_cnode_get(cnode_get_result);
+    {
+        RpcGuard<CNodeGetResult::RootReader> cnode_get_result;
+        get_cnode(&client, cnode_guid, &cnode_get_result);
+        cnode_get_result->get_cnode(&cnode);
+        cnode.get_base_node_proto(&node);
+        ASSERT_EQ(node.get_state(), NodeState::INACTIVE);
+        ASSERT_FALSE(node.get_enabled());
+    }
 
     env_stop = true;
 }
 
-static void get_dbox(ClusterClient *client, GUID guid, DBoxGetResult::RootReader **dbox_get_result)
+static void get_dbox(ClusterClient *client, GUID guid, RpcGuard<DBoxGetResult::RootReader> *dbox_get_result)
 {
     DBoxGetParams::RootBuilder *dbox_get_params = client->alloc_dbox_get();
     dbox_get_params->set_guid(guid);
@@ -215,37 +218,42 @@ static void dbox_activation_start_func(void *ctx)
 
     add_dbox(&client, dbox_guid, dnode1_guid, dnode2_guid, 5000, 6000);
 
-    DBoxGetResult::RootReader *dbox_get_result;
-    get_dbox(&client, dbox_guid, &dbox_get_result);
     DNodeProto::Reader dnode;
     BaseNodeProto::Reader node;
-    LOOP(dbox_get_result->get_dnodes_count(), i) {
-        dbox_get_result->get_dnodes(&dnode, i);
-        dnode.get_base_node_proto(&node);
-        ASSERT_EQ(node.get_state(), NodeState::INIT);
+    {
+        RpcGuard<DBoxGetResult::RootReader> dbox_get_result;
+        get_dbox(&client, dbox_guid, &dbox_get_result);
+        LOOP(dbox_get_result->get_dnodes_count(), i) {
+            dbox_get_result->get_dnodes(&dnode, i);
+            dnode.get_base_node_proto(&node);
+            ASSERT_EQ(node.get_state(), NodeState::INIT);
+        }
     }
-    client.free_dbox_get(dbox_get_result);
 
     set_dnode_enabled(&client, dnode1_guid, true);
     set_dnode_enabled(&client, dnode2_guid, true);
 
-    get_dbox(&client, dbox_guid, &dbox_get_result);
-    LOOP(dbox_get_result->get_dnodes_count(), i) {
-        dbox_get_result->get_dnodes(&dnode, i);
-        dnode.get_base_node_proto(&node);
-        ASSERT_EQ(node.get_state(), NodeState::INIT);
+    {
+        RpcGuard<DBoxGetResult::RootReader> dbox_get_result;
+        get_dbox(&client, dbox_guid, &dbox_get_result);
+        LOOP(dbox_get_result->get_dnodes_count(), i) {
+            dbox_get_result->get_dnodes(&dnode, i);
+            dnode.get_base_node_proto(&node);
+            ASSERT_EQ(node.get_state(), NodeState::INIT);
+        }
     }
-    client.free_dbox_get(dbox_get_result);
 
     system_activate(&client);
 
-    get_dbox(&client, dbox_guid, &dbox_get_result);
-    LOOP(dbox_get_result->get_dnodes_count(), i) {
-        dbox_get_result->get_dnodes(&dnode, i);
-        dnode.get_base_node_proto(&node);
-        ASSERT_EQ(node.get_state(), NodeState::ACTIVE);
+    {
+        RpcGuard<DBoxGetResult::RootReader> dbox_get_result;
+        get_dbox(&client, dbox_guid, &dbox_get_result);
+        LOOP(dbox_get_result->get_dnodes_count(), i) {
+            dbox_get_result->get_dnodes(&dnode, i);
+            dnode.get_base_node_proto(&node);
+            ASSERT_EQ(node.get_state(), NodeState::ACTIVE);
+        }
     }
-    client.free_dbox_get(dbox_get_result);
 
     set_dnode_enabled(&client, dnode1_guid, false);
     set_dnode_enabled(&client, dnode2_guid, false);

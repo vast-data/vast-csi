@@ -55,11 +55,9 @@ static P::EnvStartResultCode send_env_start(P::GUID env_guid, const char *config
     P::EnvStartParams::RootBuilder *env_start_params = client.alloc_env_start();
     env_start_params->set_env_guid(env_guid);
     strcpy(env_start_params->get_config(), config);
-    P::EnvStartResult::RootReader *env_start_reply;
+    RpcGuard<P::EnvStartResult::RootReader> env_start_reply;
     EXPECT_EQ(VMsgRes::OK, client.env_start_sync(local_dest, env_start_params, &env_start_reply));
-    P::EnvStartResultCode res = env_start_reply->get_code();
-    client.free_env_start(env_start_reply);
-    return res;
+    return env_start_reply->get_code();
 }
 
 static P::EnvStopResultCode send_env_stop(P::GUID env_guid)
@@ -69,11 +67,9 @@ static P::EnvStopResultCode send_env_stop(P::GUID env_guid)
 
     P::EnvStopParams::RootBuilder *env_stop_params = client.alloc_env_stop();
     env_stop_params->set_env_guid(env_guid);
-    P::EnvStopResult::RootReader *env_stop_reply;
+    RpcGuard<P::EnvStopResult::RootReader> env_stop_reply;
     EXPECT_EQ(VMsgRes::OK, client.env_stop_sync(local_dest, env_stop_params, &env_stop_reply));
-    P::EnvStopResultCode res = env_stop_reply->get_code();
-    client.free_env_stop(env_stop_reply);
-    return res;
+    return env_stop_reply->get_code();
 }
 
 static P::EnvStartResultCode send_run_leader()
@@ -81,13 +77,9 @@ static P::EnvStartResultCode send_run_leader()
     P::PModuleAgentClient client;
     client.init();
 
-    P::VProto::Empty::RootBuilder *empty = client.alloc_run_leader();
-    P::EnvStartResult::RootReader *env_start_reply;
-
-    EXPECT_EQ(VMsgRes::OK, client.run_leader_sync(local_dest, empty, &env_start_reply));
-    P::EnvStartResultCode res = env_start_reply->get_code();
-    client.free_run_leader(env_start_reply);
-    return res;
+    RpcGuard<P::EnvStartResult::RootReader> env_start_reply;
+    EXPECT_EQ(VMsgRes::OK, client.run_leader_sync(local_dest, nullptr, &env_start_reply));
+    return env_start_reply->get_code();
 }
 
 static Control::SystemState send_system_status()
@@ -96,13 +88,11 @@ static Control::SystemState send_system_status()
     client.init();
 
     Control::SystemStatusParams::RootBuilder *system_status_params = client.alloc_system_status();
-    Control::SystemStatusResult::RootReader *system_status_reply;
+    RpcGuard<Control::SystemStatusResult::RootReader> system_status_reply;
     EXPECT_EQ(VMsgRes::OK, client.system_status_sync(leader_dest_control, system_status_params, &system_status_reply));
     Control::SystemProto::Reader system_reader;
     system_status_reply->get_system(&system_reader);
-    Control::SystemState res = system_reader.get_state();
-    client.free_system_status(system_status_reply);
-    return res;
+    return system_reader.get_state();
 }
 
 static void send_set_local_env_id(uint16_t env_id)
@@ -127,9 +117,7 @@ static void send_set_local_env_id(uint16_t env_id)
     *connect_params->get_modules((P::byte)ModuleId::C) = true;
     *connect_params->get_modules((P::byte)ModuleId::TEST) = true;
 
-    P::VProto::Empty::RootReader *set_local_env_id_reply;
-    EXPECT_EQ(VMsgRes::OK, client.set_local_env_id_sync(leader_dest, set_local_env_id_params, &set_local_env_id_reply));
-    client.free_set_local_env_id(set_local_env_id_reply);
+    EXPECT_EQ(VMsgRes::OK, client.set_local_env_id_sync(leader_dest, set_local_env_id_params));
 }
 
 static void update_config_port(char *config, uint16_t port)

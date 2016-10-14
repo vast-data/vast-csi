@@ -23,7 +23,7 @@ class Guard {
 public:
     Guard(uint64_t *sum) { _sum = sum; _start = P::get_time_nano(); };
     ~Guard() { *_sum += P::get_time_nano() - _start; };
-    
+
     uint64_t *_sum;
     uint64_t _start;
 };
@@ -43,12 +43,7 @@ typedef struct FiberContext {
 
 static void vmsg_ping(P::EModuleAgentClient *client)
 {
-    P::VProto::Empty::RootBuilder *args;
-    P::VProto::Empty::RootReader *res;
-
-    args = client->alloc_vmsg_ping();
-    ASSERT(client->vmsg_ping_sync(dest, args, &res) == VMsgRes::OK);
-    client->free_vmsg_ping(res);
+    ASSERT(client->vmsg_ping_sync(dest) == VMsgRes::OK);
 }
 
 static void fiber_vmsg_ping(void *arg)
