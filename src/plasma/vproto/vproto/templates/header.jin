@@ -19,25 +19,20 @@
 namespace {{ ns }} {
 {% endfor %}
 
-{% for alias, type in typedefs.items() %}
-typedef {{ type }} {{ alias }};
-{% endfor %}
-
-{% for enum in enums %}
-enum class {{ enum.name }}{% if enum.type %} : {{ get_fqn(enum) }}{% endif %} {
-{% for enum_value in enum.values %}
+{% for def in defs %}
+{% if typename(def) == "TypedefDirective" %}
+typedef {{ def.type }} {{ def.alias }};
+{% elif typename(def) == "VProtoEnum" %}
+enum class {{ def.name }}{% if def.type %} : {{ get_fqn(def) }}{% endif %} {
+{% for enum_value in def.values %}
     {{ enum_value.name }}{% if enum_value.value %} = {{ enum_value.value.value }}{% endif %},
 {% endfor %}
 };
+{% elif typename(def) == "ConstDirective" %}
+const {{ def.type }} {{ def.name }} = {{ def.value }};
+{% elif typename(def) == "VProtoStruct" %}
 
-{% endfor %}
-
-{% for name, (type, value) in consts.items() %}
-const {{ type }} {{ name }} = {{ value }};
-{% endfor %}
-
-{% for struct in structs %}
-class {{ struct.name }} {
+class {{ def.name }} {
 private:
 
 public:
@@ -46,7 +41,7 @@ public:
     class FixedData {
         friend class Reader;
     protected:
-    {% for field in struct.primitive_fields %}
+    {% for field in def.primitive_fields %}
         {{ get_fqn(field) }} _{{ field.name }}{% if field.elements %}[{{ field.elements }}]{% endif %}; // index: {{ field.index }} offset: {{ field.offset }} size: {{ field.type.size * (field.elements if field.elements else 1) }}
     {% endfor %}
     };
@@ -56,7 +51,7 @@ public:
     public:
         void init()
         {
-            {% for field in struct.variable_fields %}
+            {% for field in def.variable_fields %}
             _{{ field.name }}_ptr.init({{ field.offset}}, {{ field.type.size }}, {{ field.elements if field.elements else 1 }}, {{ field.type.next_index if not field.type.is_primitive else 0 }});
                 {% if not field.type.is_primitive %}
                     {% if field.elements %}
@@ -71,12 +66,12 @@ public:
 
         void init_defaults()
         {
-            {% for field in struct.primitive_fields %}
+            {% for field in def.primitive_fields %}
                 {% if field.type.name != 'VProto::ArrayPtr' and field.default %}
             set_{{ field.name }}({{field.default.value }});
                 {% endif %}
             {% endfor %}
-            {% for field in struct.variable_fields %}
+            {% for field in def.variable_fields %}
                 {% if not field.type.is_primitive %}
                     {% if field.elements %}
             for (size_t i = 0; i < get_{{ field.name }}_count(); i++) {
@@ -93,12 +88,12 @@ public:
         void init_from_reader(T *reader)
         {
             init();
-            {% for field in struct.primitive_fields %}
+            {% for field in def.primitive_fields %}
                 {% if field.type.name != 'VProto::ArrayPtr' %}
             set_{{ field.name }}(reader->get_{{ field.name }}());
                 {% endif %}
             {% endfor %}
-            {% for field in struct.variable_fields %}
+            {% for field in def.variable_fields %}
                 {% if field.elements %}
                     {% if field.type.is_primitive %}
             memcpy(get_{{ field.name }}({% if field.type.name not in ['byte', 'char'] %}0{% endif %}), reader->get_{{ field.name }}({% if field.type.name not in ['byte', 'char'] %}0{% endif %}), std::min(reader->get_{{ field.name }}_count(), get_{{ field.name }}_count()) * {{ field.type.size }});
@@ -123,10 +118,10 @@ public:
         template <class T>
         void init_from_root(T *builder)
         {
-            memcpy(this, (P::byte*) builder + sizeof(P::VProto::RootStruct), {{ struct.size }});
+            memcpy(this, (P::byte*) builder + sizeof(P::VProto::RootStruct), {{ def.size }});
         }
 
-        {% for field in struct.primitive_fields %}
+        {% for field in def.primitive_fields %}
         {% if field.type.name != 'VProto::ArrayPtr' %}
         void set_{{ field.name }}({{ get_fqn(field) }} {{ field.name }})
         {
@@ -141,7 +136,7 @@ public:
         {% endif %}
         {% endfor %}
 
-        {% for field in struct.variable_fields %}
+        {% for field in def.variable_fields %}
         {% if field.elements %}
         uint16_t get_{{ field.name }}_count()
         {
@@ -152,14 +147,14 @@ public:
         {{ get_fqn(field) }}{% if not field.type.is_primitive %}::Builder{% endif %} *get_{{ field.name }}({% if field.elements and field.type.name not in ['byte', 'char'] %}uint16_t index{% endif %})
         {
             {% if field.elements and field.type.name not in ['byte', 'char'] %}
-            ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
+            ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ def.name }}.{{ field.name }}");
             {% endif %}
             return {% if not field.elements or field.type.name not in ['byte', 'char'] %}&{% endif %}_{{ field.name }}{% if field.elements and field.type.name not in ['byte', 'char'] %}[index]{% endif %};
         }
         {% endfor %}
 
     protected:
-    {% for field in struct.variable_fields %}
+    {% for field in def.variable_fields %}
         {{ get_fqn(field) }}{% if not field.type.is_primitive %}::Builder{% endif %} _{{ field.name }}{% if field.elements %}[{{ field.elements }}]{% endif %}; // index: {{ field.index }} offset: {{ field.offset }} size: {{ field.type.size * (field.elements if field.elements else 1) }}
     {% endfor %}
     };
@@ -167,7 +162,7 @@ public:
     class Builder : public AbstractBuilder<P::VProto::EmbeddedStruct> {
 
     };
-    static_assert(sizeof(Builder) == {{ struct.size if struct.size > 0 else 1 }}, "{{struct.name}} has an unexpected size.");
+    static_assert(sizeof(Builder) == {{ def.size if def.size > 0 else 1 }}, "{{def.name}} has an unexpected size.");
 
     class RootReader;
 
@@ -176,7 +171,7 @@ public:
         void init()
         {
             AbstractBuilder<P::VProto::RootStruct>::init();
-            _vproto_header.init({{ struct.size }}, {{ struct.next_index }});
+            _vproto_header.init({{ def.size }}, {{ def.next_index }});
         }
 
         template <class T>
@@ -199,8 +194,8 @@ public:
     };
 
     class Reader {
-        {% for field in struct.primitive_fields %}
-        static_assert(offsetof(FixedData, _{{ field.name }}) == {{ field.offset }}, "{{struct.name}}.{{field.name}} has an unexpected offset.");
+        {% for field in def.primitive_fields %}
+        static_assert(offsetof(FixedData, _{{ field.name }}) == {{ field.offset }}, "{{def.name}}.{{field.name}} has an unexpected offset.");
         {% endfor %}
 
     private:
@@ -216,7 +211,7 @@ public:
 
         void init_from_builder(Builder *builder)
         {
-            init(builder, {{ struct.next_index }});
+            init(builder, {{ def.next_index }});
         }
 
         void init_from_root(RootReader *reader)
@@ -224,7 +219,7 @@ public:
             init(reader, reader->_vproto_header.get_next_index());
         }
 
-        {% for field in struct.primitive_fields %}
+        {% for field in def.primitive_fields %}
         {% if field.type.name != 'VProto::ArrayPtr' %}
         {{ get_fqn(field) }} get_{{ field.name }}()
         {
@@ -234,14 +229,14 @@ public:
                 {% if field.default %}
                 return {{ field.default.value }};
                 {% else %}
-                PANIC("No default value assigned to field '{{ field.name }}' of struct '{{ struct.name }}'");
+                PANIC("No default value assigned to field '{{ field.name }}' of struct '{{ def.name }}'");
                 {% endif %}
             }
         }
 
         {% endif %}
         {% endfor %}
-        {% for field in struct.variable_fields %}
+        {% for field in def.variable_fields %}
         {% if field.elements %}
         uint16_t get_{{ field.name }}_count()
         {
@@ -257,7 +252,7 @@ public:
         {{ get_fqn(field) }} *get_{{ field.name }}({% if field.type.name not in ['byte', 'char'] %}uint16_t index{% endif %})
         {
             {% if field.type.name not in ['byte', 'char'] %}
-            ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
+            ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ def.name }}.{{ field.name }}");
             {% endif %}
             if ({{ field.index }} < _next_index) {
                 return ({{ get_fqn(field) }}*) ((P::byte*) _object + _object->_{{ field.name }}_ptr.get_offset(){% if field.type.name not in ['byte', 'char'] %} + index * _object->_{{ field.name }}_ptr.get_size(){% endif %});
@@ -270,12 +265,12 @@ public:
         {
             if ({{ field.index }} < _next_index) {
                 {% if field.elements and field.type not in ['byte', 'char']%}
-                ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
+                ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ def.name }}.{{ field.name }}");
                 {% endif %}
                 {{ field.name }}->init(({{ get_fqn(field) }}::FixedData*) ((P::byte*) _object + (_object->_{{ field.name }}_ptr.get_offset(){% if field.elements and field.type not in ['byte', 'char']%} + index * _object->_{{ field.name }}_ptr.get_size(){% endif %})), _object->_{{ field.name }}_ptr.get_next_index());
             } else {
                 {% if field.elements %}
-                PANIC("Array did not exist in older version: {{ struct.name }}.{{ field.name }}");
+                PANIC("Array did not exist in older version: {{ def.name }}.{{ field.name }}");
                 {% else %}
                 {{ field.name }}->init(nullptr, 0);
                 {% endif %}
@@ -290,7 +285,7 @@ public:
           friend class Reader; // required by init_from_root
     public:
 
-        {% for field in struct.primitive_fields %}
+        {% for field in def.primitive_fields %}
         {% if field.type.name != 'VProto::ArrayPtr' %}
         {{ get_fqn(field) }} get_{{ field.name }}()
         {
@@ -300,14 +295,14 @@ public:
                 {% if field.default %}
                 return {{ field.default.value }};
                 {% else %}
-                PANIC("No default value assigned to field '{{ field.name }}' of struct '{{ struct.name }}'");
+                PANIC("No default value assigned to field '{{ field.name }}' of struct '{{ def.name }}'");
                 {% endif %}
             }
         }
 
         {% endif %}
         {% endfor %}
-        {% for field in struct.variable_fields %}
+        {% for field in def.variable_fields %}
         {% if field.elements %}
         uint16_t get_{{ field.name }}_count()
         {
@@ -323,7 +318,7 @@ public:
         {{ get_fqn(field) }} *get_{{ field.name }}({% if field.type.name not in ['byte', 'char'] %}uint16_t index{% endif %})
         {
             {% if field.type.name not in ['byte', 'char'] %}
-            ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
+            ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ def.name }}.{{ field.name }}");
             {% endif %}
             if ({{ field.index }} < _vproto_header.get_next_index()) {
                 return ({{ get_fqn(field) }}*) ((P::byte*) this + _{{ field.name }}_ptr.get_offset() + sizeof(P::VProto::RootStruct){% if field.type.name not in ['byte', 'char'] %} + index * _{{ field.name }}_ptr.get_size(){% endif %});
@@ -336,12 +331,12 @@ public:
         {
             if ({{ field.index }} < _vproto_header.get_next_index()) {
                 {% if field.elements %}
-                ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ struct.name }}.{{ field.name }}");
+                ASSERT_OP(index, <, get_{{ field.name }}_count(), "Array index out of bounds: {{ def.name }}.{{ field.name }}");
                 {% endif %}
                 {{ field.name }}->init(({{ get_fqn(field) }}::FixedData*) ((P::byte*) this + _{{ field.name }}_ptr.get_offset() + sizeof(P::VProto::RootStruct){% if field.elements %} + index * _{{ field.name }}_ptr.get_size() {% endif %}), _{{ field.name }}_ptr.get_next_index());
             } else {
                 {% if field.elements %}
-                PANIC("Array did not exist in older version: {{ struct.name }}.{{ field.name }}");
+                PANIC("Array did not exist in older version: {{ def.name }}.{{ field.name }}");
                 {% else %}
                 {{ field.name }}->init(nullptr, 0);
                 {% endif %}
@@ -353,8 +348,8 @@ public:
     };
 };
 
+{% endif %}
 {% endfor %}
-
 
 {% for ns in namespaces %}
 }

@@ -11,53 +11,44 @@ env = Environment(loader=PackageLoader(__name__, 'templates'),
 
 DIRECTIVES = {}
 def register_directive(name):
-    def decorator(func):
-        DIRECTIVES[name] = func
-        return func
+    def decorator(cls):
+        DIRECTIVES[name] = cls
+        return cls
     return decorator
 
 @register_directive('namespace')
-def namespace_directive(options, value):
-    if options['namespaces'] != []:
-        raise SchemaError("The 'namespace' directive can only be used once.")
-    options['namespaces'] = value.split('::')
+class NamespaceDirective(object):
+    def __init__(self, value):
+        self.namespaces = value.split('::')
 
 @register_directive('import')
-def import_directive(options, value):
-    label = None
-    try:
-        path, _, label = value.split()
-    except ValueError:
-        path = value
-    options['imports'][path] = label
+class ImportDirective(object):
+    def __init__(self, value):
+        self.label = None
+        try:
+            self.path, _, self.label = value.split()
+        except ValueError:
+            self.path = value
 
 @register_directive('typedef')
-def typedef_directive(options, value):
-    type_name, alias = value.strip(';').split(' ')
-    if type_name in options['typedefs']:
-        raise SchemaError("The '{}' type is already defined".format(type_name))
-    options['typedefs'][alias] = type_name
+class TypedefDirective(object):
+    def __init__(self, value):
+        self.type, self.alias = value.split(' ')
 
 @register_directive('const')
-def const_directive(options, value):
-    # example value: int COUNT = 3;
-    type, pair = value.split(' ', 1)
-    name, value = map(str.strip, pair.split('='))
-    if name in options['consts']:
-        raise SchemaError("The '{}' const is already defined".format(name))
-    options['consts'][name] = (type, value)
+class ConstDirective(object):
+    def __init__(self, value):
+        # example value: int COUNT = 3;
+        self.type, pair = value.split(' ', 1)
+        self.name, self.value = map(str.strip, pair.split('='))
 
-def parse_directives(directives):
-    options = {'namespaces': [], 'imports': {}, 'typedefs': {}, 'consts': {}}
-    for directive in directives:
-        command, value = directive.value.split(' ', 1)
-        try:
-            func = DIRECTIVES[command]
-        except KeyError:
-            raise SchemaError('Unsupported directive: {}. Options: {}'.format(command, ', '.join(DIRECTIVES.keys())))
-        else:
-            func(options, value)
-    return options
+def parse_directive(directive):
+    name, value = directive.value.split(' ', 1)
+    try:
+        func = DIRECTIVES[name]
+    except KeyError:
+        raise SchemaError('Unsupported directive: {}. Options: {}'.format(name, ', '.join(DIRECTIVES.keys())))
+    return func(value)
 
 def find_module(path, import_path=None):
     if import_path is None:
@@ -76,35 +67,43 @@ class VProtoModule(object):
         with open(self.path) as proto_file:
             defs = parse(proto_file.read())
 
-        directives = []
+        self.defs = []
+        self.namespaces = []
+        self.imports = []
+        self.names = []
+
         for i in defs:
             if isinstance(i, Directive):
-                directives.append(i)
-        self.options = parse_directives(directives)
-        for path, label in self.options['imports'].items():
-            module_registry = TypeRegistry()
-            try:
-                VProtoModule(path, module_registry, import_path + ':' + os.path.dirname(self.path))
-            except Exception as e:
-                raise SchemaError('Failed parsing imported module: {} with error: {}'.format(path, str(e))) from e
-            registry.merge(module_registry, label)
-
-        for alias, type_name in self.options['typedefs'].items():
-            registry.add_alias(type_name, alias)
-
-        for name, (type, value) in self.options['consts'].items():
-            registry.add_const(name, type, value)
-
-        self.structs = []
-        self.enums = []
-        for i in defs:
-            if isinstance(i, Struct):
-                self.structs.append(VProtoStruct(i, self, registry))
+                directive = parse_directive(i)
+                if isinstance(directive, NamespaceDirective):
+                    if self.namespaces:
+                        raise SchemaError("The 'namespace' directive can only be used once.")
+                    self.namespaces = directive.namespaces
+                    continue
+                elif isinstance(directive, ImportDirective):
+                    module_registry = TypeRegistry()
+                    try:
+                        VProtoModule(directive.path, module_registry,
+                                     import_path + ':' + os.path.dirname(self.path))
+                    except Exception as e:
+                        raise SchemaError('Failed parsing imported module: {} with error: {}'.format(directive.path, str(e))) from e
+                    registry.merge(module_registry, directive.label)
+                    self.imports.append(directive.path)
+                    continue
+                elif isinstance(directive, TypedefDirective):
+                    registry.add_alias(directive.type, directive.alias)
+                elif isinstance(directive, ConstDirective):
+                    registry.add_const(directive.name, directive.type, directive.value)
+                self.defs.append(directive)
+            elif isinstance(i, Struct):
+                self.defs.append(VProtoStruct(i, self, registry))
             elif isinstance(i, Enum):
-                self.enums.append(VProtoEnum(i, self, registry))
+                self.defs.append(VProtoEnum(i, self, registry))
+            else:
+                assert False
 
     def get_namespace(self):
-        return '::'.join(self.options['namespaces'])
+        return '::'.join(self.namespaces)
 
     def get_fqn(self, field):
         if field.type.module == self:
@@ -119,7 +118,8 @@ class VProtoModule(object):
         with open(path, 'w') as f:
             f.write(env.get_template('header.jin').render(source_path=self.path,
                                                           generation_time=datetime.datetime.now(),
-                                                          structs=self.structs,
-                                                          enums=self.enums,
-                                                          get_fqn=self.get_fqn,
-                                                          **self.options))
+                                                          defs=self.defs,
+                                                          imports=self.imports,
+                                                          namespaces=self.namespaces,
+                                                          typename=lambda x: x.__class__.__name__,
+                                                          get_fqn=self.get_fqn))

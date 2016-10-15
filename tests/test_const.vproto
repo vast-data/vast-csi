@@ -2,8 +2,10 @@ $typedef bool flag
 
 $namespace CONST
 
+$const size_t INITIAL_VALUE = 100;
+
 enum Profession : byte {
-    PAINTER,
+    PAINTER = INITIAL_VALUE,
     FEMALE
 };
 
