@@ -162,7 +162,6 @@ LAddress WriteBuffer::get_content_addr(WBHeaderBlock *header_block, WBHeader::MD
 EStoreRes WriteBuffer::append_name_content(BuffersGuard *buffers_guard, const char *name, EHandle handle, LAddress *addr)
 {
     // TODO lock
-    // GDB
     WBHeaderBlock header_block;
     EStoreRes res = read_md_header(buffers_guard, &header_block);
     PT_RETURN(res != OK, res, "read_md_header failed");

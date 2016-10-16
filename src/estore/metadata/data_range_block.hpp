@@ -9,7 +9,7 @@ namespace EStore {
 
 struct Range {
     LAddress data_bitmap_addr;
-    uint64_t _offset;
+    uint64_t offset;
 } PACKED;
 
 struct Ranges {
@@ -24,7 +24,11 @@ public:
     EStoreRes WARN_UNUSED add_range(uint64_t offset, LAddress addr);
     // if len is passed it will be set to the part, the returned range applies to
     LAddress get_range(uint64_t offset, uint64_t *len = nullptr INOUT);
-    void trace_ranges();
+
+    typedef EStoreRes (*TraverseCallback)(Layout::Address addr, uint64_t offset, void *ctx);
+    EStoreRes traverse(uint64_t start_offset, TraverseCallback cb, void *cb_ctx);
+
+    void trace();
 
 private:
     uint16_t find_range_index(uint64_t offset);

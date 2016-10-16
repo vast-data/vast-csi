@@ -33,6 +33,8 @@ public:
     EStoreRes WARN_UNUSED add_extent(uint64_t offset, uint32_t len, LAddress addr);
     EStoreRes WARN_UNUSED get_content_addrs(uint64_t offset, uint32_t len, uint16_t *n_addrs INOUT,
                                             LAddress *content_addrs OUT);
+    void truncate(uint64_t size);
+
     void trace();
 };
 

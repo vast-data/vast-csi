@@ -1,3 +1,4 @@
+#include <estore/defs/estore_defs.hpp>
 #include "plasma/trace/emitter.hpp"
 #include "plasma/utils/assert.hpp"
 #include "ingest.hpp"
@@ -75,7 +76,7 @@ EStoreRes Ingest::create(OpCallback op_cb, void *cb_ctx, EHandle parent, const c
         // TODO support overwrite
         // TODO name hash is present in the bitmap need to check if the name is on the content block and resolve hash collisions
         // TODO if name is present check if create flag allows overwrite
-        // TODO check verifiers if a verifier was given
+        // TODO check verifier if a verifier was given
         return EStoreRes::EXIST;
     }
 
@@ -210,6 +211,10 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
         element.copy_attr(post_attr);
         return OK;
     }
+    if (data_len > MAX_IO_SIZE) {
+        PTC_ERROR("Writes larger than 1MB are not supported len=%lu", data_len);
+        return EStoreRes::INVAL;
+    }
 
     res = element.write(handle, offset, io_vecs, data_len);
     PT_RETURN(res != OK, res, "write to handle=0x%lx failed", handle);
@@ -224,7 +229,7 @@ EStoreRes Ingest::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t 
 {
     // TODO make this method shorter
     PT_INFO(DATA, "read handle=0x%lx offset=%lu len=%u", handle, offset, len);
-    if (len > UNIT_MiB) {
+    if (len > MAX_IO_SIZE) {
         PT_ERROR(DATA, "reads larger than 1MB are not supported len=%u", len);
         return EStoreRes::INVAL;
     }
@@ -263,6 +268,37 @@ EStoreRes Ingest::get_attr(OpCallback op_cb, void *cb_ctx, EHandle handle, Syste
 
     OP_CALLBACK_RETURN(op_cb, cb_ctx, attr);
 
+    return OK;
+}
+
+EStoreRes Ingest::set_attr(OpCallback op_cb, void *cb_ctx, EHandle handle, SettableAttr *sattr, uint64_t ctime_guard,
+                 ExtendedAttrs *user_xattr, ExtendedAttrs *proto_xattr, SystemAttr *pre_attr, SystemAttr *post_attr)
+{
+    BuffersGuard buffers_guard(_eio, 7);
+
+    DataElement element;
+    element.init(_eio, _shard_md, _handles_table, &buffers_guard);
+    EStoreRes res = element.read_handle_block(handle);
+    PT_RETURN(res != OK, res, "read_handle_block failed handle=0x%lx", handle);
+    element.copy_attr(pre_attr);
+
+    OP_CALLBACK_RETURN(op_cb, cb_ctx, element.get_attr());
+
+    if (element.is_data() && sattr->flags & AttrFlag::SIZE) {
+        res = element.truncate(sattr->size);
+        PT_RETURN(res != OK, res, "truncate failed handle=0x%lx size=%lu", handle, sattr->size);
+    }
+
+    if (ctime_guard != 0 && element.get_attr()->ctime != ctime_guard) {
+        PTC_WARN("ctime_guard=%lu differs from current ctime=%lu", ctime_guard, element.get_attr()->ctime);
+        return EStoreRes::NOT_SYNC;
+    }
+    element.update_mc_times();
+    element.set_attr(sattr);
+    res = element.write_handle_block();
+    PT_RETURN(res != OK, res, "write_handle_block failed handle=0x%lx", handle);
+
+    element.copy_attr(post_attr);
     return OK;
 }
 

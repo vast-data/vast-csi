@@ -259,17 +259,22 @@ EStoreRes DataElement::read_content_addrs(uint64_t offset, uint32_t len)
         LAddress bitmap_addr = _range_block.get_range(read_offset, &range_len);
         PTC_DEBUG("bitmap_addr=0x%lx read_offset=%lu len=%u range_len=%lu", bitmap_addr.as_number(),
                   read_offset, len, range_len);
-        _bitmap_block.init(bitmap_buff);
-        EStoreRes res = read_block(bitmap_addr, get_handle(), &_bitmap_block);
-        PT_RETURN(res != OK, res, "failed to read bitmap block addr=0x%lx", bitmap_addr.as_number());
+        DEBUG_ASSERT(range_len <= DATA_RANGE_SHARD_SIZE);
+        if (bitmap_addr.addr_type != Layout::AddrType::NONE) {
+            _bitmap_block.init(bitmap_buff);
+            EStoreRes res = read_block(bitmap_addr, get_handle(), &_bitmap_block);
+            PT_RETURN(res != OK, res, "failed to read bitmap block addr=0x%lx", bitmap_addr.as_number());
 
-        // get content blocks that contain relevant extents
-        uint16_t res_content_addrs = MAX_ADDR_PER_READ - _n_content_addrs;
-        res = _bitmap_block.get_content_addrs(read_offset, read_len, &res_content_addrs, &_content_addrs[_n_content_addrs]);
-        // TODO handle the case in which there are more than n_content_addrs
-        PT_RETURN(res != OK, res, "get_content_addrs failed handle=0x%lx offset=%lu len=%u", get_handle(), offset, len);
+            // get content blocks that contain relevant extents
+            uint16_t res_content_addrs = MAX_ADDR_PER_READ - _n_content_addrs;
+            res = _bitmap_block.get_content_addrs(read_offset, read_len, &res_content_addrs,
+                                                  &_content_addrs[_n_content_addrs]);
+            // TODO handle the case in which there are more than n_content_addrs
+            PT_RETURN(res != OK, res, "get_content_addrs failed handle=0x%lx offset=%lu len=%u", get_handle(), offset,
+                      len);
 
-        _n_content_addrs += res_content_addrs;
+            _n_content_addrs += res_content_addrs;
+        }
         read_len -= range_len;
         read_offset += range_len;
     }
@@ -283,12 +288,14 @@ EStoreRes DataElement::read(uint64_t offset, uint32_t len, IOVecs *res_vecs, IOV
     *eof = false;
     *bytes_read = 0;
 
-    if (offset + len >= _handle_block.get_attr()->size) {
+    if (offset  >= _handle_block.get_attr()->size) {
+        len = 0;
+    } else if (offset + len >= _handle_block.get_attr()->size) {
         len = _handle_block.get_attr()->size - offset;
         // not setting eof here since we might be not be able to read all the requested data
     }
     if (len == 0) {
-        if (offset == _handle_block.get_attr()->size) {
+        if (offset >= _handle_block.get_attr()->size) {
             *eof = true;
         }
         PTC_DEBUG("zero length read offset=%lu element_size=%lu", offset, _handle_block.get_attr()->size);
@@ -353,6 +360,7 @@ EStoreRes DataElement::read_data(uint64_t offset, uint32_t len, P::IO::IOVecs *r
     const uint32_t max_results = res_vecs->count - alloc_vecs->count;
     res_vecs->iovecs = &alloc_vecs->iovecs[alloc_vecs->count];
     // vectors used for reading the data in an aligned manner
+    DEBUG_ASSERT_OP(max_results, <=, (MAX_IO_SIZE / DATA_BUFFER_SIZE) + 1)
 
     IOVec read_vec[max_results];
     IOVecs read_vecs[max_results];
@@ -416,6 +424,70 @@ EStoreRes DataElement::read_data(uint64_t offset, uint32_t len, P::IO::IOVecs *r
         curr_read_vecs++;
     }
 
+    if (prev_offset < offset + len) {
+        // fill the leftovers with zeros
+        *bytes_read += fill_hole(prev_offset, offset + len, res_vecs, alloc_vecs, n_buffers,
+                                 &curr_buffer, &buffer_offset);
+    }
+
+    return OK;
+}
+
+struct TruncateCtx {
+    DataElement *element;
+    uint64_t size;
+};
+
+EStoreRes truncate_cb_func(Layout::Address addr, uint64_t offset, void *ctx)
+{
+    TruncateCtx *truncate_ctx = (TruncateCtx *)ctx;
+    return truncate_ctx->element->truncate_cb(addr, offset, ctx);
+}
+
+
+EStoreRes DataElement::truncate_cb(Layout::Address addr, uint64_t offset, void *ctx)
+{
+    TruncateCtx *truncate_ctx = (TruncateCtx *)ctx;
+    EStoreRes res = read_block(addr, get_handle(), &_bitmap_block);
+    PT_RETURN(res != OK, res, "read_block failed handle=0x%lx addr=0x%lx", get_handle(), addr.as_number());
+
+    if (addr.addr_type == LAddrType::CONTAINED) {
+        _bitmap_block.replace_buffer(_buffers_guard->get_next());
+    }
+    _bitmap_block.truncate(truncate_ctx->size);
+    if (addr.addr_type == LAddrType::MD_BLOCKS || addr.addr_type == LAddrType::WRITE_BUFFER) {
+        res = _eio->write_md(addr, _bitmap_block.get_buffer());
+        PT_RETURN(res != OK, res, "_eio->write_md failed addr=0x%lx", addr.as_number());
+    }
+
+    return OK;
+}
+
+EStoreRes DataElement::truncate(uint64_t size)
+{
+    EHandle handle = get_handle();
+    if (size == get_attr()->size || get_attr()->size == 0) {
+        PTC_INFO("ignoring truncate of zero sized element handle=0x%lx new_size=%lu", handle, size);
+        return OK;
+    }
+    PTC_INFO("truncate handle=0x%lx current_size=%lu new_size=%lu", handle, get_attr()->size, size);
+
+    // Note: the current implementation updates all of the element bitmap blocks. A more efficient implementation can be
+    // to mark something in the range block instead. Making such a mark requires adding the notion of time to writes
+    // so it should be added once snapshot support is implemented.
+    // TODO locks, support multiple range blocks
+    LAddress range_addr = _handle_block.get_ranges_addr();
+    EStoreRes res = read_block(range_addr, handle, &_range_block);
+    PT_RETURN(res != OK, res, "failed to read range block addr=0x%lx", range_addr.as_number());
+
+    TruncateCtx truncate_ctx = {
+        .element = this,
+        .size = size,
+    };
+    res = _range_block.traverse(size, truncate_cb_func, &truncate_ctx);
+    PT_RETURN(res != OK, res, "traverse failed");
+
+    // truncate is call from set attr so the element size and handle block will be updated from it
     return OK;
 }
 

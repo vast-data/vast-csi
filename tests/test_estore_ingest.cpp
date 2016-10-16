@@ -139,6 +139,34 @@ TEST_F(IngestTest, test_create)
     ASSERT_EQ(7, handle_attr.uid);
     ASSERT_EQ(7, handle_attr.gid);
     PTC_DEBUG("created handle 0x%lx", handle);
+
+    sattr.mode = 0444;
+    sattr.atime = 1000;
+    sattr.mtime = 2000;
+    sattr.gid = 99;
+    sattr.uid = 1111;
+    sattr.element_flags = (uint64_t)ElementFlags::HIDDEN;
+    sattr.flags = (AttrFlag)(MODE | UID | GID | ATIME | MTIME | ELEMENT_FLAGS);
+
+    SystemAttr pre_attr;
+    SystemAttr post_attr;
+    res = ingest.set_attr(nullptr, nullptr, handle, &sattr, 0, nullptr, nullptr, &pre_attr, &post_attr);
+    ASSERT(res == OK);
+    ASSERT_EQ(sattr.mode, post_attr.mode);
+    ASSERT_EQ(sattr.atime, post_attr.atime);
+    ASSERT_EQ(sattr.mtime, post_attr.mtime);
+    ASSERT_EQ(sattr.gid, post_attr.gid);
+    ASSERT_EQ(sattr.uid, post_attr.uid);
+    ASSERT_EQ(sattr.element_flags, post_attr.element_flags);
+
+    // check ctime guard
+    sattr.mode = 0445;
+    sattr.flags = MODE;
+    res = ingest.set_attr(nullptr, nullptr, handle, &sattr, post_attr.ctime, nullptr, nullptr, &pre_attr, &post_attr);
+    ASSERT(res == OK);
+    ASSERT_EQ(sattr.mode, post_attr.mode);
+    res = ingest.set_attr(nullptr, nullptr, handle, &sattr, post_attr.ctime + 1, nullptr, nullptr, &pre_attr, &post_attr);
+    ASSERT(res == EStoreRes::NOT_SYNC);
 }
 
 
@@ -213,6 +241,53 @@ TEST_F(IngestTest, test_simple_io)
     }
 }
 
+#define IOVEC_SIZE 64
+static void verify_data(Ingest *ingest, EHandle handle, uint64_t n_writes, uint32_t *lens, uint64_t element_size)
+{
+    IOVec iovec[IOVEC_SIZE];
+    IOVecs iovecs;
+    iovecs.iovecs = iovec;
+
+    IOVecs alloc_vecs;
+    uint64_t offset = 0;
+    uint32_t bytes_read;
+    bool eof;
+    // TODO check holes, reads should cover multiple writes, check overwrites, test vec len being too small
+    // TODO check small writes vs large reads
+    LOOP(n_writes, i) {
+        iovecs.iovecs = iovec;
+        iovecs.count = IOVEC_SIZE;
+        uint32_t read_offset = lens[i] - (rand() % (lens[i] / 2));
+        PT_DEBUG(DATA, "lens[i]=%u read_offset=%u", lens[i], read_offset);
+        EStoreRes res = ingest->read(nullptr, nullptr, handle, offset + read_offset, lens[i] - read_offset, &iovecs,
+                                     &alloc_vecs, &bytes_read, &eof, nullptr, nullptr);
+        ASSERT(res == OK);
+        if (offset + read_offset > element_size) {
+            break;
+        }
+        uint64_t expected_bytes_read = lens[i] - read_offset;
+        ASSERT_EQUAL(P_MIN(expected_bytes_read, element_size - (offset + read_offset)), bytes_read);
+        if (i != n_writes - 1) {
+            ASSERT_FALSE(eof);
+        } else {
+            ASSERT_TRUE(eof);
+        }
+        if (bytes_read > 0) {
+            LOOP(iovecs.count, j) {
+                LOOP(iovecs.iovecs[j].iov_len, k) {
+                    if ((char)(i + 1) != ((char *)(iovecs.iovecs[j].iov_base))[k]) {
+                        printf("i=%lu j=%lu k=%lu val=%hhu\n", i, j, k, ((char *)(iovecs.iovecs[j].iov_base))[k]);
+                        PANIC("data cmp failure");
+                    }
+                }
+            }
+            ingest->free_data_buffers(&alloc_vecs);
+        }
+
+        offset += lens[i];
+    }
+}
+
 TEST_F(IngestTest, test_random_io)
 {
     SettableAttr sattr;
@@ -226,7 +301,6 @@ TEST_F(IngestTest, test_random_io)
     PTC_DEBUG("created handle 0x%lx", handle);
 
     #define WRITE_SIZE_FACTOR 12
-    #define IOVEC_SIZE 64
     IOVec iovec[IOVEC_SIZE];
     IOVecs iovecs;
     iovecs.iovecs = iovec;
@@ -259,43 +333,73 @@ TEST_F(IngestTest, test_random_io)
     ASSERT(res == OK);
     ASSERT_EQ(handle_attr.size, offset);
 
-    IOVecs alloc_vecs;
-    offset = 0;
-    uint32_t bytes_read;
-    bool eof;
-    // TODO check holes, reads should cover multiple writes, check overwrites, test vec len being too small
-    LOOP(n_writes, i) {
+    const uint32_t TRUNCATE_COUNT = 10;
+    LOOP(TRUNCATE_COUNT, i) {
+        verify_data(&ingest, handle, n_writes, lens, handle_attr.size);
+
+        // truncate testing
+        sattr.flags = SIZE;
+        if (i == TRUNCATE_COUNT - 1) {
+            sattr.size = 0;
+        } else {
+            // TODO test util that gen a number in a range
+            sattr.size = (uint64_t)((double)handle_attr.size * ((double)rand() / RAND_MAX));
+        }
+        res = ingest.set_attr(nullptr, nullptr, handle, &sattr, 0, nullptr, nullptr, nullptr, &handle_attr);
+        ASSERT(res == OK);
+    }
+}
+
+TEST_F(IngestTest, test_empty_truncate)
+{
+    SettableAttr sattr;
+    sattr.flags = NONE;
+    EHandle handle;
+    SystemAttr handle_attr;
+    EStoreRes res = ingest.create(nullptr, nullptr, ROOT_HANDLE, "data", CreateFlags::HAS_DATA, 0, &sattr, nullptr,
+                                  nullptr, &handle, &handle_attr, nullptr, nullptr);
+    ASSERT(res == OK);
+    PTC_DEBUG("created handle 0x%lx", handle);
+
+    LOOP(100, i) {
+        sattr.flags = SIZE;
+        sattr.size = rand() % UNIT_GiB + UNIT_MiB;
+
+        SystemAttr pre_attr;
+        SystemAttr post_attr;
+        res = ingest.set_attr(nullptr, nullptr, handle, &sattr, 0, nullptr, nullptr, &pre_attr, &post_attr);
+        ASSERT(res == OK);
+        ASSERT_EQ(0, pre_attr.size);
+        ASSERT_EQ(sattr.size, post_attr.size);
+
+        IOVec iovec[IOVEC_SIZE];
+        IOVecs iovecs;
         iovecs.iovecs = iovec;
         iovecs.count = IOVEC_SIZE;
-        uint32_t read_offset =lens[i] - (rand() % (lens[i] / 2));
-        PT_DEBUG(DATA, "lens[i]=%u read_offset=%u", lens[i], read_offset);
-        res = ingest.read(nullptr, nullptr, handle, offset + read_offset, lens[i] - read_offset, &iovecs, &alloc_vecs,
+        uint64_t offset = rand() % (sattr.size);
+
+        IOVecs alloc_vecs;
+        uint32_t bytes_read;
+        bool eof;
+        res = ingest.read(nullptr, nullptr, handle, offset, UNIT_MiB, &iovecs, &alloc_vecs,
                           &bytes_read, &eof, nullptr, nullptr);
         ASSERT(res == OK);
-        ASSERT_EQ(lens[i] - read_offset, bytes_read);
-        if (i != n_writes - 1) {
-            ASSERT_FALSE(eof);
-        } else {
-            ASSERT_TRUE(eof);
-        }
-        if (bytes_read > 0) {
-            LOOP(iovecs.count, j) {
-                LOOP(iovecs.iovecs[j].iov_len, k) {
-                    if ((char)(i + 1) != ((char *)(iovecs.iovecs[j].iov_base))[k]) {
-                        printf("i=%lu j=%lu k=%lu val=%hhu\n", i, j, k, ((char *)(iovecs.iovecs[j].iov_base))[k]);
-                        PANIC("data cmp failure");
-                    }
+        ASSERT_EQ(bytes_read, P_MIN(UNIT_MiB, sattr.size - offset));
+        LOOP(iovecs.count, j) {
+            LOOP(iovecs.iovecs[j].iov_len, k) {
+                if (0 != ((char *)(iovecs.iovecs[j].iov_base))[k]) {
+                    printf("j=%lu k=%lu val=%hhu\n", j, k, ((char *)(iovecs.iovecs[j].iov_base))[k]);
+                    PANIC("data cmp failure");
                 }
             }
-            ingest.free_data_buffers(&alloc_vecs);
         }
-
-        offset += lens[i];
+        ingest.free_data_buffers(&alloc_vecs);
     }
 }
 
 int main(int argc, char **argv)
 {
+    srand(time(0));
     system("rm -rf /tmp/eio_mock_data");
     Test::init_traces();
     ::testing::InitGoogleTest(&argc, argv);

@@ -65,8 +65,7 @@ EStoreRes EStore::set_attr(OpCallback op_cb, void *cb_ctx, EHandle handle, Setta
                            ExtendedAttrs *user_xattr, ExtendedAttrs *proto_xattr, SystemAttr *pre_attr,
                            SystemAttr *post_attr)
 {
-    PANIC("not implemented");
-    return OK;
+    return _ingest.set_attr(op_cb, cb_ctx, handle, sattr, ctime_guard, user_xattr, proto_xattr, pre_attr, post_attr);
 }
 
 EStoreRes EStore::lookup(OpCallback op_cb, void *cb_ctx, EHandle parent, const char *name, bool case_sensitive,

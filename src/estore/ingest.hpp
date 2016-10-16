@@ -48,6 +48,10 @@ public:
 
     EStoreRes WARN_UNUSED get_attr(OpCallback op_cb, void *cb_ctx, EHandle handle, SystemAttr *attr OUT,
                                    ExtendedAttrs *user_xattr OUT, ExtendedAttrs *proto_xattr OUT);
+    EStoreRes WARN_UNUSED set_attr(OpCallback op_cb, void *cb_ctx, EHandle handle, SettableAttr *sattr, uint64_t ctime_guard,
+                                   ExtendedAttrs *user_xattr, ExtendedAttrs *proto_xattr,
+                                   SystemAttr *pre_attr OUT, SystemAttr *post_attr OUT);
+
 
 private:
     EStoreRes WARN_UNUSED get_attr_internal(EHandle handle, SystemAttr *attr, BuffersGuard *buffers_guard);

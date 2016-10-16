@@ -99,7 +99,7 @@ EStoreRes Element::write_new_handle(const char *name, SettableAttr *sattr, Creat
     _handle_block.set_handle(*new_handle);
     _handle_block.set_ranges_addr(Layout::EMPTY_ADDRESS);
     set_default_attr(get_attr(), parent_handle, *new_handle, create_flags & CreateFlags::HAS_CHILDREN);
-    set_handle_attr(sattr, _handle_block.get_attr());
+    set_attr(sattr);
 
     res = _composite_block.add_contained_block(*new_handle, &_handle_block);
     // TODO deal with no space
@@ -112,6 +112,15 @@ EStoreRes Element::write_new_handle(const char *name, SettableAttr *sattr, Creat
     if (element_attr) {
         *element_attr = *get_attr();
     }
+
+    return OK;
+}
+
+EStoreRes Element::write_handle_block()
+{
+    // TODO support handle block being outside the composite block
+    EStoreRes res = _handles_table->write(get_handle(), _composite_block.get_buffer());
+    PT_RETURN(res != OK, res, "failed to write new handle bucket");
 
     return OK;
 }
@@ -157,8 +166,9 @@ void Element::set_default_attr(SystemAttr *attr, EHandle parent, EHandle handle,
     // attr->byte md5_hash[16]; is left zero
 }
 
-void Element::set_handle_attr(SettableAttr *sattr, SystemAttr *handle_attr)
+void Element::set_attr(SettableAttr *sattr)
 {
+    SystemAttr *handle_attr = get_attr();
     if (sattr == nullptr) {
         return;
     }
@@ -173,8 +183,6 @@ void Element::set_handle_attr(SettableAttr *sattr, SystemAttr *handle_attr)
     }
     if (sattr->flags & SIZE) {
         handle_attr->size = sattr->size;
-        // TODO truncate
-        PANIC("not implemented");
     }
     if (sattr->flags & ATIME) {
         handle_attr->atime = sattr->atime;

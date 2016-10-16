@@ -20,17 +20,19 @@ public:
     EStoreRes WARN_UNUSED write_new_handle(const char *name, SettableAttr *sattr, CreateFlags create_flags,
                                            LAddress *content_addr, EHandle parent_handle, EHandle *new_handle,
                                            SystemAttr *element_attr);
+    EStoreRes WARN_UNUSED write_handle_block();
+
 
     void update_mc_times();
     bool is_container() { return _handle_block.is_container_element(); }
+    bool is_data() { return _handle_block.is_data_element(); }
     void copy_attr(SystemAttr *attr);
     SystemAttr *get_attr() { return _handle_block.get_attr(); }
     EHandle get_handle() { return _handle_block.get_handle(); }
-
+    void set_attr(SettableAttr *sattr);
 
 private:
     void set_default_attr(SystemAttr *attr, EHandle parent, EHandle handle, bool is_container);
-    void set_handle_attr(SettableAttr *sattr, SystemAttr *handle_attr);
 
 protected:
     CompositeBlock _composite_block;

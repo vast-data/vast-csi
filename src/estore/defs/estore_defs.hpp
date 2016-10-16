@@ -25,6 +25,7 @@ static const uint64_t N_VIRTUAL_BUCKETS = UINT32_MAX;
 
 // Element store limits
 static const uint64_t MAX_LINKS = UINT32_MAX;
+static const uint64_t MAX_IO_SIZE = UNIT_MiB;
 static const uint64_t MAX_ELEMENT_SIZE = UINT64_MAX;
 // As long as we support only one this define will do
 static const uint64_t ELEMENT_STORE_ID = 1;

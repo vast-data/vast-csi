@@ -1,3 +1,4 @@
+#include <estore/defs/estore_defs.hpp>
 #include "data_bitmap_block.hpp"
 #include "data_range_block.hpp"
 
@@ -45,6 +46,7 @@ EStoreRes DataBitmapBlock::add_extent(uint64_t offset, uint32_t len, LAddress ad
             // TODO there might be more than one that can be merged
             return OK;
         }
+        // TODO mark data / content blocks that needs to freed from flash
     }
     // need to add a new extent
     if (space_left() < sizeof(BitmapExtent)) {
@@ -84,6 +86,36 @@ EStoreRes DataBitmapBlock::get_content_addrs(uint64_t offset, uint32_t len, uint
         }
     }
     return OK;
+}
+
+void DataBitmapBlock::truncate(uint64_t size)
+{
+    DataBitmapInfo *bitmap_info = (DataBitmapInfo *)payload_start();
+    DEBUG_ASSERT(bitmap_info->base_offset != UINT64_MAX);
+    if (size < bitmap_info->base_offset) {
+        // all of the extents in the bitmap are irrelevant, clear the bitmap block
+        add_used_bytes(-1 * (bitmap_info->extents.n_extents *sizeof(BitmapExtent)));
+        bitmap_info->extents.n_extents = 0;
+        return;
+    }
+
+    uint32_t relative_offset = (uint32_t)(size - bitmap_info->base_offset);
+    P::Extent<uint32_t>  trunc_extent = { ._offset = relative_offset, ._len = DATA_RANGE_SHARD_SIZE };
+
+    BitmapExtents *extents = &bitmap_info->extents;
+    LOOP(bitmap_info->extents.n_extents, i) {
+        BitmapExtent *extent = &extents->extents[i];
+        if (trunc_extent.contains(extent)) {
+            // free the extent by copying the last extent over it
+            extents->extents[i] = extents->extents[bitmap_info->extents.n_extents - 1];
+            bitmap_info->extents.n_extents--;
+            --i;
+            continue;
+        } else if (trunc_extent.overlaps(extent)) {
+            extent->crop(&trunc_extent);
+        }
+        // TODO mark data / content blocks that needs to freed from flash
+    }
 }
 
 void DataBitmapBlock::trace()

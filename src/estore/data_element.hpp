@@ -17,6 +17,10 @@ public:
     EStoreRes WARN_UNUSED write(EHandle handle, uint64_t offset, P::IO::IOVecs *io_vecs, uint64_t data_len);
     EStoreRes WARN_UNUSED read(uint64_t offset, uint32_t len, P::IO::IOVecs *res_vecs INOUT,
                                P::IO::IOVecs *alloc_vecs OUT, uint32_t *bytes_read OUT, bool *eof OUT);
+    EStoreRes WARN_UNUSED truncate(uint64_t size);
+
+    // internal callback
+    EStoreRes truncate_cb(Layout::Address addr, uint64_t offset, void *ctx);
 
 private:
     EStoreRes add_data_bitmap_block(WriteBuffer *write_buffer, LAddress range_addr, LAddress *bitmap_addr,
