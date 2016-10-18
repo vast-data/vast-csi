@@ -227,7 +227,6 @@ EStoreRes Ingest::write(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t
 EStoreRes Ingest::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t offset, uint32_t len, IOVecs *res_vecs,
                        IOVecs *alloc_vecs, uint32_t *bytes_read, bool *eof, SystemAttr *pre_attr, SystemAttr *post_attr)
 {
-    // TODO make this method shorter
     PT_INFO(DATA, "read handle=0x%lx offset=%lu len=%u", handle, offset, len);
     if (len > MAX_IO_SIZE) {
         PT_ERROR(DATA, "reads larger than 1MB are not supported len=%u", len);
@@ -241,7 +240,6 @@ EStoreRes Ingest::read(OpCallback op_cb, void *cb_ctx, EHandle handle, uint64_t 
     EStoreRes res = element.io_start(handle, offset);
     PT_RETURN(res != OK, res, "io_start for handle=0x%lx failed", handle);
 
-    // TODO data might be split between multiple bitmap blocks
     // TODO locks
     element.copy_attr(pre_attr);
     OP_CALLBACK_RETURN(op_cb, cb_ctx, element.get_attr());

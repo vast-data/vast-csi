@@ -9,6 +9,7 @@
 
 namespace EStore {
 
+// TODO add back pointer to parent block
 struct BlockHeader {
     uint8_t type;
     uint8_t version;

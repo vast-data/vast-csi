@@ -35,8 +35,9 @@ EStoreRes DataBitmapBlock::add_extent(uint64_t offset, uint32_t len, LAddress ad
     DEBUG_ASSERT_OP(bitmap_info->base_offset + DATA_RANGE_SHARD_SIZE, >=, offset + len);
 
     ASSERT(offset - bitmap_info->base_offset < UINT32_MAX);
-    uint32_t relative_offset = (uint32_t)(offset - bitmap_info->base_offset);
+    PT_DEBUG(DATA, "base_offset=%lu offset=%lu len=%u addr=0x%lx", bitmap_info->base_offset, offset, len, addr.as_number());
 
+    uint32_t relative_offset = (uint32_t)(offset - bitmap_info->base_offset);
     BitmapExtents *extents = &bitmap_info->extents;
     // look for an existing extent to merge with
     LOOP(bitmap_info->extents.n_extents, i) {

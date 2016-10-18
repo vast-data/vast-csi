@@ -266,17 +266,15 @@ static void verify_data(Ingest *ingest, EHandle handle, uint64_t n_writes, uint3
             break;
         }
         uint64_t expected_bytes_read = lens[i] - read_offset;
+        bool expected_eof = offset + lens[i] >= element_size;
         ASSERT_EQUAL(P_MIN(expected_bytes_read, element_size - (offset + read_offset)), bytes_read);
-        if (i != n_writes - 1) {
-            ASSERT_FALSE(eof);
-        } else {
-            ASSERT_TRUE(eof);
-        }
+        ASSERT(eof == expected_eof);
         if (bytes_read > 0) {
             LOOP(iovecs.count, j) {
                 LOOP(iovecs.iovecs[j].iov_len, k) {
                     if ((char)(i + 1) != ((char *)(iovecs.iovecs[j].iov_base))[k]) {
-                        printf("i=%lu j=%lu k=%lu val=%hhu\n", i, j, k, ((char *)(iovecs.iovecs[j].iov_base))[k]);
+                        printf("element_offset=%lu i=%lu j=%lu k=%lu val=%hhu\n",
+                               offset + read_offset + (j * k), i, j, k, ((char *)(iovecs.iovecs[j].iov_base))[k]);
                         PANIC("data cmp failure");
                     }
                 }
@@ -306,7 +304,7 @@ TEST_F(IngestTest, test_random_io)
     iovecs.iovecs = iovec;
     uint64_t offset = 0;
 
-    const uint64_t n_writes = 4000;
+    const uint64_t n_writes = 5000;
     uint32_t lens[n_writes];
     LOOP(n_writes, i) {
         lens[i] = rand() % (DATA_BUFFER_SIZE * WRITE_SIZE_FACTOR) + 1;

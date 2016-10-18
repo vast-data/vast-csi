@@ -38,11 +38,18 @@ public:
     // returns a pointer to the oldest buffer that is ready for migration
     WriteBuffer *get_migrate_buffer(P::ShardId shard_id);
     // queue an ingest buffer for migration
-    EStoreRes WARN_UNUSED queue_for_migration(P::ShardId shard_id, WriteBuffer *write_buffer);
-    // free a write buffer once migration is complete
     EStoreRes WARN_UNUSED free_buffer(P::ShardId shard_id, WriteBuffer *write_buffer);
 
+    // update shard md to point to the next ingest buffer
+    EStoreRes WARN_UNUSED switch_ingest_buffer(BuffersGuard *buffers_guard, P::ShardId shard_id, LAddress *wb_addr);
+    // return the address of the current ingest buffer
+    EStoreRes WARN_UNUSED get_ingest_addr(BuffersGuard *buffers_guard, P::ShardId shard_id, LAddress *wb_addr);
+
+
     uint32_t get_shard_n_phys_buckets(P::ShardId shard_id) { return _shard_md[shard_id].n_phys_buckets; }
+
+private:
+    LAddress calc_ingest_addr(ShardMdHeader *header, P::ShardId shard_id);
 
 private:
     EStoreIO *_eio;

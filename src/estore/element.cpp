@@ -48,7 +48,7 @@ EStoreRes Element::read_handle_block(EHandle handle)
     return OK;
 }
 
-EStoreRes WARN_UNUSED Element::create_root()
+EStoreRes Element::create_root()
 {
     EStoreRes res = _handles_table->read(ROOT_HANDLE, _composite_block.get_buffer());
     PT_RETURN(res != OK, res, "failed to read root handle");

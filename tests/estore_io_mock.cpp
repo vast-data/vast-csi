@@ -9,6 +9,7 @@
 #include "estore/metadata/write_buffer.hpp"
 
 #define CURRENT_COMPONENT ComponentId::TEST
+#define CURRENT_CHANNEL DATA
 
 namespace EStore {
 
@@ -52,6 +53,7 @@ static int get_mock_fd(LAddress addr)
         fd = open(filename, O_RDWR | O_CREAT /*| O_DIRECT*/, 0777);
         ASSERT_ERRNO(fd > 0);
         fd_map[filename] = fd;
+        PTC_DEBUG("opened fd=%d for file=%s", fd, filename);
     } else {
         fd = iter->second;
     }
@@ -61,11 +63,14 @@ static int get_mock_fd(LAddress addr)
 
 EStoreRes WARN_UNUSED EStoreIO::read_md(LAddress addr, MIOBuffer *buff, bool locked, FutureRes<MIO::ReadRet> *future)
 {
-//    PT_DEBUG(DATA, "read addr=0x%lx", addr.as_number());
     int fd = get_mock_fd(addr);
+    PT_DEBUG(DATA, "read addr=0x%lx offset=%lu fd=%d", addr.as_number(), addr.offset, fd);
     ASSERT(buff->get_raw_size() == NVRAM_MD_BLOCK_SIZE);
     ASSERT((size_t)buff->get_mio_vec()->iov_base % IO_ALIGNMENT == 0);
     ssize_t res = pread(fd, buff->get_mio_vec()->iov_base, buff->get_raw_size(), addr.offset);
+    if (res != buff->get_raw_size()) {
+        PTC_ERROR("requested %lu bytes got res=%ld bytes errno=%d", buff->get_raw_size(), res, errno);
+    }
     ASSERT_ERRNO(res == buff->get_raw_size());
     if (future) {
         future->set();
@@ -88,7 +93,6 @@ EStoreRes EStoreIO::write_md(LAddress addr, MIOBuffer *buff, FutureRes<bool> *fu
     return OK;
 }
 
-
 EStoreRes WARN_UNUSED EStoreIO::read_data(LAddress addr, IOVecs *iovecs, FutureRes<bool> *future)
 {
     int fd = get_mock_fd(addr);
@@ -96,7 +100,6 @@ EStoreRes WARN_UNUSED EStoreIO::read_data(LAddress addr, IOVecs *iovecs, FutureR
 //        PT_DEBUG(DATA, "iov_len=%lu iov_base=%lu", iovecs->iovecs[i].iov_len, (size_t)iovecs->iovecs[i].iov_base);
         ASSERT(iovecs->iovecs[i].iov_len % IO_ALIGNMENT == 0);
         ASSERT((size_t)iovecs->iovecs[i].iov_base % IO_ALIGNMENT == 0);
-//        PT_DEBUG(DATA, "vec(%lu) len=%lu", i, iovecs->iovecs[i].iov_len);
     }
     ASSERT(addr.offset % IO_ALIGNMENT == 0);
     PT_DEBUG(DATA, "read from fd=%d offset=%lu len=%lu", fd, addr.offset, iovecs->total_length());

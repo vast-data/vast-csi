@@ -28,6 +28,8 @@ public:
     void init(MIOBuffer *buffer) override;
     // add an extent to the end of the block
     EStoreRes WARN_UNUSED add_extent(EHandle handle, uint64_t offset, uint32_t len, LAddress data_addr);
+    EStoreRes WARN_UNUSED alloc_extent(uint16_t *extent_index);
+    void set_extent(uint16_t extent_index, EHandle handle, uint64_t offset, uint32_t len, LAddress data_addr);
     EStoreRes WARN_UNUSED get_extents(EHandle handle, uint64_t offset, uint32_t len, uint16_t *n_extents INOUT,
                                       ContentExtent *extents OUT);
     EStoreRes WARN_UNUSED export_extents(EHandle handle, uint64_t offset, uint32_t len,

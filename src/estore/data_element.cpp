@@ -40,13 +40,14 @@ EStoreRes DataElement::io_start(EHandle handle, uint64_t offset)
 
 P::ShardId DataElement::resolve_shard_id(EHandle handle, uint64_t offset) const
 {
-    return HandlesTable::handle_to_shard_id(handle) + ((offset / DATA_RANGE_SHARD_SIZE) % P::N_SHARDS);
+    return (HandlesTable::handle_to_shard_id(handle) + (offset / DATA_RANGE_SHARD_SIZE)) % P::N_SHARDS;
 }
 
 EStoreRes DataElement::add_data_bitmap_block(WriteBuffer *write_buffer, LAddress range_addr, LAddress *bitmap_addr,
                                              uint64_t offset, bool *range_updated)
 {
     if (bitmap_addr->addr_type != LAddrType::NONE) {
+        // TODO if bitmap block is not on the current write buffer we need to create a new one
         return OK;
     }
     uint64_t base_offset = (offset / DATA_RANGE_SHARD_SIZE) * DATA_RANGE_SHARD_SIZE;
@@ -59,9 +60,9 @@ EStoreRes DataElement::add_data_bitmap_block(WriteBuffer *write_buffer, LAddress
         bitmap_addr->addr_type = LAddrType::CONTAINED;
     } else {
         EStoreRes res = write_buffer->alloc_md_block(_buffers_guard, bitmap_addr);
-        // TODO handle write buffer switch?
         PT_RETURN(res != OK, res, "alloc_internal failed handle=0x%lx offset=%lu", get_handle(), offset);
         PTC_DEBUG("new bitmap block address=0x%lx", bitmap_addr->as_number());
+        _bitmap_block.init(_bitmap_block.get_buffer());
     }
     _bitmap_block.set_base_offset(base_offset);
 
@@ -89,10 +90,11 @@ EStoreRes DataElement::write_data(WriteBuffer *write_buffer, uint64_t data_len, 
 
     EHandle handle = get_handle();
     LAddress data_addr;
+    LAddress content_addr;
+    uint16_t extent_index;
     uint64_t write_len = io_vecs->total_length();
     // TODO write short data (less than 512) bytes inline to the content block
-    EStoreRes res = write_buffer->alloc_data_chunk(_buffers_guard, write_len, &data_addr);
-    // TODO handle switching write buffer
+    EStoreRes res = write_buffer->alloc_data_chunk(_buffers_guard, write_len, &data_addr, &content_addr, &extent_index);
     PT_RETURN(res != OK, res, "failed to allocate data chunk handle=0x%lx write_len=%lu", handle, write_len);
 
     PTC_DEBUG("writing data handle=0x%lx addr=0x%lx data_len=%lu", handle, data_addr.as_number(), write_len);
@@ -101,9 +103,8 @@ EStoreRes DataElement::write_data(WriteBuffer *write_buffer, uint64_t data_len, 
               handle, data_addr.as_number(), write_len);
 
     // update content block
-    LAddress content_addr;
     data_addr.offset += align_delta;
-    res = write_buffer->append_data_content(_buffers_guard, handle, offset, data_len, data_addr, &content_addr);
+    res = write_buffer->set_data_content(_buffers_guard, content_addr, extent_index, handle, offset, data_len, data_addr);
     PT_RETURN(res != OK, res, "append_data_content failed handle=0x%lx addr=0x%lx data_len=%lu",
               handle, data_addr.as_number(), data_len);
 
@@ -311,9 +312,9 @@ EStoreRes DataElement::read(uint64_t offset, uint32_t len, IOVecs *res_vecs, IOV
     res = read_extents(offset, len);
     PT_RETURN(res != OK, res, "read_extents failed handle=0x%lx", handle);
 
-    // allocate data buffers
-    uint32_t n_buffers = (len / DATA_BUFFER_SIZE) + (len % DATA_BUFFER_SIZE ? 1 : 0);
-    ASSERT(n_buffers <= res_vecs->count);
+    // allocate data buffers, keep spare for 2 IO_ALIGNMENT (thou there might be more)
+    uint32_t n_buffers = ((len + (2 * IO_ALIGNMENT)) / DATA_BUFFER_SIZE) + (len % DATA_BUFFER_SIZE ? 1 : 0);
+    ASSERT_OP(n_buffers, <=, res_vecs->count);
     alloc_vecs->count = n_buffers;
     alloc_vecs->iovecs = res_vecs->iovecs;
     _eio->alloc_data_buffers(alloc_vecs);

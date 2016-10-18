@@ -1413,9 +1413,9 @@ nfsstat3 NfsServer::eres_to_nfs_status(EStore::EStoreRes res)
         case EStoreRes::NOT_A_DATA_ELEMENT:
             return NFS3ERR_ISDIR;
         case EStoreRes::LOCKED:
-        case EStoreRes::NOT_IN_INGEST:
         case EStoreRes::REQUIRES_WRITE_LOCK:
         case EStoreRes::DATA_CORRUPTION:
+        case EStoreRes::WRITE_BUFFER_FULL:
             return NFS3ERR_SERVERFAULT;
     }
 }

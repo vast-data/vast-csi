@@ -1,3 +1,4 @@
+#include <estore/defs/estore_defs.hpp>
 #include "estore/io/buffers_guard.hpp"
 #include "shard_md.hpp"
 
@@ -41,9 +42,9 @@ void ShardMd::load()
     md_block.init(buffers_guard.get_next());
 
     LOOP(P::N_SHARDS, i) {
-        LAddress wbs_start_addr = { LAddrType::WRITE_BUFFER, i, 0 };
+        LAddress wbs_start_addr = {LAddrType::WRITE_BUFFER, i, 0};
 
-        LAddress shard_md_addr = { LAddrType::SHARD_MD, i, 0 };
+        LAddress shard_md_addr = {LAddrType::SHARD_MD, i, 0};
         EStoreRes res = _eio->read_md(shard_md_addr, md_block.get_buffer(), false, nullptr);
         ASSERT(res == OK, "failed to load shard md");
         ASSERT(md_block.get_type() == BlockType::SHARD_MD_HEADER);
@@ -52,7 +53,7 @@ void ShardMd::load()
         ASSERT(md_block.get_md_header()->active_ingest_index < md_block.get_md_header()->n_write_buffers);
         LAddress wb_addr = wbs_start_addr;
         wb_addr.offset += md_block.get_md_header()->active_ingest_index * WRITE_BUFFER_SIZE;
-        _ingest_buffers[i].init(_eio, wb_addr);
+        _ingest_buffers[i].init(_eio, this, i, wb_addr);
     }
 }
 
@@ -66,20 +67,20 @@ void ShardMd::create()
     md_block.reset();
 
     LOOP(P::N_SHARDS, i) {
-        LAddress wbs_start_addr = { LAddrType::WRITE_BUFFER, i, 0 };
+        LAddress wbs_start_addr = {LAddrType::WRITE_BUFFER, i, 0};
         uint32_t n_write_buffers = _eio->get_total_addr_type_size(i, LAddrType::WRITE_BUFFER) / WRITE_BUFFER_SIZE;
         // reset all write buffers
         LOOP(n_write_buffers, j) {
             LAddress wb_addr = wbs_start_addr;
             wb_addr.offset += j * WRITE_BUFFER_SIZE;
-            _ingest_buffers[i].init(_eio, wb_addr);
+            _ingest_buffers[i].init(_eio, this, i, wb_addr);
             EStoreRes res = _ingest_buffers[i].reset();
             ASSERT(res == OK);
         }
         // init the currently active write buffer
         LAddress wb_addr = wbs_start_addr;
         wb_addr.offset += md_block.get_md_header()->active_ingest_index * WRITE_BUFFER_SIZE;
-        _ingest_buffers[i].init(_eio, wb_addr);
+        _ingest_buffers[i].init(_eio, this, i, wb_addr);
 
         // calc the number of physical hash table buckets
         uint64_t handle_table_size = _eio->get_total_addr_type_size(i, LAddrType::HANDLE_TABLE);
@@ -88,7 +89,7 @@ void ShardMd::create()
         shard_md_header->n_phys_buckets = handle_table_size / NVRAM_MD_BLOCK_SIZE;
         shard_md_header->n_write_buffers = n_write_buffers;
 
-        LAddress shard_md_addr = { LAddrType::SHARD_MD, i, 0 };
+        LAddress shard_md_addr = {LAddrType::SHARD_MD, i, 0};
         EStoreRes res = _eio->write_md(shard_md_addr, md_block.get_buffer());
         ASSERT(res == OK, "failed to write shard md");
         _shard_md[i] = *md_block.get_md_header();
@@ -102,51 +103,60 @@ WriteBuffer *ShardMd::get_ingest_buffer(P::ShardId shard_id)
 
 WriteBuffer *ShardMd::get_migrate_buffer(P::ShardId shard_id)
 {
+    PANIC("not implemented");
     return nullptr;
 }
 
-EStoreRes ShardMd::queue_for_migration(P::ShardId shard_id, WriteBuffer *write_buffer)
+LAddress ShardMd::calc_ingest_addr(ShardMdHeader *header, P::ShardId shard_id)
 {
-    // TODO lock, locking must make sure that if multiple ingests try to queue for migration only one will actually succeed
-    BuffersGuard buffers_guard(_eio, 1);
+    LAddress wb_addr = {LAddrType::WRITE_BUFFER, shard_id, header->active_ingest_index * WRITE_BUFFER_SIZE};
+    return wb_addr;
+}
+
+EStoreRes ShardMd::get_ingest_addr(BuffersGuard *buffers_guard, P::ShardId shard_id, LAddress *wb_addr)
+{
     ShardMdBlock md_block;
-    md_block.init(buffers_guard.get_next());
+    md_block.init(buffers_guard->get_next());
+    LAddress shard_md_addr = {LAddrType::SHARD_MD, shard_id, 0};
+    EStoreRes res = _eio->read_md(shard_md_addr, md_block.get_buffer());
+    PT_RETURN(res != OK, res, "read_md failed addr=0x%lx", shard_md_addr.as_number());
 
-    EStoreRes state_update_res = write_buffer->move_to_migrate_state();
-    // can fail due to a race, in which case we only need to update our write buffer address
-    PT_RETURN(state_update_res != OK && state_update_res != EStoreRes::NOT_IN_INGEST, state_update_res,
-              "move_to_migrate_state failed");
+    *wb_addr = calc_ingest_addr(md_block.get_md_header(), shard_id);
+    return OK;
+}
 
-    LAddress shard_md_addr = { LAddrType::SHARD_MD, shard_id, 0 };
+EStoreRes ShardMd::switch_ingest_buffer(BuffersGuard *buffers_guard, P::ShardId shard_id, LAddress *wb_addr)
+{
+    // TODO lock
+    ShardMdBlock md_block;
+    md_block.init(buffers_guard->get_next());
+    LAddress shard_md_addr = {LAddrType::SHARD_MD, shard_id, 0};
     EStoreRes res = _eio->read_md(shard_md_addr, md_block.get_buffer());
     PT_RETURN(res != OK, res, "read_md failed addr=0x%lx", shard_md_addr.as_number());
 
     ShardMdHeader *md_header = md_block.get_md_header();
-    if (state_update_res == OK) {
-        // won the race update the next write buffer in the shard md
-        uint32_t next_ingest = md_header->active_ingest_index + 1 % md_header->n_write_buffers;
-        if (next_ingest == md_header->active_migrate_index) {
-            // TODO need to wait for migrator
-            PANIC("not implemented - out of write buffers");
-        }
-        if (md_header->active_migrate_index == UINT32_MAX) {
-            md_header->active_migrate_index = md_header->active_ingest_index;
-        }
-        md_header->active_ingest_index = next_ingest;
-
-        res = _eio->write_md(shard_md_addr, md_block.get_buffer());
-        PT_RETURN(res != OK, res, "read_md failed addr=0x%lx", shard_md_addr.as_number());
+    uint32_t next_ingest = (md_header->active_ingest_index + 1) % md_header->n_write_buffers;
+    PTC_DEBUG("switching write buffer active_ingest_index=%u active_migrate_index=%u next_ingest=%u",
+              md_header->active_ingest_index, md_header->active_migrate_index, next_ingest);
+    if (next_ingest == md_header->active_migrate_index) {
+        // TODO need to wait for migrator
+        PANIC("not implemented - out of write buffers");
     }
+    if (md_header->active_migrate_index == UINT32_MAX) {
+        md_header->active_migrate_index = md_header->active_ingest_index;
+    }
+    md_header->active_ingest_index = next_ingest;
 
-    LAddress wb_addr = { LAddrType::WRITE_BUFFER, shard_id, 0 };
-    wb_addr.offset += md_header->active_ingest_index * WRITE_BUFFER_SIZE;
-    write_buffer->update_address(wb_addr);
+    res = _eio->write_md(shard_md_addr, md_block.get_buffer());
+    PT_RETURN(res != OK, res, "read_md failed addr=0x%lx", shard_md_addr.as_number());
 
+    *wb_addr = calc_ingest_addr(md_block.get_md_header(), shard_id);
     return OK;
 }
 
 EStoreRes ShardMd::free_buffer(P::ShardId shard_id, WriteBuffer *write_buffer)
 {
+    PANIC("not implemented");
     return OK;
 }
 
