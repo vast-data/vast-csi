@@ -55,7 +55,7 @@ public:
 
     void destroy();
 
-    bool is_locked() const { return _state == Type::FREE; }
+    bool is_locked() const { return _state != Type::FREE; }
 
 private:
 

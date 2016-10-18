@@ -245,7 +245,7 @@ private:
 
     inline P::IO::BaseIO *get_device_from_guid(P::GUID dev_guid) {
         Control::RemoteDevice *remote_device = _dev_agent->get_device(dev_guid);
-        ASSERT_NOT_NULL(remote_device);
+        ASSERT_NOT_NULL(remote_device, "Unknown device");
         P::IO::DevIO *dev_io = remote_device->get_devio();
         ASSERT_NOT_NULL(dev_io);
         return dev_io;

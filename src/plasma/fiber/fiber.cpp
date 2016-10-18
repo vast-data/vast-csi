@@ -123,8 +123,10 @@ Fiber *Fiber::init(Index group_index, void (*func)(void *arg), void *arg, bool p
     Fiber *fiber = (Fiber*) sched->_fiber_pool.index_to_address(fiber_index);
     void *stack = group->stacks->partitioned_alloc_address(group->stacks_partition);
 #ifdef DEBUG
-    ASSERT_EQUAL(mprotect(stack, PAGE_SIZE_BYTES, PROT_NONE), 0, "errno = " << errno);
-    stack = (char*)stack + PAGE_SIZE_BYTES;
+    if (!daemon) {  // TODO: see ORION-91.
+        ASSERT_EQUAL(mprotect(stack, PAGE_SIZE_BYTES, PROT_NONE), 0, "errno = " << errno);
+        stack = (char*)stack + PAGE_SIZE_BYTES;
+    }
 #endif
     uint64_t *stack_int_ptr = (uint64_t*) stack;
     *stack_int_ptr = (intptr_t) STACK_OVERFLOW_MAGIC;

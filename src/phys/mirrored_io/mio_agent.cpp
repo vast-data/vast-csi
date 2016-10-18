@@ -88,33 +88,33 @@ void MIOAgent::SectionMappingData::destroy()
 void MIOAgent::SectionMappingData::switch_active_readers_and_writers_and_wait(bool switch_readers, bool switch_writers)
 {
     // Make sure the new one is available:
-    if (readers) {
+    if (switch_readers) {
         ASSERT(!readers[1 - active_readers_index].is_locked());
     }
-    if (writers) {
+    if (switch_writers) {
         ASSERT(!writers[1 - active_writers_index].is_locked());
     }
 
     // Switch active:
-    if (readers) {
+    if (switch_readers) {
         active_readers_index = 1 - active_readers_index;
     }
-    if (writers) {
+    if (switch_writers) {
         active_writers_index = 1 - active_writers_index;
     }
 
     // Wait for old ones to exit:
-    if (readers) {
+    if (switch_readers) {
         flush_rwlock(&readers[1 - active_readers_index]);
     }
-    if (writers) {
+    if (switch_writers) {
         flush_rwlock(&writers[1 - active_writers_index]);
     }
 }
 
 void MIOAgent::SectionMappingData::set_in_rebuild(bool new_in_rebuild)
 {
-    ASSERT(in_rebuild == !new_in_rebuild);
+    ASSERT(in_rebuild == !new_in_rebuild, "Section is " << (in_rebuild ? "" : "not ") << "in rebuild");
     in_rebuild = new_in_rebuild;
 }
 
@@ -319,7 +319,7 @@ void MIOAgent::do_remove_section_from_device(SectionMapping<max_devs_per_section
         }
     }
     if (dev_index == P::INVALID_INDEX) {
-        ASSERT(allow_not_found);
+        ASSERT(allow_not_found, "Device not found in section mappings");
         return;
     }
     section_mapping->mapping_data.deleted_entry = dev_index;
@@ -443,7 +443,7 @@ void MIOAgent::update_max_section_id(uint32_t section_id)
 }
 void MIOAgent::check_section_id_valid(uint32_t section_id)
 {
-    ASSERT_OP(section_id, <=, _max_section_id);
+    ASSERT_OP(section_id, <=, _max_section_id, "Invalid section ID");
 }
 
 bool MIOAgent::is_device_alive(P::IO::BaseIO *dev) const
