@@ -55,7 +55,7 @@ EStoreRes ContainerElement::read_name_blocks(const char *name, EHandle *name_han
     res = read_block(content_addr, handle, &_content_block);
     PT_RETURN(res != OK, res, "failed to read block addr=0x%lx", content_addr.as_number());
 
-    res = _content_block.get_handle(name, name_handle);
+    res = _content_block.get_handle(handle, name, name_handle);
     PT_RETURN(res != OK, res, "get_handle failed name=%s", name);
 
     return OK;
@@ -181,7 +181,7 @@ EStoreRes ContainerElement::name_bitmap_traverse(Layout::Address addr, void *ctx
     PT_RETURN(res != OK, res, "read_block failed");
 
     // TODO define name hash size
-    res = _content_block.traverse((uint32_t)list_ctx->list_offset.name_hash, name_content_traverse_func, ctx);
+    res = _content_block.traverse(get_handle(), (uint32_t)list_ctx->list_offset.name_hash, name_content_traverse_func, ctx);
     PT_RETURN(res != OK && res != EStoreRes::STOP, res, "content_block traverse failed");
 
     return OK;

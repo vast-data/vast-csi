@@ -49,6 +49,7 @@ public:
     }
 
     WBState get_wb_state() { return get_wb_header()->state; }
+    uint64_t get_md_offset() { return get_wb_header()->md_offset; }
     void move_to_migrate_state() { get_wb_header()->state = WBState::MIGRATE; }
 
 private:
@@ -66,14 +67,15 @@ public:
     EStoreRes WARN_UNUSED alloc_md_block(BuffersGuard *buffers_guard, LAddress *addr);
     // internally lock, read, modify, write, unlock, returns as output the address of the content block the name
     // was appended to
-    EStoreRes WARN_UNUSED append_name_content(BuffersGuard *buffers_guard, const char *name, EHandle handle, LAddress *addr OUT);
+    EStoreRes WARN_UNUSED append_name_content(BuffersGuard *buffers_guard, EHandle parent, const char *name,
+                                              EHandle handle, LAddress *addr OUT);
     EStoreRes WARN_UNUSED set_data_content(BuffersGuard *buffers_guard, LAddress content_addr, uint16_t extent_index,
                                            EHandle handle, uint64_t offset, uint32_t len, LAddress data_addr);
     EStoreRes WARN_UNUSED alloc_data_chunk(BuffersGuard *buffers_guard, uint64_t len, LAddress *data_addr,
                                            LAddress *content_addr, uint16_t *extent_index);
-    EStoreRes WARN_UNUSED get_content_addr(WBHeaderBlock *header_block, WBHeader::MDType type, LAddress *addr);
 
-private:
+protected:
+    EStoreRes WARN_UNUSED get_content_addr(WBHeaderBlock *header_block, WBHeader::MDType type, LAddress *addr);
     EStoreRes WARN_UNUSED alloc_md_internal(WBHeaderBlock *header_block, WBHeader::MDType type, LAddress *addr);
     EStoreRes WARN_UNUSED read_md_header(BuffersGuard *buffers_guard, WBHeaderBlock *header_block);
 
@@ -83,6 +85,16 @@ private:
     ShardMd *_shard_md;
     LAddress _wb_addr;
     P::ShardId _shard_id;
+};
+
+class MigrateBuffer : public WriteBuffer {
+public:
+    EStoreRes WARN_UNUSED begin_migrate(BuffersGuard *buffers_guard);
+    EStoreRes WARN_UNUSED get_next_md_block(MIOBuffer *mio_buffer);
+
+private:
+    WBHeaderBlock _header_block;
+    uint64_t _current_md_offset;
 };
 
 }

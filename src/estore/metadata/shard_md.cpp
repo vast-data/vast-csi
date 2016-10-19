@@ -101,12 +101,6 @@ WriteBuffer *ShardMd::get_ingest_buffer(P::ShardId shard_id)
     return &_ingest_buffers[shard_id];
 }
 
-WriteBuffer *ShardMd::get_migrate_buffer(UNUSED P::ShardId shard_id)
-{
-    PANIC("not implemented");
-    return nullptr;
-}
-
 LAddress ShardMd::calc_ingest_addr(ShardMdHeader *header, P::ShardId shard_id)
 {
     LAddress wb_addr = {LAddrType::WRITE_BUFFER, shard_id, header->active_ingest_index * WRITE_BUFFER_SIZE};
@@ -154,9 +148,20 @@ EStoreRes ShardMd::switch_ingest_buffer(BuffersGuard *buffers_guard, P::ShardId 
     return OK;
 }
 
-EStoreRes ShardMd::free_buffer(UNUSED P::ShardId shard_id, UNUSED WriteBuffer *write_buffer)
+EStoreRes ShardMd::get_migrate_buffer_addr(BuffersGuard *buffers_guard, P::ShardId shard_id, LAddress *addr)
 {
-    PANIC("not implemented");
+    // TODO lock
+    ShardMdBlock md_block;
+    md_block.init(buffers_guard->get_next());
+    LAddress shard_md_addr = {LAddrType::SHARD_MD, shard_id, 0};
+    EStoreRes res = _eio->read_md(shard_md_addr, md_block.get_buffer());
+    PT_RETURN(res != OK, res, "read_md failed addr=0x%lx", shard_md_addr.as_number());
+
+    ShardMdHeader *md_header = md_block.get_md_header();
+    if (md_header->active_migrate_index == UINT32_MAX) {
+        return EStoreRes::NOENT;
+    }
+    *addr = {LAddrType::WRITE_BUFFER, shard_id, md_header->active_migrate_index * WRITE_BUFFER_SIZE};
     return OK;
 }
 

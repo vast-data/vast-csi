@@ -16,7 +16,7 @@ void SectionAllocator::init(P::SiloId silo_id, ModuleId module_id, FiberGroupId 
 
 void SectionAllocator::do_activate(uint32_t estore_shard_count, uint32_t max_section_id)
 {
-    if (estore_shard_count > MAXIMUM_SHARDS_PER_SECTION)
+    if (estore_shard_count < MAXIMUM_SHARDS_PER_SECTION)
         ASSERT(global_test_mode);
     _estore_shard_count = estore_shard_count;
     _max_section_id = max_section_id;

@@ -136,8 +136,13 @@ EStoreRes EStore::rename(UNUSED OpCallback op_cb, UNUSED void *cb_ctx, UNUSED EH
 
 EStoreRes EStore::get_stats(UNUSED OpCallback op_cb, UNUSED void *cb_ctx, UNUSED EHandle handle, UNUSED EStoreStats *stats, UNUSED SystemAttr *attr)
 {
-    PANIC("not implemented");
-    return OK;
+    // TODO implement
+    stats->free_bytes = 1000000;
+    stats->free_elements = 100000;
+    stats->total_bytes = 100000000;
+    stats->total_elements = 1000000000;
+
+    return _ingest.get_attr(op_cb, cb_ctx, handle, attr, nullptr, nullptr);
 }
 
 EStoreRes EStore::lock(UNUSED OpCallback op_cb, UNUSED void *cb_ctx, UNUSED EHandle handle, UNUSED bool block, UNUSED LockInfo *lock)

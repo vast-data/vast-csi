@@ -43,7 +43,7 @@ public:
     void init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id, MirroredIO::MIO *mio);
     void destroy();
 
-    // All IO operations must be aligned to P::DevIO::O_DIRECT_ALIGNMENT size
+    // All IO operations must be aligned to IO_ALIGNMENT size
 
     // read metadata (protected) from the given address, buffer must be pre allocated
     EStoreRes WARN_UNUSED read_md(LAddress addr, MIOBuffer *buff, bool locked = false,

@@ -4,6 +4,7 @@
 #include "plasma/utils/assert.hpp"
 #include "estore/metadata/handles_table.hpp"
 #include "utils.hpp"
+#include "globals.hpp"
 
 using namespace EStore;
 using EStoreRes::OK;
@@ -257,7 +258,7 @@ static void verify_data(Ingest *ingest, EHandle handle, uint64_t n_writes, uint3
     LOOP(n_writes, i) {
         iovecs.iovecs = iovec;
         iovecs.count = IOVEC_SIZE;
-        uint32_t read_offset = lens[i] - (rand() % (lens[i] / 2));
+        uint32_t read_offset = lens[i] - (rand() % ((lens[i] / 2) + 1));
         PT_DEBUG(DATA, "lens[i]=%u read_offset=%u", lens[i], read_offset);
         EStoreRes res = ingest->read(nullptr, nullptr, handle, offset + read_offset, lens[i] - read_offset, &iovecs,
                                      &alloc_vecs, &bytes_read, &eof, nullptr, nullptr);
@@ -399,6 +400,7 @@ TEST_F(IngestTest, test_empty_truncate)
 
 int main(int argc, char **argv)
 {
+    global_test_mode = true;
     srand(time(0));
     system("rm -rf /tmp/eio_mock_data");
     Test::init_traces();

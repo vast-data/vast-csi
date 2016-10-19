@@ -339,13 +339,13 @@ EStoreRes DataElement::read_extents(uint64_t offset, uint32_t len)
     EHandle handle = get_handle();
     // feed the extents into the extents container which deals internally with data overwrites and aligns the
     // extents to the extent being read
-    _extents_container.init(offset, len);
+    _extents_aggregator.init(offset, len);
     LOOP(_n_content_addrs, i) {
         _content_block.init(_content_block.get_buffer());
         EStoreRes res = _eio->read_md(_content_addrs[i], _content_block.get_buffer());
         PT_RETURN(res != OK, res, "read_md failed handle=0x%lx addr=0x%lx", handle, _content_addrs[i].as_number());
 
-        res = _content_block.export_extents(handle, offset, len, &_extents_container);
+        res = _content_block.export_extents(handle, offset, len, &_extents_aggregator);
         //  TODO handle the case in which the extents_container is out of space (push out extents with higher offset)
         PT_RETURN(res != OK, res, "get_extents failed handle=0x%lx offset=%lu len=%u", handle, offset, len);
     }
@@ -377,9 +377,9 @@ EStoreRes DataElement::read_data(uint64_t offset, uint32_t len, P::IO::IOVecs *r
     uint64_t prev_offset = offset;
     // since reads must be aligned both on disk and in memory we need to manage 3 iovecs. one for the memory we use
     // (alloc_vecs) the second for the read operations (read_vec) and the last for the data we return (res_vecs).
-    for (DataExtent *extent = _extents_container.get_next(nullptr);
+    for (DataExtent *extent = _extents_aggregator.get_next(handle, nullptr);
          extent != nullptr && curr_buffer < n_buffers && res_vecs->count < max_results;
-         extent = _extents_container.get_next(extent))
+         extent = _extents_aggregator.get_next(handle, extent))
     {
         if (prev_offset < extent->_offset) {
             // we got a hole, need to fill the result buffer with zeros

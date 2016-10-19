@@ -1,6 +1,8 @@
 /* Copyright (C) Vast Data Ltd. */
 #include <gtest/gtest.h>
-#include <estore/metadata/data_content_block.hpp>
+#include "estore/metadata/data_content_block.hpp"
+#include "estore/metadata/extents_aggregator.hpp"
+#include "globals.hpp"
 #include "estore/metadata/data_range_block.hpp"
 #include "estore/metadata/data_bitmap_block.hpp"
 #include "estore/metadata/composite_block.hpp"
@@ -347,38 +349,38 @@ TEST(TestNameContent, test_md)
     content_block.init(&buff);
     ASSERT(content_block.get_type() == BlockType::NAME_CONTENT_BLOCK);
 
+    EHandle parent = 1;
     EHandle handle = 0;
-    ASSERT(EStoreRes::OK == content_block.add_handle("aaa", handle));
+    ASSERT(EStoreRes::OK == content_block.add_handle(parent, "aaa", handle));
     handle = 1;
-    ASSERT(EStoreRes::OK == content_block.add_handle("bbb", handle));
+    ASSERT(EStoreRes::OK == content_block.add_handle(parent, "bbb", handle));
     handle = 2;
-    ASSERT(EStoreRes::OK == content_block.add_handle("jhlkjhl", handle));
+    ASSERT(EStoreRes::OK == content_block.add_handle(parent, "jhlkjhl", handle));
 
     EHandle handle_res;
-    ASSERT(EStoreRes::OK == content_block.get_handle("aaa", &handle_res));
+    ASSERT(EStoreRes::OK == content_block.get_handle(parent, "aaa", &handle_res));
     ASSERT_EQ(0, handle_res);
-    ASSERT(EStoreRes::OK == content_block.get_handle("bbb", &handle_res));
+    ASSERT(EStoreRes::OK == content_block.get_handle(parent, "bbb", &handle_res));
     ASSERT_EQ(1, handle_res);
 
-    ASSERT(EStoreRes::NOENT == content_block.get_handle("adljklasdfafsasdsa", &handle_res));
+    ASSERT(EStoreRes::NOENT == content_block.get_handle(parent, "adljklasdfafsasdsa", &handle_res));
 
     char name[64];
     content_block.init(&buff);
     int i = 0;
     for (; i < 1000; ++i) {
         sprintf(name, "file%d", i);
-        EStoreRes res = content_block.add_handle(name, handle);
+        EStoreRes res = content_block.add_handle(parent, name, handle);
         ASSERT(res == OK || res == EStoreRes::NO_MEM);
         if (res == EStoreRes::NO_MEM) {
             break;
         }
     }
     uint64_t n_files = 0;
-    content_block.traverse(0, name_content_cb, &n_files);
+    content_block.traverse(parent, 0, name_content_cb, &n_files);
     ASSERT_EQ(n_files, i);
 }
 
-#define N_CONTENT_EXTENTS 8
 TEST(TestDataContent, test_md)
 {
     TestMIOBuffer buff;
@@ -394,19 +396,9 @@ TEST(TestDataContent, test_md)
     res = content_block.add_extent(7, 2 ,6, data_addr);
     ASSERT_OK(res);
 
-    uint16_t n_extents = N_CONTENT_EXTENTS;
-    ContentExtent extents[N_CONTENT_EXTENTS];
-    res = content_block.get_extents(8, 0, 1000, &n_extents, extents);
-    ASSERT_OK(res);
-    ASSERT(n_extents == 2);
-    n_extents = N_CONTENT_EXTENTS;
-    res = content_block.get_extents(7, 0, 1000, &n_extents, extents);
-    ASSERT_OK(res);
-    ASSERT(n_extents == 1);
-
     LOOP(1, j) {
-        ExtentsContainer extents_container;
-        extents_container.init(0, 400);
+        ExtentsAggregator extents_aggregator;
+        extents_aggregator.init(0, 400);
         content_block.init(&buff);
         EHandle handle = 1;
         data_addr = {LAddrType::CONTAINED, 0, 0};
@@ -416,10 +408,10 @@ TEST(TestDataContent, test_md)
             res = content_block.add_extent(handle, rand() % 400, len, data_addr);
             ASSERT_OK(res);
         }
-        res = content_block.export_extents(handle, 0, 1000, &extents_container);
+        res = content_block.export_extents(handle, 0, 1000, &extents_aggregator);
         ASSERT_OK(res);
-        extents_container.sanity_check();
-        extents_container.trace();
+        extents_aggregator.sanity_check();
+        extents_aggregator.trace();
     }
 }
 
@@ -552,6 +544,7 @@ TEST(TestHandlesTable, test_md)
 
 int main(int argc, char **argv)
 {
+    global_test_mode = true;
     srand(time(0));
     Test::init_traces();
     ::testing::InitGoogleTest(&argc, argv);

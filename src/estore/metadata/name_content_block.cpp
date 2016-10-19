@@ -17,7 +17,7 @@ void NameContentBlock::init(MIOBuffer *buffer)
     ZERO_LAST(NameHandle);
 }
 
-EStoreRes NameContentBlock::add_handle(const char *name, EHandle handle)
+EStoreRes NameContentBlock::add_handle(EHandle parent, const char *name, EHandle handle)
 {
     size_t name_len = strnlen(name, get_size()) + 1;
     uint16_t required_space = sizeof(NameHandle) + name_len;
@@ -29,6 +29,7 @@ EStoreRes NameContentBlock::add_handle(const char *name, EHandle handle)
 
     NameHandle *name_handle = (NameHandle *)(payload_end());
     name_handle->handle = handle;
+    name_handle->parent = parent;
     name_handle->len = name_len;
     memcpy(name_handle->name, name, name_len);
     add_used_bytes(required_space);
@@ -36,10 +37,10 @@ EStoreRes NameContentBlock::add_handle(const char *name, EHandle handle)
     return EStoreRes::OK;
 }
 
-EStoreRes NameContentBlock::get_handle(const char *name, EHandle *handle)
+EStoreRes NameContentBlock::get_handle(EHandle parent, const char *name, EHandle *handle)
 {
     TRAVERSE_CONTENT(NameHandle, name_handle) {
-        if (strncmp(name_handle->name, name, name_handle->len) == 0) {
+        if (name_handle->parent == parent && strncmp(name_handle->name, name, name_handle->len) == 0) {
             *handle = name_handle->handle;
             return EStoreRes::OK;
         }
@@ -47,7 +48,7 @@ EStoreRes NameContentBlock::get_handle(const char *name, EHandle *handle)
     return EStoreRes::NOENT;
 }
 
-EStoreRes NameContentBlock::traverse(uint32_t start_hash, NameContentBlock::TraverseCallback cb, void *cb_ctx)
+EStoreRes NameContentBlock::traverse(EHandle parent, uint32_t start_hash, NameContentBlock::TraverseCallback cb, void *cb_ctx)
 {
     bool found = false;
     if (start_hash == 0) {
@@ -60,7 +61,7 @@ EStoreRes NameContentBlock::traverse(uint32_t start_hash, NameContentBlock::Trav
                 found = true;
             }
         }
-        if (found) {
+        if (found && name_handle->parent == parent) {
             EStoreRes res = cb(name_handle->name, name_handle->len, hash, name_handle->handle, cb_ctx);
             if (res != EStoreRes::OK) {
                 return res;

@@ -92,7 +92,7 @@ EStoreRes Element::write_new_handle(const char *name, SettableAttr *sattr, Creat
     ASSERT_NOT_NULL(write_buffer);
     // TODO back pointer
     // TODO deal with invalid_state ret val
-    res = write_buffer->append_name_content(_buffers_guard, name, *new_handle, content_addr);
+    res = write_buffer->append_name_content(_buffers_guard, parent_handle, name, *new_handle, content_addr);
     PT_RETURN(res != OK, res, "failed to append name content");
 
     // write handle block to the handles table

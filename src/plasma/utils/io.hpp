@@ -155,5 +155,15 @@ public:
 
 static_assert(sizeof(AddressToken) <= TOKEN_MAX_SIZE, "Some token structure is too big!");
 
+struct TokenVec {
+    AddressToken token;
+    uint32_t len;
+};
+
+struct TokenVecs {
+    uint32_t count;
+    TokenVec *vecs;
+};
+
 }
 }

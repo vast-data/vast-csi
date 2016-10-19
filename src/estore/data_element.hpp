@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "estore/metadata/extents_aggregator.hpp"
 #include "estore/metadata/data_content_block.hpp"
 #include "estore/metadata/data_bitmap_block.hpp"
 #include "estore/metadata/data_range_block.hpp"
@@ -46,8 +47,7 @@ private:
     static const uint64_t MAX_ADDR_PER_READ = 64;
     uint16_t _n_content_addrs;
     LAddress _content_addrs[MAX_ADDR_PER_READ];
-    ExtentsContainer _extents_container;
-
+    ExtentsAggregator _extents_aggregator;
 };
 
 }

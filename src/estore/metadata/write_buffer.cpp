@@ -158,7 +158,8 @@ EStoreRes WriteBuffer::get_content_addr(WBHeaderBlock *header_block, WBHeader::M
     return OK;
 }
 
-EStoreRes WriteBuffer::append_name_content(BuffersGuard *buffers_guard, const char *name, EHandle handle, LAddress *addr)
+EStoreRes WriteBuffer::append_name_content(BuffersGuard *buffers_guard, EHandle parent, const char *name,
+                                           EHandle handle, LAddress *addr)
 {
     // TODO lock
     WBHeaderBlock header_block;
@@ -182,7 +183,7 @@ EStoreRes WriteBuffer::append_name_content(BuffersGuard *buffers_guard, const ch
         res = _eio->read_md(*addr, content_block.get_buffer(), false, nullptr);
         PT_RETURN(res != OK, res, "failed to read content_block addr=0x%lx", addr->as_number());
 
-        res = content_block.add_handle(name, handle);
+        res = content_block.add_handle(parent, name, handle);
         if (res == EStoreRes::NO_MEM) {
             // alloc a new name content block;
             res = alloc_md_internal(&header_block, WBHeader::MDType::NAME_CONTENT, addr);
@@ -198,7 +199,7 @@ EStoreRes WriteBuffer::append_name_content(BuffersGuard *buffers_guard, const ch
 
             PTC_DEBUG("alloc new content block addr=0x%lx", addr->as_number());
             content_block.init(content_block.get_buffer());
-            res = content_block.add_handle(name, handle);
+            res = content_block.add_handle(parent, name, handle);
         }
         PT_RETURN(res != OK, res, "failed to add name=%s to content block addr=0x%lx", name, addr->as_number());
 
@@ -321,6 +322,35 @@ EStoreRes WriteBuffer::move_to_next_ingest_buffer(BuffersGuard *buffers_guard, W
 
     res = _shard_md->switch_ingest_buffer(buffers_guard, _shard_id, &_wb_addr);
     PT_RETURN(res != OK, res, "switch_ingest_buffer failed");
+
+    // TODO send notification to migrator?
+
+    return OK;
+}
+
+EStoreRes MigrateBuffer::begin_migrate(BuffersGuard *buffers_guard)
+{
+    _header_block.init(buffers_guard->get_next());
+    EStoreRes res = _eio->read_md(_wb_addr, _header_block.get_buffer());
+    PT_RETURN(res != OK, res, "failed to read wb header addr=0x%lx", _wb_addr.as_number());
+    DEBUG_ASSERT(_header_block.get_type() == BlockType::WRITE_BUFFER_HEADER);
+    ASSERT(_header_block.get_wb_state() == WBState::MIGRATE);
+    _current_md_offset = 0;
+
+    return OK;
+}
+
+EStoreRes MigrateBuffer::get_next_md_block(MIOBuffer *mio_buffer)
+{
+    if (_current_md_offset >= _header_block.get_md_offset()) {
+        return EStoreRes::NOENT;
+    }
+    LAddress addr = _wb_addr;
+    addr.offset += _current_md_offset;
+    // TODO this can potentially be optimized by reading multiple MD blocks from the write buffer
+    EStoreRes res = _eio->read_md(addr, mio_buffer);
+    PT_RETURN(res != OK, res, "read_md failed addr=0x%lx", addr.as_number());
+    _current_md_offset += mio_buffer->get_raw_size();
 
     return OK;
 }

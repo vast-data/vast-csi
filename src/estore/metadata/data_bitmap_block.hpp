@@ -10,6 +10,7 @@ namespace EStore {
 class BitmapExtent : public P::Extent<uint32_t> {
 public:
     // TODO optimize by keeping each content address only once in the block
+    // TODO also needs to support pointing to content blocks that reside on flash
     LAddress _content_addr;
 } PACKED;
 ASSERT_NO_VTABLE(BitmapExtent);
