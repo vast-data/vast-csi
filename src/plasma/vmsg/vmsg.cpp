@@ -414,6 +414,11 @@ VMsgRes VMsg::send_sync(ModuleAddress dest_guid, RpcServerId server_id, uint8_t 
     return VMsgRes::OK;
 }
 
+
+RDMABufferInfo VMsg::get_rdma_buffer_info(ModuleId module_id) {
+    return _rdma_transport.get_rdma_buffer_info(_vmsg_pool.get_region(BufferType::RDMA_BUFFER, module_id));
+}
+
 void VMsg::handle_transport_events()
 {
     if (!_poll_lock.try_lock()) {

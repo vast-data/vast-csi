@@ -25,8 +25,10 @@ public:
      * \param max_buffers_per_cache the maximal number of buffers that can be placed in the per cache.
      * \param n_buffers the total number of buffers in the pool.
      * \param buffer_size the size of each buffer in bytes (minimum of 4 bytes).
+     * \param fail_if_empty assert if empty
      */
-    void init(uint32_t num_caches, uint32_t max_buffers_per_cache, uint32_t n_buffers, uint32_t buffer_size);
+    void init(uint32_t num_caches, uint32_t max_buffers_per_cache, uint32_t n_buffers, uint32_t buffer_size,
+              bool fail_if_empty=true);
 
     /*!
      * Frees the pool resources.

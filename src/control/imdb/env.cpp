@@ -91,12 +91,16 @@ void EnvObj::generate_config(char *buffer, size_t buf_size)
             ConfigSetting *resources = conf_setting_add_group(module_resources, nullptr /* name */);
             ConfigSetting *name = conf_setting_add(resources, "name", CONFIG_TYPE_STRING);
             conf_setting_set_string(name, module_id_to_string(module->get_module_id()));
-            P::VMsg::ModuleResources vmsg_module_resources = { 0, 0 };
+            P::VMsg::ModuleResources vmsg_module_resources = { 0, 0, 0, 0 };
             ModuleRegistry::get(module->get_module_id())->get_vmsg_module_resources(&vmsg_module_resources);
             ConfigSetting *num_send_buffers = conf_setting_add(resources, "num_send_buffers", CONFIG_TYPE_INT32);
             conf_setting_set_int32(num_send_buffers, vmsg_module_resources.num_send_buffers);
             ConfigSetting *num_recv_buffers = conf_setting_add(resources, "num_recv_buffers", CONFIG_TYPE_INT32);
             conf_setting_set_int32(num_recv_buffers, vmsg_module_resources.num_recv_buffers);
+            ConfigSetting *num_rdma_buffers = conf_setting_add(resources, "num_rdma_buffers", CONFIG_TYPE_INT32);
+            conf_setting_set_int32(num_rdma_buffers, vmsg_module_resources.num_rdma_buffers);
+            ConfigSetting *size_rdma_buffers = conf_setting_add(resources, "size_rdma_buffers", CONFIG_TYPE_INT32);
+            conf_setting_set_int32(size_rdma_buffers, vmsg_module_resources.size_rdma_buffers);
         }
     }
 

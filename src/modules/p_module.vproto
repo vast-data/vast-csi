@@ -4,9 +4,10 @@ $import control/imdb/node.vproto as node
 $import plasma/vmsg/vmsg.vproto as VMsg
 $import defs.vproto as defs
 
+
 $namespace P
 
-$const size_t MAX_CONFIG_SIZE = 3584;
+$const size_t MAX_CONFIG_SIZE = 3684;
 
 struct SetLocalEnvIdParams {
     @0 env_id VMsg.EnvId;

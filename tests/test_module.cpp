@@ -21,8 +21,7 @@ using P::Silo;
 
 /* static */ void TestModule::get_vmsg_module_resources(P::VMsg::ModuleResources *vmsg_module_resources)
 {
-    vmsg_module_resources->num_send_buffers = DEFAULT_NUM_SEND_BUFFERS;
-    vmsg_module_resources->num_recv_buffers = DEFAULT_NUM_RECV_BUFFERS;
+    get_default_vmsg_module_resources(vmsg_module_resources);
 }
 
 bool TestModule::is_init()

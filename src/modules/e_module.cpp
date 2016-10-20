@@ -16,8 +16,7 @@ namespace P {
 
 /* static */ void EModule::get_vmsg_module_resources(P::VMsg::ModuleResources *vmsg_module_resources)
 {
-    vmsg_module_resources->num_send_buffers = DEFAULT_NUM_SEND_BUFFERS;
-    vmsg_module_resources->num_recv_buffers = DEFAULT_NUM_RECV_BUFFERS;
+    get_default_vmsg_module_resources(vmsg_module_resources);
 }
 
 void EModule::init(Silo *silo, UNUSED Conf::ConfigSetting *setting)

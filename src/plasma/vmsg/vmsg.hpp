@@ -80,6 +80,11 @@ public:
                        void *buffer, uint16_t len, VMsgFuture **future);
 
     /*!
+     * Get RDMA buffer info
+     */
+    RDMABufferInfo get_rdma_buffer_info(ModuleId module_id);
+
+    /*!
      * Low level API for freeing message replies allocated by the messaging infrastructure.
      * In the common case this API should only be used by auto generated code.
      */

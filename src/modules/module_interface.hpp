@@ -40,10 +40,14 @@ protected:
     static constexpr uint32_t DEFAULT_FIBER_STACK_SIZE = 65536;
     static constexpr uint32_t DEFAULT_NUM_SEND_BUFFERS = 64;
     static constexpr uint32_t DEFAULT_NUM_RECV_BUFFERS = 64;
+    static constexpr uint32_t DEFAULT_NUM_RDMA_BUFFERS = 0;
+    static constexpr uint32_t DEFAULT_SIZE_RDMA_BUFFERS = 0;
 
     // Helper function (to be used by the various modules) for adding the relevant fiber group settings to the config.
     static void add_fiber_group_config(P::Conf::ConfigSetting *module_config, uint32_t count, const char *group_id,
                                        uint32_t stack_size = DEFAULT_FIBER_STACK_SIZE);
+
+    static void get_default_vmsg_module_resources(P::VMsg::ModuleResources *vmsg_module_resources);
 };
 
 /*!

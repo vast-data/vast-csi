@@ -35,21 +35,29 @@ vmsg :
       name = "E";
       num_send_buffers = 64;
       num_recv_buffers = 64;
+      num_rdma_buffers = 0;
+      size_rdma_buffers = 0;
     },
     {
       name = "P";
       num_send_buffers = 64;
       num_recv_buffers = 64;
+      num_rdma_buffers = 0;
+      size_rdma_buffers = 0;
     },
     {
       name = "TEST";
       num_send_buffers = 64;
       num_recv_buffers = 64;
+      num_rdma_buffers = 0;
+      size_rdma_buffers = 0;
     },
     {
       name = "I";
       num_send_buffers = 64;
       num_recv_buffers = 64;
+      num_rdma_buffers = 0;
+      size_rdma_buffers = 0;
     } );
 };
 global_traces :

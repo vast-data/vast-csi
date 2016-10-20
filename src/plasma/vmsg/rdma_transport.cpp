@@ -222,16 +222,22 @@ VMsgRes RDMATransport::create_device_resources(ibv_context *ibv_ctx)
     srq_attr.attr.max_sge = 1;
     LOOP(MODULES_COUNT, i) {
         srq_attr.attr.max_wr = _vmsg_configuration->modules[i].num_send_buffers;
-        _recv_response_srqs[i] = ibv_create_srq(_pd, &srq_attr);
-        if (!_recv_response_srqs[i]) {
-            PT_ERROR(DATA, "ibv_create_srq  failed errno=%d", errno);
-            return VMsgRes::SYS_ERR;
+        if (srq_attr.attr.max_wr)
+        {
+            _recv_response_srqs[i] = ibv_create_srq(_pd, &srq_attr);
+            if (!_recv_response_srqs[i]) {
+                PT_ERROR(DATA, "ibv_create_srq  failed errno=%d", errno);
+                return VMsgRes::SYS_ERR;
+            }
         }
         srq_attr.attr.max_wr = _vmsg_configuration->modules[i].num_recv_buffers;
-        _recv_request_srqs[i] = ibv_create_srq(_pd, &srq_attr);
-        if (!_recv_request_srqs[i]) {
-            PT_ERROR(DATA, "ibv_create_srq  failed errno=%d", errno);
-            return VMsgRes::SYS_ERR;
+        if (srq_attr.attr.max_wr)
+        {
+            _recv_request_srqs[i] = ibv_create_srq(_pd, &srq_attr);
+            if (!_recv_request_srqs[i]) {
+                PT_ERROR(DATA, "ibv_create_srq  failed errno=%d", errno);
+                return VMsgRes::SYS_ERR;
+            }
         }
     }
     sem_post(&_start_sem);
@@ -339,7 +345,7 @@ void RDMATransport::on_connect_request(struct rdma_cm_event *event)
     static_assert((int)ConnDir::COUNT == 2, "you have to convert if to switch");
     PT_DEBUG(DATA, "connect request cm_id=%p dev=%p env_id=%hu module_id=%hhu client_to_server=%d module_ver=%u vmsg_ver=%u",
              event->id, event->id->verbs, handshake->env_id, module_id, conn_dir, handshake->module_ver, handshake->vmsg_ver);
-    RDMALink *srv_link = connections[handshake->env_id][(uint8_t)module_id].get_free_link();
+    RDMALink *srv_link = connections[handshake->env_id][(uint8_t)module_id].get_free_link(); // TODO (alex) ORION-86
     srv_link->set_state(LinkState::CONNECT_REQUEST);
     srv_link->set_cm_id(event->id);
     srv_link->establish_connection(_vmsg_configuration->local_env_id, _cq, _pd, srqs[(uint8_t)module_id]);
@@ -453,7 +459,8 @@ bool RDMATransport::is_server_connected(EnvId env_id, ModuleId module_id)
 MemRegion *RDMATransport::register_mem(void *addr, size_t len)
 {
     DEBUG_ASSERT(_pd != nullptr);
-    struct ibv_mr *mr = ibv_reg_mr(_pd, addr, len, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+    struct ibv_mr *mr = ibv_reg_mr(_pd, addr, len, IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_LOCAL_WRITE |
+                                                   IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ);
     if (mr == NULL) {
         PT_ERROR(DATA, "ibv_reg_mr  failed errno=%d", errno);
     }
@@ -520,6 +527,12 @@ VMsgRes RDMATransport::send_response(ModuleAddress module_address, MemRegion *re
     RDMALink *link = _send_response_connections[module_address.env_id][(int)module_address.module_id].get_next_link();
     struct ibv_mr *mr = (struct ibv_mr *)region;
     return link->send(mr, msg_id, buff, len);
+}
+
+RDMABufferInfo RDMATransport::get_rdma_buffer_info(MemRegion *region) {
+    struct ibv_mr *mr = (struct ibv_mr *)region;
+    RDMABufferInfo addr = { .address=(uint64_t)mr->addr, .rkey=mr->rkey };
+    return addr;
 }
 
 static VMsgRes ibv_status_to_vmsg_res(ibv_wc_status status)

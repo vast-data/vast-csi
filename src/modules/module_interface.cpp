@@ -69,3 +69,10 @@ static __attribute__ ((constructor)) void init_registry()
     P::Conf::ConfigSetting *group_id_setting = P::Conf::conf_setting_add(fiber_group, "group_id", CONFIG_TYPE_STRING);
     P::Conf::conf_setting_set_string(group_id_setting, group_id);
 }
+
+/* static */ void ModuleInterface::get_default_vmsg_module_resources(P::VMsg::ModuleResources *vmsg_module_resources) {
+    vmsg_module_resources->num_send_buffers = DEFAULT_NUM_SEND_BUFFERS;
+    vmsg_module_resources->num_recv_buffers = DEFAULT_NUM_RECV_BUFFERS;
+    vmsg_module_resources->num_rdma_buffers = DEFAULT_NUM_RDMA_BUFFERS;
+    vmsg_module_resources->size_rdma_buffers = DEFAULT_SIZE_RDMA_BUFFERS;
+}

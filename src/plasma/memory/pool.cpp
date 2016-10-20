@@ -11,10 +11,9 @@ namespace P {
 
 void Pool::partitioned_init(size_t block_size, Index num_partitions, Index partitions[], size_t alignment)
 {
-    // validate block_size is larger than the index it will contain.
-    ASSERT_OP(block_size, >=, sizeof(Index), "invalid block size");
-
     _partitions = new Index[num_partitions];
+    _free_head = 0;
+    _num_partitions = num_partitions;
     _block_size = block_size;
     _blocks = 0;
     LOOP((size_t) num_partitions, i) {
@@ -23,10 +22,17 @@ void Pool::partitioned_init(size_t block_size, Index num_partitions, Index parti
     }
 
     size_t mem_size = get_mem_size();
+    if (mem_size == 0)
+    {
+        _mem = nullptr;
+        return;
+    }
+
+    // validate block_size is larger than the index it will contain.
+    ASSERT_OP(block_size, >=, sizeof(Index), "invalid block size");
+
     // allocate an aligned buffer and expand it to the nearest alignment (required by aligned_alloc)
     _mem = aligned_new_arr<byte>(alignment, mem_size);
-    _free_head = 0;
-    _num_partitions = num_partitions;
 
     // every free node contains the index of the next free node.
     // the end of the list is marked with index == INVALID_INDEX.

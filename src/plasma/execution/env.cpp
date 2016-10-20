@@ -76,10 +76,14 @@ void Env::init_vmsg(Config *config, uint32_t n_silos)
         ConfigSetting *name = conf_setting_lookup_required(module_setting, "name");
         ConfigSetting *send_buffers = conf_setting_lookup_required(module_setting, "num_send_buffers");
         ConfigSetting *recv_buffers = conf_setting_lookup_required(module_setting, "num_recv_buffers");
+        ConfigSetting *rdma_buffers = conf_setting_lookup_optional(module_setting, "num_rdma_buffers");
+        ConfigSetting *size_rdma_buffers = conf_setting_lookup_optional(module_setting, "size_rdma_buffers");
         byte module_id = (byte)module_id_from_string(conf_setting_get_string(name));
         ModuleResources *module_resources = &vmsg_configuration.modules[module_id];
         module_resources->num_send_buffers = conf_setting_get_int32(send_buffers);
         module_resources->num_recv_buffers = conf_setting_get_int32(recv_buffers);
+        module_resources->num_rdma_buffers = rdma_buffers ? conf_setting_get_int32(rdma_buffers) : 0;
+        module_resources->size_rdma_buffers = size_rdma_buffers ? conf_setting_get_int32(size_rdma_buffers) : 0;
         env_modules.env_modules[module_id] = module_resources->num_recv_buffers != 0;
     }
 

@@ -119,6 +119,13 @@ public:
      */
     VMsgRes send_response(ModuleAddress module_address, MemRegion *region, MsgId msg_id, void *buff, uint32_t len);
 
+    /*!
+     * Return RDMA buffer info (address + rkey)
+     *
+     * /param region registered RDMA buffer
+     */
+    RDMABufferInfo get_rdma_buffer_info(MemRegion *region);
+
     static const uint32_t MAX_EVENTS_PER_POLL = 16;
 
     /*!

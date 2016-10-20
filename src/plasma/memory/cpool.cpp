@@ -7,10 +7,11 @@
 
 namespace P {
 
-void CPool::init(uint32_t num_caches, uint32_t max_buffers_per_cache, uint32_t n_buffers, uint32_t buffer_size)
+void CPool::init(uint32_t num_caches, uint32_t max_buffers_per_cache, uint32_t n_buffers, uint32_t buffer_size,
+                 bool fail_if_empty)
 {
-    ASSERT_OP(buffer_size, >=, sizeof(Index), "invalid buffer_size");
-    ASSERT_OP(n_buffers, >, 0, "invalid n_buffers");
+    ASSERT(n_buffers==0 || buffer_size >= sizeof(Index), "invalid buffer_size");
+    ASSERT(fail_if_empty==false || n_buffers > 0, "n_buffers is 0");
 
     _shared_pool.init(n_buffers, buffer_size);
     _lock.init();

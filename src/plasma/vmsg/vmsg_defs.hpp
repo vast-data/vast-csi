@@ -33,6 +33,8 @@ typedef uint32_t EnvVerifier;
 struct ModuleResources {
     uint32_t num_send_buffers;
     uint32_t num_recv_buffers;
+    uint32_t num_rdma_buffers;
+    uint32_t size_rdma_buffers;
 };
 
 struct VMsgConfiguration {
@@ -61,6 +63,11 @@ static_assert(sizeof(ModuleAddress) == 4, "ModuleAddress size should be 4 bytes"
     PT_DEBUG(DATA, TEXT " env_id=%hu module_id=%hhu silo_id=%hhu", GUID.env_id, \
              GUID.module_id, GUID.silo_id)
 
+struct RDMABufferInfo {
+    uint64_t address;
+    uint32_t rkey;
+};
+
 enum class BufferType {
     // used for sending RPC requests by clients
     SEND_REQUEST,
@@ -70,6 +77,8 @@ enum class BufferType {
     SEND_RESPONSE,
     // used for receiving responses for the RPC request sent by the client
     RECV_RESPONSE,
+    // used for RDMA read/write/atomic
+    RDMA_BUFFER,
 
     COUNT
 };

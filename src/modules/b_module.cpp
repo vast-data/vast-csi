@@ -26,6 +26,7 @@ void BModule::start()
 
 /* static */ void BModule::get_vmsg_module_resources(P::VMsg::ModuleResources *vmsg_module_resources)
 {
-    vmsg_module_resources->num_send_buffers = DEFAULT_NUM_SEND_BUFFERS;
-    vmsg_module_resources->num_recv_buffers = DEFAULT_NUM_RECV_BUFFERS;
+    get_default_vmsg_module_resources(vmsg_module_resources);
+    vmsg_module_resources->num_rdma_buffers = 1;
+    vmsg_module_resources->size_rdma_buffers = P::DNODE_RDMA_BUFFER_SIZE;
 }
