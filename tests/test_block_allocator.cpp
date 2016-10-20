@@ -10,7 +10,6 @@
 #include "plasma/io/io_provider.hpp"
 #include "modules/e_module.hpp"
 #include "plasma/io/devio.hpp"
-#include "plasma/io/memio_mock.hpp"
 #include "phys/mirrored_io/mio.hpp"
 #include "phys/layout/block_allocator.hpp"
 #include "test_common_scheduler.hpp"

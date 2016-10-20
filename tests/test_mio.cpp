@@ -4,7 +4,7 @@
 #include "plasma/execution/env.hpp"
 #include "plasma/fiber/sync/future_res.hpp"
 #include "plasma/io/devio.hpp"
-#include "plasma/io/memio_mock.hpp"
+#include "plasma/io/memio.hpp"
 #include "plasma/memory/alloc.hpp"
 #include "plasma/utils/types.hpp"
 #include "plasma/vmsg/rdma_transport.hpp"
@@ -54,8 +54,8 @@ static void test_locking_start_func(void *ctx)
 
     PhysAddr phys_arr[3];
     LOOP (NUM_ELEMENTS(phys_arr), i) {
-        phys_arr[i].dev = new MemIOMock();
-        phys_arr[i].byte_offset = MemIOMock::mock_address;
+        phys_arr[i].dev = new MemIO();
+        phys_arr[i].byte_offset = 16*i;
     }
 
     Control::DevAgent *dev_agent = (Control::DevAgent*)ctx;

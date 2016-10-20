@@ -17,6 +17,27 @@ namespace EStore {
 
 typedef MirroredIO::MIO::Buffer MIOBuffer;
 
+
+class LockObject {
+public:
+    ~LockObject();
+
+    void init();
+    void lock(P::IO::MirroredAddressToken addr, BlockType type);
+    void unlock(P::IO::MirroredAddressToken addr, BlockType type);
+
+private:
+    struct MirroredLocks {
+        P::IO::MirroredAddressToken mirrored_addr;
+        uint16_t ref_count;
+    };
+
+    static const uint16_t MAX_LOCKS = 4;
+    uint16_t _num_of_active_locks;
+    MirroredLocks _active_locks[MAX_LOCKS];
+};
+
+
 class EStoreIO {
 public:
     void init(P::SiloId silo_id, ModuleId module_id, FiberGroupId rpc_fiber_group_id, MirroredIO::MIO *mio);
@@ -44,11 +65,18 @@ public:
     // free data buffers
     void free_data_buffers(P::IO::IOVecs *iovecs);
 
+    // initiate block allocator
     EStoreRes create_block_allocator(LAddrType type);
     // returns to address to a NVRAM_MD_BLOCK_SIZE sized block, out of which only NVRAM_USABLE_BLOCK_SIZE may be used
     EStoreRes WARN_UNUSED alloc_md_block(P::ShardId shard_id, LAddrType type, LAddress *addr OUT);
     // free a previously allocated md block
     EStoreRes free_md_block(LAddress addr IN);
+
+    // lock
+    EStoreRes WARN_UNUSED lock(LAddress addr, BlockType type, LockObject *lock_obj);
+    // unlock
+    EStoreRes WARN_UNUSED unlock(LAddress addr, BlockType type, LockObject *lock_obj);
+
 
     // returns the size of the write buffers for the specified shard
     uint64_t get_total_addr_type_size(P::ShardId shard_id, LAddrType type);

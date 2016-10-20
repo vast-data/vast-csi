@@ -16,3 +16,7 @@ methods:
   op_id: 3
   arg: LockParams
   res: TryLockRes
+- method: compare_and_swap
+  op_id: 4
+  arg: CompareAndSwapParams
+  res: CompareAndSwapRes

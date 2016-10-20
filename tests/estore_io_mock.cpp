@@ -202,4 +202,12 @@ uint64_t EStoreIO::get_total_addr_type_size(P::ShardId shard_id, LAddrType type)
     }
 }
 
+EStoreRes WARN_UNUSED EStoreIO::lock(LAddress addr, BlockType type, LockObject *lock_obj) {
+    PANIC("");
+}
+
+EStoreRes WARN_UNUSED EStoreIO::unlock(LAddress addr, BlockType type, LockObject *lock_obj) {
+    PANIC("");
+}
+
 }

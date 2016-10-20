@@ -7,6 +7,7 @@ namespace EStore {
 
 static_assert(IO_ALIGNMENT == P::IO::DevIO::O_DIRECT_ALIGNMENT, "alignment defines must match");
 using EStoreRes::OK;
+using P::IO::MirroredAddressToken;
 using P::IO::IOVec;
 using P::IO::IOVecs;
 using MirroredIO::MIO;
@@ -49,28 +50,28 @@ EStoreRes EStoreIO::bool_to_estore_res(bool res)
     return EStoreRes::OK;
 }
 
-EStoreRes WARN_UNUSED EStoreIO::read_md(LAddress addr, MIOBuffer *buff, bool locked, FutureRes<MIO::ReadRet> *future)
+EStoreRes EStoreIO::read_md(LAddress addr, MIOBuffer *buff, bool locked, FutureRes<MIO::ReadRet> *future)
 {
-    P::IO::MirroredAddressToken mir_addr = _section_allocator.translate(addr, buff->get_data_size());
-    return mio_to_estore_res(_mio->protected_read(mir_addr, buff, locked, future));
+    P::IO::MirroredAddressToken mirrored_addr = _section_allocator.translate(addr, buff->get_data_size());
+    return mio_to_estore_res(_mio->protected_read(mirrored_addr, buff, locked, future));
 }
 
-EStoreRes WARN_UNUSED EStoreIO::read_data(LAddress addr, IOVecs *iovecs, FutureRes<bool> *future)
+EStoreRes EStoreIO::read_data(LAddress addr, IOVecs *iovecs, FutureRes<bool> *future)
 {
-    P::IO::MirroredAddressToken mir_addr = _section_allocator.translate(addr, iovecs->total_length());
-    return bool_to_estore_res(_mio->read(mir_addr, iovecs, future));
+    P::IO::MirroredAddressToken mirrored_addr = _section_allocator.translate(addr, iovecs->total_length());
+    return bool_to_estore_res(_mio->read(mirrored_addr, iovecs, future));
 }
 
 EStoreRes EStoreIO::write_md(LAddress addr, MIOBuffer *buff, FutureRes<bool> *future)
 {
-    P::IO::MirroredAddressToken mir_addr = _section_allocator.translate(addr, buff->get_data_size());
-    return bool_to_estore_res(_mio->protected_write(mir_addr, buff, future, nullptr));
+    P::IO::MirroredAddressToken mirrored_addr = _section_allocator.translate(addr, buff->get_data_size());
+    return bool_to_estore_res(_mio->protected_write(mirrored_addr, buff, future, nullptr));
 }
 
 EStoreRes EStoreIO::write_data(LAddress addr, IOVecs *iovecs, FutureRes<bool> *future)
 {
-    P::IO::MirroredAddressToken mir_addr = _section_allocator.translate(addr, iovecs->total_length());
-    return bool_to_estore_res(_mio->write(mir_addr, iovecs, future));
+    P::IO::MirroredAddressToken mirrored_addr = _section_allocator.translate(addr, iovecs->total_length());
+    return bool_to_estore_res(_mio->write(mirrored_addr, iovecs, future));
 }
 
 void EStoreIO::alloc_md_buffers(uint16_t n_buffers, MIOBuffer *buffers)
@@ -126,9 +127,60 @@ EStoreRes EStoreIO::free_md_block(LAddress addr)
     return bool_to_estore_res(_block_allocator.free(&addr));
 }
 
+EStoreRes WARN_UNUSED EStoreIO::lock(LAddress addr, BlockType type, LockObject *lock_obj) {
+    PANIC("UNDER CONSTRUCTION");
+    P::IO::MirroredAddressToken mirrored_addr = _section_allocator.translate(addr, 8);
+    lock_obj->lock(mirrored_addr, type);
+    return EStoreRes::OK;
+}
+
+EStoreRes WARN_UNUSED EStoreIO::unlock(LAddress addr, BlockType type, LockObject *lock_obj) {
+    PANIC("UNDER CONSTRUCTION");
+    P::IO::MirroredAddressToken mirrored_addr = _section_allocator.translate(addr, 8);
+    lock_obj->unlock(mirrored_addr, type);
+    return EStoreRes::OK;
+}
+
 uint64_t EStoreIO::get_total_addr_type_size(P::ShardId shard_id, LAddrType type)
 {
     return _section_allocator.get_total_addr_type_size(shard_id, type);
+}
+
+LockObject::~LockObject() {
+    DEBUG_ASSERT(_num_of_active_locks == 0);
+}
+
+void LockObject::init() {
+    _num_of_active_locks = 0;
+}
+
+void LockObject::lock(MirroredAddressToken mirrored_addr, BlockType type) {
+    LOOP(_num_of_active_locks, i)
+    {
+        if (_active_locks[i].mirrored_addr.equals(&mirrored_addr))
+        {
+            DEBUG_ASSERT(_active_locks[i].ref_count);
+            _active_locks[i].ref_count++;
+            return;
+        }
+    }
+    _active_locks[_num_of_active_locks].mirrored_addr = mirrored_addr;
+    _active_locks[_num_of_active_locks].ref_count = 1;
+    _num_of_active_locks++;
+    DEBUG_ASSERT(_num_of_active_locks <= MAX_LOCKS);
+}
+
+void LockObject::unlock(MirroredAddressToken mirrored_addr, BlockType type) {
+    LOOP(_num_of_active_locks, i)
+    {
+        if (_active_locks[i].mirrored_addr.equals(&mirrored_addr))
+        {
+            _active_locks[i].ref_count--;
+            DEBUG_ASSERT(_num_of_active_locks - 1 == i || _active_locks[i].ref_count, "unlock not in same order as lock")
+            return;
+        }
+    }
+    PANIC("this lock in not locked");
 }
 
 }

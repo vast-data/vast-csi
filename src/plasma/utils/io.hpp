@@ -76,6 +76,10 @@ public:
         return (token_type == TokenType::MEM);
     }
 
+    bool equals(const MirroredAddressToken *obj) const {
+        return token_type == obj->token_type && section_id == obj->section_id && byte_offset == obj->byte_offset; 
+    }
+
     static const uint64_t STATIC_SECTION_ID = 0;
 };
 

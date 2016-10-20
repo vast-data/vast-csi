@@ -8,3 +8,12 @@ struct TryLockRes {
     @0 success bool;
 };
 
+struct CompareAndSwapParams {
+    @0 addr uint64_t;
+    @1 expected uint64_t;
+    @2 new_value uint64_t;
+};
+
+struct CompareAndSwapRes {
+    @0 old_value uint64_t;
+};

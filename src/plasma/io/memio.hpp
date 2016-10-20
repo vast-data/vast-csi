@@ -19,7 +19,8 @@ namespace IO {
 class MemIO : public BaseIO {
 
 public:
-    virtual WARN_UNUSED bool compare_and_swap(Baddr address, uint64_t new_val, uint64_t exp_val, uint64_t* old_val OUT) = 0;
+    virtual bool WARN_UNUSED compare_and_swap(Baddr address, uint64_t new_val, uint64_t exp_val, uint64_t* old_val OUT);
+    virtual bool WARN_UNUSED perform_scattered_io(IOVecs buffers[], Baddrs *dev_offsets, bool is_write, Future *io_future);
 };
 
 }
