@@ -118,26 +118,32 @@ mnt_xdr = c_env.Object('src/proto/nfs3/rpcgen/mnt3_xdr.c')
 nfs_xdr = c_env.Object('src/proto/nfs3/rpcgen/nfs3_xdr.c')
 
 # ----- Python Environment ----- #
-venv = env.Command(target='venv/requirements.txt',
-                   source=['python_requirements.txt'],
-                   action='virtualenv -p /usr/bin/python3.4 venv && '
-                   '. venv/bin/activate && '
-                   'cp $SOURCE $TARGET && '
-                   'pip install -r $SOURCE')
+def python_venv(interpreter, path):
+    return env.Command(target=path + '/requirements.txt',
+                       source=['python_requirements.txt'],
+                       action='virtualenv -p {0} {1} && '
+                       '. {1}/bin/activate && '
+                       'cp $SOURCE $TARGET && '
+                       'pip install -r $SOURCE'.format(interpreter, path))
 
-def develop_package(target, dir):
-    package = env.Command(target, [dir + '/setup.py'], action='. venv/bin/activate && pushd `dirname $SOURCE` && python3 setup.py develop && popd && cp ' + dir + '/setup.py $TARGET')
+venv = python_venv('/usr/bin/python3.4', 'venv')
+pypy_venv = python_venv('/opt/pypy3.3/bin/pypy', 'pypy_venv')
+
+def develop_package(target, dir, venv, venv_path):
+    package = env.Command(target, [dir + '/setup.py'], action='. {}/bin/activate && pushd `dirname $SOURCE` && python setup.py develop && popd && cp {}/setup.py $TARGET'.format(venv_path, dir))
     env.Depends(package, venv)
-    env.SideEffect('venv/lib/python3.4/site-packages/easy-install.pth', package)
+     # this side-effect isn't really created, it just makes installations
+     # aren't run in parallel as python doesn't support it
+    env.SideEffect(venv_path, package)
     return package
 
-rpc_gen = develop_package('venv/rpc_installed.txt', 'src/plasma/vmsg/rpc_gen')
-metrics_gen = develop_package('venv/metrics_installed.txt', 'src/plasma/metrics/parser')
-vproto_gen = develop_package('venv/vproto_installed.txt', 'src/plasma/vproto')
+rpc_gen = develop_package('venv/rpc_installed.txt', 'src/plasma/vmsg/rpc_gen', venv, 'venv')
+metrics_gen = develop_package('venv/metrics_installed.txt', 'src/plasma/metrics/parser', venv, 'venv')
+vproto_gen = develop_package('venv/vproto_installed.txt', 'src/plasma/vproto', venv, 'venv')
 vproto_tests = env.Alias('pytest', [], './venv/bin/py.test src/plasma/vproto/test.py')
 env.Depends(vproto_tests, vproto_gen)
-hubble = develop_package('venv/trace_installed.txt', 'src/plasma/trace/reader')
-trace_tests = env.Alias('pytest', [], './venv/bin/py.test src/plasma/trace/reader/tests')
+hubble = develop_package('pypy_venv/trace_installed.txt', 'src/plasma/trace/reader', pypy_venv, 'pypy_venv')
+trace_tests = env.Alias('pytest', [], './pypy_venv/bin/py.test src/plasma/trace/reader/tests')
 env.Depends(trace_tests, hubble)
 
 env.AlwaysBuild('pytest')

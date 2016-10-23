@@ -5,7 +5,7 @@ set -o xtrace
 
 yum -y groupinstall 'Development Tools'
 yum -y install epel-release
-yum -y install net-tools time nfstest which strace clang lldb scons libunwind-devel libconfig-devel install doxygen xorg-x11-xauth vim-enhanced zsh dstat centos-release-scl libaio-devel python34 gtest-devel libuuid-devel zlib-devel nc
+yum -y install net-tools time nfstest which strace clang lldb scons libunwind-devel libconfig-devel install doxygen xorg-x11-xauth vim-enhanced zsh dstat centos-release-scl libaio-devel python34 gtest-devel libuuid-devel zlib-devel nc wget
 yum -y install devtoolset-3-gcc
 
 curl https://bootstrap.pypa.io/get-pip.py | python3.4
@@ -28,6 +28,11 @@ cd softiwarp
 ./install_me.sh
 cd ..
 rm -rf ./softiwarp
+
+# install pypy for a faster trace reader
+wget --progress=dot https://bitbucket.org/squeaky/portable-pypy/downloads/pypy3.3-5.5-alpha-20161013-linux_x86_64-portable.tar.bz2
+mkdir /opt/pypy3.3
+tar -xf pypy3.3-5.5-alpha-20161013-linux_x86_64-portable.tar.bz2 -C /opt/pypy3.3 --strip-components=1
 
 # make nfs test to run on local host
 sudo sed -i "s/ not in ('127.0.0.1', '::1'):/:/g" /usr/lib/python2.7/site-packages/nfstest/host.py

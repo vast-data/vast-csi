@@ -24,3 +24,4 @@ __pycache__
 *.egg-info
 dummy_main.c
 .gdb_history
+/pypy_venv
