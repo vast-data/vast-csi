@@ -3,14 +3,29 @@
 import re
 import ctypes
 import struct
+import blessings
 import collections
 
-TraceInfo = collections.namedtuple('TraceInfo', ['component', 'format', 'file', 'line', 'func'])
+TraceInfo = collections.namedtuple('TraceInfo', ['component', 'format', 'colored_format', 'file', 'line', 'func'])
 trace_info_struct = struct.Struct('B128s85sH40s')
 assert trace_info_struct.size == 256
 
 TraceHeader = collections.namedtuple('TraceHeader', ['time', 'job_id', 'info_index', 'severity'])
 trace_header_struct = struct.Struct('QIHB')
+
+def c_format_to_python_format(format):
+    """
+    Python doesn't support %p (pointer) and %hhd (single byte integer).
+    We replace %c with %d because booleans aren't supported in C's printf and are passed as %c.
+    """
+    return format.replace('%p', '0x%x').replace('%hh', '%').replace('%c', '%d').replace('%z', '%d')
+
+term = blessings.Terminal(force_styling=True)
+
+def underline_variables(format):
+    def on_match(match):
+        return term.underline + match.group(0) + term.normal
+    return printf_format_re.sub(on_match, format)
 
 def bytes_to_string(b):
     s = b.decode('utf-8')
@@ -22,7 +37,11 @@ def get_trace_info(stream):
     count, = struct.unpack('H', stream.read(2))
     for i in range(count):
         fields = trace_info_struct.unpack(stream.read(trace_info_struct.size))
-        yield TraceInfo._make(bytes_to_string(i) if isinstance(i, bytes) else i for i in fields)
+        component, fmt, file, line, func = fields
+        fmt = bytes_to_string(fmt)
+        colored_format = c_format_to_python_format(underline_variables(fmt))
+        yield TraceInfo(component=component, format=fmt, colored_format=colored_format,
+                        file=bytes_to_string(file), line=line, func=bytes_to_string(func))
 
 CHUNK_SIZE = 2**20
 RECORD_LENGTH_TYPE = 'H'

@@ -5,26 +5,11 @@ import re
 import sys
 import click
 import datetime
-import blessings
 import traceback
 import collections
 
 from .utils import merge_sort
-from .parser import get_traces, get_trace_info, parse_params, printf_format_re
-
-def c_format_to_python_format(format):
-    """
-    Python doesn't support %p (pointer) and %hhd (single byte integer).
-    We replace %c with %d because booleans aren't supported in C's printf and are passed as %c.
-    """
-    return format.replace('%p', '0x%x').replace('%hh', '%').replace('%c', '%d').replace('%z', '%d')
-
-term = blessings.Terminal(force_styling=True)
-
-def underline_variables(format):
-    def on_match(match):
-        return term.underline + match.group(0) + term.normal
-    return printf_format_re.sub(on_match, format)
+from .parser import get_traces, get_trace_info, parse_params, term
 
 severities = {0: term.red + 'DEV' + term.normal,
               1: term.green + 'DBG' + term.normal,
@@ -44,7 +29,7 @@ TRACE_FORMAT = '{time} ({pid:5d}|{tid:5d}|{job_id:08x}) [{component:.4}] {severi
 file_re = re.compile(r'(\w+)\.(\d+).(\d+)')
 def print_trace(trace, verbose):
     time = datetime.datetime.fromtimestamp(trace.header.time / 1000000000.).strftime(TIME_FORMAT)
-    message = c_format_to_python_format(underline_variables(trace.info.format)) % tuple(trace.params)
+    message = trace.info.colored_format % tuple(trace.params)
     location = LOCATION_FORMAT.format(channel=trace.channel,
                                       file=trace.info.file.rsplit('/', 1)[1],
                                       func=term.bold + trace.info.func + term.normal,
