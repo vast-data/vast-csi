@@ -26,7 +26,7 @@ class IngestTest : public ::testing::Test {
 public:
     IngestTest() {
         eio.init(0, ModuleId::I, FiberGroupId::I_CONTROL, nullptr);
-        eio.get_section_allocator()->do_activate(1024, 16);
+        eio.get_section_allocator()->do_activate(32, 16);
         shard_md.init(&eio);
         shard_md.create();
 
@@ -189,7 +189,7 @@ TEST_F(IngestTest, test_simple_io)
     uint64_t offset = 0;
 
     #define IO_SIZE (256 * UNIT_KiB)
-    uint32_t n_writes = 4000;
+    uint32_t n_writes = 5000;
     LOOP(n_writes, i) {
         iovecs.count = IO_SIZE / DATA_BUFFER_SIZE;
         static_assert(IO_SIZE % DATA_BUFFER_SIZE == 0, "IO_SIZE ");
@@ -304,7 +304,7 @@ TEST_F(IngestTest, test_random_io)
     iovecs.iovecs = iovec;
     uint64_t offset = 0;
 
-    const uint64_t n_writes = 5000;
+    const uint64_t n_writes = 10000;
     uint32_t lens[n_writes];
     LOOP(n_writes, i) {
         lens[i] = rand() % (DATA_BUFFER_SIZE * WRITE_SIZE_FACTOR) + 1;

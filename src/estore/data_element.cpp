@@ -40,7 +40,7 @@ EStoreRes DataElement::io_start(EHandle handle, UNUSED uint64_t offset)
 
 P::ShardId DataElement::resolve_shard_id(EHandle handle, uint64_t offset) const
 {
-    return _handles_table->handle_to_shard_id(handle) + (offset / DATA_RANGE_SHARD_SIZE) % _eio->get_shard_count();
+    return (_handles_table->handle_to_shard_id(handle) + (offset / DATA_RANGE_SHARD_SIZE)) % _eio->get_shard_count();
 }
 
 EStoreRes DataElement::add_data_bitmap_block(WriteBuffer *write_buffer, LAddress range_addr, LAddress *bitmap_addr,
@@ -361,10 +361,9 @@ EStoreRes DataElement::read_data(uint64_t offset, uint32_t len, P::IO::IOVecs *r
     // the first part of the res vector is taken by the allocated buffers
     const uint32_t max_results = res_vecs->count - alloc_vecs->count;
     res_vecs->iovecs = &alloc_vecs->iovecs[alloc_vecs->count];
-    // vectors used for reading the data in an aligned manner
-    DEBUG_ASSERT_OP(max_results, <=, (MAX_IO_SIZE / DATA_BUFFER_SIZE) + 1)
     DEBUG_ASSERT_OP(max_results, >, 0)
 
+    // vectors used for reading the data in an aligned manner
     IOVec read_vec[max_results];
     IOVecs read_vecs[max_results];
     uint16_t curr_read_vec = 0;
