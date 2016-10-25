@@ -31,7 +31,7 @@ rm -rf ./softiwarp
 
 # install pypy for a faster trace reader
 wget --progress=dot https://bitbucket.org/squeaky/portable-pypy/downloads/pypy3.3-5.5-alpha-20161013-linux_x86_64-portable.tar.bz2
-mkdir /opt/pypy3.3
+mkdir -p /opt/pypy3.3
 tar -xf pypy3.3-5.5-alpha-20161013-linux_x86_64-portable.tar.bz2 -C /opt/pypy3.3 --strip-components=1
 
 # make nfs test to run on local host
