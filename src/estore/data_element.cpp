@@ -228,15 +228,16 @@ EStoreRes DataElement::write(EHandle handle, uint64_t offset, IOVecs *io_vecs, u
 }
 
 uint32_t DataElement::fill_hole(uint64_t prev_offset, uint64_t extent_offset, IOVecs *res_vecs, IOVecs *alloc_vecs,
-                                uint32_t n_buffers, uint16_t *curr_buffer, uint32_t *buffer_offset)
+                                uint32_t n_buffers, uint32_t max_results, uint16_t *curr_buffer, uint32_t *buffer_offset)
 {
     uint32_t bytes_filled = 0;
     uint64_t hole_len = extent_offset - prev_offset;
-    while (hole_len > 0 && n_buffers > *curr_buffer) {
+    while (hole_len > 0 && n_buffers > *curr_buffer && res_vecs->count < max_results) {
         res_vecs->iovecs[res_vecs->count].iov_base = (char *)alloc_vecs->iovecs[*curr_buffer].iov_base + *buffer_offset;
         res_vecs->iovecs[res_vecs->count].iov_len = P_MIN(hole_len, DATA_BUFFER_SIZE - *buffer_offset);
         memset(res_vecs->iovecs[res_vecs->count].iov_base, 0, res_vecs->iovecs[res_vecs->count].iov_len);
         hole_len -= res_vecs->iovecs[res_vecs->count].iov_len;
+        *buffer_offset += res_vecs->iovecs[res_vecs->count].iov_len;
         bytes_filled += res_vecs->iovecs[res_vecs->count].iov_len;
         res_vecs->count++;
         if (*buffer_offset >= DATA_BUFFER_SIZE) {
@@ -322,7 +323,7 @@ EStoreRes DataElement::read(uint64_t offset, uint32_t len, IOVecs *res_vecs, IOV
               "alloc_data_buffers failed handle=0x%lx n_buffers=%u allocated_buffers=%u",
               handle, n_buffers, alloc_vecs->count);
 
-    res = read_data(offset, len, res_vecs, alloc_vecs, bytes_read, eof);
+    res = read_data(offset, len, res_vecs, alloc_vecs, bytes_read);
     PT_RETURN(res != OK, res, "read data failed");
 
 
@@ -353,7 +354,7 @@ EStoreRes DataElement::read_extents(uint64_t offset, uint32_t len)
 }
 
 EStoreRes DataElement::read_data(uint64_t offset, uint32_t len, P::IO::IOVecs *res_vecs, P::IO::IOVecs *alloc_vecs,
-                                 uint32_t *bytes_read, UNUSED bool *eof)
+                                 uint32_t *bytes_read)
 {
     EHandle handle = get_handle();
     uint32_t n_buffers = alloc_vecs->count;
@@ -362,6 +363,7 @@ EStoreRes DataElement::read_data(uint64_t offset, uint32_t len, P::IO::IOVecs *r
     res_vecs->iovecs = &alloc_vecs->iovecs[alloc_vecs->count];
     // vectors used for reading the data in an aligned manner
     DEBUG_ASSERT_OP(max_results, <=, (MAX_IO_SIZE / DATA_BUFFER_SIZE) + 1)
+    DEBUG_ASSERT_OP(max_results, >, 0)
 
     IOVec read_vec[max_results];
     IOVecs read_vecs[max_results];
@@ -382,7 +384,7 @@ EStoreRes DataElement::read_data(uint64_t offset, uint32_t len, P::IO::IOVecs *r
     {
         if (prev_offset < extent->_offset) {
             // we got a hole, need to fill the result buffer with zeros
-            *bytes_read += fill_hole(prev_offset, extent->_offset, res_vecs, alloc_vecs, n_buffers,
+            *bytes_read += fill_hole(prev_offset, extent->_offset, res_vecs, alloc_vecs, n_buffers, max_results,
                                      &curr_buffer, &buffer_offset);
         }
         prev_offset = extent->_offset + extent->_len;
@@ -427,7 +429,7 @@ EStoreRes DataElement::read_data(uint64_t offset, uint32_t len, P::IO::IOVecs *r
 
     if (prev_offset < offset + len) {
         // fill the leftovers with zeros
-        *bytes_read += fill_hole(prev_offset, offset + len, res_vecs, alloc_vecs, n_buffers,
+        *bytes_read += fill_hole(prev_offset, offset + len, res_vecs, alloc_vecs, n_buffers, max_results,
                                  &curr_buffer, &buffer_offset);
     }
 

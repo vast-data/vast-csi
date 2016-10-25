@@ -241,7 +241,7 @@ TEST_F(IngestTest, test_simple_io)
     }
 }
 
-#define IOVEC_SIZE 64
+#define IOVEC_SIZE 128
 static void verify_data(Ingest *ingest, EHandle handle, uint64_t n_writes, uint32_t *lens, uint64_t element_size)
 {
     IOVec iovec[IOVEC_SIZE];
@@ -359,6 +359,7 @@ TEST_F(IngestTest, test_empty_truncate)
     ASSERT(res == OK);
     PTC_DEBUG("created handle 0x%lx", handle);
 
+    uint64_t prev_size = 0;
     LOOP(100, i) {
         sattr.flags = SIZE;
         sattr.size = rand() % UNIT_GiB + UNIT_MiB;
@@ -367,8 +368,9 @@ TEST_F(IngestTest, test_empty_truncate)
         SystemAttr post_attr;
         res = ingest.set_attr(nullptr, nullptr, handle, &sattr, 0, nullptr, nullptr, &pre_attr, &post_attr);
         ASSERT(res == OK);
-        ASSERT_EQ(0, pre_attr.size);
+        ASSERT_EQ(prev_size, pre_attr.size);
         ASSERT_EQ(sattr.size, post_attr.size);
+        prev_size = post_attr.size;
 
         IOVec iovec[IOVEC_SIZE];
         IOVecs iovecs;

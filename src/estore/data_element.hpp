@@ -28,12 +28,12 @@ private:
     EStoreRes write_data(WriteBuffer *write_buffer, uint64_t data_len, uint64_t offset, P::IO::IOVecs *io_vecs,
                          LAddress bitmap_addr);
     uint32_t fill_hole(uint64_t prev_offset, uint64_t extent_offset, P::IO::IOVecs *res_vecs, P::IO::IOVecs *alloc_vecs,
-                       uint32_t n_buffers, uint16_t *curr_buffer, uint32_t *buffer_offset);
+                       uint32_t n_buffers, uint32_t max_results, uint16_t *curr_buffer, uint32_t *buffer_offset);
     EStoreRes read_content_addrs(uint64_t offset, uint32_t len);
     EStoreRes read_extents(uint64_t offset, uint32_t len);
 
     EStoreRes read_data(uint64_t offset, uint32_t len, P::IO::IOVecs *res_vecs INOUT,
-                        P::IO::IOVecs *alloc_vecs OUT, uint32_t *bytes_read OUT, bool *eof OUT);
+                        P::IO::IOVecs *alloc_vecs OUT, uint32_t *bytes_read OUT);
 
     P::ShardId resolve_shard_id(EHandle handle, uint64_t offset) const;
     void update_element_size(uint64_t offset, uint64_t len);
