@@ -14,6 +14,7 @@ static const RetryParams write_retry_params = { .max_spinning_attempts = 2, .att
 static const useconds_t wait_interval = 10;
 
 using namespace P::IO;
+using Layout::MirroredAddress;
 
 namespace MirroredIO {
 
@@ -63,7 +64,7 @@ uint16_t MIO::calc_buff_crc(Buffer *mio_buff)
 //    return crc_ret;
 //}
 
-void MIO::internal_read(MirroredAddressToken address, UnifiedBuff *buff,
+void MIO::internal_read(MirroredAddress address, UnifiedBuff *buff,
                         bool has_wlock, P::FiberSync::Future *future, bool async)
 {
     ASSERT_NOT_NULL(buff);
@@ -78,7 +79,7 @@ void MIO::internal_read(MirroredAddressToken address, UnifiedBuff *buff,
     }
 }
 
-bool MIO::read(MirroredAddressToken address, IOVecs *buffers, P::FiberSync::FutureRes<bool> *future)
+bool MIO::read(MirroredAddress address, IOVecs *buffers, P::FiberSync::FutureRes<bool> *future)
 {
     UnifiedBuff buff;
     buff.protected_op = false;
@@ -98,7 +99,7 @@ bool MIO::read(MirroredAddressToken address, IOVecs *buffers, P::FiberSync::Futu
     return future->res;
 }
 
-MIO::ReadRet MIO::protected_read(MirroredAddressToken address, Buffer *mio_buff,
+MIO::ReadRet MIO::protected_read(MirroredAddress address, Buffer *mio_buff,
                                  bool has_wlock, P::FiberSync::FutureRes<ReadRet> *future)
 {
     UnifiedBuff buff;
@@ -119,7 +120,7 @@ MIO::ReadRet MIO::protected_read(MirroredAddressToken address, Buffer *mio_buff,
     return future->res;
 }
 
-bool MIO::internal_write(MirroredAddressToken address, UnifiedBuff *buff, UNUSED bool protected_write,
+bool MIO::internal_write(MirroredAddress address, UnifiedBuff *buff, UNUSED bool protected_write,
                                 P::FiberSync::FutureRes<bool> *finalized_future,
                                 P::FiberSync::FutureRes<bool> *committed_future)
 {
@@ -146,7 +147,7 @@ bool MIO::internal_write(MirroredAddressToken address, UnifiedBuff *buff, UNUSED
 }
 
 // Not thread safe! should be performed under an appropriate lock.
-bool MIO::write(MirroredAddressToken address, IOVecs *buffers, P::FiberSync::FutureRes<bool> *finalized_future)
+bool MIO::write(MirroredAddress address, IOVecs *buffers, P::FiberSync::FutureRes<bool> *finalized_future)
 {
     UnifiedBuff buff;
     buff.protected_op = false;
@@ -155,7 +156,7 @@ bool MIO::write(MirroredAddressToken address, IOVecs *buffers, P::FiberSync::Fut
 }
 
 // Not thread safe! should be performed under an appropriate lock.
-bool MIO::protected_write(MirroredAddressToken address, Buffer *mio_buff,
+bool MIO::protected_write(MirroredAddress address, Buffer *mio_buff,
                                  P::FiberSync::FutureRes<bool> *finalized_future,
                                  P::FiberSync::FutureRes<bool> *committed_future)
 {
@@ -223,7 +224,7 @@ bool MIO::atomic_op(MIOAgent::MappingSet *map_set, P::Index dev_idx, WorkerID wo
 }
 
 // Todo: do we need an async version here as well?
-bool MIO::internal_lock(MirroredAddressToken address, WorkerID worker_id, bool lock, bool blocking)
+bool MIO::internal_lock(MirroredAddress address, WorkerID worker_id, bool lock, bool blocking)
 {
     // Try unlock makes no sense...
     ASSERT(lock || blocking);
@@ -246,18 +247,18 @@ bool MIO::internal_lock(MirroredAddressToken address, WorkerID worker_id, bool l
     return success;
 }
 
-void MIO::lock(MirroredAddressToken address, WorkerID worker_id)
+void MIO::lock(MirroredAddress address, WorkerID worker_id)
 {
     bool ret = internal_lock(address, worker_id, true, true);
     ASSERT(ret);
 }
 
-bool MIO::trylock(MirroredAddressToken address, WorkerID worker_id)
+bool MIO::trylock(MirroredAddress address, WorkerID worker_id)
 {
     return internal_lock(address, worker_id, true, false);
 }
 
-void MIO::unlock(MirroredAddressToken address, WorkerID worker_id)
+void MIO::unlock(MirroredAddress address, WorkerID worker_id)
 {
     bool ret = internal_lock(address, worker_id, false, true);
     ASSERT(ret);
@@ -284,7 +285,7 @@ void MIO::Buffer::init(P::byte buffer[], size_t len)
 ///////////////// Writer /////////////////////////
 //////////////////////////////////////////////////
 
-void MIO::Writer::init(MirroredAddressToken address, UnifiedBuff* buff, MIOAgent *agent, P::ObjectPool<Writer> *pool,
+void MIO::Writer::init(MirroredAddress address, UnifiedBuff* buff, MIOAgent *agent, P::ObjectPool<Writer> *pool,
                        P::AtomicPool<BaseIO::Future> *future_pool, P::FiberSync::FutureRes<bool> *finalized_future,
                        P::FiberSync::FutureRes<bool> *committed_future)
 {
@@ -374,7 +375,7 @@ bool MIO::Writer::write_with_header(MIOAgent::MappingSet *phys_address_set)
     // We may remove this assert and handle the partial crash writes with crc detection and fix from redundancy.
     // Note that when fixes are done lazily we are exposed to corruption
     // (several writes with no reads- crashing in devices n, n-1, ..., 1 - by that order)
-    ASSERT_OP(_buff.prot_buff->get_mio_vec()->iov_len, <=, AddressToken::atomic_block_size_of_type(_address.token_type));
+    ASSERT_OP(_buff.prot_buff->get_mio_vec()->iov_len, <=, _address.ATOMIC_BLOCK_SIZE);
 
     bool success = true;
     fill_header(false);
@@ -445,7 +446,7 @@ void MIO::Writer::run()
 ///////////////// Reader /////////////////////////
 //////////////////////////////////////////////////
 
-void MIO::Reader::init(MirroredAddressToken address, UnifiedBuff *buff, MIOAgent *agent, P::ObjectPool<Reader> *pool,
+void MIO::Reader::init(MirroredAddress address, UnifiedBuff *buff, MIOAgent *agent, P::ObjectPool<Reader> *pool,
           P::ObjectPool<Writer> *writers, P::AtomicPool<BaseIO::Future> *future_pool, bool has_wlock,
                        P::FiberSync::Future *future)
 {
@@ -469,7 +470,7 @@ bool MIO::Reader::is_data_committed(Buffer *mio_buff)
     return (header->is_committed == 1);
 }
 
-bool MIO::Reader::recover_corrupted_data(MirroredAddressToken address, Buffer *mio_buff OUT)
+bool MIO::Reader::recover_corrupted_data(MirroredAddress address, Buffer *mio_buff OUT)
 {
     IOVecs buffers;
     buffers.count = 1;
@@ -516,7 +517,7 @@ bool MIO::Reader::recover_corrupted_data(MirroredAddressToken address, Buffer *m
     return true;
 }
 
-bool MIO::Reader::read_internal(MirroredAddressToken address, IOVecs *buffers, MIOAgent::MappingSet *phys_addr_set,
+bool MIO::Reader::read_internal(MirroredAddress address, IOVecs *buffers, MIOAgent::MappingSet *phys_addr_set,
                                 P::Index *read_idx INOUT, bool wrap_around)
 {
     ASSERT_NOT_NULL(phys_addr_set);

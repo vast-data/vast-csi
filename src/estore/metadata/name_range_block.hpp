@@ -24,7 +24,7 @@ public:
     // get the address relevant to the given name
     LAddress get_address(const char *name);
 
-    typedef EStoreRes (*TraverseCallback)(Layout::Address addr, uint16_t idx, void *ctx);
+    typedef EStoreRes (*TraverseCallback)(Layout::LAddress addr, uint16_t idx, void *ctx);
     EStoreRes traverse(uint16_t start_idx, TraverseCallback cb, void *cb_ctx);
     bool has_ranges();
 

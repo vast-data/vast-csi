@@ -62,7 +62,7 @@ TEST(SectionAlloc, translate)
 
     ASSERT_DEATH(allocator.translate(address, block_size + 1), "PANIC");
 
-    P::IO::MirroredAddressToken mio_address = allocator.translate(address, 1);
+    Layout::MirroredAddress mio_address = allocator.translate(address, 1);
     ASSERT_EQ(mio_address.section_id, 1);
     // skip one block for one shard and the requested offset
     ASSERT_EQ(mio_address.byte_offset, start_offset + block_size + 123);

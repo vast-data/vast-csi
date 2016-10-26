@@ -6,6 +6,7 @@
  */
 #pragma once
 
+#include "phys/layout/address.hpp"
 #include "mio_agent.rpc.server.hpp"
 #include "control/dev_agent/dev_agent.hpp"
 #include "plasma/execution/silo.hpp"
@@ -101,20 +102,20 @@ public:
     /*!
      *
      */
-    void start_write(P::IO::MirroredAddressToken section, size_t write_size, MappingSet *phys_address_set);
+    void start_write(Layout::MirroredAddress section, size_t write_size, MappingSet *phys_address_set);
     /*!
      *
      */
-    void done_write(P::IO::MirroredAddressToken section, MappingSet *phys_address_set);
+    void done_write(Layout::MirroredAddress section, MappingSet *phys_address_set);
     /*!
      * Get a physical address for read purposes.
      * Note: when in_rebuild last device (the one that is being rebuilt) is not a valid device to read from.
      */
-    void start_read(P::IO::MirroredAddressToken section, MappingSet *phys_address_set);
+    void start_read(Layout::MirroredAddress section, MappingSet *phys_address_set);
     /*!
      *
      */
-    void done_read(P::IO::MirroredAddressToken section, MappingSet *phys_address_set);
+    void done_read(Layout::MirroredAddress section, MappingSet *phys_address_set);
 
     // Note: this should indicate that the device is down even if it has re-entered as a newly added device
     //       meaning- a device in this context is handed a new "MirroredID" when re-entring the cluster.

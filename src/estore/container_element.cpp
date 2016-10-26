@@ -167,13 +167,13 @@ static EStoreRes name_content_traverse_func(const char *name, uint16_t name_len,
     return OK;
 }
 
-static EStoreRes name_bitmap_traverse_func(Layout::Address addr, void *ctx)
+static EStoreRes name_bitmap_traverse_func(Layout::LAddress addr, void *ctx)
 {
     ListElementsCtx *list_elements_ctx = (ListElementsCtx *)ctx;
     return list_elements_ctx->element->name_bitmap_traverse(addr, ctx);
 }
 
-EStoreRes ContainerElement::name_bitmap_traverse(Layout::Address addr, void *ctx)
+EStoreRes ContainerElement::name_bitmap_traverse(Layout::LAddress addr, void *ctx)
 {
     DEBUG_ASSERT(addr.addr_type != Layout::AddrType::NONE);
     ListElementsCtx *list_ctx = (ListElementsCtx *)ctx;
@@ -187,13 +187,13 @@ EStoreRes ContainerElement::name_bitmap_traverse(Layout::Address addr, void *ctx
     return OK;
 }
 
-static EStoreRes name_range_traverse_func(Layout::Address addr, uint16_t idx, void *ctx)
+static EStoreRes name_range_traverse_func(Layout::LAddress addr, uint16_t idx, void *ctx)
 {
     ListElementsCtx *list_elements_ctx = (ListElementsCtx *)ctx;
     return list_elements_ctx->element->name_range_traverse(addr, idx, ctx);
 }
 
-EStoreRes ContainerElement::name_range_traverse(Layout::Address addr, uint16_t idx, void *ctx)
+EStoreRes ContainerElement::name_range_traverse(Layout::LAddress addr, uint16_t idx, void *ctx)
 {
     DEBUG_ASSERT(addr.addr_type != Layout::AddrType::NONE);
     ListElementsCtx *list_ctx = (ListElementsCtx *)ctx;

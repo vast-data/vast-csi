@@ -21,6 +21,8 @@ using namespace P::FiberSync;
 using namespace P::Conf;
 using namespace MirroredIO;
 using P::VMsg::RpcGuard;
+using Layout::MirroredAddress;
+using Layout::AddrType;
 
 const uint64_t test_sectionID = 8;
 const uint64_t large_sectionID = 9;
@@ -47,8 +49,8 @@ static void init_func(P::Silo *silo, void *ctx)
 
 static void test_locking_start_func(void *ctx)
 {
-    MirroredAddressToken test_address;
-    test_address.token_type = TokenType::MEM;
+    MirroredAddress test_address;
+    test_address.addr_type = AddrType::MEM;
     test_address.section_id = test_sectionID;
     test_address.byte_offset = 0;
 
@@ -132,8 +134,8 @@ static void test_rw_start_func(void *ctx)
     MIO mio;
     mio.init(0, ModuleId::TEST, (P::Index)FiberGroupId::TEST, dev_agent, 4, 4, 12);
 
-    MirroredAddressToken test_address;
-    test_address.token_type = TokenType::NVRAM;
+    MirroredAddress test_address;
+    test_address.addr_type = AddrType::NVRAM;
     test_address.section_id = test_sectionID;
     test_address.byte_offset = test_baddr;
 
@@ -257,8 +259,8 @@ static void test_agent_start_func(void *ctx)
 
     mio_agent.activate(nullptr, nullptr);
 
-    MirroredAddressToken section;
-    section.token_type = TokenType::NVRAM;
+    MirroredAddress section;
+    section.addr_type = AddrType::NVRAM;
     section.section_id = large_sectionID;
     section.byte_offset = test_baddr;
     MIOAgent::MappingSet phys_addr_set;

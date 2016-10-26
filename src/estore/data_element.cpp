@@ -440,14 +440,14 @@ struct TruncateCtx {
     uint64_t size;
 };
 
-static EStoreRes truncate_cb_func(Layout::Address addr, uint64_t offset, void *ctx)
+static EStoreRes truncate_cb_func(Layout::LAddress addr, uint64_t offset, void *ctx)
 {
     TruncateCtx *truncate_ctx = (TruncateCtx *)ctx;
     return truncate_ctx->element->truncate_cb(addr, offset, ctx);
 }
 
 
-EStoreRes DataElement::truncate_cb(Layout::Address addr, UNUSED uint64_t offset, void *ctx)
+EStoreRes DataElement::truncate_cb(Layout::LAddress addr, UNUSED uint64_t offset, void *ctx)
 {
     TruncateCtx *truncate_ctx = (TruncateCtx *)ctx;
     EStoreRes res = read_block(addr, get_handle(), &_bitmap_block);

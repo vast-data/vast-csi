@@ -73,7 +73,7 @@ struct AddrTypeConfig {
     uint32_t shard_block_count;
     ShardType shard_type;
     ReplicationFactor replication_factor;
-    P::IO::TokenType token_type;
+    Layout::AddrType token_type;
 };
 
 // since replication is done on a section level, different replication factors split sections
@@ -99,8 +99,8 @@ public:
      * \param len used for asserting we don't exceed data type or sector boundaries.
      * \param addr address to translate.
      */
-    P::IO::MirroredAddressToken translate(Address addr, size_t len);
-    P::IO::MirroredAddressToken translate_block(P::ShardId shard_id, LAddrType type, P::Index index);
+    Layout::MirroredAddress translate(LAddress addr, size_t len);
+    Layout::MirroredAddress translate_block(P::ShardId shard_id, LAddrType type, P::Index index);
     uint64_t get_total_addr_type_size(P::ShardId shard_id, AddrType type);
     uint32_t get_total_section_count(AddrType type);
     uint32_t get_estore_shard_count() { return _estore_shard_count; }
@@ -119,13 +119,13 @@ private:
     //TODO: adjust block_counts/block_size to fill sections
     static constexpr AddrTypeConfig ADDR_TYPE_CONFIG[(int)AddrType::COUNT] = {
         //block_size     shard_block_count shard_type         replication_factor             token_type
-        {0,              0,                ShardType::NONE,   ReplicationFactor::COUNT,      P::IO::TokenType::NVRAM}, // NONE
-        {UNIT_KiB * 4,   1,                ShardType::ESTORE, ReplicationFactor::DUPLICATE,  P::IO::TokenType::NVRAM}, // HANDLE_TABLE
-        {UNIT_KiB * 4,   1,                ShardType::ESTORE, ReplicationFactor::TRIPLICATE, P::IO::TokenType::NVRAM}, // SHARD_MD
-        {UNIT_KiB * 4,   8,                ShardType::ESTORE, ReplicationFactor::DUPLICATE,  P::IO::TokenType::NVRAM}, // MD_BLOCKS
-        {UNIT_MiB * 100, 1,                ShardType::ESTORE, ReplicationFactor::TRIPLICATE, P::IO::TokenType::NVRAM}, // WRITE_BUFFER
-        {UNIT_KiB * 4,   1,                ShardType::ESTORE, ReplicationFactor::DUPLICATE,  P::IO::TokenType::NVRAM}, // TOKEN_MAPPER
-        {UNIT_MiB * 4,   1,                ShardType::NONE,   ReplicationFactor::TRIPLICATE, P::IO::TokenType::NVRAM}, // SYSTEM_STATE
+        {0,              0,                ShardType::NONE,   ReplicationFactor::COUNT,      Layout::AddrType::NVRAM}, // NONE
+        {UNIT_KiB * 4,   1,                ShardType::ESTORE, ReplicationFactor::DUPLICATE,  Layout::AddrType::NVRAM}, // HANDLE_TABLE
+        {UNIT_KiB * 4,   1,                ShardType::ESTORE, ReplicationFactor::TRIPLICATE, Layout::AddrType::NVRAM}, // SHARD_MD
+        {UNIT_KiB * 4,   8,                ShardType::ESTORE, ReplicationFactor::DUPLICATE,  Layout::AddrType::NVRAM}, // MD_BLOCKS
+        {UNIT_MiB * 100, 1,                ShardType::ESTORE, ReplicationFactor::TRIPLICATE, Layout::AddrType::NVRAM}, // WRITE_BUFFER
+        {UNIT_KiB * 4,   1,                ShardType::ESTORE, ReplicationFactor::DUPLICATE,  Layout::AddrType::NVRAM}, // TOKEN_MAPPER
+        {UNIT_MiB * 4,   1,                ShardType::NONE,   ReplicationFactor::TRIPLICATE, Layout::AddrType::NVRAM}, // SYSTEM_STATE
     };
 
     // third of the sections are triplicated, the rest are duplicated

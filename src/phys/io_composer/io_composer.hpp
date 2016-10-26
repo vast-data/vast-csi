@@ -3,6 +3,7 @@
 #pragma once
 
 #include <cstdint>
+#include "phys/layout/address.hpp"
 #include "phys/flash_io/flash_io.hpp"
 #include "plasma/fiber/sync/future_res.hpp"
 #include "plasma/utils/io.hpp"
@@ -42,11 +43,11 @@ public:
     // the result may be returned once the destination addresses are known and not necessarily once the data have been
     // committed to stable storage. To wait for the data to be committed "commit_write_batch" must be called.
     IORes migrate(WriteBatchToken token, DataType data_type, FrequencyCategory category,
-                  P::IO::TokenVecs *addresses, P::FiberSync::FutureRes<WriteRes *> result);
+                  Layout::TokenVecs *addresses, P::FiberSync::FutureRes<WriteRes *> result);
     // read from flash, pass a future for an async call
-    IORes read(P::IO::TokenVecs *addresses, P::IO::IOVecs *io_vecs, P::FiberSync::FutureRes<IORes> *res = nullptr);
+    IORes read(Layout::TokenVecs *addresses, P::IO::IOVecs *io_vecs, P::FiberSync::FutureRes<IORes> *res = nullptr);
     // mark the following addresses as unused
-    IORes free(P::IO::TokenVecs *addresses);
+    IORes free(Layout::TokenVecs *addresses);
     // commit the write batch, this method returns only once all the writes belonging to the write batch have been
     // committed to stable storage.
     IORes commit_write_batch(WriteBatchToken token);

@@ -46,20 +46,20 @@ public:
               size_t concurrent_readers, size_t concurrent_writers, size_t concurrent_devices_asyncly_written);
     void destroy();
 
-    bool WARN_UNUSED read(P::IO::MirroredAddressToken address, P::IO::IOVecs *buffers,
+    bool WARN_UNUSED read(Layout::MirroredAddress address, P::IO::IOVecs *buffers,
                           P::FiberSync::FutureRes<bool> *future = nullptr);
-    ReadRet WARN_UNUSED protected_read(P::IO::MirroredAddressToken address, Buffer *mio_buff,
+    ReadRet WARN_UNUSED protected_read(Layout::MirroredAddress address, Buffer *mio_buff,
                                        bool has_wlock, P::FiberSync::FutureRes<ReadRet> *future = nullptr);
 
-    bool WARN_UNUSED write(P::IO::MirroredAddressToken address, P::IO::IOVecs *buffers,
+    bool WARN_UNUSED write(Layout::MirroredAddress address, P::IO::IOVecs *buffers,
                            P::FiberSync::FutureRes<bool> *finalized_future = nullptr);
-    bool WARN_UNUSED protected_write(P::IO::MirroredAddressToken address, Buffer *mio_buff,
+    bool WARN_UNUSED protected_write(Layout::MirroredAddress address, Buffer *mio_buff,
                                      P::FiberSync::FutureRes<bool> *finalized_future = nullptr,
                                      P::FiberSync::FutureRes<bool> *committed_future = nullptr);
 
-    void lock(P::IO::MirroredAddressToken address, WorkerID worker_id);
-    bool WARN_UNUSED trylock(P::IO::MirroredAddressToken address, WorkerID worker_id);
-    void unlock(P::IO::MirroredAddressToken address, WorkerID worker_id);
+    void lock(Layout::MirroredAddress address, WorkerID worker_id);
+    bool WARN_UNUSED trylock(Layout::MirroredAddress address, WorkerID worker_id);
+    void unlock(Layout::MirroredAddress address, WorkerID worker_id);
 
     static size_t get_header_size() { return sizeof(Header); }
     static uint16_t calc_buff_crc(Buffer *mio_buff);
@@ -93,13 +93,13 @@ protected:
     template<typename T>
     class IOer : public IRunnable {
     public:
-        void init(P::IO::MirroredAddressToken address, UnifiedBuff *buff, MIOAgent *agent, P::ObjectPool<T> *pool,
+        void init(Layout::MirroredAddress address, UnifiedBuff *buff, MIOAgent *agent, P::ObjectPool<T> *pool,
                   P::FiberSync::Future *future = nullptr);
         void destroy();
 
     protected:
         MIOAgent *_agent;
-        P::IO::MirroredAddressToken _address;
+        Layout::MirroredAddress _address;
         UnifiedBuff _buff;
         P::FiberSync::Future *_future;
         P::ObjectPool<T> *_pool;
@@ -108,7 +108,7 @@ protected:
 
     class Writer : public IOer<Writer> {
     public:
-        void init(P::IO::MirroredAddressToken address, UnifiedBuff* buff, MIOAgent *agent, P::ObjectPool<Writer> *pool,
+        void init(Layout::MirroredAddress address, UnifiedBuff* buff, MIOAgent *agent, P::ObjectPool<Writer> *pool,
                   P::AtomicPool<P::IO::BaseIO::Future> *future_pool,
                   P::FiberSync::FutureRes<bool> *finalized_future = nullptr,
                   P::FiberSync::FutureRes<bool> *committed_future = nullptr);
@@ -130,7 +130,7 @@ protected:
 
     class Reader : public IOer<Reader> {
     public:
-        void init(P::IO::MirroredAddressToken address, UnifiedBuff *buff, MIOAgent *agent, P::ObjectPool<Reader> *pool,
+        void init(Layout::MirroredAddress address, UnifiedBuff *buff, MIOAgent *agent, P::ObjectPool<Reader> *pool,
                   P::ObjectPool<Writer> *writers, P::AtomicPool<P::IO::BaseIO::Future> *future_pool, bool has_wlock,
                   P::FiberSync::Future *future = nullptr);
         void /* override */ run();
@@ -142,8 +142,8 @@ protected:
 
         bool WARN_UNUSED is_data_valid(Buffer *mio_buff);
         bool WARN_UNUSED is_data_committed(Buffer *mio_buff);
-        bool WARN_UNUSED recover_corrupted_data(P::IO::MirroredAddressToken address, Buffer *mio_buff OUT);
-        bool WARN_UNUSED read_internal(P::IO::MirroredAddressToken address, P::IO::IOVecs *buffers,
+        bool WARN_UNUSED recover_corrupted_data(Layout::MirroredAddress address, Buffer *mio_buff OUT);
+        bool WARN_UNUSED read_internal(Layout::MirroredAddress address, P::IO::IOVecs *buffers,
                                        MIOAgent::MappingSet *phys_addr_set, P::Index *read_idx, bool wrap_around = true);
 
         bool _has_wlock;
@@ -155,11 +155,11 @@ protected:
 
     bool WARN_UNUSED atomic_op(MIOAgent::MappingSet *map_set, P::Index dev_idx, WorkerID worker_id, bool lock,
                                bool blocking);
-    bool WARN_UNUSED internal_lock(P::IO::MirroredAddressToken address, WorkerID worker_id, bool lock, bool blocking);
+    bool WARN_UNUSED internal_lock(Layout::MirroredAddress address, WorkerID worker_id, bool lock, bool blocking);
 
-    void internal_read(P::IO::MirroredAddressToken address, UnifiedBuff *buff, bool has_wlock, P::FiberSync::Future *future, bool async);
+    void internal_read(Layout::MirroredAddress address, UnifiedBuff *buff, bool has_wlock, P::FiberSync::Future *future, bool async);
 
-    bool WARN_UNUSED internal_write(P::IO::MirroredAddressToken address, UnifiedBuff *buff, bool protected_write,
+    bool WARN_UNUSED internal_write(Layout::MirroredAddress address, UnifiedBuff *buff, bool protected_write,
                                     P::FiberSync::FutureRes<bool> *finalized_future = nullptr,
                                     P::FiberSync::FutureRes<bool> *committed_future = nullptr);
 
@@ -176,7 +176,7 @@ protected:
 };  // class MIO
 
 template<typename T>
-void MIO::IOer<T>::init(P::IO::MirroredAddressToken address, UnifiedBuff *buff, MIOAgent *agent, P::ObjectPool<T> *pool,
+void MIO::IOer<T>::init(Layout::MirroredAddress address, UnifiedBuff *buff, MIOAgent *agent, P::ObjectPool<T> *pool,
           P::FiberSync::Future *future)
 {
     _address = address;

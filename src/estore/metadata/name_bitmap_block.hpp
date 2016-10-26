@@ -27,7 +27,7 @@ public:
     EStoreRes WARN_UNUSED get_addr(const char *name, LAddress *addr);
 
     // TODO support variable size hashes
-    typedef EStoreRes (*TraverseCallback)(Layout::Address addr, void *ctx);
+    typedef EStoreRes (*TraverseCallback)(Layout::LAddress addr, void *ctx);
     // traverse the content blocks refereed by this bitmap, callback will be called ONCE per content block
     EStoreRes traverse(uint32_t start_hash, TraverseCallback cb, void *cb_ctx);
     // TODO move somewhere generic

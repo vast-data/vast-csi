@@ -99,7 +99,8 @@ static void _test_split_head(EStore::EStoreIO *estore_io) {
     res = estore_io->write_md(head, &buf);
     ASSERT_EQ(res, EStore::EStoreRes::OK);
 
-    estore_io->free_md_block(block_2);
+    res = estore_io->free_md_block(block_2);
+    ASSERT_EQ(res, EStore::EStoreRes::OK);
     res = estore_io->read_md(head, &buf, true);
     ASSERT_EQ(res, EStore::EStoreRes::OK);
     ASSERT_EQUAL(list_block->count, 510);

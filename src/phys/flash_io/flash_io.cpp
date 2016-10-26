@@ -6,7 +6,7 @@ using IORes::OK;
 using P::FiberSync::FutureRes;
 using P::IO::IOVec;
 using P::IO::IOVecs;
-using P::IO::TokenVecs;
+using Layout::TokenVecs;
 
 
 IORes FlashIO::write_sub_stripe(UNUSED SubStripe *sub_stripe, UNUSED FutureRes<WriteRes *> result)

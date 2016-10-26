@@ -26,8 +26,9 @@ void EStore::destroy()
 void EStore::create_estore()
 {
     _shard_md.create();
-    _eio.create_block_allocator(LAddrType::MD_BLOCKS);
-    EStoreRes res = _handles_table.create();
+    EStoreRes res = _eio.create_block_allocator(LAddrType::MD_BLOCKS);
+    ASSERT(res == OK);
+    res = _handles_table.create();
     ASSERT(res == OK);
     res = _ingest.create_root();
     ASSERT(res == OK);

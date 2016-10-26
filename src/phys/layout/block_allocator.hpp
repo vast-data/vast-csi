@@ -19,7 +19,7 @@ namespace Layout {
 
 typedef uint32_t BlockAddr;
 
-static const size_t NVRAM_ATOMIC_BLOCK_SIZE = P::IO::AddressToken::atomic_block_sizes[(int)P::IO::TokenType::NVRAM];
+static const size_t NVRAM_ATOMIC_BLOCK_SIZE = Layout::MirroredAddress::ATOMIC_BLOCK_SIZE;
 // BLOCKS_PER_PAGE depends on number of attributes in BlocksList
 static const size_t BLOCKS_PER_PAGE = (NVRAM_ATOMIC_BLOCK_SIZE - EStore::MIO_OVERHEAD - 3*4)/sizeof(BlockAddr);
 

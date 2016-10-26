@@ -1,10 +1,8 @@
 #include "plasma/trace/emitter.hpp"
 #include "io.hpp"
 
-constexpr uint64_t P::IO::AddressToken::atomic_block_sizes[];
 #define CURRENT_COMPONENT ComponentId::PLASMA
 #define CURRENT_CHANNEL DATA
-
 
 namespace P {
 namespace IO {

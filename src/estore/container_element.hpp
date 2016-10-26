@@ -20,8 +20,8 @@ public:
                                         const char *prefix, char delimiter, uint64_t *current_element_version);
 
     // internal callbacks
-    EStoreRes name_range_traverse(Layout::Address addr, uint16_t idx, void *ctx);
-    EStoreRes name_bitmap_traverse(Layout::Address addr, void *ctx);
+    EStoreRes name_range_traverse(Layout::LAddress addr, uint16_t idx, void *ctx);
+    EStoreRes name_bitmap_traverse(Layout::LAddress addr, void *ctx);
 
 private:
     NameRangeBlock _range_block;

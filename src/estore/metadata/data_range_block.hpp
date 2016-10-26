@@ -25,7 +25,7 @@ public:
     // if len is passed it will be set to the part, the returned range applies to
     LAddress get_range(uint64_t offset, uint64_t *len = nullptr INOUT);
 
-    typedef EStoreRes (*TraverseCallback)(Layout::Address addr, uint64_t offset, void *ctx);
+    typedef EStoreRes (*TraverseCallback)(Layout::LAddress addr, uint64_t offset, void *ctx);
     EStoreRes traverse(uint64_t start_offset, TraverseCallback cb, void *cb_ctx);
 
     void trace();

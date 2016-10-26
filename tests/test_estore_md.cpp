@@ -268,7 +268,7 @@ TEST(TestDataBitmapBlock, test_md)
 }
 
 
-static EStoreRes name_bitmap_traverse_cb(UNUSED Layout::Address addr, void *ctx)
+static EStoreRes name_bitmap_traverse_cb(UNUSED Layout::LAddress addr, void *ctx)
 {
     uint64_t *found_blocks = (uint64_t *)ctx;
     (*found_blocks)++;

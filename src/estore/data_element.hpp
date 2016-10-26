@@ -21,7 +21,7 @@ public:
     EStoreRes WARN_UNUSED truncate(uint64_t size);
 
     // internal callback
-    EStoreRes truncate_cb(Layout::Address addr, uint64_t offset, void *ctx);
+    EStoreRes truncate_cb(Layout::LAddress addr, uint64_t offset, void *ctx);
 
 private:
     EStoreRes add_data_bitmap_block(WriteBuffer *write_buffer, LAddress range_addr, LAddress *bitmap_addr,

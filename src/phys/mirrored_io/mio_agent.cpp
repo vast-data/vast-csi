@@ -210,7 +210,7 @@ void MIOAgent::config_section(uint32_t section_id, const PhysAddr *addresses, P:
 {
     ASSERT(!_is_activated);
     ASSERT_OP(section_id, <, MAX_SECTION_ID);
-    if (section_id == P::IO::MirroredAddressToken::STATIC_SECTION_ID) {
+    if (section_id == Layout::MirroredAddress::STATIC_SECTION_ID) {
         do_config_section(&_section_zero_mapping, addresses, num_addresses, in_rebuild);
     } else {
         update_max_section_id(section_id);
@@ -236,7 +236,7 @@ void MIOAgent::start_rebuild(uint32_t section_id, P::IO::BaseIO *new_dev, P::IO:
 {
     ASSERT(_is_activated);
     ASSERT_OP(section_id, <, MAX_SECTION_ID);
-    if (section_id == P::IO::MirroredAddressToken::STATIC_SECTION_ID) {
+    if (section_id == Layout::MirroredAddress::STATIC_SECTION_ID) {
         do_start_rebuild(&_section_zero_mapping, new_dev, new_base_offset);
     } else {
         update_max_section_id(section_id);
@@ -262,7 +262,7 @@ void MIOAgent::end_rebuild(uint32_t section_id)
 {
     ASSERT(_is_activated);
     ASSERT_OP(section_id, <, MAX_SECTION_ID);
-    if (section_id == P::IO::MirroredAddressToken::STATIC_SECTION_ID) {
+    if (section_id == Layout::MirroredAddress::STATIC_SECTION_ID) {
         _section_zero_mapping.mapping_data.set_in_rebuild(false);
     } else {
         _section_mappings[section_id].mapping_data.set_in_rebuild(false);
@@ -273,7 +273,7 @@ void MIOAgent::rebuild_copy_internal(uint32_t section_id)
 {
     ASSERT(_is_activated);
     ASSERT_OP(section_id, <, MAX_SECTION_ID);
-    if (section_id == P::IO::MirroredAddressToken::STATIC_SECTION_ID) {
+    if (section_id == Layout::MirroredAddress::STATIC_SECTION_ID) {
         do_rebuild_copy(&_section_zero_mapping);
     } else {
         do_rebuild_copy(&_section_mappings[section_id]);
@@ -299,7 +299,7 @@ void MIOAgent::remove_section_from_device(uint32_t section_id, P::IO::BaseIO *de
 {
     ASSERT(_is_activated);
     ASSERT_OP(section_id, <, MAX_SECTION_ID);
-    if (section_id == P::IO::MirroredAddressToken::STATIC_SECTION_ID) {
+    if (section_id == Layout::MirroredAddress::STATIC_SECTION_ID) {
         do_remove_section_from_device(&_section_zero_mapping, dev);
     } else {
         do_remove_section_from_device(&_section_mappings[section_id], dev);
@@ -344,12 +344,12 @@ void MIOAgent::remove_device_internal(P::IO::BaseIO *dev)
     }
 }
 
-void MIOAgent::start_write(P::IO::MirroredAddressToken section, size_t write_size, MappingSet *phys_address_set)
+void MIOAgent::start_write(Layout::MirroredAddress section, size_t write_size, MappingSet *phys_address_set)
 {
     ASSERT(_is_activated);
     ASSERT_NOT_NULL(phys_address_set);
     check_section_id_valid(section.section_id);
-    if (section.section_id == P::IO::MirroredAddressToken::STATIC_SECTION_ID) {
+    if (section.section_id == Layout::MirroredAddress::STATIC_SECTION_ID) {
         do_start_write(&_section_zero_mapping, section.byte_offset, write_size, phys_address_set);
     } else {
         do_start_write(&_section_mappings[section.section_id], section.byte_offset, write_size, phys_address_set);
@@ -373,12 +373,12 @@ void MIOAgent::do_start_write(SectionMapping<max_devs_per_section> *section_mapp
     }
 }
 
-void MIOAgent::done_write(P::IO::MirroredAddressToken section, MappingSet *phys_address_set)
+void MIOAgent::done_write(Layout::MirroredAddress section, MappingSet *phys_address_set)
 {
     ASSERT(_is_activated);
     ASSERT_NOT_NULL(phys_address_set);
     check_section_id_valid(section.section_id);
-    if (section.section_id == P::IO::MirroredAddressToken::STATIC_SECTION_ID) {
+    if (section.section_id == Layout::MirroredAddress::STATIC_SECTION_ID) {
         do_done_write(&_section_zero_mapping.mapping_data, phys_address_set);
     } else {
         do_done_write(&_section_mappings[section.section_id].mapping_data, phys_address_set);
@@ -397,12 +397,12 @@ void MIOAgent::do_done_write(SectionMappingData *mapping_data, MappingSet *phys_
     mapping_data->writers[phys_address_set->get_active_lock_index()].unlock();
 }
 
-void MIOAgent::start_read(P::IO::MirroredAddressToken section, MappingSet *phys_address_set)
+void MIOAgent::start_read(Layout::MirroredAddress section, MappingSet *phys_address_set)
 {
     ASSERT(_is_activated);
     ASSERT_NOT_NULL(phys_address_set);
     check_section_id_valid(section.section_id);
-    if (section.section_id == P::IO::MirroredAddressToken::STATIC_SECTION_ID) {
+    if (section.section_id == Layout::MirroredAddress::STATIC_SECTION_ID) {
         do_start_read(&_section_zero_mapping, section.byte_offset, phys_address_set);
     } else {
         do_start_read(&_section_mappings[section.section_id], section.byte_offset, phys_address_set);
@@ -418,12 +418,12 @@ void MIOAgent::do_start_read(SectionMapping<max_devs_per_section> *section_mappi
     section_mapping->mapping_data.readers[phys_address_set->get_active_lock_index()].lock_read();
 }
 
-void MIOAgent::done_read(P::IO::MirroredAddressToken section, MappingSet *phys_address_set)
+void MIOAgent::done_read(Layout::MirroredAddress section, MappingSet *phys_address_set)
 {
     ASSERT(_is_activated);
     ASSERT_NOT_NULL(phys_address_set);
     check_section_id_valid(section.section_id);
-    if (section.section_id == P::IO::MirroredAddressToken::STATIC_SECTION_ID) {
+    if (section.section_id == Layout::MirroredAddress::STATIC_SECTION_ID) {
         do_done_read(&_section_zero_mapping.mapping_data, phys_address_set);
     } else {
         do_done_read(&_section_mappings[section.section_id].mapping_data, phys_address_set);

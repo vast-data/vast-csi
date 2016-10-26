@@ -7,10 +7,9 @@
 using EStore::IO_ALIGNMENT;
 using EStore::NVRAM_MD_BLOCK_SIZE;
 using EStore::EStoreRes;
-using P::IO::MirroredAddressToken;
-using P::IO::TokenType;
+using Layout::MirroredAddress;
+using Layout::AddrType;
 using MirroredIO::MIO;
-
 
 namespace Layout {
 
@@ -26,7 +25,7 @@ void BlockAllocator::init(MirroredIO::MIO *mio, Layout::SectionAllocator *sectio
 }
 
 bool BlockAllocator::create(P::ShardId shard_id, LAddrType type) {
-    P::IO::MirroredAddressToken head_addr = _section_allocator->translate_block(shard_id, type, 0);
+    Layout::MirroredAddress head_addr = _section_allocator->translate_block(shard_id, type, 0);
     _head_data->count = 0;
     _head_data->total_count = 0;
     _head_data->next = 0;
@@ -61,7 +60,7 @@ EStoreRes BlockAllocator::alloc_from_extra_space(P::ShardId shard_id, LAddrType 
 EStoreRes BlockAllocator::alloc(P::ShardId shard_id, LAddrType type, LAddress *eaddr OUT) {
     //currently unused: MirroredIO::WorkerID worker_id = P::Silo::get_current_silo_id();
     //_lock_addr.byte_offset=_section_allocator->shard_id_to_offset(eaddr->addr_type, eaddr->shard_id);
-    P::IO::MirroredAddressToken head_addr = _section_allocator->translate_block(shard_id, type, 0);
+    Layout::MirroredAddress head_addr = _section_allocator->translate_block(shard_id, type, 0);
     MirroredIO::MIO::Buffer *mio_buf = &_head_mio_buf;
     BlockAddr next_block;
 
@@ -77,7 +76,7 @@ EStoreRes BlockAllocator::alloc(P::ShardId shard_id, LAddrType type, LAddress *e
     {
         if (_head_data->next) {
             next_block = _head_data->next;
-            MirroredAddressToken mirrored_next = _section_allocator->translate_block(shard_id, type, _head_data->next);
+            MirroredAddress mirrored_next = _section_allocator->translate_block(shard_id, type, _head_data->next);
             ret = _mio->protected_read(mirrored_next, &_next_mio_buf, false, nullptr);
             if (ret != MIO::ReadRet::SUCCESS) {
                 PT_ERROR(DATA, "failed reading block list 'next' (IOError)");
@@ -113,7 +112,7 @@ EStoreRes BlockAllocator::alloc(P::ShardId shard_id, LAddrType type, LAddress *e
 bool BlockAllocator::free(const LAddress *eaddr) {
     //currently unused: MirroredIO::WorkerID worker_id = P::Silo::get_current_silo_id();
     //_lock_addr.byte_offset=_section_allocator->shard_id_to_offset(eaddr->addr_type, eaddr->shard_id);
-    P::IO::MirroredAddressToken head_addr = _section_allocator->translate_block(eaddr->shard_id, eaddr->addr_type, 0);
+    Layout::MirroredAddress head_addr = _section_allocator->translate_block(eaddr->shard_id, eaddr->addr_type, 0);
     BlockAddr new_block = eaddr->offset / _section_allocator->get_addr_type_block_size(eaddr->addr_type);
     DEBUG_ASSERT(eaddr->offset % _section_allocator->get_addr_type_block_size(eaddr->addr_type) == 0);
     DEBUG_ASSERT(eaddr->addr_type == LAddrType::MD_BLOCKS)
@@ -137,7 +136,7 @@ bool BlockAllocator::free(const LAddress *eaddr) {
                &_head_data->buffers[BLOCKS_PER_PAGE/2],
                (BLOCKS_PER_PAGE - BLOCKS_PER_PAGE/2)*sizeof(BlockAddr));
 
-        MirroredAddressToken mirrored_addr = _section_allocator->translate(*eaddr, 1);
+        MirroredAddress mirrored_addr = _section_allocator->translate(*eaddr, 1);
         write_ret = _mio->protected_write(mirrored_addr, &_next_mio_buf, nullptr, nullptr);
         if (write_ret == false) {
             PT_ERROR(DATA, "failed writting block list 'next' (IOError)");

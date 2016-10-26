@@ -58,7 +58,7 @@ void MIOControl::activate()
     // each device, because this one is saved for section zero.
     // TODO(ido): once section zero has a different size, handle it - update the calculations of:
     // 1)  num_section_copies_per_device; 2) base_offset.
-    static_assert(P::IO::MirroredAddressToken::STATIC_SECTION_ID == 0, "We rely on the fact that section zero is 0..");
+    static_assert(Layout::MirroredAddress::STATIC_SECTION_ID == 0, "We rely on the fact that section zero is 0..");
     _num_sections = 1;  // Section zero.
     uint32_t mapping_idx = 0;
     _section_mappings[_num_sections].num_copies = Layout::get_replication_factor_value(
@@ -107,7 +107,7 @@ void MIOControl::activate_module(BaseModuleLogic *module)
         config_params->set_num_sections(num_sections);
         for (uint16_t section_idx = 0; section_idx < num_sections; ++section_idx) {
             SectionConfig::Builder *section_config = config_params->get_section_configs(section_idx);
-            section_config->set_section_id(P::IO::MirroredAddressToken::STATIC_SECTION_ID);
+            section_config->set_section_id(Layout::MirroredAddress::STATIC_SECTION_ID);
             section_config->set_in_rebuild(_section_zero_in_rebuild);
             uint16_t num_mappings = std::min((uint16_t)(_num_devices - device_idx), MAX_DEVS_PER_SECTION);
             section_config->set_num_mappings(num_mappings);

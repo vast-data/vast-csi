@@ -49,27 +49,27 @@ EStoreRes EStoreIO::bool_to_estore_res(bool res)
 
 EStoreRes EStoreIO::read_md(LAddress addr, MIOBuffer *buff, bool locked, FutureRes<MIO::ReadRet> *future)
 {
-    P::IO::MirroredAddressToken mir_addr = _section_allocator.translate(addr, buff->get_data_size());
+    Layout::MirroredAddress mir_addr = _section_allocator.translate(addr, buff->get_data_size());
     return mio_to_estore_res(_mio->protected_read(mir_addr, buff, locked, future));
 }
 
 EStoreRes EStoreIO::read_data(LAddress addr, IOVecs *iovecs, FutureRes<bool> *future)
 {
     // TODO avoid doing iovecs->total_length()
-    P::IO::MirroredAddressToken mir_addr = _section_allocator.translate(addr, iovecs->total_length());
+    Layout::MirroredAddress mir_addr = _section_allocator.translate(addr, iovecs->total_length());
     return bool_to_estore_res(_mio->read(mir_addr, iovecs, future));
 }
 
 EStoreRes EStoreIO::write_md(LAddress addr, MIOBuffer *buff, FutureRes<bool> *future)
 {
-    P::IO::MirroredAddressToken mir_addr = _section_allocator.translate(addr, buff->get_data_size());
+    Layout::MirroredAddress mir_addr = _section_allocator.translate(addr, buff->get_data_size());
     return bool_to_estore_res(_mio->protected_write(mir_addr, buff, future, nullptr));
 }
 
 EStoreRes EStoreIO::write_data(LAddress addr, IOVecs *iovecs, FutureRes<bool> *future)
 {
     // TODO avoid doing iovecs->total_length()
-    P::IO::MirroredAddressToken mir_addr = _section_allocator.translate(addr, iovecs->total_length());
+    Layout::MirroredAddress mir_addr = _section_allocator.translate(addr, iovecs->total_length());
     return bool_to_estore_res(_mio->write(mir_addr, iovecs, future));
 }
 
