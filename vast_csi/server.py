@@ -19,9 +19,9 @@ import logging
 import inspect
 import grpc
 
-import csi_pb2_grpc
-from csi_pb2_grpc import ControllerServicer, NodeServicer, IdentityServicer
-import csi_types as types
+from . import csi_pb2_grpc
+from .csi_pb2_grpc import ControllerServicer, NodeServicer, IdentityServicer
+from . import csi_types as types
 
 
 class Instrumented():
