@@ -10,9 +10,9 @@ class Logger(logging.Logger, PipeToLoggerMixin):
 logger = logging.getLogger("vast-csi")
 
 
-def init_logging():
+def init_logging(level):
     logging.basicConfig(
-        level=0,
+        level=level.upper(),
         format="{asctime}|{levelname:7}|{thread:X}|{name:15}| {message}",
         style="{"
     )

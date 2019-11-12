@@ -379,6 +379,8 @@ class Config(TypedEnv):
 
     node_id = TypedEnv.Str("X_CSI_NODE_ID", default=socket.getfqdn())
 
+    log_level = TypedEnv.Str("X_CSI_LOG_LEVEL", default="info")
+
 
 CONF = None
 
@@ -406,6 +408,6 @@ def serve():
 
 if __name__ == '__main__':
     patch_traceback_format()
-    init_logging()
     CONF = Config()
+    init_logging(level=CONF.log_level)
     serve()

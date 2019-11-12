@@ -19,3 +19,5 @@ RUN wget -q https://github.com/tigrawap/slit/releases/download/1.2.0/slit_linux_
 
 COPY vast_csi vast_csi
 COPY sanity_test.sh .
+
+ENTRYPOINT ./sanity_test.sh
