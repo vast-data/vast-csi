@@ -21,7 +21,7 @@ from __future__ import absolute_import
 
 from google.protobuf import wrappers_pb2 as wrappers
 
-import csi_pb2
+from . import csi_pb2
 
 
 class EnumWrapper(object):
