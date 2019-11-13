@@ -1,0 +1,55 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: csi-vast-attacher
+  labels:
+    app: csi-vast-attacher
+spec:
+  selector:
+    app: csi-vast-attacher
+  ports:
+    - name: dummy
+      port: 12345
+
+---
+kind: StatefulSet
+apiVersion: apps/v1
+metadata:
+  name: csi-vast-attacher
+spec:
+  serviceName: "csi-vast-attacher"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: csi-vast-attacher
+  template:
+    metadata:
+      labels:
+        app: csi-vast-attacher
+    spec:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - csi-vastplugin
+            topologyKey: kubernetes.io/hostname
+      serviceAccountName: csi-attacher
+      containers:
+        - name: csi-attacher
+          image: quay.io/k8scsi/csi-attacher:v2.0.0
+          args:
+            - --v=5
+            - --csi-address=/csi/csi.sock
+          volumeMounts:
+          - mountPath: /csi
+            name: socket-dir
+
+      volumes:
+        - hostPath:
+            path: /var/lib/kubelet/plugins/csi-vast
+            type: DirectoryOrCreate
+          name: socket-dir

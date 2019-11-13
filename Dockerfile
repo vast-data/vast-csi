@@ -18,6 +18,15 @@ RUN wget -q https://github.com/tigrawap/slit/releases/download/1.2.0/slit_linux_
 	mv /tmp/slit /usr/bin/slit
 
 COPY vast_csi vast_csi
-COPY sanity_test.sh .
+COPY main.sh .
 
-ENTRYPOINT ["./sanity_test.sh"]
+ARG NAME=com.vast.csi.plugin
+ARG VERSION
+ARG GIT_COMMIT
+RUN echo "$NAME $VERSION $GIT_COMMIT" > version.info 
+
+LABEL name=$NAME
+LABEL version=$VERSION.$GIT_COMMIT
+LABEL vendor=vastdata
+
+ENTRYPOINT ["./main.sh"]

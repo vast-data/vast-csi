@@ -34,7 +34,33 @@ from easypy.caching import cached_property
 from . import csi_pb2_grpc
 from .csi_pb2_grpc import ControllerServicer, NodeServicer, IdentityServicer
 from . import csi_types as types
-from . import __version__ as VERSION
+
+
+class Config(TypedEnv):
+
+    plugin_name, plugin_version, git_commit = open("version.info").read().strip().split()
+
+    controller_root_mount = TypedEnv.Str("X_CSI_CTRL_ROOT_MOUNT", default=f"/mnt/{plugin_name}/nfs-volumes")
+    nfs_server_ip = TypedEnv.Str("X_CSI_NFS_SERVER_IP", default="127.0.0.1")
+    root_export = TypedEnv.Str("X_CSI_NFS_EXPORT", default="/tmp/csi-volumes")
+    log_level = TypedEnv.Str("X_CSI_LOG_LEVEL", default="info")
+    node_id = TypedEnv.Str("X_CSI_NODE_ID", default=socket.getfqdn())
+
+    _mode = TypedEnv.Str("CSI_MODE", default="all")
+    _endpoint = TypedEnv.Str("CSI_ENDPOINT", default=f'unix:///var/run/csi.sock')
+
+    @property
+    def mode(self):
+        mode = self._mode
+        assert mode in {"all", "controller", "node"}, f"invalid mode: {mode}"
+        return mode
+
+    @property
+    def endpoint(self):
+        return self._endpoint.strip("tcp://")
+
+
+CONF = None
 
 
 FAILED_PRECONDITION = grpc.StatusCode.FAILED_PRECONDITION
@@ -353,39 +379,8 @@ class Node(NodeServicer, Instrumented):
         return types.NodeInfoResp(node_id=CONF.node_id)
 
 
-class Config(TypedEnv):
-
-    plugin_version = VERSION
-    plugin_name = "com.vast.csi.plugin"
-
-    _mode = TypedEnv.Str("CSI_MODE", default="all")
-
-    @property
-    def mode(self):
-        mode = self._mode
-        assert mode in {"all", "controller", "node"}, f"invalid mode: {mode}"
-        return mode
-
-    nfs_server_ip = TypedEnv.Str("X_CSI_NFS_SERVER_IP", default="127.0.0.1")
-
-    root_export = TypedEnv.Str("X_CSI_NFS_EXPORT", default="/tmp/csi-volumes")
-
-    controller_root_mount = "/mnt/csi-volumes"
-
-    _endpoint = TypedEnv.Str("CSI_ENDPOINT", default='[::]:50051')
-    @property
-    def endpoint(self):
-        return self._endpoint.strip("tcp://")
-
-    node_id = TypedEnv.Str("X_CSI_NODE_ID", default=socket.getfqdn())
-
-    log_level = TypedEnv.Str("X_CSI_LOG_LEVEL", default="info")
-
-
-CONF = None
-
-
 def serve():
+    logger.info("%s: %s (%s)", CONF.plugin_name, CONF.plugin_version, CONF.git_commit)
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
 
