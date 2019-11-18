@@ -1,0 +1,83 @@
+image: docker:latest
+
+variables:
+  IMAGE_NAME: ${DOCKER_REGISTRY}/dev/vast-csi:${CI_PIPELINE_ID}
+  DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
+
+build_csi:
+  stage: build
+  script: |
+    set -x
+    VERSION=$(cat version.txt)
+    LATEST=${DOCKER_REGISTRY}/dev/vast-csi:latest
+    if (docker pull $LATEST) ; then
+      docker tag $LATEST vast-csi:dev  # the cache-source for our subsequent build
+    fi
+    /bin/sh -x packaging/build.sh
+    docker tag vast-csi:latest ${IMAGE_NAME}
+    docker push ${IMAGE_NAME}
+    echo "pushed ${IMAGE_NAME}"
+  tags:
+    - vast-dev-builder
+
+
+.test_csi: &test_csi
+  image: $DOCKER_REGISTRY/dev/orion/core_images:utility_docker_ubuntu_17.10-2
+  stage: test
+  when: manual
+  script: |
+    set -x
+
+    VAST_PIPE=$(curl -s https://${VERSIONS_BUCKET}.s3-eu-west-1.amazonaws.com/versions/$VERSION)
+    VAST_PIPE=${VAST_PIPE##*-}  # chop the prefix, keep the pipe id
+
+    scripts/run_jenkins_job_etcd_prio_queue.py \
+      --base-queue-prefix=queues \
+      --etcd-prefix=teams \
+      --jenkins-job-name=single_test_from_pipeline \
+      --jenkins-server=$JENKINS_SERVER \
+      --jenkins-user=$JENKINS_USER \
+      --jenkins-password=$JENKINS_PASSWORD  \
+      --etcd-server=127.0.0.1 \
+      --object-name=vast-csi-$CI_PIPELINE_ID \
+      --blocking -- \
+        pipeline=$VAST_PIPE \
+        slash_params="--without-jira-test-report --skip-harvest --kwarg=csi_plugin_version=$CI_PIPELINE_ID" \
+        slash_filter=test_csi_plugin \
+        tests_source=remote
+  tags:
+    - regression-runner-light
+
+
+test_csi:3.2.0:
+  <<: *test_csi
+  variables:
+    VERSION: 3.2.0
+
+test_csi:master:
+  <<: *test_csi
+  variables:
+    VERSION: master
+
+
+release_csi:
+  stage: deploy
+  script: |
+    set -x
+    VERSION=$(cat version.txt)
+    RELEASE_NAME=docker.io/vastdataorg/csi:${VERSION}
+
+    docker pull ${IMAGE_NAME}
+    docker tag ${IMAGE_NAME} ${RELEASE_NAME}
+
+    echo "Pushing:  ${IMAGE_NAME}  -->  ${RELEASE_NAME}"
+    docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" docker.io
+    docker push ${RELEASE_NAME}
+    echo "pushed ${RELEASE_NAME}"
+  after_script:
+  - docker logout $CI_REGISTRY
+  only:
+  - master
+  when: manual
+  tags:
+    - vast-dev-builder

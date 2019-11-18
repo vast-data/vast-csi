@@ -1,0 +1,355 @@
+# Configuration to deploy release version of the CSI VastData plugin
+# compatible with Kubernetes >=v1.14+
+#
+# Deploying:
+#
+# >> docker run -it --net=host -v `pwd`:/out <IMAGE> template
+# >> kubectl create -f vast-csi-deployment.yaml
+#
+
+# Install the CSI Driver. This simplifies driver discovery and enables us to
+# customize Kubernetes behavior
+# https://kubernetes-csi.github.io/docs/csi-driver-object.html
+apiVersion: storage.k8s.io/v1beta1
+kind: CSIDriver
+metadata:
+  name: csi.vastdata.com
+spec:
+  attachRequired: true
+  podInfoOnMount: false
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: csi-vast-mgmt
+  namespace: kube-system
+type: Opaque
+data:
+  username: {B64_USERNAME}
+  password: {B64_PASSWORD}
+
+---
+
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: vastdata-filesystem
+  namespace: kube-system
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: csi.vastdata.com
+
+---
+
+##############################################
+###########                       ############
+###########   Controller plugin   ############
+###########                       ############
+##############################################
+
+kind: StatefulSet
+apiVersion: apps/v1
+metadata:
+  name: csi-vast-controller
+  namespace: kube-system
+spec:
+  serviceName: "csi-vast"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: csi-vast-controller
+  template:
+    metadata:
+      labels:
+        app: csi-vast-controller
+        role: csi-vast
+    spec:
+      priorityClassName: system-cluster-critical
+      serviceAccount: csi-vast-controller-sa
+      hostNetwork: true
+      containers:
+        - name: csi-provisioner
+          image: quay.io/k8scsi/csi-provisioner:v1.1.0
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--v=5"
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          imagePullPolicy: "Always"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+        - name: csi-attacher
+          image: quay.io/k8scsi/csi-attacher:v1.1.1
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          imagePullPolicy: "Always"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+        - name: csi-vast-plugin
+          image: {IMAGE_NAME}
+          args:
+            - "serve"
+          imagePullPolicy: {PULL_POLICY}
+          securityContext:
+            privileged: true
+            capabilities:
+              add: ["SYS_ADMIN"]
+            allowPrivilegeEscalation: true
+          env:
+            - name: X_CSI_VMS_HOST
+              value: {VMS_HOST}
+            - name: X_CSI_VIP_POOL_NAME
+              value: {VIP_POOL_NAME}
+            - name: X_CSI_DISABLE_VMS_SSL_VERIFICATION
+              value: {DISABLE_SSL}
+            - name: X_CSI_LB_STRATEGY
+              value: {LB_STRATEGY}
+            - name: X_CSI_NFS_EXPORT
+              value: {NFS_EXPORT}
+            - name: CSI_ENDPOINT
+              value: unix:///var/lib/csi/sockets/pluginproxy/csi.sock
+            - name: X_CSI_MODE
+              value: controller
+            - name: X_CSI_VMS_USER
+              valueFrom:
+                secretKeyRef:
+                  name: csi-vast-mgmt
+                  key: username
+            - name: X_CSI_VMS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: csi-vast-mgmt
+                  key: password
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+      volumes:
+        - name: socket-dir
+          emptyDir: {{}}
+---
+
+kind: ServiceAccount
+apiVersion: v1
+metadata:
+  name: csi-vast-controller-sa
+  namespace: kube-system
+
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-vast-provisioner-role
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["csinodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+
+---
+
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-vast-provisioner-binding
+subjects:
+  - kind: ServiceAccount
+    name: csi-vast-controller-sa
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: csi-vast-provisioner-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Attacher must be able to work with PVs, nodes and VolumeAttachments
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-vast-attacher-role
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["csinodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["volumeattachments"]
+    verbs: ["get", "list", "watch", "update"]
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-vast-attacher-binding
+subjects:
+  - kind: ServiceAccount
+    name: csi-vast-controller-sa
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: csi-vast-attacher-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
+########################################
+###########                 ############
+###########   Node plugin   ############
+###########                 ############
+########################################
+
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: csi-vast-node
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: csi-vast-node
+  template:
+    metadata:
+      labels:
+        app: csi-vast-node
+        role: csi-vast
+    spec:
+      priorityClassName: system-node-critical
+      serviceAccount: csi-vast-node-sa
+      hostNetwork: true
+      containers:
+        - name: csi-node-driver-registrar
+          image: quay.io/k8scsi/csi-node-driver-registrar:v1.1.0
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+            - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm -rf /registration/csi.vastdata.com /registration/csi.vastdata.com-reg.sock"]
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+            - name: DRIVER_REG_SOCK_PATH
+              value: /var/lib/kubelet/plugins/csi.vastdata.com/csi.sock
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi/
+            - name: registration-dir
+              mountPath: /registration/
+        - name: csi-vast-plugin
+          image: {IMAGE_NAME}
+          args:
+            - "serve"
+          imagePullPolicy: {PULL_POLICY}
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///csi/csi.sock
+            - name: X_CSI_MODE
+              value: node
+            - name: X_CSI_MOUNT_OPTIONS
+              value: {MOUNT_OPTIONS}
+            - name: X_CSI_NODE_ID
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+          securityContext:
+            privileged: true
+            capabilities:
+              add: ["SYS_ADMIN"]
+            allowPrivilegeEscalation: true
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: pods-mount-dir
+              mountPath: /var/lib/kubelet
+              # needed so that any mounts setup inside this container are
+              # propagated back to the host machine.
+              mountPropagation: "Bidirectional"
+            - name: device-dir
+              mountPath: /dev
+      volumes:
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/
+            type: DirectoryOrCreate
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/csi.vastdata.com
+            type: DirectoryOrCreate
+        - name: pods-mount-dir
+          hostPath:
+            path: /var/lib/kubelet
+            type: Directory
+        - name: device-dir
+          hostPath:
+            path: /dev
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: csi-vast-node-sa
+  namespace: kube-system
+
+---
+
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-vast-node-driver-registrar-role
+  namespace: kube-system
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+---
+
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-vast-node-driver-registrar-binding
+subjects:
+  - kind: ServiceAccount
+    name: csi-vast-node-sa
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: csi-vast-node-driver-registrar-role
+  apiGroup: rbac.authorization.k8s.io
