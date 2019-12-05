@@ -5,3 +5,5 @@ grpcio
 plumbum
 weka-easypy
 requests
+psutil
+prompt_toolkit

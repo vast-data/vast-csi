@@ -20,8 +20,9 @@ from functools import wraps
 from pprint import pformat
 import inspect
 from uuid import uuid4
+import psutil
 
-from plumbum import local
+from plumbum import local, ProcessExecutionError
 from plumbum.typed_env import TypedEnv
 import grpc
 
@@ -29,6 +30,7 @@ from easypy.tokens import Token, ROUNDROBIN, RANDOM, CONTROLLER_AND_NODE, CONTRO
 from easypy.misc import kwargs_resilient, at_least
 from easypy.caching import cached_property
 from easypy.collections import shuffled
+from easypy.exceptions import TException
 
 from . logging import logger, init_logging
 from . utils import patch_traceback_format, RESTSession
@@ -108,6 +110,10 @@ SUPPORTED_ACCESS = [
 ]
 
 
+class MountFailed(TException):
+    template = "Mounting {src} failed"
+
+
 def mount(src, tgt, flags=""):
     cmd = local.cmd.mount
     flags = flags.split(",")
@@ -117,7 +123,12 @@ def mount(src, tgt, flags=""):
         flags += "port=2049,nolock,vers=3".split(",")
     if flags:
         cmd = cmd["-o", ",".join(flags)]
-    cmd[src, tgt] & logger.pipe_info("mount >>")
+    try:
+        cmd[src, tgt] & logger.pipe_info("mount >>")
+    except ProcessExecutionError as exc:
+        if exc.retcode == 32:
+            raise MountFailed(detail=exc.stderr, src=src, tgt=tgt)
+        raise
 
 
 def _validate_capabilities(capabilities):
@@ -504,13 +515,29 @@ class Node(NodeServicer, Instrumented):
     def NodePublishVolume(self, volume_id, target_path, volume_capability, publish_context, readonly=False):
         nfs_server_ip = publish_context["nfs_server_ip"]
         export_path = publish_context["export_path"]
-
-        _validate_capabilities([volume_capability])
-        local.path(target_path).mkdir()
-        logger.info(f"created: {target_path}")
-
         source_path = local.path(export_path)[volume_id]
         mount_spec = f"{nfs_server_ip}:{source_path}"
+
+        _validate_capabilities([volume_capability])
+        target_path = local.path(target_path)
+        if target_path.is_dir():
+            found_mount = next((m for m in psutil.disk_partitions(all=True) if m.mountpoint == target_path), None)
+            if found_mount:
+                opts = set(found_mount.opts.split(","))
+                is_readonly = "ro" in opts
+                if found_mount.device != mount_spec:
+                    raise Abort(
+                        ALREADY_EXISTS,
+                        f"Volume already mounted from {found_mount.device} instead of {mount_spec}")
+                elif is_readonly != readonly:
+                    raise Abort(
+                        ALREADY_EXISTS,
+                        f"Volume already mounted as {'readonly' if is_readonly else 'readwrite'}")
+                else:
+                    logger.info(f"{volume_id} is already mounted: {found_mount}")
+
+        target_path.mkdir()
+        logger.info(f"created: {target_path}")
 
         flags = "ro" if readonly else ""
         mount(mount_spec, target_path, flags=flags)
@@ -522,7 +549,11 @@ class Node(NodeServicer, Instrumented):
         if not target_path.exists():
             logger.info(f"{target_path} does not exist - no need to remove")
         else:
-            local.cmd.umount(target_path)
+            try:
+                local.cmd.umount(target_path)
+            except ProcessExecutionError as exc:
+                if "not mounted" not in exc.stderr:
+                    raise
             logger.info(f"Deleting {target_path}")
             local.path(target_path).delete()
             logger.info(f"{target_path} removed successfully")
