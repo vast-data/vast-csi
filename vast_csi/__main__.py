@@ -96,8 +96,8 @@ def generate_deployment(
             ssl_verify=ssl_verify)
 
         try:
-            vippools = [p.name for p in vms.vippools()]
-            exports = [e.name for e in vms.exports()]
+            vippools = sorted(p.name for p in vms.vippools())
+            exports = sorted({path for e in vms.exports() for path in (e.path, e.alias) if path})
         except (ConnectionError, HTTPError) as exc:
             print(C(f"YELLOW<<Error connecting to Vast Management>>: {exc}"))
             if IS_INTERACTIVE and not prompt(None, "Hit (y) to ignore, any other key to retry: "):
@@ -107,8 +107,8 @@ def generate_deployment(
         else:
             print()
             print(C("GREEN<<Connected successfully!>>"))
-            print(" - VIP Pools:", ", ".join(sorted(vippools or ["(none)"])))
-            print(" - Exports:", ", ".join(sorted(exports or ["(none)"])))
+            print(" - VIP Pools:", ", ".join(vippools or ["(none)"]))
+            print(" - Exports:", ", ".join(exports or ["(none)"]))
             print()
             break
 
@@ -119,7 +119,7 @@ def generate_deployment(
 
     NFS_EXPORT = export or prompt(
         "export",
-        "NFS Export Name: ", default="k8s",
+        "NFS Export Path: ", default="/k8s",
         completer=WordCompleter(exports), complete_while_typing=True)
 
     B64_USERNAME = b64encode("admin".encode("utf8")).decode("utf8")
