@@ -21,10 +21,11 @@ COPY deployment .
 ARG NAME=com.vastdata.csi.plugin
 ARG VERSION
 ARG GIT_COMMIT
+ARG CI_PIPELINE_ID
 RUN echo "$NAME $VERSION $GIT_COMMIT" > version.info 
 
 LABEL name=$NAME
-LABEL version=$VERSION.$GIT_COMMIT
+LABEL version=$VERSION.$GIT_COMMIT.$CI_PIPELINE_ID
 LABEL vendor=vastdata
 
 ENTRYPOINT ["python", "-m", "vast_csi"]
