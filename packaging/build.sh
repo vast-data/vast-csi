@@ -12,7 +12,7 @@ docker build \
     --cache-from vast-csi:dev \
     --build-arg=GIT_COMMIT=$GIT_COMMIT \
     --build-arg=VERSION=$VERSION \
-    --build-arg=VERSION=$CI_PIPELINE_ID \
+    --build-arg=CI_PIPELINE_ID=$CI_PIPELINE_ID \
     -f packaging/Dockerfile \
     .
 
