@@ -20,7 +20,7 @@ def main():
     serve_parse.set_defaults(func=_serve)
 
     template_parse = subparsers.add_parser("template", help='Generate a kubectl template for deploying this CSI plugin')
-    for p in "image hostname username password vippool export load-balancing pull-policy".split():
+    for p in "image hostname username password vippool export load-balancing pull-policy mount-options".split():
         template_parse.add_argument("--" + p)
     template_parse.set_defaults(func=_template)
 
@@ -41,13 +41,14 @@ def _template(args):
         print(C(f"\nWritten to WHITE<<{fname}>>\n"))
         print(f"Inspect the file and then run:")
         print(C(f">> CYAN<<kubectl apply -f {fname}>>\n"))
+        print(C(f"YELLOW<<Be sure to delete the file when done, as it contains Vast Management credentials>>\n"))
     except KeyboardInterrupt:
         return
 
 
 def generate_deployment(
         file, load_balancing=None, pull_policy=None, image=None, hostname=None,
-        username=None, password=None, vippool=None, export=None):
+        username=None, password=None, vippool=None, export=None, mount_options=None):
 
     from . utils import RESTSession
     from requests import HTTPError, ConnectionError
@@ -57,6 +58,7 @@ def generate_deployment(
     from prompt_toolkit.styles import Style
 
     style = Style.from_dict({'': '#AAAABB', 'prompt': '#ffffff'})
+    context = Bunch()
 
     def prompt(arg, message, **kwargs):
         if not IS_INTERACTIVE:
@@ -65,33 +67,33 @@ def generate_deployment(
 
     print(C("\n\nWHITE<<Vast CSI Plugin - Deployment generator for Kubernetes>>\n\n"))
 
-    IMAGE_NAME = image or prompt("image", "Name of this Docker Image: ", default="vast-csi:latest")
+    context.IMAGE_NAME = image or prompt("image", "Name of this Docker Image: ", default="vast-csi:latest")
 
-    LB_STRATEGY = "roundrobin"
+    context.LB_STRATEGY = "roundrobin"
     # opts = ['random', 'roundrobin']
-    # LB_STRATEGY = prompt(
+    # context.LB_STRATEGY = prompt(
     #     "load_balancing"
     #     f"Load-Balancing Strategy ({'|'.join(opts)}): ", default="random", completer=WordCompleter(opts))
 
     opts = ['Never', 'Always']
-    PULL_POLICY = pull_policy or prompt(
+    context.PULL_POLICY = pull_policy or prompt(
         "pull_policy",
         f"Image Pull Policy ({'|'.join(opts)}): ", default="Never", completer=WordCompleter(opts))
 
     exports = vippools = []
     while True:
-        VMS_HOST = hostname or prompt("hostname", "Vast Management hostname: ", default="vms")
+        context.VMS_HOST = hostname or prompt("hostname", "Vast Management hostname: ", default="vms")
         username = username or prompt("username", "Vast Management username: ", default="admin")
         password = password or prompt("password", "Vast Management password: ", is_password=True)
 
-        DISABLE_SSL = '"false"'
-        ssl_verify = DISABLE_SSL != '"false"'
+        context.DISABLE_SSL = '"false"'
+        ssl_verify = context.DISABLE_SSL != '"false"'
         if not ssl_verify:
             import urllib3
             urllib3.disable_warnings()
 
         vms = RESTSession(
-            base_url=f"https://{VMS_HOST}/api",
+            base_url=f"https://{context.VMS_HOST}/api",
             auth=(username, password),
             ssl_verify=ssl_verify)
 
@@ -112,21 +114,26 @@ def generate_deployment(
             print()
             break
 
-    VIP_POOL_NAME = vippool or prompt(
+    context.VIP_POOL_NAME = vippool or prompt(
         "vippool",
         "Virtual IP Pool Name: ", default="vippool-1",
         completer=WordCompleter(vippools), complete_while_typing=True)
 
-    NFS_EXPORT = export or prompt(
+    context.NFS_EXPORT = export or prompt(
         "export",
         "NFS Export Path: ", default="/k8s",
         completer=WordCompleter(exports), complete_while_typing=True)
 
-    B64_USERNAME = b64encode("admin".encode("utf8")).decode("utf8")
-    B64_PASSWORD = b64encode(password.encode("utf8")).decode("utf8")
+    context.MOUNT_OPTIONS = mount_options or prompt(
+        "mount_options",
+        "Additional Mount Options: ", default=""
+    )
+
+    context.B64_USERNAME = b64encode(username.encode("utf8")).decode("utf8")
+    context.B64_PASSWORD = b64encode(password.encode("utf8")).decode("utf8")
 
     template = open("vast-csi.yaml").read()
-    print(re.sub("#.*", "", template.format(**locals())).strip(), file=file)
+    print(re.sub("#.*", "", template.format(**context)).strip(), file=file)
 
 
 if __name__ == '__main__':

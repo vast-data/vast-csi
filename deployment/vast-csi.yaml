@@ -289,6 +289,8 @@ spec:
               value: unix:///csi/csi.sock
             - name: X_CSI_MODE
               value: node
+            - name: X_CSI_MOUNT_OPTIONS
+              value: {MOUNT_OPTIONS}
             - name: X_CSI_NODE_ID
               valueFrom:
                 fieldRef:
