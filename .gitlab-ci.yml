@@ -1,31 +1,30 @@
 image: docker:latest
 
+variables:
+  IMAGE_NAME: ${DOCKER_REGISTRY}/dev/vast-csi:${CI_PIPELINE_ID}
+  DOCKER_REGISTRY: 110450271409.dkr.ecr.eu-west-1.amazonaws.com
 
 build_csi:
-  variables:
-    ECR_REPO: 110450271409.dkr.ecr.eu-west-1.amazonaws.com
   stage: build
   script: |
-    IMAGE_NAME=${ECR_REPO}/dev/vast-csi:${CI_PIPELINE_ID}
+    set -x
     VERSION=$(cat version.txt)
     LATEST=${DOCKER_REGISTRY}/dev/vast-csi:latest
     if (docker pull $LATEST) ; then
       docker tag $LATEST vast-csi:dev  # the cache-source for our subsequent build
     fi
-    bash packaging/build.sh
+    /bin/sh -x packaging/build.sh
     docker tag vast-csi:latest ${IMAGE_NAME}
     docker push ${IMAGE_NAME}
     echo "pushed ${IMAGE_NAME}"
   tags:
     - vast-dev-builder
 
-
 publish_csi: &publish_csi
-  variables:
-    IMAGE_NAME: ${DOCKER_REGISTRY}/dev/vast-csi:${CI_PIPELINE_ID}
-  stage: release
+  stage: test
   when: manual
   script: |
+    set -x
     VERSION=$(cat version.txt)
     RELEASE_NAME=${DOCKER_REGISTRY}/dev/vast-csi:${VERSION}
 
@@ -39,6 +38,7 @@ publish_csi: &publish_csi
 
 release_csi:
   <<: *publish_csi
+  stage: deploy
   script: |
     set -x
     VERSION=$(cat plugins/csi/version.txt)
@@ -51,9 +51,7 @@ release_csi:
     docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" docker.io
     docker push ${RELEASE_NAME}
     echo "pushed ${RELEASE_NAME}"
-
-    scripts/job_es_reporter.sh $VAST_LOGS_DIR es_report.json succeeded || true
   after_script:
-  - docker logout $CI_REGISTRY  # used by publish_csi below
+  - docker logout $CI_REGISTRY
   only:
-    master
+  - master
