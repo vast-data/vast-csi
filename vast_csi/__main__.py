@@ -99,7 +99,7 @@ def generate_deployment(
 
         try:
             vippools = sorted(p.name for p in vms.vippools())
-            exports = sorted({path for e in vms.exports() for path in (e.path, e.alias) if path})
+            exports = sorted({(v.alias or v.path) for v in vms.views() if "NFS" in v.protocols})
         except (ConnectionError, HTTPError) as exc:
             print(C(f"YELLOW<<Error connecting to Vast Management>>: {exc}"))
             if IS_INTERACTIVE and not prompt(None, "Hit (y) to ignore, any other key to retry: "):
