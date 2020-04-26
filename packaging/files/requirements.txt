@@ -3,7 +3,7 @@
 protobuf
 grpcio
 plumbum
-weka-easypy
+real-easypy
 requests
 psutil
 prompt_toolkit
