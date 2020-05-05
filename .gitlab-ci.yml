@@ -20,24 +20,48 @@ build_csi:
   tags:
     - vast-dev-builder
 
-publish_csi: &publish_csi
+
+.test_csi: &test_csi
+  image: $DOCKER_REGISTRY/dev/orion/core_images:utility_docker_ubuntu_17.10-2
   stage: test
   when: manual
   script: |
     set -x
-    VERSION=$(cat version.txt)
-    RELEASE_NAME=${DOCKER_REGISTRY}/dev/vast-csi:${VERSION}
 
-    docker pull ${IMAGE_NAME}
-    docker tag ${IMAGE_NAME} ${RELEASE_NAME}
-    docker push ${RELEASE_NAME}
-    echo "pushed ${RELEASE_NAME}"
+    aws s3api get-object --bucket vast-infra-eu-west-1 --key versions/$VERSION /tmp/data
+    VAST_PIPE=$(cat /tmp/data)
+
+    scripts/run_jenkins_job_etcd_prio_queue.py \
+      --base-queue-prefix=queues \
+      --etcd-prefix=teams \
+      --jenkins-job-name=single_test_from_pipeline \
+      --jenkins-server=$JENKINS_SERVER \
+      --jenkins-user=$JENKINS_USER \
+      --jenkins-password=$JENKINS_PASSWORD  \
+      --etcd-server=127.0.0.1 \
+      --object-name=vast-csi-$CI_PIPELINE_ID \
+      --blocking -- \
+        pipeline=$VAST_PIPE \
+        slash_params="--without-jira-test-report --skip-harvest --kwarg=csi_plugin_version=$CI_PIPELINE_ID" \
+        slash_filter=test_csi_plugin \
+        tests_source=remote
   tags:
-    - vast-dev-builder
+    - regression-runner-light
+
+
+test_csi:3.0.1:
+  <<: *test_csi
+  variables:
+    VERSION: 3.0.1
+
+
+test_csi:3.2.0:
+  <<: *test_csi
+  variables:
+    VERSION: 3.2.0
 
 
 release_csi:
-  <<: *publish_csi
   stage: deploy
   script: |
     set -x
@@ -55,3 +79,5 @@ release_csi:
   - docker logout $CI_REGISTRY
   only:
   - master
+  tags:
+    - vast-dev-builder
