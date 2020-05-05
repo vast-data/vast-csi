@@ -4,11 +4,6 @@ FROM python:3.6-alpine
 
 WORKDIR /root
 
-# for easier debugging
-RUN wget -q https://github.com/tigrawap/slit/releases/download/1.2.0/slit_linux_amd64 -O /tmp/slit && \
-	chmod a+x /tmp/slit && \
-	mv /tmp/slit /usr/bin/slit
-
 COPY packaging/files .
 # RUN apt-get update && apt-get install -y nfs-common && \
 RUN apk add --no-cache nfs-utils build-base linux-headers && \

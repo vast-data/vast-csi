@@ -3,6 +3,7 @@ import re
 import argparse
 from easypy.colors import C
 from easypy.bunch import Bunch
+from easypy.semver import SemVer
 
 
 IS_INTERACTIVE = sys.stdin.isatty()
@@ -98,8 +99,7 @@ def generate_deployment(
             ssl_verify=ssl_verify)
 
         try:
-            vippools = sorted(p.name for p in vms.vippools())
-            exports = sorted({(v.alias or v.path) for v in vms.views() if "NFS" in v.protocols})
+            versions = vms.versions()
         except (ConnectionError, HTTPError) as exc:
             print(C(f"YELLOW<<Error connecting to Vast Management>>: {exc}"))
             if IS_INTERACTIVE and not prompt(None, "Hit (y) to ignore, any other key to retry: "):
@@ -107,8 +107,15 @@ def generate_deployment(
             else:
                 break
         else:
+            vippools = sorted(p.name for p in vms.vippools())
+            version = SemVer.loads(max(versions, key=lambda v: v.created).sys_version)
+            if version >= SemVer(3):
+                exports = sorted({(v.alias or v.path) for v in vms.views() if "NFS" in v.protocols})
+            else:
+                exports = sorted({path for e in vms.exports() for path in (e.path, e.alias) if path})
+
             print()
-            print(C("GREEN<<Connected successfully!>>"))
+            print(C("GREEN<<Connected successfully!>>"), "VMS Version:", version)
             print(" - VIP Pools:", ", ".join(vippools or ["(none)"]))
             print(" - Exports:", ", ".join(exports or ["(none)"]))
             print()

@@ -1,14 +1,11 @@
 from collections import defaultdict
-import functools
 import threading
 import re
-import grpc
 import requests
 import json
 
 from pprint import pformat
 from plumbum import local
-from easypy.decorations import parametrizeable_decorator
 from easypy.caching import locking_cache
 from easypy.bunch import Bunch
 
@@ -73,33 +70,6 @@ class RESTSession(requests.Session):
         func.__qualname__ = f"{self.__class__.__qualname__}.{attr}"
         setattr(self, attr, func)
         return func
-
-
-@parametrizeable_decorator
-def unique(func, key_name):
-    method_name = func.__name__
-    lock = LOCKS[method_name]
-    workers = {}
-
-    @functools.wraps(func)
-    def wrapper(self, request, context):
-        worker_key = getattr(request, key_name)
-        my_thread = threading.current_thread().ident
-
-        with lock:
-            actual = workers.setdefault(worker_key, my_thread)
-
-            if actual != my_thread:
-                context.abort(
-                    grpc.StatusCode.ABORTED,
-                    f'thread {actual} is already performing {method_name} on {worker_key}')
-
-            try:
-                return func(self, request, context)
-            finally:
-                del workers[worker_key]
-
-    return wrapper
 
 
 PATH_ALIASES = {
