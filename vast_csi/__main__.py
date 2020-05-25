@@ -131,10 +131,10 @@ def generate_deployment(
         "NFS Export Path: ", default="/k8s",
         completer=WordCompleter(exports), complete_while_typing=True)
 
-    context.MOUNT_OPTIONS = mount_options or prompt(
+    context.MOUNT_OPTIONS = prompt(
         "mount_options",
         "Additional Mount Options: ", default=""
-    )
+    ) if mount_options is None else ""
 
     context.B64_USERNAME = b64encode(username.encode("utf8")).decode("utf8")
     context.B64_PASSWORD = b64encode(password.encode("utf8")).decode("utf8")
