@@ -44,12 +44,15 @@ LOAD_BALANCING_STRATEGIES = {ROUNDROBIN, RANDOM}
 
 class Config(TypedEnv):
 
+    class Path(TypedEnv.Str):
+        convert = staticmethod(local.path)
+
     plugin_name, plugin_version, git_commit = open("version.info").read().strip().split()
 
-    controller_root_mount = TypedEnv.Str("X_CSI_CTRL_ROOT_MOUNT", default=f"/csi-volumes")
+    controller_root_mount = Path("X_CSI_CTRL_ROOT_MOUNT", default=local.path("/csi-volumes"))
     mock_vast = TypedEnv.Bool("X_CSI_MOCK_VAST", default=False)
     nfs_server = TypedEnv.Str("X_CSI_NFS_SERVER", default="127.0.0.1")
-    root_export = TypedEnv.Str("X_CSI_NFS_EXPORT", default="/k8s")
+    root_export = Path("X_CSI_NFS_EXPORT", default=local.path("/k8s"))
     log_level = TypedEnv.Str("X_CSI_LOG_LEVEL", default="info")
     csi_sanity_test = TypedEnv.Bool("X_CSI_SANITY_TEST", default=False)
     node_id = TypedEnv.Str("X_CSI_NODE_ID", default=socket.getfqdn())
@@ -303,7 +306,7 @@ class Controller(ControllerServicer, Instrumented):
         return vip.ip
 
     def get_quota(self, volume_id):
-        quotas = self.vms_session.quotas(path__contains=f"{CONF.root_export}/{volume_id}")
+        quotas = self.vms_session.quotas(path__contains=str(CONF.root_export[volume_id]))
         if not quotas:
             return
         elif len(quotas) > 1:
@@ -314,7 +317,7 @@ class Controller(ControllerServicer, Instrumented):
 
     @cached_property
     def root_mount(self):
-        target_path = local.path(CONF.controller_root_mount)
+        target_path = CONF.controller_root_mount
         if not target_path.exists():
             target_path.mkdir()
             target_path["NOT_MOUNTED"].touch()
@@ -431,7 +434,7 @@ class Controller(ControllerServicer, Instrumented):
         data = dict(
             create_dir=True,
             name=f"csi-{volume_id}",
-            path=f"{CONF.root_export}/{volume_id}",
+            path=str(CONF.root_export[volume_id]),
             hard_limit=requested_capacity)
 
         if CONF.mock_vast:
@@ -485,7 +488,7 @@ class Controller(ControllerServicer, Instrumented):
 
         return types.CtrlPublishResp(
             publish_context=dict(
-                export_path=CONF.root_export,
+                export_path=str(CONF.root_export),
                 nfs_server_ip=nfs_server_ip,
             ))
 
