@@ -28,8 +28,8 @@ build_csi:
   script: |
     set -x
 
-    aws s3api get-object --bucket vast-infra-eu-west-1 --key versions/$VERSION /tmp/data
-    VAST_PIPE=$(cat /tmp/data)
+    VAST_PIPE=$(curl -s https://vast-infra-eu-west-1.s3-eu-west-1.amazonaws.com/versions/$VERSION)
+    VAST_PIPE=${VAST_PIPE##*-}  # chop the prefix, keep the pipe id
 
     scripts/run_jenkins_job_etcd_prio_queue.py \
       --base-queue-prefix=queues \
@@ -49,16 +49,15 @@ build_csi:
     - regression-runner-light
 
 
-test_csi:3.0.1:
-  <<: *test_csi
-  variables:
-    VERSION: 3.0.1
-
-
 test_csi:3.2.0:
   <<: *test_csi
   variables:
     VERSION: 3.2.0
+
+test_csi:master:
+  <<: *test_csi
+  variables:
+    VERSION: master
 
 
 release_csi:
