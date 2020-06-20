@@ -1,0 +1,15 @@
+VAST Data Notice Report
+
+
+
+Copyright 2020
+
+
+
+About this document
+
+The VAST CSI Driver used the following open source code projects as reference:
+
+
+ember-csi (https://github.com/embercsi/ember-csi) : Apache License 2.0
+csi-digitalocean (https://github.com/digitalocean/csi-digitalocean) : Apache License 2.0
