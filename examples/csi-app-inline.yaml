@@ -13,4 +13,4 @@ spec:
   volumes:
     - name: my-csi-volume
       csi:
-        driver: com.vastdata.csi.plugin
+        driver: csi.vastdata.com

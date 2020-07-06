@@ -13,7 +13,7 @@
 apiVersion: storage.k8s.io/v1beta1
 kind: CSIDriver
 metadata:
-  name: com.vastdata.csi.plugin
+  name: csi.vastdata.com
 spec:
   attachRequired: true
   podInfoOnMount: false
@@ -39,7 +39,7 @@ metadata:
   namespace: kube-system
   annotations:
     storageclass.kubernetes.io/is-default-class: "true"
-provisioner: com.vastdata.csi.plugin
+provisioner: csi.vastdata.com
 
 ---
 
@@ -256,12 +256,12 @@ spec:
           lifecycle:
             preStop:
               exec:
-                command: ["/bin/sh", "-c", "rm -rf /registration/com.vastdata.csi.plugin /registration/com.vastdata.csi.plugin-reg.sock"]
+                command: ["/bin/sh", "-c", "rm -rf /registration/csi.vastdata.com /registration/csi.vastdata.com-reg.sock"]
           env:
             - name: ADDRESS
               value: /csi/csi.sock
             - name: DRIVER_REG_SOCK_PATH
-              value: /var/lib/kubelet/plugins/com.vastdata.csi.plugin/csi.sock
+              value: /var/lib/kubelet/plugins/csi.vastdata.com/csi.sock
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
@@ -310,7 +310,7 @@ spec:
             type: DirectoryOrCreate
         - name: plugin-dir
           hostPath:
-            path: /var/lib/kubelet/plugins/com.vastdata.csi.plugin
+            path: /var/lib/kubelet/plugins/csi.vastdata.com
             type: DirectoryOrCreate
         - name: pods-mount-dir
           hostPath:

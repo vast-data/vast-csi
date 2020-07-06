@@ -13,7 +13,7 @@ RUN apk add --no-cache nfs-utils build-base linux-headers && \
 COPY vast_csi vast_csi
 COPY deployment .
 
-ARG NAME=com.vastdata.csi.plugin
+ARG NAME=csi.vastdata.com
 ARG VERSION
 ARG GIT_COMMIT
 ARG CI_PIPELINE_ID
