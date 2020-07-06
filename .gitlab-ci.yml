@@ -1,8 +1,8 @@
 image: docker:latest
 
 variables:
-  IMAGE_NAME: ${DOCKER_REGISTRY}/dev/vast-csi:${CI_PIPELINE_ID}
-  DOCKER_REGISTRY: 110450271409.dkr.ecr.eu-west-1.amazonaws.com
+  DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
+  IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:${CI_PIPELINE_ID}
 
 build_csi:
   stage: build
@@ -28,7 +28,7 @@ build_csi:
   script: |
     set -x
 
-    VAST_PIPE=$(curl -s https://vast-infra-eu-west-1.s3-eu-west-1.amazonaws.com/versions/$VERSION)
+    VAST_PIPE=$(curl -s https://${VERSIONS_BUCKET}.s3-eu-west-1.amazonaws.com/versions/$VERSION)
     VAST_PIPE=${VAST_PIPE##*-}  # chop the prefix, keep the pipe id
 
     scripts/run_jenkins_job_etcd_prio_queue.py \
@@ -60,23 +60,60 @@ test_csi:master:
     VERSION: master
 
 
-release_csi:
+update_dockerhub:
   stage: deploy
   script: |
     set -x
-    VERSION=$(cat plugins/csi/version.txt)
+    VERSION=$(cat version.txt)
     RELEASE_NAME=docker.io/vastdataorg/csi:${VERSION}
 
     docker pull ${IMAGE_NAME}
     docker tag ${IMAGE_NAME} ${RELEASE_NAME}
 
     echo "Pushing:  ${IMAGE_NAME}  -->  ${RELEASE_NAME}"
-    docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" docker.io
+    docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} $DOCKER_HUB
     docker push ${RELEASE_NAME}
     echo "pushed ${RELEASE_NAME}"
+
   after_script:
-  - docker logout $CI_REGISTRY
+  - docker logout $DOCKER_HUB
   only:
   - master
+  when: manual
+  tags:
+    - vast-dev-builder
+
+
+update_github:
+  image:
+    name: alpine/git
+    entrypoint: [""]
+  stage: deploy
+  script: |
+    set -x
+    VERSION=$(cat version.txt)
+
+    mkdir ~/.ssh/
+    cp $GITHUB_KEY ~/.ssh/id_rsa
+    chmod 0600 ~/.ssh/id_rsa
+    ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
+    git config --global user.email "ofer.koren@vastdata.com"
+    git config --global user.name "Ofer Koren"
+
+    git remote -v
+    git remote add github git@github.com:vast-data/vast-csi.git || true
+    git fetch github public
+    git checkout -B public FETCH_HEAD
+    git checkout $CI_COMMIT_SHA -- .
+    git commit -am "VAST Data CSI Plugin - $VERSION
+
+      (from $CI_COMMIT_SHA)"
+
+    git tag -f $VERSION
+    git push -f --tags github HEAD:public
+
+  only:
+  - master
+  when: manual
   tags:
     - vast-dev-builder
