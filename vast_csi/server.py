@@ -15,6 +15,7 @@
 
 import os
 import socket
+import ctypes
 from concurrent import futures
 from functools import wraps
 from pprint import pformat
@@ -22,7 +23,7 @@ import inspect
 from uuid import uuid4
 import psutil
 
-from plumbum import local, ProcessExecutionError
+from plumbum import local
 from plumbum.typed_env import TypedEnv
 import grpc
 
@@ -40,6 +41,7 @@ from . import csi_types as types
 
 
 LOAD_BALANCING_STRATEGIES = {ROUNDROBIN, RANDOM}
+LIBC = ctypes.CDLL('libc.so.6', use_errno=True)
 
 
 class Config(TypedEnv):
@@ -48,8 +50,8 @@ class Config(TypedEnv):
         convert = staticmethod(local.path)
 
     plugin_name, plugin_version, git_commit = open("version.info").read().strip().split()
+    controller_root_mount = local.path("volumes")
 
-    controller_root_mount = Path("X_CSI_CTRL_ROOT_MOUNT", default=local.path("/csi-volumes"))
     mock_vast = TypedEnv.Bool("X_CSI_MOCK_VAST", default=False)
     nfs_server = TypedEnv.Str("X_CSI_NFS_SERVER", default="127.0.0.1")
     root_export = Path("X_CSI_NFS_EXPORT", default=local.path("/k8s"))
@@ -117,21 +119,55 @@ class MountFailed(TException):
     template = "Mounting {src} failed"
 
 
+class UmountFailed(TException):
+    template = "Unmounting {path} failed"
+
+
 def mount(src, tgt, flags=""):
-    cmd = local.cmd.mount
-    flags = flags.split(",")
-    if CONF.mount_options:
-        flags += CONF.mount_options.split(",")
+    opts = dict(
+        vers="3",
+        proto="tcp",
+    )
+
+    def update_opts(flags):
+        if not flags:
+            return
+        for flag in flags.split(","):
+            flag, _, value = flag.partition("=")
+            opts[flag] = value
+
+    update_opts(CONF.mount_options)
     if CONF.mock_vast:
-        flags += "port=2049,nolock,vers=3".split(",")
-    if flags:
-        cmd = cmd["-o", ",".join(flags)]
-    try:
-        cmd[src, tgt] & logger.pipe_info("mount >>")
-    except ProcessExecutionError as exc:
-        if exc.retcode == 32:
-            raise MountFailed(detail=exc.stderr, src=src, tgt=tgt)
-        raise
+        opts.update(port="2049", nolock=None, vers="3")
+    update_opts(flags)
+
+    addr, _, export = src.partition(":")
+    if not all(p.isdigit() for p in addr.split(".")):
+        # convert hostname to ip address
+        addr = socket.gethostbyname(addr)
+    opts.update(addr=addr)
+
+    flags = ",".join(k if v in ('', None) else f"{k}={v}" for k, v in opts.items())
+    typ = "nfs"
+    ret = LIBC.mount(src.encode(), tgt.encode(), typ.encode(), 0, flags.encode())
+    if ret < 0:
+        errno = ctypes.get_errno()
+        raise MountFailed(errno=errno, detail=os.strerror(errno), src=src, tgt=tgt, flags=flags)
+
+    logger.info(f"mounted: {tgt} as {src} (ret={ret})")
+
+
+def umount(tgt):
+    tgt = tgt.encode()
+    ret = LIBC.umount(tgt)
+    if ret < 0:
+        from errno import EINVAL
+        errno = ctypes.get_errno()
+        if errno == EINVAL:
+            return
+        raise UmountFailed(errno=errno, detail=os.strerror(errno), path=tgt)
+
+    logger.info(f"un-mounted: {tgt} (ret={ret})")
 
 
 def _validate_capabilities(capabilities):
@@ -327,7 +363,6 @@ class Controller(ControllerServicer, Instrumented):
             nfs_server = self.get_vip()
             mount_spec = f"{nfs_server}:{CONF.root_export}"
             mount(mount_spec, target_path)
-            logger.info(f"mounted successfully: {target_path}")
 
         return target_path
 
@@ -440,6 +475,7 @@ class Controller(ControllerServicer, Instrumented):
         if CONF.mock_vast:
             vol_dir = self.root_mount[volume_id]
             vol_dir.mkdir()
+            logger.info(f"CREATED MOCK ROOT: {vol_dir}")
         else:
             quota = self.vms_session.post("quotas", data=data)
             volume_context.update(quota_id=quota.id)
@@ -544,7 +580,6 @@ class Node(NodeServicer, Instrumented):
 
         flags = "ro" if readonly else ""
         mount(mount_spec, target_path, flags=flags)
-        logger.info(f"mounted: {target_path}")
         return types.NodePublishResp()
 
     def NodeUnpublishVolume(self, target_path):
@@ -552,11 +587,7 @@ class Node(NodeServicer, Instrumented):
         if not target_path.exists():
             logger.info(f"{target_path} does not exist - no need to remove")
         else:
-            try:
-                local.cmd.umount(target_path)
-            except ProcessExecutionError as exc:
-                if "not mounted" not in exc.stderr:
-                    raise
+            umount(target_path)
             logger.info(f"Deleting {target_path}")
             local.path(target_path).delete()
             logger.info(f"{target_path} removed successfully")

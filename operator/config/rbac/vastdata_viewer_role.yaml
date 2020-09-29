@@ -1,0 +1,20 @@
+# permissions for end users to view vastdata.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vastdata-viewer-role
+rules:
+- apiGroups:
+  - csi.vastdata.com
+  resources:
+  - vastdata
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - csi.vastdata.com
+  resources:
+  - vastdata/status
+  verbs:
+  - get

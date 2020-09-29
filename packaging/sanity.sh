@@ -20,7 +20,7 @@ docker network create $NETWORK 2> /dev/null || true
 
 trap "(docker kill nfs test-subject; docker network rm $NETWORK) 1> /dev/null 2>&1 || true" exit
 
-docker run -d --name nfs --rm --privileged --network $NETWORK erezhorev/dockerized_nfs_server
+docker run -d --name nfs --rm --privileged --network $NETWORK erezhorev/dockerized_nfs_server csi
 
 docker run \
     --init \
@@ -32,7 +32,7 @@ docker run \
     -e X_CSI_MOCK_VAST=yes \
     -e X_CSI_SANITY_TEST=yes \
     -e X_CSI_NFS_SERVER=nfs \
-    -e X_CSI_NFS_EXPORT=/exports \
+    -e X_CSI_NFS_EXPORT=/exports/csi \
     vast-csi:dev serve &
 
 if docker run \

@@ -1,0 +1,20 @@
+image: registry.connect.redhat.com/vastdata/csi:1.1
+lb_strategy: roundrobin
+mount_options: ""
+nfs_export: "/k8s"
+pull_policy: "Always"
+vip_pool_name: "vippool-1"
+vms_host: "vms"
+enable_ssl: false
+
+
+# username and password should be defined as a Secret
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: csi-vast-mgmt-{crd.name}
+#   namespace: {crd.namespace}
+# type: Opaque
+# data:
+#   username: {B64_USERNAME}
+#   password: {B64_PASSWORD}

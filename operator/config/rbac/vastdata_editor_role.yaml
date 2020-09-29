@@ -1,0 +1,24 @@
+# permissions for end users to edit vastdata.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vastdata-editor-role
+rules:
+- apiGroups:
+  - csi.vastdata.com
+  resources:
+  - vastdata
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - csi.vastdata.com
+  resources:
+  - vastdata/status
+  verbs:
+  - get

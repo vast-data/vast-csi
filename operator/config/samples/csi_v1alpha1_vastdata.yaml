@@ -1,0 +1,6 @@
+apiVersion: csi.vastdata.com/v1alpha1
+kind: VastData
+metadata:
+  name: vastdata-sample
+spec:
+  foo: bar

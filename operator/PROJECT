@@ -1,0 +1,8 @@
+domain: vastdata.com
+layout: ansible.sdk.operatorframework.io/v1
+projectName: operator
+resources:
+- group: csi
+  kind: VastData
+  version: v1alpha1
+version: 3-alpha

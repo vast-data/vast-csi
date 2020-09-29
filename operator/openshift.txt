@@ -1,0 +1,41 @@
+export RELEASE_VERSION=v1.0.1
+# Linux
+curl -LO https://github.com/operator-framework/operator-sdk/releases/download/${RELEASE_VERSION}/operator-sdk-${RELEASE_VERSION}-x86_64-linux-gnu
+curl -LO https://github.com/operator-framework/operator-sdk/releases/download/${RELEASE_VERSION}/ansible-operator-${RELEASE_VERSION}-x86_64-linux-gnu
+curl -LO https://github.com/operator-framework/operator-sdk/releases/download/${RELEASE_VERSION}/helm-operator-${RELEASE_VERSION}-x86_64-linux-gnu
+
+
+curl -LO https://github.com/operator-framework/operator-sdk/releases/download/${RELEASE_VERSION}/operator-sdk-${RELEASE_VERSION}-x86_64-linux-gnu.asc
+curl -LO https://github.com/operator-framework/operator-sdk/releases/download/${RELEASE_VERSION}/ansible-operator-${RELEASE_VERSION}-x86_64-linux-gnu.asc
+curl -LO https://github.com/operator-framework/operator-sdk/releases/download/${RELEASE_VERSION}/helm-operator-${RELEASE_VERSION}-x86_64-linux-gnu.asc
+
+# gpg --keyserver keyserver.ubuntu.com --recv-key "90D2B445"
+
+gpg --verify operator-sdk-${RELEASE_VERSION}-x86_64-linux-gnu.asc
+gpg --verify ansible-operator-${RELEASE_VERSION}-x86_64-linux-gnu.asc
+gpg --verify helm-operator-${RELEASE_VERSION}-x86_64-linux-gnu.asc
+
+
+chmod +x operator-sdk-${RELEASE_VERSION}-x86_64-linux-gnu && \
+	sudo mkdir -p /usr/local/bin/ && \
+	sudo cp operator-sdk-${RELEASE_VERSION}-x86_64-linux-gnu /usr/local/bin/operator-sdk && \
+	rm operator-sdk-${RELEASE_VERSION}-x86_64-linux-gnu
+
+chmod +x ansible-operator-${RELEASE_VERSION}-x86_64-linux-gnu && \
+	sudo mkdir -p /usr/local/bin/ && \
+	sudo cp ansible-operator-${RELEASE_VERSION}-x86_64-linux-gnu /usr/local/bin/ansible-operator && \
+	rm ansible-operator-${RELEASE_VERSION}-x86_64-linux-gnu
+
+chmod +x helm-operator-${RELEASE_VERSION}-x86_64-linux-gnu && \
+	sudo mkdir -p /usr/local/bin/ && \
+	sudo cp helm-operator-${RELEASE_VERSION}-x86_64-linux-gnu /usr/local/bin/helm-operator && \
+	rm helm-operator-${RELEASE_VERSION}-x86_64-linux-gnu
+
+
+
+pip3 install operator-courier
+
+
+operator-sdk init --plugins=ansible --domain=vastdata.com
+operator-sdk create api --group csi --version v1alpha1 --kind VastData --generate-role
+operator-sdk new vastdata-operator --api-version=csi.vastdata.com/v1alpha1 --kind=VastData --type=ansible
