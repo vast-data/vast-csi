@@ -109,8 +109,8 @@ spec:
               value: {VMS_HOST}
             - name: X_CSI_VIP_POOL_NAME
               value: {VIP_POOL_NAME}
-            - name: X_CSI_DISABLE_VMS_SSL_VERIFICATION
-              value: {DISABLE_SSL}
+            - name: X_CSI_ENABLE_VMS_SSL_VERIFICATION
+              value: {ENABLE_SSL}
             - name: X_CSI_LB_STRATEGY
               value: {LB_STRATEGY}
             - name: X_CSI_NFS_EXPORT
