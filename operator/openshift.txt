@@ -36,6 +36,19 @@ chmod +x helm-operator-${RELEASE_VERSION}-x86_64-linux-gnu && \
 pip3 install operator-courier
 
 
+
+operator-sdk, ansible-operator, helm-operator, operator-courier, oc, podman, opm
+
 operator-sdk init --plugins=ansible --domain=vastdata.com
 operator-sdk create api --group csi --version v1alpha1 --kind VastData --generate-role
-operator-sdk new vastdata-operator --api-version=csi.vastdata.com/v1alpha1 --kind=VastData --type=ansible
+##?? operator-sdk new vastdata-operator --api-version=csi.vastdata.com/v1alpha1 --kind=VastData --type=ansible
+
+
+sudo yum -y install podman
+
+oc image extract registry.redhat.io/openshift4/ose-operator-registry:v4.5 \
+    -a ${REG_CREDS} \
+    --path /usr/bin/opm:. \
+    --confirm
+
+opm index add --bundles quay.io/vastdata/csi-operator:late --tag quay.io/vastdata/test-csi-catalog:latest

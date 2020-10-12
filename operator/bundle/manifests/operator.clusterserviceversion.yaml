@@ -1,0 +1,192 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: |-
+      [
+        {
+          "apiVersion": "csi.vastdata.com/v1alpha1",
+          "kind": "VastData",
+          "metadata": {
+            "name": "my-vast"
+          },
+          "spec": {
+            "lb_strategy": roundrobin,
+            "mount_options": "",
+            "nfs_export": "/k8s",
+            "pull_policy": "Always",
+            "vip_pool_name": "vippool-1",
+            "vms_host": "my-vast.company.com",
+            "enable_ssl": false,
+          }
+        }
+      ]
+    capabilities: Basic Install
+    operators.operatorframework.io/builder: operator-sdk-v1.0.1
+    operators.operatorframework.io/project_layout: ansible.sdk.operatorframework.io/v1
+    categories: storage,csi
+    description: Operator for VAST Data CSI Driver
+    containerImage: quay.io/vastdata/csi-operator:latest
+    createdAt: "2020-10-05"
+    support: VASTData
+    repository: https://github.com/vast-data/vast-csi
+
+  name: operator.v0.0.1
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - kind: VastData
+      name: vastdata.csi.vastdata.com
+      version: v1alpha1
+  description: |
+    Operator for VAST Data CSI Driver
+
+    Installation instructions to be filled out
+  displayName: VAST Data CSI Operator
+  icon:
+  - base64data: "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"
+    mediatype: "image/png"
+  install:
+    spec:
+      clusterPermissions:
+      - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - secrets
+          - pods
+          - pods/exec
+          - pods/log
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - apps
+          resources:
+          - deployments
+          - daemonsets
+          - replicasets
+          - statefulsets
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - csi.vastdata.com
+          resources:
+          - vastdata
+          - vastdata/status
+          - vastdata/finalizers
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - authentication.k8s.io
+          resources:
+          - tokenreviews
+          verbs:
+          - create
+        - apiGroups:
+          - authorization.k8s.io
+          resources:
+          - subjectaccessreviews
+          verbs:
+          - create
+        serviceAccountName: default
+      deployments:
+      - name: operator-controller-manager
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              control-plane: controller-manager
+          strategy: {}
+          template:
+            metadata:
+              labels:
+                control-plane: controller-manager
+            spec:
+              containers:
+              - args:
+                - --secure-listen-address=0.0.0.0:8443
+                - --upstream=http://127.0.0.1:8080/
+                - --logtostderr=true
+                - --v=10
+                image: gcr.io/kubebuilder/kube-rbac-proxy:v0.5.0
+                name: kube-rbac-proxy
+                ports:
+                - containerPort: 8443
+                  name: https
+                resources: {}
+              - args:
+                - --metrics-addr=127.0.0.1:8080
+                - --enable-leader-election
+                - --leader-election-id=operator
+                image: quay.io/vastdata/csi-operator:latest
+                name: manager
+                resources: {}
+              terminationGracePeriodSeconds: 10
+      permissions:
+      - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - configmaps
+          verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+          - patch
+          - delete
+        - apiGroups:
+          - ""
+          resources:
+          - events
+          verbs:
+          - create
+          - patch
+        serviceAccountName: default
+    strategy: deployment
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - storage
+  - csi
+  - vast
+  - vastdata
+  links:
+  - name: VAST Data
+    url: https://www.vastdata.com
+  maintainers:
+  - email: rnd@vastdata.com
+    name: VAST Data R&D - Infrastructure Team
+  maturity: alpha
+  provider:
+    name: VAST Data
+    url: www.vastdata.com
+  version: 0.0.1
