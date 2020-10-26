@@ -53,6 +53,14 @@ spec:
       clusterPermissions:
       - rules:
         - apiGroups:
+            - security.openshift.io
+          resources:
+            - securitycontextconstraints
+          resourceNames:
+            - privileged
+          verbs:
+            - use
+        - apiGroups:
           - ""
           resources:
           - secrets
@@ -108,7 +116,7 @@ spec:
           - subjectaccessreviews
           verbs:
           - create
-        serviceAccountName: default
+        serviceAccountName: vastdata-operator
       deployments:
       - name: operator-controller-manager
         spec:
