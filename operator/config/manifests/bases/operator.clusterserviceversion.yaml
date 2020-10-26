@@ -1,0 +1,49 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Basic Install
+    operators.operatorframework.io/builder: operator-sdk-v1.0.1
+    operators.operatorframework.io/project_layout: ansible.sdk.operatorframework.io/v1
+  name: operator.vX.Y.Z
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions: {}
+  description: Operator for VAST Data CSI Driver
+  displayName: VAST Data CSI Operator
+  icon:
+  - base64data: ""
+    mediatype: ""
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - storage
+  - csi
+  - vast
+  - vastdata
+  links:
+  - name: Operator
+    url: https://operator.domain
+  maintainers:
+  - email: ofer.koren@vastdata.com
+    name: Ofer Koren
+  - email: alon@vastdata.com
+    name: Alon Horev
+  maturity: alpha
+  provider:
+    name: VASTData
+    url: www.vastdata.com
+  version: 0.0.0
