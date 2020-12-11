@@ -64,7 +64,12 @@ class Config(TypedEnv):
     vms_password = TypedEnv.Str("X_CSI_VMS_PASSWORD", default="admin")
     ssl_verify = TypedEnv.Bool("X_CSI_DISABLE_VMS_SSL_VERIFICATION", default=False)
 
-    mount_options = TypedEnv.Str("X_CSI_MOUNT_OPTIONS", default="")  # For example: "port=2049,nolock,vers=3"
+    _mount_options = TypedEnv.Str("X_CSI_MOUNT_OPTIONS", default="")  # For example: "port=2049,nolock,vers=3"
+
+    @property
+    def mount_options(self):
+        s = self._mount_options.strip()
+        return list({p for p in s.split(',') if p})
 
     _load_balancing = TypedEnv.Str("X_CSI_LB_STRATEGY", default="roundrobin")
     _mode = TypedEnv.Str("CSI_MODE", default="controller_and_node")
@@ -120,8 +125,7 @@ class MountFailed(TException):
 def mount(src, tgt, flags=""):
     cmd = local.cmd.mount
     flags = flags.split(",")
-    if CONF.mount_options:
-        flags += CONF.mount_options.split(",")
+    flags += CONF.mount_options
     if CONF.mock_vast:
         flags += "port=2049,nolock,vers=3".split(",")
     if flags:
