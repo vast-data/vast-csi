@@ -73,7 +73,7 @@ class Config(TypedEnv):
 
     _load_balancing = TypedEnv.Str("X_CSI_LB_STRATEGY", default="roundrobin")
     _mode = TypedEnv.Str("CSI_MODE", default="controller_and_node")
-    _endpoint = TypedEnv.Str("CSI_ENDPOINT", default=f'unix:///var/run/csi.sock')
+    _endpoint = TypedEnv.Str("CSI_ENDPOINT", default='unix:///var/run/csi.sock')
 
     @property
     def load_balancing(self):

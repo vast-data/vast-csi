@@ -47,9 +47,9 @@ def _template(args):
         with open(f"/out/{fname}", "w") as file:
             generate_deployment(file, **args)
         print(C(f"\nWritten to WHITE<<{fname}>>\n"))
-        print(f"Inspect the file and then run:")
+        print("Inspect the file and then run:")
         print(C(f">> CYAN<<kubectl apply -f {fname}>>\n"))
-        print(C(f"YELLOW<<Be sure to delete the file when done, as it contains Vast Management credentials>>\n"))
+        print(C("YELLOW<<Be sure to delete the file when done, as it contains Vast Management credentials>>\n"))
     except KeyboardInterrupt:
         return
 

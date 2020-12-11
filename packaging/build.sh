@@ -18,7 +18,7 @@ docker build \
     -f packaging/Dockerfile \
     .
 
-if [ "$1" == "no-sanity" ]; then
+if [ "$1" == "--no-sanity" ]; then
     log "SKIPPING SANITY TESTS"
 else
     ./packaging/sanity.sh
