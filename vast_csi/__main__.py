@@ -76,10 +76,13 @@ def generate_deployment(
     #     "load_balancing"
     #     f"Load-Balancing Strategy ({'|'.join(opts)}): ", default="random", completer=WordCompleter(opts))
 
-    opts = ['Never', 'Always']
+    opts = ['Never', 'Always', 'IfNotPresent', 'Auto']
     context.PULL_POLICY = pull_policy or prompt(
         "pull_policy",
-        f"Image Pull Policy ({'|'.join(opts)}): ", default="Never", completer=WordCompleter(opts))
+        f"Image Pull Policy ({'|'.join(opts)}): ", default="IfNotPresent", completer=WordCompleter(opts))
+
+    if pull_policy == 'Auto':
+        context.PULL_POLICY = 'null'
 
     exports = vippools = []
     while True:
