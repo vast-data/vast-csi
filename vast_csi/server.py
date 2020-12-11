@@ -410,9 +410,16 @@ class Controller(ControllerServicer, Instrumented):
             vol.ParseFromString(f.read())
             return vol
 
-    def CreateVolume(self, name, volume_capabilities, capacity_range=None):
-        volume_id = name
+    def CreateVolume(self, name, volume_capabilities, capacity_range=None, parameters=None):
         _validate_capabilities(volume_capabilities)
+
+        volume_id = name
+        volume_name = f"csi-{volume_id}"
+        if parameters:
+            pvc_name = parameters.get("csi.storage.k8s.io/pvc/name")
+            pvc_namespace = parameters.get("csi.storage.k8s.io/pvc/namespace")
+            if pvc_namespace and pvc_name:
+                volume_name = f"csi:{pvc_namespace}:{pvc_name}"
 
         requested_capacity = capacity_range.required_bytes if capacity_range else CONF.default_capacity
         existing_capacity = None
@@ -437,7 +444,7 @@ class Controller(ControllerServicer, Instrumented):
 
         data = dict(
             create_dir=True,
-            name=f"csi-{volume_id}",
+            name=volume_name,
             path=str(CONF.root_export[volume_id]),
             hard_limit=requested_capacity)
 
