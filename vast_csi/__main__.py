@@ -68,7 +68,7 @@ def generate_deployment(
 
     print(C("\n\nWHITE<<Vast CSI Plugin - Deployment generator for Kubernetes>>\n\n"))
 
-    context.IMAGE_NAME = image or prompt("image", "Name of this Docker Image: ", default="vast-csi:latest")
+    context.IMAGE_NAME = image or prompt("image", "Name of this Docker Image: ")
 
     context.LB_STRATEGY = "roundrobin"
     # opts = ['random', 'roundrobin']
