@@ -137,7 +137,7 @@ def generate_deployment(
     context.MOUNT_OPTIONS = prompt(
         "mount_options",
         "Additional Mount Options: ", default=""
-    ) if mount_options is None else ""
+    ) if mount_options is None else mount_options
 
     context.B64_USERNAME = b64encode(username.encode("utf8")).decode("utf8")
     context.B64_PASSWORD = b64encode(password.encode("utf8")).decode("utf8")
