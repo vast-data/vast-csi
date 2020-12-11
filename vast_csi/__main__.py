@@ -9,6 +9,13 @@ from easypy.semver import SemVer
 IS_INTERACTIVE = sys.stdin.isatty()
 
 
+CSI_SIDECAR_VERSIONS = {
+    'csi-provisioner':           'v1.6.0',  # min k8s: v1.13
+    'csi-attacher':              'v2.2.0',  # min k8s: v1.14
+    'csi-node-driver-registrar': 'v2.0.1',  # min k8s: v1.13
+}
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Vast CSI Plugin",
@@ -141,6 +148,8 @@ def generate_deployment(
 
     context.B64_USERNAME = b64encode(username.encode("utf8")).decode("utf8")
     context.B64_PASSWORD = b64encode(password.encode("utf8")).decode("utf8")
+
+    context.update(CSI_SIDECAR_VERSIONS)
 
     template = open("vast-csi.yaml").read()
     print(re.sub("#.*", "", template.format(**context)).strip(), file=file)
