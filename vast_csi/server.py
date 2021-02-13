@@ -33,7 +33,7 @@ from easypy.collections import shuffled
 from easypy.exceptions import TException
 
 from . logging import logger, init_logging
-from . utils import patch_traceback_format, RESTSession
+from . utils import patch_traceback_format, RESTSession, ApiError
 from . import csi_pb2_grpc
 from .csi_pb2_grpc import ControllerServicer, NodeServicer, IdentityServicer
 from . import csi_types as types
@@ -108,6 +108,7 @@ ALREADY_EXISTS = grpc.StatusCode.ALREADY_EXISTS
 NOT_FOUND = grpc.StatusCode.NOT_FOUND
 ABORTED = grpc.StatusCode.ABORTED
 UNKNOWN = grpc.StatusCode.UNKNOWN
+OUT_OF_RANGE = grpc.StatusCode.OUT_OF_RANGE
 
 SUPPORTED_ACCESS = [
     types.AccessModeType.SINGLE_NODE_WRITER,
@@ -272,6 +273,7 @@ class Controller(ControllerServicer, Instrumented):
         types.CtrlCapabilityType.CREATE_DELETE_VOLUME,
         types.CtrlCapabilityType.PUBLISH_UNPUBLISH_VOLUME,
         types.CtrlCapabilityType.LIST_VOLUMES,
+        types.CtrlCapabilityType.EXPAND_VOLUME,
         # types.CtrlCapabilityType.GET_CAPACITY,
         # types.CtrlCapabilityType.CREATE_DELETE_SNAPSHOT,
         # types.CtrlCapabilityType.LIST_SNAPSHOTS,
@@ -506,6 +508,36 @@ class Controller(ControllerServicer, Instrumented):
     def ControllerUnpublishVolume(self, node_id, volume_id):
         return types.CtrlUnpublishResp()
 
+    def ControllerExpandVolume(self, volume_id, capacity_range):
+        requested_capacity = capacity_range.required_bytes if capacity_range else CONF.default_capacity
+
+        if CONF.mock_vast:
+            volume = self._to_volume(volume_id)
+            if volume:
+                existing_capacity = volume.capacity_bytes
+        else:
+            quota = self.get_quota(volume_id)
+            if quota:
+                existing_capacity = quota.hard_limit
+
+        if requested_capacity <= existing_capacity:
+            capacity_bytes = existing_capacity
+        elif CONF.mock_vast:
+            volume.capacity_bytes = capacity_bytes = requested_capacity
+        else:
+            try:
+                self.vms_session.patch(f"quotas/{quota.id}", data=dict(hard_limit=requested_capacity))
+            except ApiError as exc:
+                raise Abort(
+                    OUT_OF_RANGE,
+                    f"Failed updating quota {quota.id}: {exc}")
+            capacity_bytes = requested_capacity
+
+        return types.CtrlExpandResp(
+            capacity_bytes=capacity_bytes,
+            node_expansion_required=False,
+        )
+
 
 ################################################################
 #
@@ -599,6 +631,8 @@ def serve():
 
     identity = Identity()
     csi_pb2_grpc.add_IdentityServicer_to_server(identity, server)
+
+    identity.capabilities.append(types.ExpansionType.ONLINE)
 
     if CONF.mode in {CONTROLLER, CONTROLLER_AND_NODE}:
         identity.capabilities.append(types.ServiceType.CONTROLLER_SERVICE)
