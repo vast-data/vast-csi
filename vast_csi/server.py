@@ -56,7 +56,6 @@ class Config(TypedEnv):
     log_level = TypedEnv.Str("X_CSI_LOG_LEVEL", default="info")
     csi_sanity_test = TypedEnv.Bool("X_CSI_SANITY_TEST", default=False)
     node_id = TypedEnv.Str("X_CSI_NODE_ID", default=socket.getfqdn())
-    default_capacity = TypedEnv.Int("X_CSI_DEFAULT_CAPACITY", default=2**30)
 
     vms_host = TypedEnv.Str("X_CSI_VMS_HOST", default="vast")
     vip_pool_name = TypedEnv.Str("X_CSI_VIP_POOL_NAME", default="k8s")
@@ -423,8 +422,8 @@ class Controller(ControllerServicer, Instrumented):
             if pvc_namespace and pvc_name:
                 volume_name = f"csi:{pvc_namespace}:{pvc_name}"
 
-        requested_capacity = capacity_range.required_bytes if capacity_range else CONF.default_capacity
-        existing_capacity = None
+        requested_capacity = capacity_range.required_bytes if capacity_range else 0
+        existing_capacity = 0
         volume_context = {}
 
         if CONF.mock_vast:
@@ -436,7 +435,7 @@ class Controller(ControllerServicer, Instrumented):
             if quota:
                 existing_capacity = quota.hard_limit
 
-        if existing_capacity is None:
+        if not existing_capacity:
             pass
         elif existing_capacity != requested_capacity:
             raise Abort(
@@ -444,16 +443,17 @@ class Controller(ControllerServicer, Instrumented):
                 "Volume already exists with different capacity than requested"
                 f"({existing_capacity})")
 
-        data = dict(
-            create_dir=True,
-            name=volume_name,
-            path=str(CONF.root_export[volume_id]),
-            hard_limit=requested_capacity)
-
         if CONF.mock_vast:
             vol_dir = self.root_mount[volume_id]
             vol_dir.mkdir()
         else:
+            data = dict(
+                create_dir=True,
+                name=volume_name,
+                path=str(CONF.root_export[volume_id]),
+            )
+            if requested_capacity:
+                data.update(hard_limit=requested_capacity)
             quota = self.vms_session.post("quotas", data=data)
             volume_context.update(quota_id=quota.id)
 
