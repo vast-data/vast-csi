@@ -509,7 +509,7 @@ class Controller(ControllerServicer, Instrumented):
         return types.CtrlUnpublishResp()
 
     def ControllerExpandVolume(self, volume_id, capacity_range):
-        requested_capacity = capacity_range.required_bytes if capacity_range else CONF.default_capacity
+        requested_capacity = capacity_range.required_bytes
 
         if CONF.mock_vast:
             volume = self._to_volume(volume_id)
