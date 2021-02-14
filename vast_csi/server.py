@@ -239,6 +239,8 @@ class Identity(IdentityServicer, Instrumented):
 
     def __init__(self):
         self.capabilities = []
+        self.controller = None
+        self.node = None
 
     def GetPluginInfo(self, request, context):
         return types.InfoResp(
@@ -253,10 +255,18 @@ class Identity(IdentityServicer, Instrumented):
                 for cap in self.capabilities])
 
     def Probe(self, request, context):
-        if True:
+        if self.node:
+            return types.ProbeRespOK
+        elif CONF.mock_vast:
+            return types.ProbeRespOK
+        elif self.controller:
+            try:
+                self.controller.get_vip()
+            except ApiError as exc:
+                raise Abort(FAILED_PRECONDITION, str(exc))
             return types.ProbeRespOK
         else:
-            raise Abort(FAILED_PRECONDITION, 'something is wrong')
+            return types.ProbeRespNotReady
 
 
 ################################################################
@@ -635,11 +645,13 @@ def serve():
     identity.capabilities.append(types.ExpansionType.ONLINE)
 
     if CONF.mode in {CONTROLLER, CONTROLLER_AND_NODE}:
+        identity.controller = Controller()
         identity.capabilities.append(types.ServiceType.CONTROLLER_SERVICE)
-        csi_pb2_grpc.add_ControllerServicer_to_server(Controller(), server)
+        csi_pb2_grpc.add_ControllerServicer_to_server(identity.controller, server)
 
     if CONF.mode in {NODE, CONTROLLER_AND_NODE}:
-        csi_pb2_grpc.add_NodeServicer_to_server(Node(), server)
+        identity.node = Node()
+        csi_pb2_grpc.add_NodeServicer_to_server(identity.node, server)
 
     server.add_insecure_port(CONF.endpoint)
     server.start()
