@@ -119,7 +119,8 @@ def generate_deployment(
                 break
         else:
             vippools = sorted(p.name for p in vms.vippools())
-            version = SemVer.loads(max(versions, key=lambda v: v.created).sys_version)
+            latest_ver = max(versions, key=lambda v: v.created)
+            version = SemVer.loads(latest_ver.sys_version or "3.0.0")  # in QA this is sometimes empty
             if version >= SemVer(3):
                 exports = sorted({(v.alias or v.path) for v in vms.views() if "NFS" in v.protocols})
             else:
