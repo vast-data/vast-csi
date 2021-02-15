@@ -274,7 +274,7 @@ roleRef:
   name: external-resizer-runner
   apiGroup: rbac.authorization.k8s.io
 
-
+---
 ########################################
 ###########                 ############
 ###########   Node plugin   ############
