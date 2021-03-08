@@ -39,7 +39,7 @@ build_csi:
     VAST_PIPE=${VAST_PIPE##*-}  # chop the prefix, keep the pipe id
 
     scripts/run_jenkins_job_etcd_prio_queue.py \
-      --base-queue-prefix=queues \
+      --base-queue-prefix=$JENKINS_QUEUE \
       --etcd-prefix=teams \
       --jenkins-job-name=single_test_from_pipeline \
       --jenkins-server=$JENKINS_SERVER \
@@ -56,15 +56,15 @@ build_csi:
     - regression-runner-light
 
 
-test_csi:3.2.1:
-  <<: *test_csi
-  variables:
-    VERSION: 3.2.1
-
 test_csi:3.4.0:
   <<: *test_csi
   variables:
     VERSION: 3.4.0
+
+test_csi:3.6.0:
+  <<: *test_csi
+  variables:
+    VERSION: 3.6.0
 
 test_csi:master:
   <<: *test_csi

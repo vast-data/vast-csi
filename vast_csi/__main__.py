@@ -121,10 +121,12 @@ def generate_deployment(
             vippools = sorted(p.name for p in vms.vippools())
             latest_ver = max(versions, key=lambda v: v.created)
             version = SemVer.loads(latest_ver.sys_version or "3.0.0")  # in QA this is sometimes empty
-            if version >= SemVer(3):
+            if version >= SemVer(3, 4):
                 exports = sorted({(v.alias or v.path) for v in vms.views() if "NFS" in v.protocols})
             else:
-                exports = sorted({path for e in vms.exports() for path in (e.path, e.alias) if path})
+                print(C("RED<<Incompatible Vast Version!>>"), "VMS Version:", version)
+                print(C("This plugin supports WHITE<<version 3.4 and above>>"))
+                raise SystemExit(5)
 
             print()
             print(C("GREEN<<Connected successfully!>>"), "VMS Version:", version)

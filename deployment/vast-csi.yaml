@@ -1,5 +1,5 @@
 # Configuration to deploy release version of the CSI VastData plugin
-# compatible with Kubernetes >=v1.14+
+# compatible with Kubernetes >=v1.16+
 #
 # Deploying:
 #
