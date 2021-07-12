@@ -89,7 +89,7 @@ def generate_deployment(
         "pull_policy",
         f"Image Pull Policy ({'|'.join(opts)}): ", default="IfNotPresent", completer=WordCompleter(opts))
 
-    if pull_policy == 'Auto':
+    if context.PULL_POLICY.lower() == 'auto':
         context.PULL_POLICY = 'null'
 
     exports = vippools = []
