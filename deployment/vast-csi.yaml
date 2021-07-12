@@ -24,7 +24,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: csi-vast-mgmt
-  namespace: kube-system
+  namespace: vast-csi
 type: Opaque
 data:
   username: {B64_USERNAME}
@@ -36,7 +36,7 @@ kind: StorageClass
 apiVersion: storage.k8s.io/v1
 metadata:
   name: vastdata-filesystem
-  namespace: kube-system
+  namespace: vast-csi
   annotations:
     storageclass.kubernetes.io/is-default-class: "true"
 provisioner: csi.vastdata.com
@@ -54,7 +54,7 @@ kind: StatefulSet
 apiVersion: apps/v1
 metadata:
   name: csi-vast-controller
-  namespace: kube-system
+  namespace: vast-csi
 spec:
   serviceName: "csi-vast"
   replicas: 1
@@ -155,7 +155,7 @@ kind: ServiceAccount
 apiVersion: v1
 metadata:
   name: csi-vast-controller-sa
-  namespace: kube-system
+  namespace: vast-csi
 
 ---
 kind: ClusterRole
@@ -200,7 +200,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: csi-vast-controller-sa
-    namespace: kube-system
+    namespace: vast-csi
 roleRef:
   kind: ClusterRole
   name: csi-vast-provisioner-role
@@ -231,7 +231,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: csi-vast-controller-sa
-    namespace: kube-system
+    namespace: vast-csi
 roleRef:
   kind: ClusterRole
   name: csi-vast-attacher-role
@@ -268,7 +268,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: csi-vast-controller-sa
-    namespace: kube-system
+    namespace: vast-csi
 roleRef:
   kind: ClusterRole
   name: external-resizer-runner
@@ -285,7 +285,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: csi-vast-node
-  namespace: kube-system
+  namespace: vast-csi
 spec:
   selector:
     matchLabels:
@@ -378,4 +378,4 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: csi-vast-node-sa
-  namespace: kube-system
+  namespace: vast-csi
