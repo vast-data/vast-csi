@@ -11,11 +11,13 @@ build_csi:
     VERSION=$(cat version.txt)
     LATEST=${DOCKER_REGISTRY}/dev/vast-csi:latest
     if (docker pull $LATEST) ; then
-      docker tag $LATEST vast-csi:dev  # the cache-source for our subsequent build
+      docker tag $LATEST vast-csi:latest  # the cache-source for our subsequent build
     fi
-    /bin/sh -x packaging/build.sh
-    docker tag vast-csi:latest ${IMAGE_NAME}
+    /bin/sh -x packaging/build.sh  # --> vast-csi:dev
+    docker tag vast-csi:dev ${IMAGE_NAME}
+    docker tag vast-csi:dev ${LATEST}
     docker push ${IMAGE_NAME}
+    docker push ${LATEST}
     echo "pushed ${IMAGE_NAME}"
   tags:
     - vast-dev-builder
@@ -28,11 +30,16 @@ build_csi:
   script: |
     set -x
 
-    VAST_PIPE=$(curl -s https://${VERSIONS_BUCKET}.s3-eu-west-1.amazonaws.com/versions/$VERSION)
+    info=$(./scripts/aws_get_image_info.sh $DOCKER_REGISTRY/dev/orion:latest-$VERSION | jq -r '.config.Env[2]')
+
+    eval "export $info"
+    echo $IMAGE
+
+    VAST_PIPE=$IMAGE
     VAST_PIPE=${VAST_PIPE##*-}  # chop the prefix, keep the pipe id
 
     scripts/run_jenkins_job_etcd_prio_queue.py \
-      --base-queue-prefix=queues \
+      --base-queue-prefix=$JENKINS_QUEUE \
       --etcd-prefix=teams \
       --jenkins-job-name=single_test_from_pipeline \
       --jenkins-server=$JENKINS_SERVER \
@@ -49,15 +56,23 @@ build_csi:
     - regression-runner-light
 
 
-test_csi:3.2.0:
+test_csi:3.4.0:
   <<: *test_csi
   variables:
-    VERSION: 3.2.0
+    VERSION: 3.4.0
+
+test_csi:3.6.0:
+  <<: *test_csi
+  variables:
+    VERSION: 3.6.0
 
 test_csi:master:
   <<: *test_csi
   variables:
     VERSION: master
+
+test_csi:manual:
+  <<: *test_csi
 
 
 update_dockerhub:

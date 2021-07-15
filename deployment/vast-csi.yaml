@@ -1,5 +1,5 @@
 # Configuration to deploy release version of the CSI VastData plugin
-# compatible with Kubernetes >=v1.14+
+# compatible with Kubernetes >=v1.16+
 #
 # Deploying:
 #
@@ -10,7 +10,14 @@
 # Install the CSI Driver. This simplifies driver discovery and enables us to
 # customize Kubernetes behavior
 # https://kubernetes-csi.github.io/docs/csi-driver-object.html
-apiVersion: storage.k8s.io/v1beta1
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vast-csi
+---
+
+apiVersion: storage.k8s.io/v1
 kind: CSIDriver
 metadata:
   name: csi.vastdata.com
@@ -24,7 +31,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: csi-vast-mgmt
-  namespace: kube-system
+  namespace: vast-csi
 type: Opaque
 data:
   username: {B64_USERNAME}
@@ -36,10 +43,11 @@ kind: StorageClass
 apiVersion: storage.k8s.io/v1
 metadata:
   name: vastdata-filesystem
-  namespace: kube-system
+  namespace: vast-csi
   annotations:
     storageclass.kubernetes.io/is-default-class: "true"
 provisioner: csi.vastdata.com
+allowVolumeExpansion: true
 
 ---
 
@@ -53,7 +61,7 @@ kind: StatefulSet
 apiVersion: apps/v1
 metadata:
   name: csi-vast-controller
-  namespace: kube-system
+  namespace: vast-csi
 spec:
   serviceName: "csi-vast"
   replicas: 1
@@ -71,26 +79,39 @@ spec:
       hostNetwork: true
       containers:
         - name: csi-provisioner
-          image: quay.io/k8scsi/csi-provisioner:v1.1.0
+          image: quay.io/k8scsi/csi-provisioner:{csi-provisioner}
           args:
             - "--csi-address=$(ADDRESS)"
             - "--v=5"
+            - "--extra-create-metadata"
           env:
             - name: ADDRESS
               value: /var/lib/csi/sockets/pluginproxy/csi.sock
-          imagePullPolicy: "Always"
+          imagePullPolicy: {PULL_POLICY}
           volumeMounts:
             - name: socket-dir
               mountPath: /var/lib/csi/sockets/pluginproxy/
         - name: csi-attacher
-          image: quay.io/k8scsi/csi-attacher:v1.1.1
+          image: quay.io/k8scsi/csi-attacher:{csi-attacher}
           args:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
           env:
             - name: ADDRESS
               value: /var/lib/csi/sockets/pluginproxy/csi.sock
-          imagePullPolicy: "Always"
+          imagePullPolicy: {PULL_POLICY}
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+        - name: csi-resizer
+          image: quay.io/k8scsi/csi-resizer:{csi-resizer}
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          imagePullPolicy: {PULL_POLICY}
           volumeMounts:
             - name: socket-dir
               mountPath: /var/lib/csi/sockets/pluginproxy/
@@ -141,7 +162,7 @@ kind: ServiceAccount
 apiVersion: v1
 metadata:
   name: csi-vast-controller-sa
-  namespace: kube-system
+  namespace: vast-csi
 
 ---
 kind: ClusterRole
@@ -167,6 +188,12 @@ rules:
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["list", "watch", "create", "update", "patch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshots"]
+    verbs: ["get", "list"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotcontents"]
+    verbs: ["get", "list"]
   - apiGroups: [""]
     resources: ["nodes"]
     verbs: ["get", "list", "watch"]
@@ -180,7 +207,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: csi-vast-controller-sa
-    namespace: kube-system
+    namespace: vast-csi
 roleRef:
   kind: ClusterRole
   name: csi-vast-provisioner-role
@@ -195,16 +222,13 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["persistentvolumes"]
-    verbs: ["get", "list", "watch", "update"]
-  - apiGroups: [""]
-    resources: ["nodes"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "update", "patch"]
   - apiGroups: ["storage.k8s.io"]
     resources: ["csinodes"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["storage.k8s.io"]
     resources: ["volumeattachments"]
-    verbs: ["get", "list", "watch", "update"]
+    verbs: ["get", "list", "watch", "update", "patch"]
 
 ---
 kind: ClusterRoleBinding
@@ -214,14 +238,50 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: csi-vast-controller-sa
-    namespace: kube-system
+    namespace: vast-csi
 roleRef:
   kind: ClusterRole
   name: csi-vast-attacher-role
   apiGroup: rbac.authorization.k8s.io
 
 ---
+# Resizer must be able to work with PVCs, PVs, SCs.
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: external-resizer-runner
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims/status"]
+    verbs: ["patch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list", "watch", "create", "update", "patch"]
 
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-resizer-role
+subjects:
+  - kind: ServiceAccount
+    name: csi-vast-controller-sa
+    namespace: vast-csi
+roleRef:
+  kind: ClusterRole
+  name: external-resizer-runner
+  apiGroup: rbac.authorization.k8s.io
+
+---
 ########################################
 ###########                 ############
 ###########   Node plugin   ############
@@ -232,7 +292,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: csi-vast-node
-  namespace: kube-system
+  namespace: vast-csi
 spec:
   selector:
     matchLabels:
@@ -248,7 +308,7 @@ spec:
       hostNetwork: true
       containers:
         - name: csi-node-driver-registrar
-          image: quay.io/k8scsi/csi-node-driver-registrar:v1.1.0
+          image: quay.io/k8scsi/csi-node-driver-registrar:{csi-node-driver-registrar}
           args:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
@@ -325,31 +385,4 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: csi-vast-node-sa
-  namespace: kube-system
-
----
-
-kind: ClusterRole
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: csi-vast-node-driver-registrar-role
-  namespace: kube-system
-rules:
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"]
-
----
-
-kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: csi-vast-node-driver-registrar-binding
-subjects:
-  - kind: ServiceAccount
-    name: csi-vast-node-sa
-    namespace: kube-system
-roleRef:
-  kind: ClusterRole
-  name: csi-vast-node-driver-registrar-role
-  apiGroup: rbac.authorization.k8s.io
+  namespace: vast-csi

@@ -11,14 +11,14 @@ fi
 
 docker build \
     -t vast-csi:dev \
-    --cache-from vast-csi:dev \
+    --cache-from vast-csi:latest \
     --build-arg=GIT_COMMIT=$CI_COMMIT_SHA \
     --build-arg=VERSION=$VERSION \
     --build-arg=CI_PIPELINE_ID=$CI_PIPELINE_ID \
     -f packaging/Dockerfile \
     .
 
-if [ "$1" == "no-sanity" ]; then
+if [ "$1" == "--no-sanity" ]; then
     log "SKIPPING SANITY TESTS"
 else
     ./packaging/sanity.sh

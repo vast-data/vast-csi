@@ -24,6 +24,8 @@ NodeInfoResp = csi_pb2.NodeGetInfoResponse
 Capability = csi_pb2.PluginCapability
 Service = Capability.Service
 ServiceType = EnumWrapper(Service.Type)
+Expansion = Capability.VolumeExpansion
+ExpansionType = EnumWrapper(Expansion.Type)
 CtrlCapability = csi_pb2.ControllerServiceCapability
 CtrlCapabilityType = EnumWrapper(CtrlCapability.RPC.Type)
 CtrlCapabilityResp = csi_pb2.ControllerGetCapabilitiesResponse
@@ -37,6 +39,7 @@ ValidateResp = csi_pb2.ValidateVolumeCapabilitiesResponse
 
 CtrlPublishResp = csi_pb2.ControllerPublishVolumeResponse
 CtrlUnpublishResp = csi_pb2.ControllerUnpublishVolumeResponse
+CtrlExpandResp = csi_pb2.ControllerExpandVolumeResponse
 
 CapabilitiesResp = csi_pb2.GetPluginCapabilitiesResponse
 AccessModeType = EnumWrapper(csi_pb2.VolumeCapability.AccessMode.Mode)
@@ -46,6 +49,7 @@ UnstageResp = csi_pb2.NodeUnstageVolumeResponse
 NodePublishResp = csi_pb2.NodePublishVolumeResponse
 NodeUnpublishResp = csi_pb2.NodeUnpublishVolumeResponse
 ProbeRespOK = csi_pb2.ProbeResponse(ready=Bool(value=True))
+ProbeRespNotReady = csi_pb2.ProbeResponse(ready=Bool(value=False))
 CapacityResp = csi_pb2.GetCapacityResponse
 CreateResp = csi_pb2.CreateVolumeResponse
 DeleteResp = csi_pb2.DeleteVolumeResponse

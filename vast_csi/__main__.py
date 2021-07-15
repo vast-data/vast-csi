@@ -9,6 +9,14 @@ from easypy.semver import SemVer
 IS_INTERACTIVE = sys.stdin.isatty()
 
 
+CSI_SIDECAR_VERSIONS = {
+    'csi-provisioner':           'v1.6.0',  # min k8s: v1.13
+    'csi-attacher':              'v2.2.0',  # min k8s: v1.14
+    'csi-resizer':               'v1.0.1',  # min k8s: v1.16
+    'csi-node-driver-registrar': 'v2.0.1',  # min k8s: v1.13
+}
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Vast CSI Plugin",
@@ -40,9 +48,9 @@ def _template(args):
         with open(f"/out/{fname}", "w") as file:
             generate_deployment(file, **args)
         print(C(f"\nWritten to WHITE<<{fname}>>\n"))
-        print(f"Inspect the file and then run:")
+        print("Inspect the file and then run:")
         print(C(f">> CYAN<<kubectl apply -f {fname}>>\n"))
-        print(C(f"YELLOW<<Be sure to delete the file when done, as it contains Vast Management credentials>>\n"))
+        print(C("YELLOW<<Be sure to delete the file when done, as it contains Vast Management credentials>>\n"))
     except KeyboardInterrupt:
         return
 
@@ -68,7 +76,7 @@ def generate_deployment(
 
     print(C("\n\nWHITE<<Vast CSI Plugin - Deployment generator for Kubernetes>>\n\n"))
 
-    context.IMAGE_NAME = image or prompt("image", "Name of this Docker Image: ", default="vast-csi:latest")
+    context.IMAGE_NAME = image or prompt("image", "Name of this Docker Image: ")
 
     context.LB_STRATEGY = "roundrobin"
     # opts = ['random', 'roundrobin']
@@ -76,10 +84,13 @@ def generate_deployment(
     #     "load_balancing"
     #     f"Load-Balancing Strategy ({'|'.join(opts)}): ", default="random", completer=WordCompleter(opts))
 
-    opts = ['Never', 'Always']
+    opts = ['Never', 'Always', 'IfNotPresent', 'Auto']
     context.PULL_POLICY = pull_policy or prompt(
         "pull_policy",
-        f"Image Pull Policy ({'|'.join(opts)}): ", default="Never", completer=WordCompleter(opts))
+        f"Image Pull Policy ({'|'.join(opts)}): ", default="IfNotPresent", completer=WordCompleter(opts))
+
+    if context.PULL_POLICY.lower() == 'auto':
+        context.PULL_POLICY = 'null'
 
     exports = vippools = []
     while True:
@@ -108,11 +119,14 @@ def generate_deployment(
                 break
         else:
             vippools = sorted(p.name for p in vms.vippools())
-            version = SemVer.loads(max(versions, key=lambda v: v.created).sys_version)
-            if version >= SemVer(3):
+            latest_ver = max(versions, key=lambda v: v.created)
+            version = SemVer.loads(latest_ver.sys_version or "3.0.0")  # in QA this is sometimes empty
+            if version >= SemVer(3, 4):
                 exports = sorted({(v.alias or v.path) for v in vms.views() if "NFS" in v.protocols})
             else:
-                exports = sorted({path for e in vms.exports() for path in (e.path, e.alias) if path})
+                print(C("RED<<Incompatible Vast Version!>>"), "VMS Version:", version)
+                print(C("This plugin supports WHITE<<version 3.4 and above>>"))
+                raise SystemExit(5)
 
             print()
             print(C("GREEN<<Connected successfully!>>"), "VMS Version:", version)
@@ -134,10 +148,12 @@ def generate_deployment(
     context.MOUNT_OPTIONS = prompt(
         "mount_options",
         "Additional Mount Options: ", default=""
-    ) if mount_options is None else ""
+    ) if mount_options is None else mount_options
 
     context.B64_USERNAME = b64encode(username.encode("utf8")).decode("utf8")
     context.B64_PASSWORD = b64encode(password.encode("utf8")).decode("utf8")
+
+    context.update(CSI_SIDECAR_VERSIONS)
 
     template = open("vast-csi.yaml").read()
     print(re.sub("#.*", "", template.format(**context)).strip(), file=file)

@@ -33,7 +33,7 @@ from easypy.collections import shuffled
 from easypy.exceptions import TException
 
 from . logging import logger, init_logging
-from . utils import patch_traceback_format, RESTSession
+from . utils import patch_traceback_format, RESTSession, ApiError
 from . import csi_pb2_grpc
 from .csi_pb2_grpc import ControllerServicer, NodeServicer, IdentityServicer
 from . import csi_types as types
@@ -56,7 +56,6 @@ class Config(TypedEnv):
     log_level = TypedEnv.Str("X_CSI_LOG_LEVEL", default="info")
     csi_sanity_test = TypedEnv.Bool("X_CSI_SANITY_TEST", default=False)
     node_id = TypedEnv.Str("X_CSI_NODE_ID", default=socket.getfqdn())
-    default_capacity = TypedEnv.Int("X_CSI_DEFAULT_CAPACITY", default=2**30)
 
     vms_host = TypedEnv.Str("X_CSI_VMS_HOST", default="vast")
     vip_pool_name = TypedEnv.Str("X_CSI_VIP_POOL_NAME", default="k8s")
@@ -64,11 +63,16 @@ class Config(TypedEnv):
     vms_password = TypedEnv.Str("X_CSI_VMS_PASSWORD", default="admin")
     ssl_verify = TypedEnv.Bool("X_CSI_DISABLE_VMS_SSL_VERIFICATION", default=False)
 
-    mount_options = TypedEnv.Str("X_CSI_MOUNT_OPTIONS", default="")  # For example: "port=2049,nolock,vers=3"
+    _mount_options = TypedEnv.Str("X_CSI_MOUNT_OPTIONS", default="")  # For example: "port=2049,nolock,vers=3"
+
+    @property
+    def mount_options(self):
+        s = self._mount_options.strip()
+        return list({p for p in s.split(',') if p})
 
     _load_balancing = TypedEnv.Str("X_CSI_LB_STRATEGY", default="roundrobin")
     _mode = TypedEnv.Str("CSI_MODE", default="controller_and_node")
-    _endpoint = TypedEnv.Str("CSI_ENDPOINT", default=f'unix:///var/run/csi.sock')
+    _endpoint = TypedEnv.Str("CSI_ENDPOINT", default='unix:///var/run/csi.sock')
 
     @property
     def load_balancing(self):
@@ -103,6 +107,7 @@ ALREADY_EXISTS = grpc.StatusCode.ALREADY_EXISTS
 NOT_FOUND = grpc.StatusCode.NOT_FOUND
 ABORTED = grpc.StatusCode.ABORTED
 UNKNOWN = grpc.StatusCode.UNKNOWN
+OUT_OF_RANGE = grpc.StatusCode.OUT_OF_RANGE
 
 SUPPORTED_ACCESS = [
     types.AccessModeType.SINGLE_NODE_WRITER,
@@ -120,8 +125,7 @@ class MountFailed(TException):
 def mount(src, tgt, flags=""):
     cmd = local.cmd.mount
     flags = flags.split(",")
-    if CONF.mount_options:
-        flags += CONF.mount_options.split(",")
+    flags += CONF.mount_options
     if CONF.mock_vast:
         flags += "port=2049,nolock,vers=3".split(",")
     if flags:
@@ -235,6 +239,8 @@ class Identity(IdentityServicer, Instrumented):
 
     def __init__(self):
         self.capabilities = []
+        self.controller = None
+        self.node = None
 
     def GetPluginInfo(self, request, context):
         return types.InfoResp(
@@ -249,10 +255,18 @@ class Identity(IdentityServicer, Instrumented):
                 for cap in self.capabilities])
 
     def Probe(self, request, context):
-        if True:
+        if self.node:
+            return types.ProbeRespOK
+        elif CONF.mock_vast:
+            return types.ProbeRespOK
+        elif self.controller:
+            try:
+                self.controller.get_vip()
+            except ApiError as exc:
+                raise Abort(FAILED_PRECONDITION, str(exc))
             return types.ProbeRespOK
         else:
-            raise Abort(FAILED_PRECONDITION, 'something is wrong')
+            return types.ProbeRespNotReady
 
 
 ################################################################
@@ -268,6 +282,7 @@ class Controller(ControllerServicer, Instrumented):
         types.CtrlCapabilityType.CREATE_DELETE_VOLUME,
         types.CtrlCapabilityType.PUBLISH_UNPUBLISH_VOLUME,
         types.CtrlCapabilityType.LIST_VOLUMES,
+        types.CtrlCapabilityType.EXPAND_VOLUME,
         # types.CtrlCapabilityType.GET_CAPACITY,
         # types.CtrlCapabilityType.CREATE_DELETE_SNAPSHOT,
         # types.CtrlCapabilityType.LIST_SNAPSHOTS,
@@ -406,12 +421,19 @@ class Controller(ControllerServicer, Instrumented):
             vol.ParseFromString(f.read())
             return vol
 
-    def CreateVolume(self, name, volume_capabilities, capacity_range=None):
-        volume_id = name
+    def CreateVolume(self, name, volume_capabilities, capacity_range=None, parameters=None):
         _validate_capabilities(volume_capabilities)
 
-        requested_capacity = capacity_range.required_bytes if capacity_range else CONF.default_capacity
-        existing_capacity = None
+        volume_id = name
+        volume_name = f"csi-{volume_id}"
+        if parameters:
+            pvc_name = parameters.get("csi.storage.k8s.io/pvc/name")
+            pvc_namespace = parameters.get("csi.storage.k8s.io/pvc/namespace")
+            if pvc_namespace and pvc_name:
+                volume_name = f"csi:{pvc_namespace}:{pvc_name}"
+
+        requested_capacity = capacity_range.required_bytes if capacity_range else 0
+        existing_capacity = 0
         volume_context = {}
 
         if CONF.mock_vast:
@@ -423,7 +445,7 @@ class Controller(ControllerServicer, Instrumented):
             if quota:
                 existing_capacity = quota.hard_limit
 
-        if existing_capacity is None:
+        if not existing_capacity:
             pass
         elif existing_capacity != requested_capacity:
             raise Abort(
@@ -431,16 +453,17 @@ class Controller(ControllerServicer, Instrumented):
                 "Volume already exists with different capacity than requested"
                 f"({existing_capacity})")
 
-        data = dict(
-            create_dir=True,
-            name=f"csi-{volume_id}",
-            path=str(CONF.root_export[volume_id]),
-            hard_limit=requested_capacity)
-
         if CONF.mock_vast:
             vol_dir = self.root_mount[volume_id]
             vol_dir.mkdir()
         else:
+            data = dict(
+                create_dir=True,
+                name=volume_name,
+                path=str(CONF.root_export[volume_id]),
+            )
+            if requested_capacity:
+                data.update(hard_limit=requested_capacity)
             quota = self.vms_session.post("quotas", data=data)
             volume_context.update(quota_id=quota.id)
 
@@ -494,6 +517,36 @@ class Controller(ControllerServicer, Instrumented):
 
     def ControllerUnpublishVolume(self, node_id, volume_id):
         return types.CtrlUnpublishResp()
+
+    def ControllerExpandVolume(self, volume_id, capacity_range):
+        requested_capacity = capacity_range.required_bytes
+
+        if CONF.mock_vast:
+            volume = self._to_volume(volume_id)
+            if volume:
+                existing_capacity = volume.capacity_bytes
+        else:
+            quota = self.get_quota(volume_id)
+            if quota:
+                existing_capacity = quota.hard_limit
+
+        if requested_capacity <= existing_capacity:
+            capacity_bytes = existing_capacity
+        elif CONF.mock_vast:
+            volume.capacity_bytes = capacity_bytes = requested_capacity
+        else:
+            try:
+                self.vms_session.patch(f"quotas/{quota.id}", data=dict(hard_limit=requested_capacity))
+            except ApiError as exc:
+                raise Abort(
+                    OUT_OF_RANGE,
+                    f"Failed updating quota {quota.id}: {exc}")
+            capacity_bytes = requested_capacity
+
+        return types.CtrlExpandResp(
+            capacity_bytes=capacity_bytes,
+            node_expansion_required=False,
+        )
 
 
 ################################################################
@@ -589,12 +642,16 @@ def serve():
     identity = Identity()
     csi_pb2_grpc.add_IdentityServicer_to_server(identity, server)
 
+    identity.capabilities.append(types.ExpansionType.ONLINE)
+
     if CONF.mode in {CONTROLLER, CONTROLLER_AND_NODE}:
+        identity.controller = Controller()
         identity.capabilities.append(types.ServiceType.CONTROLLER_SERVICE)
-        csi_pb2_grpc.add_ControllerServicer_to_server(Controller(), server)
+        csi_pb2_grpc.add_ControllerServicer_to_server(identity.controller, server)
 
     if CONF.mode in {NODE, CONTROLLER_AND_NODE}:
-        csi_pb2_grpc.add_NodeServicer_to_server(Node(), server)
+        identity.node = Node()
+        csi_pb2_grpc.add_NodeServicer_to_server(identity.node, server)
 
     server.add_insecure_port(CONF.endpoint)
     server.start()
