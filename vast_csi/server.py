@@ -430,7 +430,7 @@ class Controller(ControllerServicer, Instrumented):
             pvc_name = parameters.get("csi.storage.k8s.io/pvc/name")
             pvc_namespace = parameters.get("csi.storage.k8s.io/pvc/namespace")
             if pvc_namespace and pvc_name:
-                volume_name = f"csi:{pvc_namespace}:{pvc_name}"
+                volume_name = f"csi:{pvc_namespace}:{pvc_name}:{volume_id}"
 
         requested_capacity = capacity_range.required_bytes if capacity_range else 0
         existing_capacity = 0
