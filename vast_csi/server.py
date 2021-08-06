@@ -62,6 +62,7 @@ class Config(TypedEnv):
     vms_user = TypedEnv.Str("X_CSI_VMS_USER", default="admin")
     vms_password = TypedEnv.Str("X_CSI_VMS_PASSWORD", default="admin")
     ssl_verify = TypedEnv.Bool("X_CSI_DISABLE_VMS_SSL_VERIFICATION", default=False)
+    volume_name_fmt = TypedEnv.Str("X_CSI_VOLUME_NAME_FMT", default="csi:{namespace}:{name}:{id}")
 
     _mount_options = TypedEnv.Str("X_CSI_MOUNT_OPTIONS", default="")  # For example: "port=2049,nolock,vers=3"
 
@@ -430,7 +431,8 @@ class Controller(ControllerServicer, Instrumented):
             pvc_name = parameters.get("csi.storage.k8s.io/pvc/name")
             pvc_namespace = parameters.get("csi.storage.k8s.io/pvc/namespace")
             if pvc_namespace and pvc_name:
-                volume_name = f"csi:{pvc_namespace}:{pvc_name}:{volume_id}"
+                volume_name = CONF.volume_name_fmt.format(namespace=pvc_name, name=pvc_name, id=volume_id)
+                volume_name = volume_name[:64]  # crop to Vast's max-length
 
         requested_capacity = capacity_range.required_bytes if capacity_range else 0
         existing_capacity = 0

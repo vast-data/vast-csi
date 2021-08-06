@@ -140,6 +140,8 @@ spec:
               value: unix:///var/lib/csi/sockets/pluginproxy/csi.sock
             - name: X_CSI_MODE
               value: controller
+            - name: X_CSI_VOLUME_NAME_FMT
+              value: csi:{{namespace}}:{{name}}:{{id}}
             - name: X_CSI_VMS_USER
               valueFrom:
                 secretKeyRef:
