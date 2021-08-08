@@ -30,7 +30,7 @@ build_csi:
     VAST_COMET_KWARG: csi_plugin_version=${CI_PIPELINE_ID}
   trigger:
     project: dev/orion
-    branch: release/$VERSION
+    branch: comet/master
     strategy: depend
   allow_failure: true
 
@@ -39,10 +39,10 @@ test_csi:
   <<: *test_csi
   parallel:
     matrix:
-      - VERSION:
-        - 3.6.0
-        - 4.0.0
-        - 4.2.0
+      - INSTALL_IMAGE:
+        - latest-3.6.0
+        - latest-4.0.0
+        - latest-4.2.0
 
 
 update_dockerhub:
