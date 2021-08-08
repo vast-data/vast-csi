@@ -14,6 +14,7 @@ RUN apk add --no-cache \
 
 COPY vast_csi vast_csi
 COPY deployment .
+COPY k8s_supported.txt .
 
 ARG NAME=csi.vastdata.com
 ARG VERSION
