@@ -431,7 +431,7 @@ class Controller(ControllerServicer, Instrumented):
             pvc_name = parameters.get("csi.storage.k8s.io/pvc/name")
             pvc_namespace = parameters.get("csi.storage.k8s.io/pvc/namespace")
             if pvc_namespace and pvc_name:
-                volume_name = CONF.volume_name_fmt.format(namespace=pvc_name, name=pvc_name, id=volume_id)
+                volume_name = CONF.volume_name_fmt.format(namespace=pvc_namespace, name=pvc_name, id=volume_id)
                 volume_name = volume_name[:64]  # crop to Vast's max-length
 
         requested_capacity = capacity_range.required_bytes if capacity_range else 0
