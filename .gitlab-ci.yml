@@ -30,7 +30,7 @@ build_csi:
     VAST_COMET_KWARG: csi_plugin_version=${CI_PIPELINE_ID}
   trigger:
     project: dev/orion
-    branch: BUILD/ofer/vcsi-ci-updates
+    branch: comet/master
     strategy: depend
   allow_failure: true
 
