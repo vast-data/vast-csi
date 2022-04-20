@@ -48,6 +48,7 @@ class Config(TypedEnv):
         convert = staticmethod(local.path)
 
     plugin_name, plugin_version, git_commit = open("version.info").read().strip().split()
+    plugin_name = TypedEnv.Str("X_CSI_PLUGIN_NAME", default=plugin_name)
 
     controller_root_mount = Path("X_CSI_CTRL_ROOT_MOUNT", default=local.path("/csi-volumes"))
     mock_vast = TypedEnv.Bool("X_CSI_MOCK_VAST", default=False)
