@@ -126,7 +126,6 @@ class MountFailed(TException):
 def mount(src, tgt, flags=""):
     cmd = local.cmd.mount
     flags = flags.split(",")
-    flags += CONF.mount_options
     if CONF.mock_vast:
         flags += "port=2049,nolock,vers=3".split(",")
     if flags:
@@ -342,7 +341,7 @@ class Controller(ControllerServicer, Instrumented):
         if target_path["NOT_MOUNTED"].exists():
             nfs_server = self.get_vip()
             mount_spec = f"{nfs_server}:{CONF.root_export}"
-            mount(mount_spec, target_path)
+            mount(mount_spec, target_path, flags=",".join(CONF.mount_options))
             logger.info(f"mounted successfully: {target_path}")
 
         return target_path
@@ -597,9 +596,13 @@ class Node(NodeServicer, Instrumented):
         target_path.mkdir()
         logger.info(f"created: {target_path}")
 
-        flags = "ro" if readonly else ""
-        mount(mount_spec, target_path, flags=flags)
-        logger.info(f"mounted: {target_path}")
+        flags = ["ro"] if readonly else []
+        if volume_capability.mount.mount_flags:
+            flags += volume_capability.mount.mount_flags
+        else:
+            flags += CONF.mount_options
+        mount(mount_spec, target_path, flags=",".join(flags))
+        logger.info(f"mounted: {target_path} flags: {flags}")
         return types.NodePublishResp()
 
     def NodeUnpublishVolume(self, target_path):
