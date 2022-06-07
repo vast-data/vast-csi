@@ -4,7 +4,7 @@ set -e
 
 log() { echo -e "\033[92m$(date $DATE_PARAM) >> $@\033[0m" 1>&2; }
 
-export VERSION=v2.3.0
+export VERSION=v4.3.0
 docker build -t csi-sanity:$VERSION -<<EOF
 FROM golang:latest
 RUN git clone --branch $VERSION --depth 1 https://github.com/kubernetes-csi/csi-test.git
@@ -24,9 +24,10 @@ docker run -d --name nfs --rm --privileged --network $NETWORK erezhorev/dockeriz
 
 docker run \
     --init \
-	--name test-subject \
+    --name test-subject \
     --network $NETWORK \
     --privileged \
+    -v /mnt/csi-tests:/tmp \
     -e PYTHONFAULTHANDLER=yes \
     -e CSI_ENDPOINT=0.0.0.0:50051 \
     -e X_CSI_MOCK_VAST=yes \
@@ -35,16 +36,21 @@ docker run \
     -e X_CSI_NFS_EXPORT=/exports \
     vast-csi:dev serve &
 
+
+# -h \
+
 if docker run \
-	--name csi-sanity \
-	--network $NETWORK \
-	--rm \
-	csi-sanity:$VERSION \
-	/csi-sanity \
-    -csi.endpoint=test-subject:50051 \
-    -ginkgo.failFast \
-    -ginkgo.progress \
-    -ginkgo.debug; then
+    --name csi-sanity \
+    --network $NETWORK \
+    -v /mnt/csi-tests:/tmp \
+    --rm \
+    csi-sanity:$VERSION \
+    /csi-sanity \
+    --ginkgo.failFast \
+    --csi.endpoint=test-subject:50051 \
+    --ginkgo.progress \
+    --ginkgo.v \
+    --ginkgo.seed=1; then
         log "All Good Bananas"
 else
         log "Sanity test failed"
