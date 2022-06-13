@@ -1,0 +1,12 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: csi-vast-plugin
+data:
+  X_CSI_VMS_HOST: {{ required "VAST API endpoint must be provided" .Values.vastEndpoint | replace "https://" "" | replace "http://" "" }}
+  X_CSI_VIP_POOL_NAME: {{ required "VAST VIP pool name must be provided" .Values.vastVipPool }}
+  X_CSI_DISABLE_VMS_SSL_VERIFICATION: {{ .Values.vastVerifySsl | ternary "false" "true" | quote }}
+  X_CSI_LB_STRATEGY: {{ .Values.vastLbStrategy }}
+  X_CSI_NFS_EXPORT: {{ required "VAST NFS export must be provided" .Values.vastNfsExport }}
+  X_CSI_VOLUME_NAME_FMT: {{ .Values.vastVolumeNameFormat }}
