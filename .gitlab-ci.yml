@@ -3,6 +3,7 @@ image: docker:latest
 variables:
   DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
   IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:${CI_PIPELINE_ID}
+  ORION_BRANCH: comet/master
 
 build_csi:
   stage: build
@@ -29,7 +30,7 @@ test_csi:
   # when: manual
   trigger:
     project: dev/orion
-    branch: comet/master
+    branch: $ORION_BRANCH
     strategy: depend
   allow_failure: true
   parallel:
