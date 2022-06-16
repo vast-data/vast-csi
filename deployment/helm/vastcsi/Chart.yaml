@@ -1,0 +1,7 @@
+# vim: expandtab ts=2 sw=2
+apiVersion: v2
+name: vastcsi
+description: Chart to install VAST CSI driver
+type: application
+version: 0.1.0
+appVersion: "v2.0.3"

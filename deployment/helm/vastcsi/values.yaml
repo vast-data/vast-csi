@@ -1,0 +1,99 @@
+# vim: expandtab ts=2 sw=2
+
+# API endpoint of VAST appliance - must be provided by user
+vastEndpoint: ""
+# Credentials to login - must be provided by user
+vastUsername: ""
+vastPassword: ""
+# Name of VAST VIP pool to use - must be provided by user
+vastVipPool: ""
+
+# Set to false to bypass certificate validity test
+vastVerifySsl: true
+# Load-balancing strategy
+# Options:
+#   roundrobin
+vastLbStrategy: roundrobin
+# Export location on VAST
+vastNfsExport: /k8s
+# Add any extra NFS options desired here
+vastNfsMountOptions: ""
+# String template for CSI-provisioned volume names, within VAST
+vastVolumeNameFormat: "csi:{namespace}:{name}:{id}"
+
+# If true, sets Vast CSI as the cluster-wide storage class default
+setDefaultStorageClass: true
+# Allows resizing existing volumes
+allowVolumeExpansion: true
+
+
+imagePullSecrets: []
+image:
+  # Generic CSI attacher
+  csiAttacher:
+    pullPolicy: Always
+    repository: quay.io/k8scsi/csi-attacher
+    # Don't override this unless you know what you're doing
+    # This could change the API the CSI plugin implements
+    tag: v3.1.0
+
+  # Generic CSI registrar
+  csiNodeDriverRegistrar:
+    pullPolicy: Always
+    repository: quay.io/k8scsi/csi-node-driver-registrar
+    # Don't override this unless you know what you're doing
+    # This could change the API the CSI plugin implements
+    tag: v2.0.1
+
+  # VAST CSI plugin
+  csiPluginVast:
+    pullPolicy: Always
+    repository: vastdataorg/csi
+    # Defaults to .Chart.appVersion - can override here
+    tag: ""
+
+  # Generic CSI provisioner
+  csiProvisioner:
+    pullPolicy: Always
+    repository: quay.io/k8scsi/csi-provisioner
+    # Don't override this unless you know what you're doing
+    # This could change the API the CSI plugin implements
+    tag: v1.6.0
+
+  # Generic CSI resizer
+  csiResizer:
+    pullPolicy: Always
+    repository: quay.io/k8scsi/csi-resizer
+    # Don't override this unless you know what you're doing
+    # This could change the API the CSI plugin implements
+    tag: v1.1.0
+
+
+rbac: true
+serviceAccount:
+  node:
+    create: true
+    annotations: {}
+    name: csi-vast-node-sa
+
+  controller:
+    create: true
+    annotations: {}
+    name: csi-vast-controller-sa
+
+
+podAnnotations: {}
+
+resources: {}
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

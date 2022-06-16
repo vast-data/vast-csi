@@ -1,0 +1,11 @@
+# vim: expandtab ts=2 sw=2
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: vastdata-filesystem
+  annotations:
+    storageclass.kubernetes.io/is-default-class: {{ .Values.setDefaultStorageClass | quote }}
+  labels:
+{{- include "vastcsi.labels" . | nindent 4 }}
+provisioner: csi.vastdata.com
+allowVolumeExpansion: {{ .Values.allowVolumeExpansion }}

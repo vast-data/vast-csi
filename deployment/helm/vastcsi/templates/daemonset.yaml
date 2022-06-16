@@ -1,0 +1,114 @@
+# vim: expandtab ts=2 sw=2
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: csi-vast-node
+  labels:
+{{- include "vastcsi.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+{{- include "vastcsi.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+{{- include "vastcsi.labels" . | nindent 8 }}
+{{- if .Values.podAnnotations }}
+      annotations: 
+{{- .Values.podAnnotations | nindent 8 }}
+{{- end }}
+    spec:
+{{- if .Values.affinity }}
+      affinity:
+{{- .Values.affinity | nindent 8 }}
+{{- end }}
+      containers:
+        - name: csi-node-driver-registrar
+          image: {{ include "vastcsi.csiNodeDriverRegistrarImage" . }}
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+            - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm -rf /registration/csi.vastdata.com /registration/csi.vastdata.com-reg.sock"]
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+            - name: DRIVER_REG_SOCK_PATH
+              value: /var/lib/kubelet/plugins/csi.vastdata.com/csi.sock
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+{{- if .Values.resources }}
+          resources:
+{{- .Values.resources | nindent 12 }}
+{{- end }}
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi/
+            - name: registration-dir
+              mountPath: /registration/
+        - name: csi-vast-plugin
+          image: {{ include "vastcsi.csiPluginVastImage" . }}
+          args:
+            - "serve"
+          imagePullPolicy: {{ .Values.image.csiPluginVast.pullPolicy }}
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///csi/csi.sock
+            - name: X_CSI_MODE
+              value: node
+            - name: X_CSI_MOUNT_OPTIONS
+              value: {{ .Values.vastNfsMountOptions }}
+            - name: X_CSI_NODE_ID
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+{{- if .Values.resources }}
+          resources:
+{{- .Values.resources | nindent 12 }}
+{{- end }}
+          securityContext:
+            privileged: true
+            capabilities:
+              add: ["SYS_ADMIN"]
+            allowPrivilegeEscalation: true
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: pods-mount-dir
+              mountPath: /var/lib/kubelet
+              mountPropagation: "Bidirectional"
+            - name: device-dir
+              mountPath: /dev
+      hostNetwork: true
+{{- if .Values.nodeSelector }}
+      nodeSelector:
+{{ .Values.nodeSelector | nindent 8 }}
+{{- end }}
+      priorityClassName: system-node-critical
+      serviceAccount: csi-vast-node-sa
+{{- if .Values.tolerations }}
+      tolerations:
+{{- .Values.tolerations | nindent 8 }}
+{{- end }}
+      volumes:
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/
+            type: DirectoryOrCreate
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/csi.vastdata.com
+            type: DirectoryOrCreate
+        - name: pods-mount-dir
+          hostPath:
+            path: /var/lib/kubelet
+            type: Directory
+        - name: device-dir
+          hostPath:
+            path: /dev
