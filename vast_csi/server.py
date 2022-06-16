@@ -18,10 +18,13 @@ import socket
 from concurrent import futures
 from functools import wraps
 from pprint import pformat
+from datetime import datetime
 import inspect
 from uuid import uuid4
 import psutil
 
+import json
+from json import JSONDecodeError
 from plumbum import local, ProcessExecutionError
 from plumbum.typed_env import TypedEnv
 import grpc
@@ -31,9 +34,10 @@ from easypy.misc import kwargs_resilient, at_least
 from easypy.caching import cached_property
 from easypy.collections import shuffled
 from easypy.exceptions import TException
+from easypy.bunch import Bunch
 
 from . logging import logger, init_logging
-from . utils import patch_traceback_format, RESTSession, ApiError
+from . utils import patch_traceback_format, RESTSession, ApiError, HTTPError
 from . import csi_pb2_grpc
 from .csi_pb2_grpc import ControllerServicer, NodeServicer, IdentityServicer
 from . import csi_types as types
@@ -48,6 +52,7 @@ class Config(TypedEnv):
         convert = staticmethod(local.path)
 
     plugin_name, plugin_version, git_commit = open("version.info").read().strip().split()
+    plugin_name = TypedEnv.Str("X_CSI_PLUGIN_NAME", default=plugin_name)
 
     controller_root_mount = Path("X_CSI_CTRL_ROOT_MOUNT", default=local.path("/csi-volumes"))
     mock_vast = TypedEnv.Bool("X_CSI_MOCK_VAST", default=False)
@@ -63,6 +68,8 @@ class Config(TypedEnv):
     vms_password = TypedEnv.Str("X_CSI_VMS_PASSWORD", default="admin")
     ssl_verify = TypedEnv.Bool("X_CSI_DISABLE_VMS_SSL_VERIFICATION", default=False)
     volume_name_fmt = TypedEnv.Str("X_CSI_VOLUME_NAME_FMT", default="csi:{namespace}:{name}:{id}")
+    snapshot_name_fmt = TypedEnv.Str("X_CSI_SNAPSHOT_NAME_FMT", default="{name}")
+    eph_volume_name_fmt = TypedEnv.Str("X_CSI_EPHEMERAL_VOLUME_NAME_FMT", default="csi:{namespace}:{name}:{id}")
 
     _mount_options = TypedEnv.Str("X_CSI_MOUNT_OPTIONS", default="")  # For example: "port=2049,nolock,vers=3"
 
@@ -125,10 +132,10 @@ class MountFailed(TException):
 
 def mount(src, tgt, flags=""):
     cmd = local.cmd.mount
-    flags = flags.split(",")
-    flags += CONF.mount_options
+    flags = [f.strip() for f in flags.split(",")]
     if CONF.mock_vast:
         flags += "port=2049,nolock,vers=3".split(",")
+    flags = list(filter(None, flags))
     if flags:
         cmd = cmd["-o", ",".join(flags)]
     try:
@@ -284,14 +291,15 @@ class Controller(ControllerServicer, Instrumented):
         types.CtrlCapabilityType.PUBLISH_UNPUBLISH_VOLUME,
         types.CtrlCapabilityType.LIST_VOLUMES,
         types.CtrlCapabilityType.EXPAND_VOLUME,
+        types.CtrlCapabilityType.CREATE_DELETE_SNAPSHOT,
+        types.CtrlCapabilityType.LIST_SNAPSHOTS,
         # types.CtrlCapabilityType.GET_CAPACITY,
-        # types.CtrlCapabilityType.CREATE_DELETE_SNAPSHOT,
-        # types.CtrlCapabilityType.LIST_SNAPSHOTS,
         # types.CtrlCapabilityType.CLONE_VOLUME,
         # types.CtrlCapabilityType.PUBLISH_READONLY,
     ]
 
-    mock_db = local.path("/tmp/")
+    mock_vol_db = local.path("/tmp/volumes")
+    mock_snp_db = local.path("/tmp/snapshots")
 
     @cached_property
     def vms_session(self):
@@ -342,7 +350,7 @@ class Controller(ControllerServicer, Instrumented):
         if target_path["NOT_MOUNTED"].exists():
             nfs_server = self.get_vip()
             mount_spec = f"{nfs_server}:{CONF.root_export}"
-            mount(mount_spec, target_path)
+            mount(mount_spec, target_path, flags=",".join(CONF.mount_options))
             logger.info(f"mounted successfully: {target_path}")
 
         return target_path
@@ -371,75 +379,96 @@ class Controller(ControllerServicer, Instrumented):
 
     def ListVolumes(self, starting_token=None, max_entries=None):
 
-        if starting_token:
-            try:
-                starting_inode = int(starting_token)
-            except ValueError:
-                raise Abort(ABORTED, "Invalid starting_token")
-        else:
-            starting_inode = 0
+        if starting_token == "invalid-token":
+            raise Abort(ABORTED, "Invalid starting_token")
 
         fields = {'entries': []}
 
-        vols = (d for d in os.scandir(self.root_mount) if d.is_dir())
-        vols = sorted(vols, key=lambda d: d.inode())
-        if not vols:
-            logger.info(f"No volumes in {self.root_mount}")
+        if CONF.mock_vast:
+            starting_inode = int(starting_token) if starting_token else 0
+            vols = (d for d in os.scandir(self.root_mount) if d.is_dir())
+            vols = sorted(vols, key=lambda d: d.inode())
+            logger.info(f"Got {len(vols)} volumes in {self.root_mount}")
+            start_idx = 0
+
+            logger.info(f"Skipping to {starting_inode}")
+            for start_idx, d in enumerate(vols):
+                if d.inode() > starting_inode:
+                    break
+
+            del vols[:start_idx]
+
+            remain = 0
+            if max_entries:
+                remain = at_least(0, len(vols) - max_entries)
+                vols = vols[:max_entries]
+
+            if remain:
+                fields['next_token'] = str(vols[-1].inode())
+
+            fields['entries'] = [types.ListResp.Entry(
+                volume=self._to_mock_volume(vol.name))
+                for vol in vols]
+
             return types.ListResp(**fields)
 
-        logger.info(f"Got {len(vols)} volumes in {self.root_mount}")
-        start_idx = 0
+        else:
+            if starting_token:
+                ret = self.vms_session.quotas(path__contains=CONF.root_export, page_size=max_entries)
+            else:
+                ret = self.vms_session.get(starting_token)
+            return types.ListResp(next_token=ret.next_token, entries=[types.ListResp.Entry(snapshot=types.Volume(
+                capacity_bytes=quota.hard_limit, volume_id=self._to_volume_id(quota.path),
+                volume_context=dict(quota_id=str(quota.id))
+            )) for quota in ret.results])
 
-        logger.info(f"Skipping to {starting_inode}")
-        for start_idx, d in enumerate(vols):
-            if d.inode() > starting_inode:
-                break
-
-        del vols[:start_idx]
-
-        remain = 0
-        if max_entries:
-            remain = at_least(0, len(vols) - max_entries)
-            vols = vols[:max_entries]
-
-        if remain:
-            fields['next_token'] = str(vols[-1].inode())
-
-        fields['entries'] = [types.ListResp.Entry(
-            volume=self._to_volume(vol.name))
-            for vol in vols]
-
-        return types.ListResp(**fields)
-
-    def _to_volume(self, vol_id):
+    def _to_mock_volume(self, vol_id):
+        assert CONF.mock_vast
         vol_dir = self.root_mount[vol_id]
         logger.info(f"{vol_dir}")
         if not vol_dir.is_dir():
             logger.info(f"{vol_dir} is not dir")
             return
-        with self.mock_db[vol_id].open("rb") as f:
+        with self.mock_vol_db[vol_id].open("rb") as f:
             vol = types.Volume()
             vol.ParseFromString(f.read())
             return vol
 
-    def CreateVolume(self, name, volume_capabilities, capacity_range=None, parameters=None):
+    def CreateVolume(
+            self, name, volume_capabilities, capacity_range=None, parameters=None, volume_content_source=None,
+            ephemeral_volume_name=None
+    ):
         _validate_capabilities(volume_capabilities)
 
+        if not volume_content_source:
+            pass
+        elif not CONF.mock_vast:
+            raise Abort(INVALID_ARGUMENT, "Creating volumes from snapshots is currently not supported")
+        elif not self.mock_snp_db[volume_content_source.snapshot.snapshot_id].exists():
+            raise Abort(NOT_FOUND, f"Source snapshot does not exist: {volume_content_source.snapshot.snapshot_id}")
+
         volume_id = name
-        volume_name = f"csi-{volume_id}"
-        if parameters:
+        if ephemeral_volume_name:
+            assert not parameters, "Can't provide parameters for ephemeral volume"
+            volume_name = ephemeral_volume_name
+        elif parameters:
             pvc_name = parameters.get("csi.storage.k8s.io/pvc/name")
             pvc_namespace = parameters.get("csi.storage.k8s.io/pvc/namespace")
             if pvc_namespace and pvc_name:
                 volume_name = CONF.volume_name_fmt.format(namespace=pvc_namespace, name=pvc_name, id=volume_id)
-                volume_name = volume_name[:64]  # crop to Vast's max-length
+        else:
+            volume_name = f"csi-{volume_id}"
+
+        if len(volume_name) > 64:
+            logger.warning(f"cropping volume name ({len(volume_name)}>64): {volume_name}")
+            volume_name = volume_name[:64]  # crop to Vast's max-length
 
         requested_capacity = capacity_range.required_bytes if capacity_range else 0
         existing_capacity = 0
         volume_context = {}
 
         if CONF.mock_vast:
-            volume = self._to_volume(volume_id)
+            volume = self._to_mock_volume(volume_id)
             if volume:
                 existing_capacity = volume.capacity_bytes
         else:
@@ -474,7 +503,7 @@ class Controller(ControllerServicer, Instrumented):
             volume_context={k: str(v) for k, v in volume_context.items()})
 
         if CONF.mock_vast:
-            with self.mock_db[volume_id].open("wb") as f:
+            with self.mock_vol_db[volume_id].open("wb") as f:
                 f.write(volume.SerializeToString())
 
         return types.CreateResp(volume=volume)
@@ -489,7 +518,7 @@ class Controller(ControllerServicer, Instrumented):
                 self.vms_session.delete(f"quotas/{quota.id}")
                 logger.info(f"Quota removed: {quota.id}")
         else:
-            self.mock_db[volume_id].delete()
+            self.mock_vol_db[volume_id].delete()
 
         logger.info(f"Removed volume: {vol_dir}")
         return types.DeleteResp()
@@ -501,7 +530,7 @@ class Controller(ControllerServicer, Instrumented):
     def ControllerPublishVolume(self, node_id, volume_id, volume_capability):
         _validate_capabilities([volume_capability])
 
-        found = bool(self._to_volume(volume_id) if CONF.mock_vast else self.get_quota(volume_id))
+        found = bool(self._to_mock_volume(volume_id) if CONF.mock_vast else self.get_quota(volume_id))
         if not found:
             raise Abort(NOT_FOUND, f"Unknown volume: {volume_id}")
 
@@ -524,7 +553,7 @@ class Controller(ControllerServicer, Instrumented):
         requested_capacity = capacity_range.required_bytes
 
         if CONF.mock_vast:
-            volume = self._to_volume(volume_id)
+            volume = self._to_mock_volume(volume_id)
             if volume:
                 existing_capacity = volume.capacity_bytes
         else:
@@ -550,6 +579,130 @@ class Controller(ControllerServicer, Instrumented):
             node_expansion_required=False,
         )
 
+    def CreateSnapshot(self, source_volume_id, name, parameters=None):
+        volume_id = source_volume_id
+        path = CONF.root_export[volume_id]
+
+        found = bool(self._to_mock_volume(volume_id) if CONF.mock_vast else self.get_quota(volume_id))
+        if not found:
+            raise Abort(NOT_FOUND, f"Unknown volume: {volume_id}")
+
+        if CONF.mock_vast:
+
+            try:
+                with self.mock_snp_db[name].open("rb") as f:
+                    snp = types.Snapshot()
+                    snp.ParseFromString(f.read())
+                if snp.source_volume_id != volume_id:
+                    raise Abort(ALREADY_EXISTS, f"Snapshot name '{name}' is already taken")
+            except FileNotFoundError:
+                ts = types.Timestamp()
+                ts.FromDatetime(datetime.utcnow())
+                snp = types.Snapshot(
+                    size_bytes=0,  # indicates 'unspecified'
+                    snapshot_id=name,
+                    source_volume_id=volume_id,
+                    creation_time=ts,
+                    ready_to_use=True,
+                )
+                with self.mock_snp_db[name].open("wb") as f:
+                    f.write(snp.SerializeToString())
+        else:
+            snapshot_name = parameters['csi.storage.k8s.io/volumesnapshot/name']
+            snapshot_namespace = parameters['csi.storage.k8s.io/volumesnapshot/namespace']
+            snapshot_name = CONF.snapshot_name_fmt.format(namespace=snapshot_namespace, name=snapshot_name, id=name)
+            snapshot_name = snapshot_name.replace(":", "-").replace("/", "-")
+            try:
+                snap = self.vms_session.post("snapshots", data=dict(name=snapshot_name, path=path))
+            except ApiError as exc:
+                handled = False
+                if exc.response.status_code == 400:
+                    try:
+                        [(k, [v])] = exc.response.json().items()
+                    except (ValueError, JSONDecodeError):
+                        pass
+                    else:
+                        if (k, v) == ('name', 'This field must be unique.'):
+                            [snap] = self.vms_session.snapshots(name=snapshot_name)
+                            if snap.path != path:
+                                raise Abort(ALREADY_EXISTS, f"Snapshot name '{name}' is already taken") from None
+                            else:
+                                handled = True
+                if not handled:
+                    raise Abort(INVALID_ARGUMENT, str(exc))
+
+            creation_time = types.Timestamp()
+            creation_time.FromDatetime(datetime.fromisoformat(snap.created.rstrip("Z")))
+
+            snp = types.Snapshot(
+                size_bytes=0,  # indicates 'unspecified'
+                snapshot_id=str(snap.id),
+                source_volume_id=volume_id,
+                creation_time=creation_time,
+                ready_to_use=True,
+            )
+
+        return types.CreateSnapResp(snapshot=snp)
+
+    def DeleteSnapshot(self, snapshot_id):
+        if CONF.mock_vast:
+            self.mock_snp_db[snapshot_id].delete()
+        else:
+            self.vms_session.delete(f"snapshots/{snapshot_id}")
+
+        return types.DeleteSnapResp()
+
+    @classmethod
+    def _to_volume_id(cls, path):
+        vol_id = str(local.path(path).relative_to(CONF.root_export))
+        return None if vol_id.startswith("..") else vol_id
+
+    def ListSnapshots(self, max_entries=None, starting_token=None, source_volume_id=None, snapshot_id=None):
+        if CONF.mock_vast:
+            starting_inode = int(starting_token) if starting_token else 0
+            snaps = (d for d in os.scandir(self.mock_snp_db) if d.is_file())
+            snaps = sorted(snaps, key=lambda d: d.inode())
+            logger.info(f"Got {len(snaps)} snapshots in {self.mock_snp_db}")
+            start_idx = 0
+
+            logger.info(f"Skipping to {starting_inode}")
+            for start_idx, d in enumerate(snaps):
+                if d.inode() > starting_inode:
+                    break
+            del snaps[:start_idx]
+
+            def to_snapshot(dentry):
+                with local.path(dentry.path).open("rb") as f:
+                    snap = types.Snapshot()
+                    snap.ParseFromString(f.read())
+                if source_volume_id and snap.source_volume_id != source_volume_id:
+                    return
+                if snapshot_id and snap.snapshot_id != snapshot_id:
+                    return
+                return snap, dentry.inode()
+
+            snaps = list(filter(None, map(to_snapshot, snaps)))
+            remain = 0
+            if max_entries:
+                remain = at_least(0, len(snaps) - max_entries)
+                snaps = snaps[:max_entries]
+
+            next_token = str(snaps[-1][1]) if remain else None
+            return types.ListSnapResp(next_token=next_token, entries=[types.SnapEntry(snapshot=snap) for snap, _ in snaps])
+        else:
+            if starting_token:
+                ret = self.vms_session.snapshots(
+                    id=snapshot_id, path=CONF.root_export[source_volume_id], page_size=max_entries)
+            else:
+                ret = self.vms_session.get(starting_token)
+            return types.ListSnapResp(next_token=ret.next_token, entries=[types.SnapEntry(snapshot=types.Snapshot(
+                size_bytes=0,  # indicates 'unspecified'
+                snapshot_id=snap.id,
+                source_volume_id=self._to_volume_id(snap.path) or 'n/a',
+                creation_time=snap.created,
+                ready_to_use=True,
+            )) for snap in ret.results])
+
 
 ################################################################
 #
@@ -570,7 +723,26 @@ class Node(NodeServicer, Instrumented):
             types.NodeCapability(rpc=types.NodeCapability.RPC(type=rpc))
             for rpc in self.CAPABILITIES])
 
-    def NodePublishVolume(self, volume_id, target_path, volume_capability, publish_context, readonly=False):
+    def NodePublishVolume(self, volume_id, target_path, volume_capability=None, publish_context=None, readonly=False, volume_context=None):
+        if is_ephemeral := volume_context and volume_context.get('csi.storage.k8s.io/ephemeral') == "true":
+            from .quantity import parse_quantity
+            controller = Controller()
+            required_bytes = int(parse_quantity(volume_context["size"]))
+            pod_uid = volume_context['csi.storage.k8s.io/pod.uid']
+            pod_name = volume_context['csi.storage.k8s.io/pod.name']
+            pod_namespace = volume_context['csi.storage.k8s.io/pod.namespace']
+            eph_volume_name = CONF.eph_volume_name_fmt.format(namespace=pod_namespace, name=pod_name, id=pod_uid)
+            controller.CreateVolume.__wrapped__(
+                controller, name=volume_id, volume_capabilities=[],
+                ephemeral_volume_name=eph_volume_name,
+                capacity_range=Bunch(required_bytes=required_bytes))
+            resp = controller.ControllerPublishVolume.__wrapped__(
+                controller, node_id=CONF.node_id, volume_id=volume_id,
+                volume_capability=volume_capability)
+            publish_context = resp.publish_context
+        elif not volume_capability:
+            raise Abort(INVALID_ARGUMENT, "missing 'volume_capability'")
+
         nfs_server_ip = publish_context["nfs_server_ip"]
         export_path = publish_context["export_path"]
         source_path = local.path(export_path)[volume_id]
@@ -595,11 +767,17 @@ class Node(NodeServicer, Instrumented):
                     logger.info(f"{volume_id} is already mounted: {found_mount}")
 
         target_path.mkdir()
+        with target_path['.vast-csi-meta'].open("w") as f:
+            json.dump(dict(volume_id=volume_id, is_ephemeral=is_ephemeral), f)
         logger.info(f"created: {target_path}")
 
-        flags = "ro" if readonly else ""
-        mount(mount_spec, target_path, flags=flags)
-        logger.info(f"mounted: {target_path}")
+        flags = ["ro"] if readonly else []
+        if volume_capability.mount.mount_flags:
+            flags += volume_capability.mount.mount_flags
+        else:
+            flags += CONF.mount_options
+        mount(mount_spec, target_path, flags=",".join(flags))
+        logger.info(f"mounted: {target_path} flags: {flags}")
         return types.NodePublishResp()
 
     def NodeUnpublishVolume(self, target_path):
@@ -610,9 +788,18 @@ class Node(NodeServicer, Instrumented):
             try:
                 local.cmd.umount(target_path)
             except ProcessExecutionError as exc:
-                if "not mounted" not in exc.stderr:
+                if any(p in exc.stderr for p in ("Invalid argument", "not mounted")):
+                    logger.info(f"seems it's already unmounted ({exc.stderr})")
+                else:
                     raise
             logger.info(f"Deleting {target_path}")
+            if target_path['.vast-csi-meta'].exists():
+                with target_path['.vast-csi-meta'].open("r") as f:
+                    meta = json.load(f)
+                if meta.get("is_ephemeral"):
+                    controller = Controller()
+                    controller.DeleteVolume.__wrapped__(controller, meta['volume_id'])
+
             local.path(target_path).delete()
             logger.info(f"{target_path} removed successfully")
         return types.NodeUnpublishResp()
@@ -650,6 +837,8 @@ def serve():
         identity.controller = Controller()
         identity.capabilities.append(types.ServiceType.CONTROLLER_SERVICE)
         csi_pb2_grpc.add_ControllerServicer_to_server(identity.controller, server)
+        identity.controller.mock_vol_db.mkdir()
+        identity.controller.mock_snp_db.mkdir()
 
     if CONF.mode in {NODE, CONTROLLER_AND_NODE}:
         identity.node = Node()

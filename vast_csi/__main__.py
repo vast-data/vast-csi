@@ -14,6 +14,7 @@ CSI_SIDECAR_VERSIONS = {
     'csi-attacher':              'v3.1.0',  # min k8s: v1.17
     'csi-resizer':               'v1.1.0',  # min k8s: v1.16
     'csi-node-driver-registrar': 'v2.0.1',  # min k8s: v1.13
+    'csi-snapshotter':           'v6.0.1',  # min k8s: v1.20
 }
 
 

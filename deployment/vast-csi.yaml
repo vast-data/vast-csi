@@ -23,7 +23,10 @@ metadata:
   name: csi.vastdata.com
 spec:
   attachRequired: true
-  podInfoOnMount: false
+  podInfoOnMount: true
+  volumeLifecycleModes:
+    - Persistent
+    - Ephemeral
 
 ---
 
@@ -48,6 +51,18 @@ metadata:
     storageclass.kubernetes.io/is-default-class: "true"
 provisioner: csi.vastdata.com
 allowVolumeExpansion: true
+
+---
+
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: vastdata-snapclass
+  namespace: vast-csi
+  annotations:
+    snapshot.storage.kubernetes.io/is-default-class: "true"
+driver: csi.vastdata.com
+deletionPolicy: Delete
 
 ---
 
@@ -79,7 +94,7 @@ spec:
       hostNetwork: true
       containers:
         - name: csi-provisioner
-          image: quay.io/k8scsi/csi-provisioner:{csi-provisioner}
+          image: k8s.gcr.io/sig-storage/csi-provisioner:{csi-provisioner}
           args:
             - "--csi-address=$(ADDRESS)"
             - "--v=5"
@@ -92,7 +107,7 @@ spec:
             - name: socket-dir
               mountPath: /var/lib/csi/sockets/pluginproxy/
         - name: csi-attacher
-          image: quay.io/k8scsi/csi-attacher:{csi-attacher}
+          image: k8s.gcr.io/sig-storage/csi-attacher:{csi-attacher}
           args:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
@@ -103,8 +118,22 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /var/lib/csi/sockets/pluginproxy/
+        - name: csi-snapshotter
+          image: k8s.gcr.io/sig-storage/csi-snapshotter:{csi-snapshotter}
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--v=5"
+            - "--extra-create-metadata"
+            - "--leader-election=false"
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          imagePullPolicy: {PULL_POLICY}
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
         - name: csi-resizer
-          image: quay.io/k8scsi/csi-resizer:{csi-resizer}
+          image: k8s.gcr.io/sig-storage/csi-resizer:{csi-resizer}
           args:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
@@ -141,6 +170,8 @@ spec:
             - name: X_CSI_MODE
               value: controller
             - name: X_CSI_VOLUME_NAME_FMT
+              value: csi:{{namespace}}:{{name}}:{{id}}
+            - name: X_CSI_SNAPSHOT_NAME_FMT
               value: csi:{{namespace}}:{{name}}:{{id}}
             - name: X_CSI_VMS_USER
               valueFrom:
@@ -195,10 +226,16 @@ rules:
     verbs: ["get", "list"]
   - apiGroups: ["snapshot.storage.k8s.io"]
     resources: ["volumesnapshotcontents"]
-    verbs: ["get", "list"]
+    verbs: ["get", "list", "watch", "update", "patch"]
   - apiGroups: [""]
     resources: ["nodes"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotcontents/status"]
+    verbs: ["update", "patch"]
 
 ---
 
@@ -314,7 +351,7 @@ spec:
       hostNetwork: true
       containers:
         - name: csi-node-driver-registrar
-          image: quay.io/k8scsi/csi-node-driver-registrar:{csi-node-driver-registrar}
+          image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:{csi-node-driver-registrar}
           args:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
@@ -343,6 +380,29 @@ spec:
             - "serve"
           imagePullPolicy: {PULL_POLICY}
           env:
+          env:
+            - name: X_CSI_VMS_HOST
+              value: {VMS_HOST}
+            - name: X_CSI_VIP_POOL_NAME
+              value: {VIP_POOL_NAME}
+            - name: X_CSI_DISABLE_VMS_SSL_VERIFICATION
+              value: {DISABLE_SSL}
+            - name: X_CSI_LB_STRATEGY
+              value: {LB_STRATEGY}
+            - name: X_CSI_NFS_EXPORT
+              value: {NFS_EXPORT}
+            - name: X_CSI_EPHEMERAL_VOLUME_NAME_FMT
+              value: csi:{{namespace}}:{{name}}:{{id}}
+            - name: X_CSI_VMS_USER
+              valueFrom:
+                secretKeyRef:
+                  name: csi-vast-mgmt
+                  key: username
+            - name: X_CSI_VMS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: csi-vast-mgmt
+                  key: password
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
             - name: X_CSI_MODE

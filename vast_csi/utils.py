@@ -2,20 +2,22 @@ from collections import defaultdict
 import threading
 import re
 import requests
+from requests.exceptions import HTTPError  # noqa
 import json
 
 from pprint import pformat
 from plumbum import local
 from easypy.caching import locking_cache
 from easypy.bunch import Bunch
+from easypy.exceptions import TException
 
 from . logging import logger
 
 LOCKS = defaultdict(lambda: threading.Lock())
 
 
-class ApiError(Exception):
-    pass
+class ApiError(TException):
+    template = "HTTP {response.status_code}: {response.text}"
 
 
 class RESTSession(requests.Session):
@@ -43,10 +45,8 @@ class RESTSession(requests.Session):
 
         ret = super().request(verb, url, verify=self.ssl_verify, params=params, **kwargs)
 
-        if ret.status_code == 503 and ret.text:
-            logger.error(ret.text)
-            raise ApiError(ret.text)
-
+        if ret.status_code in (400, 503):
+            raise ApiError(response=ret)
         ret.raise_for_status()
 
         logger.info(f"<<< [{verb}] {url}")
