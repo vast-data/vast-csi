@@ -726,16 +726,21 @@ class Node(NodeServicer, Instrumented):
     def NodePublishVolume(self, volume_id, target_path, volume_capability=None, publish_context=None, readonly=False, volume_context=None):
         if is_ephemeral := volume_context and volume_context.get('csi.storage.k8s.io/ephemeral') == "true":
             from .quantity import parse_quantity
-            controller = Controller()
-            required_bytes = int(parse_quantity(volume_context["size"]))
+            if 'size' in volume_context:
+                required_bytes = int(parse_quantity(volume_context["size"]))
+                capacity_range = Bunch(required_bytes=required_bytes)
+            else:
+                capacity_range = None
             pod_uid = volume_context['csi.storage.k8s.io/pod.uid']
             pod_name = volume_context['csi.storage.k8s.io/pod.name']
             pod_namespace = volume_context['csi.storage.k8s.io/pod.namespace']
             eph_volume_name = CONF.eph_volume_name_fmt.format(namespace=pod_namespace, name=pod_name, id=pod_uid)
+
+            controller = Controller()
             controller.CreateVolume.__wrapped__(
                 controller, name=volume_id, volume_capabilities=[],
                 ephemeral_volume_name=eph_volume_name,
-                capacity_range=Bunch(required_bytes=required_bytes))
+                capacity_range=capacity_range)
             resp = controller.ControllerPublishVolume.__wrapped__(
                 controller, node_id=CONF.node_id, volume_id=volume_id,
                 volume_capability=volume_capability)
