@@ -47,7 +47,8 @@ def _info(args):
     conf = Config()
     info = dict(
         name=conf.plugin_name, version=conf.plugin_version, commit=conf.git_commit,
-        supported_k8s_versions=open("k8s_supported.txt").read().split()
+        supported_k8s_versions=open("k8s_supported.txt").read().split(),
+        sidecars=CSI_SIDECAR_VERSIONS,
     )
     if args.output == "yaml":
         import yaml
