@@ -27,7 +27,7 @@ build_csi:
 
 test_csi:
   stage: test
-  # when: manual
+  when: manual
   trigger:
     project: dev/orion
     branch: $ORION_BRANCH
@@ -45,11 +45,16 @@ test_csi:
     VAST_COMET_KWARG: csi_plugin_version=${CI_PIPELINE_ID}
     UPGRADE_TO: $INSTALL_IMAGE
 
-update_dockerhub:
+update_dockerhub [prod]: &update_dockerhub
   stage: deploy
+  environment: prod
   script: |
     set -x
-    VERSION=$(cat version.txt)
+    if [[ "$CI_ENVIRONMENT_NAME" == "prod" ]]; then
+      VERSION=$(cat version.txt)
+    else
+      VERSION=$CI_ENVIRONMENT_NAME-$CI_PIPELINE_ID
+    fi
     RELEASE_NAME=docker.io/vastdataorg/csi:${VERSION}
 
     docker pull ${IMAGE_NAME}
@@ -62,11 +67,14 @@ update_dockerhub:
 
   after_script:
   - docker logout $DOCKER_HUB
-  only:
-  - master
   when: manual
   tags:
     - vast-dev-builder
+
+
+update_dockerhub [beta]:
+  <<: *update_dockerhub
+  environment: beta
 
 
 update_github:
