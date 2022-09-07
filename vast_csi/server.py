@@ -690,12 +690,15 @@ class Controller(ControllerServicer, Instrumented):
             next_token = str(snaps[-1][1]) if remain else None
             return types.ListSnapResp(next_token=next_token, entries=[types.SnapEntry(snapshot=snap) for snap, _ in snaps])
         else:
+            page_size = max_entries or 250
+
             if not starting_token:
                 ret = self.vms_session.snapshots(
-                    id=snapshot_id, path=CONF.root_export[source_volume_id], page_size=max_entries)
+                    id=snapshot_id, path=CONF.root_export[source_volume_id],
+                    page_size=page_size)
             else:
                 ret = self.vms_session.get(starting_token)
-            return types.ListSnapResp(next_token=ret.next_token, entries=[types.SnapEntry(snapshot=types.Snapshot(
+            return types.ListSnapResp(next_token=ret.next, entries=[types.SnapEntry(snapshot=types.Snapshot(
                 size_bytes=0,  # indicates 'unspecified'
                 snapshot_id=snap.id,
                 source_volume_id=self._to_volume_id(snap.path) or 'n/a',
