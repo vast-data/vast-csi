@@ -41,6 +41,8 @@ from . utils import patch_traceback_format, RESTSession, ApiError, HTTPError
 from . import csi_pb2_grpc
 from .csi_pb2_grpc import ControllerServicer, NodeServicer, IdentityServicer
 from . import csi_types as types
+from .volume_builder import VolumeBuilder, SnapshotBuilder, TestVolumeBuilder
+from .exceptions import Abort
 
 
 LOAD_BALANCING_STRATEGIES = {ROUNDROBIN, RANDOM}
@@ -161,18 +163,6 @@ def _validate_capabilities(capabilities):
             raise Abort(
                 INVALID_ARGUMENT,
                 f'Unsupported file system type: {capability.mount.fs_type}')
-
-
-class Abort(Exception):
-
-    @property
-    def code(self):
-        return self.args[0]
-
-    @property
-    def message(self):
-        return self.args[1]
-
 
 class Instrumented():
 
@@ -339,6 +329,10 @@ class Controller(ControllerServicer, Instrumented):
         else:
             return quotas[0]
 
+    def get_snapshot(self, snapshot_id):
+        """Get snapshot by id."""
+        return self.vms_session.request("GET", f"/snapshots/{snapshot_id}")
+
     @cached_property
     def root_mount(self):
         target_path = CONF.controller_root_mount
@@ -440,72 +434,34 @@ class Controller(ControllerServicer, Instrumented):
     ):
         _validate_capabilities(volume_capabilities)
 
-        if not volume_content_source:
-            pass
-        elif not CONF.mock_vast:
-            raise Abort(INVALID_ARGUMENT, "Creating volumes from snapshots is currently not supported")
-        elif not self.mock_snp_db[volume_content_source.snapshot.snapshot_id].exists():
-            raise Abort(NOT_FOUND, f"Source snapshot does not exist: {volume_content_source.snapshot.snapshot_id}")
-
-        volume_id = name
-        if ephemeral_volume_name:
-            assert not parameters, "Can't provide parameters for ephemeral volume"
-            volume_name = ephemeral_volume_name
-        elif parameters:
-            pvc_name = parameters.get("csi.storage.k8s.io/pvc/name")
-            pvc_namespace = parameters.get("csi.storage.k8s.io/pvc/namespace")
-            if pvc_namespace and pvc_name:
-                volume_name = CONF.volume_name_fmt.format(namespace=pvc_namespace, name=pvc_name, id=volume_id)
-        else:
-            volume_name = f"csi-{volume_id}"
-
-        if len(volume_name) > 64:
-            logger.warning(f"cropping volume name ({len(volume_name)}>64): {volume_name}")
-            volume_name = volume_name[:64]  # crop to Vast's max-length
-
-        requested_capacity = capacity_range.required_bytes if capacity_range else 0
-        existing_capacity = 0
-        volume_context = {}
-
+        # Take appropriate builder for volume, snapshot or test builder
         if CONF.mock_vast:
-            volume = self._to_mock_volume(volume_id)
-            if volume:
-                existing_capacity = volume.capacity_bytes
+            if volume_content_source and not self.mock_snp_db[volume_content_source.snapshot.snapshot_id].exists():
+                raise Abort(NOT_FOUND, f"Source snapshot does not exist: {volume_content_source.snapshot.snapshot_id}")
+            builder = TestVolumeBuilder
+
+        elif volume_content_source:
+            builder = SnapshotBuilder
+
+        elif not volume_content_source:
+            builder = VolumeBuilder
+
         else:
-            quota = self.get_quota(volume_id)
-            if quota:
-                existing_capacity = quota.hard_limit
+            raise ValueError("Invalid condition. Either volume_content_source"
+                             " or test environment variable should be provided")
 
-        if not existing_capacity:
-            pass
-        elif existing_capacity != requested_capacity:
-            raise Abort(
-                ALREADY_EXISTS,
-                "Volume already exists with different capacity than requested"
-                f"({existing_capacity})")
-
-        if CONF.mock_vast:
-            vol_dir = self.root_mount[volume_id]
-            vol_dir.mkdir()
-        else:
-            data = dict(
-                create_dir=True,
-                name=volume_name,
-                path=str(CONF.root_export[volume_id]),
-            )
-            if requested_capacity:
-                data.update(hard_limit=requested_capacity)
-            quota = self.vms_session.post("quotas", data=data)
-            volume_context.update(quota_id=quota.id)
-
-        volume = types.Volume(
-            capacity_bytes=requested_capacity, volume_id=volume_id,
-            volume_context={k: str(v) for k, v in volume_context.items()})
-
-        if CONF.mock_vast:
-            with self.mock_vol_db[volume_id].open("wb") as f:
-                f.write(volume.SerializeToString())
-
+        # Create volume, volume from snapshot or mount local path (for testing purposes)
+        # depends on chosen builder.
+        volume = builder(
+            controller=self,
+            configuration=CONF,
+            name=name,
+            volume_capabilities=volume_capabilities,
+            capacity_range=capacity_range,
+            parameters=parameters,
+            volume_content_source=volume_content_source,
+            ephemeral_volume_name=ephemeral_volume_name
+        ).build_volume()
         return types.CreateResp(volume=volume)
 
     def DeleteVolume(self, volume_id):
@@ -527,12 +483,28 @@ class Controller(ControllerServicer, Instrumented):
         cap = os.statvfs(self.root_mount).f_favail
         return types.CapacityResp(available_capacity=cap)
 
-    def ControllerPublishVolume(self, node_id, volume_id, volume_capability):
+    def ControllerPublishVolume(self, node_id, volume_id, volume_capability, volume_context = None):
+        volume_context = volume_context or dict()
         _validate_capabilities([volume_capability])
+        # Build export path for snapshot or volume
+        if snapshot_base_path := volume_context.get("snapshot_base_path"):
+            # Snapshot
+            quota_path_fragment = snapshot_base_path.split("/")[0]
+            export_path = str(CONF.root_export[snapshot_base_path])
+        else:
+            # Volume
+            quota_path_fragment = volume_id
+            export_path = str(CONF.root_export[volume_id])
 
-        found = bool(self._to_mock_volume(volume_id) if CONF.mock_vast else self.get_quota(volume_id))
+        found = (
+            bool(self._to_mock_volume(quota_path_fragment)
+            if
+                CONF.mock_vast
+            else
+                self.get_quota(quota_path_fragment))
+        )
         if not found:
-            raise Abort(NOT_FOUND, f"Unknown volume: {volume_id}")
+            raise Abort(NOT_FOUND, f"Unknown volume: {quota_path_fragment}")
 
         if CONF.csi_sanity_test and CONF.node_id != node_id:
             # for a test that tries to fake a non-existent node
@@ -542,7 +514,7 @@ class Controller(ControllerServicer, Instrumented):
 
         return types.CtrlPublishResp(
             publish_context=dict(
-                export_path=str(CONF.root_export),
+                export_path=export_path,
                 nfs_server_ip=nfs_server_ip,
             ))
 
@@ -753,8 +725,7 @@ class Node(NodeServicer, Instrumented):
 
         nfs_server_ip = publish_context["nfs_server_ip"]
         export_path = publish_context["export_path"]
-        source_path = local.path(export_path)[volume_id]
-        mount_spec = f"{nfs_server_ip}:{source_path}"
+        mount_spec = f"{nfs_server_ip}:{export_path}"
 
         _validate_capabilities([volume_capability])
         target_path = local.path(target_path)

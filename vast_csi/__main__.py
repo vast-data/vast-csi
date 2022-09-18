@@ -10,7 +10,7 @@ IS_INTERACTIVE = sys.stdin.isatty()
 
 
 CSI_SIDECAR_VERSIONS = {
-    'csi-provisioner':           'v1.6.0',  # min k8s: v1.17
+    'csi-provisioner':           'v3.2.1',  # min k8s: v1.17
     'csi-attacher':              'v3.1.0',  # min k8s: v1.17
     'csi-resizer':               'v1.1.0',  # min k8s: v1.16
     'csi-node-driver-registrar': 'v2.0.1',  # min k8s: v1.13
