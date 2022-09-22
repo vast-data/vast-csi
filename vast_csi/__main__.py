@@ -30,7 +30,7 @@ def main():
     serve_parse.set_defaults(func=_serve)
 
     template_parse = subparsers.add_parser("template", help='Generate a kubectl template for deploying this CSI plugin')
-    for p in "image hostname username password vippool export load-balancing pull-policy mount-options".split():
+    for p in "image hostname username password vippool export load-balancing pull-policy mount-options deployment".split():
         template_parse.add_argument("--" + p)
     template_parse.set_defaults(func=_template)
 
@@ -66,8 +66,11 @@ def _serve(args):
 
 
 def _template(args):
+    if deployment := (args.get("deployment") or ""):
+        deployment = f"-{deployment}"
+
     try:
-        fname = "vast-csi-deployment.yaml"
+        fname = f"vast-csi-deployment{deployment}.yaml"
         with open(f"/out/{fname}", "w") as file:
             generate_deployment(file, **args)
         print(C(f"\nWritten to WHITE<<{fname}>>\n"))
@@ -80,7 +83,7 @@ def _template(args):
 
 def generate_deployment(
         file, load_balancing=None, pull_policy=None, image=None, hostname=None,
-        username=None, password=None, vippool=None, export=None, mount_options=None):
+        username=None, password=None, vippool=None, export=None, mount_options=None, deployment=None):
 
     from . utils import RESTSession
     from requests import HTTPError, ConnectionError
@@ -91,6 +94,16 @@ def generate_deployment(
 
     style = Style.from_dict({'': '#AAAABB', 'prompt': '#ffffff'})
     context = Bunch()
+
+    from . server import Config
+    conf = Config()
+    name = conf.plugin_name
+    namespace = "vast-csi"
+    if deployment:
+        name = f"{deployment}.{name}"
+        namespace = f"{namespace}-{deployment}"
+
+    context.update(PLUGIN_NAME=name, NAMESPACE=namespace)
 
     def prompt(arg, message, **kwargs):
         if not IS_INTERACTIVE:
