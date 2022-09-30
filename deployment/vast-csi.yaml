@@ -45,7 +45,7 @@ data:
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
 metadata:
-  name: vastdata-filesystem
+  name: {STORAGE_CLASS}
   namespace: {NAMESPACE}
   annotations:
     storageclass.kubernetes.io/is-default-class: "true"

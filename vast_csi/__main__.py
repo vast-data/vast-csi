@@ -72,11 +72,12 @@ def _template(args):
     try:
         fname = f"vast-csi-deployment{deployment}.yaml"
         with open(f"/out/{fname}", "w") as file:
-            generate_deployment(file, **args)
+            storage_class = generate_deployment(file, **args)
         print(C(f"\nWritten to WHITE<<{fname}>>\n"))
         print("Inspect the file and then run:")
         print(C(f">> CYAN<<kubectl apply -f {fname}>>\n"))
         print(C("YELLOW<<Be sure to delete the file when done, as it contains Vast Management credentials>>\n"))
+        print(C(f"Use CYAN<<storageClassName: {storage_class}>> in your PVCs\n"))
     except KeyboardInterrupt:
         return
 
@@ -99,11 +100,13 @@ def generate_deployment(
     conf = Config()
     name = conf.plugin_name
     namespace = "vast-csi"
+    storage_class = "vastdata-filesystem"
     if deployment:
         name = f"{deployment}.{name}"
         namespace = f"{namespace}-{deployment}"
+        storage_class = f"{storage_class}-{deployment}"
 
-    context.update(PLUGIN_NAME=name, NAMESPACE=namespace)
+    context.update(PLUGIN_NAME=name, NAMESPACE=namespace, STORAGE_CLASS=storage_class)
 
     def prompt(arg, message, **kwargs):
         if not IS_INTERACTIVE:
@@ -193,6 +196,7 @@ def generate_deployment(
 
     template = open("vast-csi.yaml").read()
     print(re.sub("#.*", "", template.format(**context)).strip(), file=file)
+    return storage_class
 
 
 if __name__ == '__main__':
