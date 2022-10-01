@@ -57,7 +57,7 @@ allowVolumeExpansion: true
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotClass
 metadata:
-  name: vastdata-snapclass
+  name: {SNAPCLASS}
   namespace: {NAMESPACE}
   annotations:
     snapshot.storage.kubernetes.io/is-default-class: "true"

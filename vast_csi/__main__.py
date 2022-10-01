@@ -72,7 +72,7 @@ def _template(args):
     try:
         fname = f"vast-csi-deployment{deployment}.yaml"
         with open(f"/out/{fname}", "w") as file:
-            storage_class = generate_deployment(file, **args)
+            storage_class, snap_class = generate_deployment(file, **args)
         print(C(f"\nWritten to WHITE<<{fname}>>\n"))
         print("Inspect the file and then run:")
         print(C(f">> CYAN<<kubectl apply -f {fname}>>\n"))
@@ -101,10 +101,12 @@ def generate_deployment(
     name = conf.plugin_name
     namespace = "vast-csi"
     storage_class = "vastdata-filesystem"
+    snap_class = "vastdata-snapshot"
     if deployment:
         name = f"{deployment}.{name}"
         namespace = f"{namespace}-{deployment}"
         storage_class = f"{storage_class}-{deployment}"
+        snap_class = f"{snap_class}-{deployment}"
 
     context.update(PLUGIN_NAME=name, NAMESPACE=namespace, STORAGE_CLASS=storage_class)
 
