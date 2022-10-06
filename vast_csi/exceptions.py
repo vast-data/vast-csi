@@ -1,5 +1,7 @@
-class Abort(Exception):
+from easypy.exceptions import TException
 
+
+class Abort(Exception):
     @property
     def code(self):
         return self.args[0]
@@ -7,3 +9,7 @@ class Abort(Exception):
     @property
     def message(self):
         return self.args[1]
+
+
+class ApiError(TException):
+    template = "HTTP {response.status_code}: {response.text}"

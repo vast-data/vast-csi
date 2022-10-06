@@ -10,7 +10,7 @@ IS_INTERACTIVE = sys.stdin.isatty()
 
 
 CSI_SIDECAR_VERSIONS = {
-    'csi-provisioner':           'v3.2.1',  # min k8s: v1.17
+    'csi-provisioner':           'v3.2.1',  # min k8s: v1.20
     'csi-attacher':              'v3.1.0',  # min k8s: v1.17
     'csi-resizer':               'v1.1.0',  # min k8s: v1.16
     'csi-node-driver-registrar': 'v2.0.1',  # min k8s: v1.13
@@ -43,7 +43,7 @@ def main():
 
 
 def _info(args):
-    from . server import Config
+    from . configuration import Config
     conf = Config()
     info = dict(
         name=conf.plugin_name, version=conf.plugin_version, commit=conf.git_commit,
@@ -86,7 +86,7 @@ def generate_deployment(
         file, load_balancing=None, pull_policy=None, image=None, hostname=None,
         username=None, password=None, vippool=None, export=None, mount_options=None, deployment=None):
 
-    from . utils import RESTSession
+    from . vms_session import VmsSession
     from requests import HTTPError, ConnectionError
     from base64 import b64encode
     from prompt_toolkit.completion import WordCompleter
@@ -96,7 +96,7 @@ def generate_deployment(
     style = Style.from_dict({'': '#AAAABB', 'prompt': '#ffffff'})
     context = Bunch()
 
-    from . server import Config
+    from . configuration import Config
     conf = Config()
     name = conf.plugin_name
     namespace = "vast-csi"
@@ -145,7 +145,7 @@ def generate_deployment(
             import urllib3
             urllib3.disable_warnings()
 
-        vms = RESTSession(
+        vms = VmsSession(
             base_url=f"https://{context.VMS_HOST}/api",
             auth=(username, password),
             ssl_verify=ssl_verify)
