@@ -9,7 +9,7 @@ from . import csi_types as types
 from plumbum import local
 
 from .exceptions import Abort
-
+from .configuration import StorageClassOptions
 
 CreatedVolumeT = TypeVar("CreatedVolumeT")
 
@@ -18,7 +18,7 @@ class VolumeBuilderI(ABC):
     """Base Volume Builder interface"""
 
     @abstractmethod
-    def build_volume_name(self) -> str:
+    def build_volume_name(self, **kwargs) -> str:
         """
         Final implementation should build volume name from provided argumenents and/or from other params
         depends on conditions.
@@ -66,7 +66,7 @@ class BaseBuilder(VolumeBuilderI):
 
     def get_existing_capacity(self) -> Optional[int]:
         """Return capacity of requested quota"""
-        quota = self.controller.get_quota(self.name)
+        quota = self.controller.vms_session.get_quota(self.name)
         if quota:
             return quota.hard_limit
 
@@ -75,7 +75,7 @@ class BaseBuilder(VolumeBuilderI):
 class VolumeBuilder(BaseBuilder):
     """Builder for k8s PersistentVolumeClaim, PersistentVolume etc."""
 
-    def build_volume_name(self) -> str:
+    def build_volume_name(self, volume_name_fmt: str) -> str:
         """Build volume name using format csi:{namespace}:{name}:{id}"""
         volume_id = self.name
         if self.ephemeral_volume_name:
@@ -85,7 +85,7 @@ class VolumeBuilder(BaseBuilder):
             pvc_name = self.parameters.get("csi.storage.k8s.io/pvc/name")
             pvc_namespace = self.parameters.get("csi.storage.k8s.io/pvc/namespace")
             if pvc_namespace and pvc_name:
-                volume_name = self.configuration.volume_name_fmt.format(
+                volume_name = volume_name_fmt.format(
                     namespace=pvc_namespace, name=pvc_name, id=volume_id
                 )
         else:
@@ -104,7 +104,20 @@ class VolumeBuilder(BaseBuilder):
         Create volume from pvc, pv etc.
         """
         volume_context = {}
-        volume_name = self.build_volume_name()
+        try:
+            # Init and validate StorageClassOptions.
+            storage_options: StorageClassOptions = StorageClassOptions.from_dict(self.parameters)
+        except TypeError as err:
+            msg = err.args[0]
+            raise Abort(
+                grpc.StatusCode.INVALID_ARGUMENT,
+                "Not enough parameters." f"({msg})",
+            )
+        root_export = local.path(storage_options.root_export_path)
+
+        volume_name = self.build_volume_name(
+            volume_name_fmt=storage_options.volume_name_fmt
+        )
         requested_capacity = self.get_requested_capacity()
 
         # Check if volume with provided name but another capacity already exists.
@@ -119,17 +132,17 @@ class VolumeBuilder(BaseBuilder):
         data = dict(
             create_dir=True,
             name=volume_name,
-            path=str(self.configuration.root_export[self.name]),
+            path=str(root_export[self.name]),
         )
         if requested_capacity:
             data.update(hard_limit=requested_capacity)
-        quota = self.controller.vms_session.post("quotas", data=data)
-        volume_context.update(quota_id=quota.id)
+        quota = self.controller.vms_session.create_quota(data=data)
+        volume_context.update(quota_id=str(quota.id))
 
         return types.Volume(
             capacity_bytes=requested_capacity,
             volume_id=self.name,
-            volume_context={k: str(v) for k, v in volume_context.items()},
+            volume_context={**volume_context, **storage_options.dict()},
         )
 
 
@@ -139,16 +152,30 @@ class SnapshotBuilder(BaseBuilder):
 
     def build_volume_name(self) -> str:
         snapshot_id = self.volume_content_source.snapshot.snapshot_id
-        snapshot = self.controller.get_snapshot(snapshot_id=snapshot_id)
+        snapshot = self.controller.vms_session.get_snapshot(snapshot_id=snapshot_id)
+        snapshot_path = local.path(snapshot.path)
 
-        path = local.path(snapshot.path) / ".snapshot" / snapshot.name
-        return str(path.relative_to(self.configuration.root_export))
+        # Compute root_export from snapthot path. This value should be passed as context for appropriate
+        # mounting within 'ControllerPublishVolume' endpoint
+        self.root_export = snapshot_path.parent
+
+        path = snapshot_path / ".snapshot" / snapshot.name
+        return str(path.relative_to(self.root_export))
 
     def build_volume(self) -> types.Volume:
         """
         Main entry point for snapshots.
         Create snapshot representation.
         """
+        try:
+            # Init and validate StorageClassOptions.
+            storage_options: StorageClassOptions = StorageClassOptions.from_dict(self.parameters)
+        except TypeError as err:
+            msg = err.args[0]
+            raise Abort(
+                grpc.StatusCode.INVALID_ARGUMENT,
+                "Not enough parameters." f"({msg})",
+            )
         snapshot_base_path = self.build_volume_name()
         snapshot_id = self.volume_content_source.snapshot.snapshot_id
         # Requested capacity is always 0 for snapshots.
@@ -158,7 +185,12 @@ class SnapshotBuilder(BaseBuilder):
             content_source=types.VolumeContentSource(
                 snapshot=types.SnapshotSource(snapshot_id=snapshot_id)
             ),
-            volume_context={"snapshot_base_path": snapshot_base_path},
+            volume_context={
+                # Pass vms options via context
+                **storage_options.dict(),
+                "snapshot_base_path": snapshot_base_path,
+                "root_export": self.root_export,
+            },
         )
 
 
@@ -186,7 +218,7 @@ class TestVolumeBuilder(BaseBuilder):
                     f"({existing_capacity})",
                 )
 
-        vol_dir = self.controller.root_mount[self.name]
+        vol_dir = self.controller.get_root_mount()[self.name]
         vol_dir.mkdir()
 
         volume = types.Volume(

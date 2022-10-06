@@ -1,75 +1,8 @@
-from collections import defaultdict
-import threading
 import re
-import requests
 from requests.exceptions import HTTPError  # noqa
-import json
 
-from pprint import pformat
 from plumbum import local
 from easypy.caching import locking_cache
-from easypy.bunch import Bunch
-from easypy.exceptions import TException
-
-from . logging import logger
-
-LOCKS = defaultdict(lambda: threading.Lock())
-
-
-class ApiError(TException):
-    template = "HTTP {response.status_code}: {response.text}"
-
-
-class RESTSession(requests.Session):
-
-    def __init__(self, *args, auth, base_url, ssl_verify, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.base_url = base_url.rstrip("/")
-        self.ssl_verify = ssl_verify
-        self.auth = auth
-        self.headers["Accept"] = "application/json"
-        self.headers["Content-Type"] = "application/json"
-
-    def request(self, verb, api_method, *, params=None, **kwargs):
-        verb = verb.upper()
-        api_method = api_method.strip("/")
-        url = f"{self.base_url}/{api_method}/"
-        logger.info(f">>> [{verb}] {url}")
-
-        if 'data' in kwargs:
-            kwargs['data'] = json.dumps(kwargs['data'])
-
-        if params or kwargs:
-            for line in pformat(dict(kwargs, params=params)).splitlines():
-                logger.info(f"    {line}")
-
-        ret = super().request(verb, url, verify=self.ssl_verify, params=params, **kwargs)
-
-        if ret.status_code in (400, 503):
-            raise ApiError(response=ret)
-        ret.raise_for_status()
-
-        logger.info(f"<<< [{verb}] {url}")
-        if ret.content:
-            ret = Bunch.from_dict(ret.json())
-            for line in pformat(ret).splitlines():
-                logger.info(f"    {line}")
-        else:
-            ret = None
-        logger.info(f"--- [{verb}] {url}: Done")
-        return ret
-
-    def __getattr__(self, attr):
-        if attr.startswith("_"):
-            raise AttributeError(attr)
-
-        def func(**params):
-            return self.request("get", attr, params=params)
-
-        func.__name__ = attr
-        func.__qualname__ = f"{self.__class__.__qualname__}.{attr}"
-        setattr(self, attr, func)
-        return func
 
 
 PATH_ALIASES = {

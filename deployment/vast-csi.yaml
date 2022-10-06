@@ -50,6 +50,13 @@ metadata:
   annotations:
     storageclass.kubernetes.io/is-default-class: "true"
 provisioner: {PLUGIN_NAME}
+parameters:
+  vip_pool_name: '{VIP_POOL_NAME}'
+  root_export: '{NFS_EXPORT}'
+  mount_options: '{MOUNT_OPTIONS}'
+  lb_strategy: '{LB_STRATEGY}'
+  volume_name_fmt: csi:{{namespace}}:{{name}}:{{id}}
+  snapshot_name_fmt: csi:{{namespace}}:{{name}}:{{id}}
 allowVolumeExpansion: true
 
 ---
@@ -159,22 +166,12 @@ spec:
               value: {PLUGIN_NAME}
             - name: X_CSI_VMS_HOST
               value: {VMS_HOST}
-            - name: X_CSI_VIP_POOL_NAME
-              value: {VIP_POOL_NAME}
             - name: X_CSI_DISABLE_VMS_SSL_VERIFICATION
               value: {DISABLE_SSL}
-            - name: X_CSI_LB_STRATEGY
-              value: {LB_STRATEGY}
-            - name: X_CSI_NFS_EXPORT
-              value: {NFS_EXPORT}
             - name: CSI_ENDPOINT
               value: unix:///var/lib/csi/sockets/pluginproxy/csi.sock
             - name: X_CSI_MODE
               value: controller
-            - name: X_CSI_VOLUME_NAME_FMT
-              value: csi:{{namespace}}:{{name}}:{{id}}
-            - name: X_CSI_SNAPSHOT_NAME_FMT
-              value: csi:{{namespace}}:{{name}}:{{id}}
             - name: X_CSI_VMS_USER
               valueFrom:
                 secretKeyRef:
@@ -387,16 +384,8 @@ spec:
               value: {PLUGIN_NAME}
             - name: X_CSI_VMS_HOST
               value: {VMS_HOST}
-            - name: X_CSI_VIP_POOL_NAME
-              value: {VIP_POOL_NAME}
             - name: X_CSI_DISABLE_VMS_SSL_VERIFICATION
               value: {DISABLE_SSL}
-            - name: X_CSI_LB_STRATEGY
-              value: {LB_STRATEGY}
-            - name: X_CSI_NFS_EXPORT
-              value: {NFS_EXPORT}
-            - name: X_CSI_EPHEMERAL_VOLUME_NAME_FMT
-              value: csi:{{namespace}}:{{name}}:{{id}}
             - name: X_CSI_VMS_USER
               valueFrom:
                 secretKeyRef:
@@ -411,8 +400,6 @@ spec:
               value: unix:///csi/csi.sock
             - name: X_CSI_MODE
               value: node
-            - name: X_CSI_MOUNT_OPTIONS
-              value: {MOUNT_OPTIONS}
             - name: X_CSI_NODE_ID
               valueFrom:
                 fieldRef:
