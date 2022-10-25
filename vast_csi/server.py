@@ -20,7 +20,6 @@ from functools import wraps
 from pprint import pformat
 import inspect
 from uuid import uuid4
-import psutil
 
 from plumbum import local, ProcessExecutionError
 from plumbum.typed_env import TypedEnv
@@ -33,7 +32,7 @@ from easypy.collections import shuffled
 from easypy.exceptions import TException
 
 from . logging import logger, init_logging
-from . utils import patch_traceback_format, RESTSession, ApiError
+from . utils import patch_traceback_format, RESTSession, ApiError, get_mount
 from . import csi_pb2_grpc
 from .csi_pb2_grpc import ControllerServicer, NodeServicer, IdentityServicer
 from . import csi_types as types
@@ -63,6 +62,8 @@ class Config(TypedEnv):
     vms_password = TypedEnv.Str("X_CSI_VMS_PASSWORD", default="admin")
     ssl_verify = TypedEnv.Bool("X_CSI_DISABLE_VMS_SSL_VERIFICATION", default=False)
     volume_name_fmt = TypedEnv.Str("X_CSI_VOLUME_NAME_FMT", default="csi:{namespace}:{name}:{id}")
+
+    unmount_attempts = TypedEnv.Int("X_CSI_UNMOUNT_ATTEMPTS", default=10)
 
     _mount_options = TypedEnv.Str("X_CSI_MOUNT_OPTIONS", default="")  # For example: "port=2049,nolock,vers=3"
 
@@ -578,21 +579,23 @@ class Node(NodeServicer, Instrumented):
 
         _validate_capabilities([volume_capability])
         target_path = local.path(target_path)
-        if target_path.is_dir():
-            found_mount = next((m for m in psutil.disk_partitions(all=True) if m.mountpoint == target_path), None)
-            if found_mount:
-                opts = set(found_mount.opts.split(","))
-                is_readonly = "ro" in opts
-                if found_mount.device != mount_spec:
-                    raise Abort(
-                        ALREADY_EXISTS,
-                        f"Volume already mounted from {found_mount.device} instead of {mount_spec}")
-                elif is_readonly != readonly:
-                    raise Abort(
-                        ALREADY_EXISTS,
-                        f"Volume already mounted as {'readonly' if is_readonly else 'readwrite'}")
-                else:
-                    logger.info(f"{volume_id} is already mounted: {found_mount}")
+
+        if not target_path.is_dir():
+            pass
+        elif found_mount := get_mount(target_path):
+            opts = set(found_mount.opts.split(","))
+            is_readonly = "ro" in opts
+            if found_mount.device != mount_spec:
+                raise Abort(
+                    ALREADY_EXISTS,
+                    f"Volume already mounted from {found_mount.device} instead of {mount_spec}")
+            elif is_readonly != readonly:
+                raise Abort(
+                    ALREADY_EXISTS,
+                    f"Volume already mounted as {'readonly' if is_readonly else 'readwrite'}")
+            else:
+                logger.info(f"{volume_id} is already mounted: {found_mount}")
+                return types.NodePublishResp()
 
         target_path.mkdir()
         logger.info(f"created: {target_path}")
@@ -604,14 +607,25 @@ class Node(NodeServicer, Instrumented):
 
     def NodeUnpublishVolume(self, target_path):
         target_path = local.path(target_path)
+
         if not target_path.exists():
             logger.info(f"{target_path} does not exist - no need to remove")
         else:
-            try:
-                local.cmd.umount(target_path)
-            except ProcessExecutionError as exc:
-                if "not mounted" not in exc.stderr:
+            # make sure we're really unmounted before we delete anything
+            for i in range(CONF.unmount_attempts):
+                if not get_mount(target_path):
+                    break
+                try:
+                    local.cmd.umount(target_path)
+                except ProcessExecutionError as exc:
+                    if "not mounted" in exc.stderr:
+                        break  # a race?...
                     raise
+            else:
+                raise Abort(
+                    UNKNOWN,
+                    f"Stuck in unmount loop of {target_path} too many times ({CONF.unmount_attempts})")
+
             logger.info(f"Deleting {target_path}")
             local.path(target_path).delete()
             logger.info(f"{target_path} removed successfully")
