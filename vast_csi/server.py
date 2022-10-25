@@ -20,7 +20,6 @@ from pprint import pformat
 from datetime import datetime
 import inspect
 from uuid import uuid4
-import psutil
 
 import json
 from json import JSONDecodeError
@@ -34,7 +33,7 @@ from easypy.exceptions import TException
 from easypy.bunch import Bunch
 
 from .logging import logger, init_logging
-from .utils import patch_traceback_format
+from .utils import patch_traceback_format, get_mount
 from . import csi_pb2_grpc
 from .csi_pb2_grpc import ControllerServicer, NodeServicer, IdentityServicer
 from . import csi_types as types
@@ -764,30 +763,25 @@ class Node(NodeServicer, Instrumented):
 
         _validate_capabilities([volume_capability])
         target_path = local.path(target_path)
-        if target_path.is_dir():
-            found_mount = next(
-                (
-                    m
-                    for m in psutil.disk_partitions(all=True)
-                    if m.mountpoint == target_path
-                ),
-                None,
-            )
-            if found_mount:
-                opts = set(found_mount.opts.split(","))
-                is_readonly = "ro" in opts
-                if found_mount.device != mount_spec:
-                    raise Abort(
-                        ALREADY_EXISTS,
-                        f"Volume already mounted from {found_mount.device} instead of {mount_spec}",
-                    )
-                elif is_readonly != readonly:
-                    raise Abort(
-                        ALREADY_EXISTS,
-                        f"Volume already mounted as {'readonly' if is_readonly else 'readwrite'}",
-                    )
-                else:
-                    logger.info(f"{volume_id} is already mounted: {found_mount}")
+
+        if not target_path.is_dir():
+            pass
+        elif found_mount := get_mount(target_path):
+            opts = set(found_mount.opts.split(","))
+            is_readonly = "ro" in opts
+            if found_mount.device != mount_spec:
+                raise Abort(
+                    ALREADY_EXISTS,
+                    f"Volume already mounted from {found_mount.device} instead of {mount_spec}",
+                )
+            elif is_readonly != readonly:
+                raise Abort(
+                    ALREADY_EXISTS,
+                    f"Volume already mounted as {'readonly' if is_readonly else 'readwrite'}",
+                )
+            else:
+                logger.info(f"{volume_id} is already mounted: {found_mount}")
+                return types.NodePublishResp()
 
         target_path.mkdir()
         with target_path[".vast-csi-meta"].open("w") as f:
@@ -805,16 +799,28 @@ class Node(NodeServicer, Instrumented):
 
     def NodeUnpublishVolume(self, target_path):
         target_path = local.path(target_path)
+
         if not target_path.exists():
             logger.info(f"{target_path} does not exist - no need to remove")
         else:
-            try:
-                local.cmd.umount(target_path)
-            except ProcessExecutionError as exc:
-                if any(p in exc.stderr for p in ("Invalid argument", "not mounted")):
-                    logger.info(f"seems it's already unmounted ({exc.stderr})")
-                else:
+            # make sure we're really unmounted before we delete anything
+            for i in range(CONF.unmount_attempts):
+                if not get_mount(target_path):
+                    logger.info(f"{target_path} is not mounted")
+                    break
+                try:
+                    local.cmd.umount(target_path)
+                except ProcessExecutionError as exc:
+                    if "not mounted" in exc.stderr:
+                        logger.info(f"umount failed - {target_path} is not mounted (race?)")
+                        break
                     raise
+            else:
+                raise Abort(
+                    UNKNOWN,
+                    f"Stuck in unmount loop of {target_path} too many times ({CONF.unmount_attempts})",
+                )
+
             logger.info(f"Deleting {target_path}")
             if target_path[".vast-csi-meta"].exists():
                 with target_path[".vast-csi-meta"].open("r") as f:

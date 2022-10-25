@@ -45,6 +45,8 @@ class Config(TypedEnv):
     _mode = TypedEnv.Str("CSI_MODE", default="controller_and_node")
     _endpoint = TypedEnv.Str("CSI_ENDPOINT", default="unix:///var/run/csi.sock")
 
+    unmount_attempts = TypedEnv.Int("X_CSI_UNMOUNT_ATTEMPTS", default=10)
+
     @property
     def mode(self):
         mode = Token(self._mode.upper())

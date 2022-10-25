@@ -19,6 +19,13 @@ def clean_path(path):
     return path
 
 
+def get_mount(target_path):
+    import psutil
+    for m in psutil.disk_partitions(all=True):
+        if m.mountpoint == target_path:
+            return m
+
+
 def nice_format_traceback(self):
 
     _RECURSIVE_CUTOFF = 3
