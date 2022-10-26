@@ -829,7 +829,9 @@ class Node(NodeServicer, Instrumented):
                     controller = Controller()
                     controller.DeleteVolume.__wrapped__(controller, meta["volume_id"])
 
-            local.path(target_path).delete()
+            if target_path[".vast-csi-meta"].exists():
+                os.remove(target_path[".vast-csi-meta"])
+            os.rmdir(target_path)  # don't use plumbum's .delete to avoid the dangerous rmtree
             logger.info(f"{target_path} removed successfully")
         return types.NodeUnpublishResp()
 
