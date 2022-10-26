@@ -627,7 +627,7 @@ class Node(NodeServicer, Instrumented):
                     f"Stuck in unmount loop of {target_path} too many times ({CONF.unmount_attempts})")
 
             logger.info(f"Deleting {target_path}")
-            local.path(target_path).delete()
+            os.rmdir(str(target_path))  # don't use plumbum's .delete to avoid the dangerous rmtree
             logger.info(f"{target_path} removed successfully")
         return types.NodeUnpublishResp()
 
