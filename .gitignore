@@ -163,3 +163,4 @@ cython_debug/
 .history/
 .lh/
 .DS_Store
+.merge-chain
