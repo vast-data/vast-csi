@@ -53,10 +53,11 @@ provisioner: {PLUGIN_NAME}
 parameters:
   vip_pool_name: '{VIP_POOL_NAME}'
   root_export: '{NFS_EXPORT}'
-  mount_options: '{MOUNT_OPTIONS}'
   lb_strategy: '{LB_STRATEGY}'
   volume_name_fmt: csi:{{namespace}}:{{name}}:{{id}}
   snapshot_name_fmt: csi:{{namespace}}:{{name}}:{{id}}
+mountOptions:
+  - '{MOUNT_OPTIONS}'
 allowVolumeExpansion: true
 
 ---
@@ -166,6 +167,10 @@ spec:
               value: {PLUGIN_NAME}
             - name: X_CSI_VMS_HOST
               value: {VMS_HOST}
+            - name: X_CSI_VIP_POOL_NAME
+              value: {VIP_POOL_NAME}
+            - name: X_CSI_MOUNT_OPTIONS
+              value: {MOUNT_OPTIONS}
             - name: X_CSI_DISABLE_VMS_SSL_VERIFICATION
               value: {DISABLE_SSL}
             - name: CSI_ENDPOINT
@@ -379,11 +384,14 @@ spec:
             - "serve"
           imagePullPolicy: {PULL_POLICY}
           env:
-          env:
             - name: X_CSI_PLUGIN_NAME
               value: {PLUGIN_NAME}
             - name: X_CSI_VMS_HOST
               value: {VMS_HOST}
+            - name: X_CSI_VIP_POOL_NAME
+              value: {VIP_POOL_NAME}
+            - name: X_CSI_MOUNT_OPTIONS
+              value: {MOUNT_OPTIONS}
             - name: X_CSI_DISABLE_VMS_SSL_VERIFICATION
               value: {DISABLE_SSL}
             - name: X_CSI_VMS_USER

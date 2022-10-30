@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, final, TypeVar
+from typing import Optional, final, TypeVar
 
 import grpc
 
@@ -52,11 +52,10 @@ class BaseBuilder(VolumeBuilderI):
     configuration: "CONF"
 
     name: str  # Name of volume or snapshot
-    volume_capabilities: List[str]
     capacity_range: Optional[int]  # Optional desired volume capacity
-    parameters: Dict[
-        str, str
-    ]  # Additional parsed parameters from k8s specification eg PVC name PVC namespace etc.
+    storage_options: StorageClassOptions
+    pvc_name: Optional[str]
+    pvc_namespace: Optional[str]
     volume_content_source: Optional[str]  # Either volume or snapshot
     ephemeral_volume_name: Optional[str] = None
 
@@ -79,14 +78,10 @@ class VolumeBuilder(BaseBuilder):
         """Build volume name using format csi:{namespace}:{name}:{id}"""
         volume_id = self.name
         if self.ephemeral_volume_name:
-            assert not self.parameters, "Can't provide parameters for ephemeral volume"
             volume_name = self.ephemeral_volume_name
-        elif self.parameters:
-            pvc_name = self.parameters.get("csi.storage.k8s.io/pvc/name")
-            pvc_namespace = self.parameters.get("csi.storage.k8s.io/pvc/namespace")
-            if pvc_namespace and pvc_name:
+        elif self.pvc_name and self.pvc_namespace:
                 volume_name = volume_name_fmt.format(
-                    namespace=pvc_namespace, name=pvc_name, id=volume_id
+                    namespace=self.pvc_namespace, name=self.pvc_name, id=volume_id
                 )
         else:
             volume_name = f"csi-{volume_id}"
@@ -104,19 +99,10 @@ class VolumeBuilder(BaseBuilder):
         Create volume from pvc, pv etc.
         """
         volume_context = {}
-        try:
-            # Init and validate StorageClassOptions.
-            storage_options: StorageClassOptions = StorageClassOptions.from_dict(self.parameters)
-        except TypeError as err:
-            msg = err.args[0]
-            raise Abort(
-                grpc.StatusCode.INVALID_ARGUMENT,
-                "Not enough parameters." f"({msg})",
-            )
-        root_export = local.path(storage_options.root_export_path)
+        root_export = local.path(self.storage_options.root_export_path)
 
         volume_name = self.build_volume_name(
-            volume_name_fmt=storage_options.volume_name_fmt
+            volume_name_fmt=self.storage_options.volume_name_fmt
         )
         requested_capacity = self.get_requested_capacity()
 
@@ -142,7 +128,7 @@ class VolumeBuilder(BaseBuilder):
         return types.Volume(
             capacity_bytes=requested_capacity,
             volume_id=self.name,
-            volume_context={**volume_context, **storage_options.dict()},
+            volume_context={**volume_context, **self.storage_options.dict()},
         )
 
 
@@ -167,15 +153,6 @@ class SnapshotBuilder(BaseBuilder):
         Main entry point for snapshots.
         Create snapshot representation.
         """
-        try:
-            # Init and validate StorageClassOptions.
-            storage_options: StorageClassOptions = StorageClassOptions.from_dict(self.parameters)
-        except TypeError as err:
-            msg = err.args[0]
-            raise Abort(
-                grpc.StatusCode.INVALID_ARGUMENT,
-                "Not enough parameters." f"({msg})",
-            )
         snapshot_base_path = self.build_volume_name()
         snapshot_id = self.volume_content_source.snapshot.snapshot_id
         # Requested capacity is always 0 for snapshots.
@@ -187,7 +164,7 @@ class SnapshotBuilder(BaseBuilder):
             ),
             volume_context={
                 # Pass vms options via context
-                **storage_options.dict(),
+                **self.storage_options.dict(),
                 "snapshot_base_path": snapshot_base_path,
                 "root_export": self.root_export,
             },
@@ -218,7 +195,7 @@ class TestVolumeBuilder(BaseBuilder):
                     f"({existing_capacity})",
                 )
 
-        vol_dir = self.controller.get_root_mount()[self.name]
+        vol_dir = self.controller._mock_mount[self.name]
         vol_dir.mkdir()
 
         volume = types.Volume(

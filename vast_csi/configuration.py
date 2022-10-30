@@ -33,6 +33,9 @@ class Config(TypedEnv):
     )
     mock_vast = TypedEnv.Bool("X_CSI_MOCK_VAST", default=False)
     nfs_server = TypedEnv.Str("X_CSI_NFS_SERVER", default="127.0.0.1")
+    vip_pool_name = TypedEnv.Str("X_CSI_VIP_POOL_NAME", default="k8s")
+    nfs_export = Path("X_CSI_NFS_EXPORT", default=local.path("/k8s"))
+
     log_level = TypedEnv.Str("X_CSI_LOG_LEVEL", default="info")
     csi_sanity_test = TypedEnv.Bool("X_CSI_SANITY_TEST", default=False)
     node_id = TypedEnv.Str("X_CSI_NODE_ID", default=socket.getfqdn())
@@ -44,6 +47,13 @@ class Config(TypedEnv):
 
     _mode = TypedEnv.Str("CSI_MODE", default="controller_and_node")
     _endpoint = TypedEnv.Str("CSI_ENDPOINT", default="unix:///var/run/csi.sock")
+
+    _mount_options = TypedEnv.Str("X_CSI_MOUNT_OPTIONS", default="")  # For example: "port=2049,nolock,vers=3"
+
+    @property
+    def mount_options(self):
+        s = self._mount_options.strip()
+        return list({p for p in s.split(',') if p})
 
     unmount_attempts = TypedEnv.Int("X_CSI_UNMOUNT_ATTEMPTS", default=10)
 
@@ -96,7 +106,7 @@ class StorageClassOptions(NamedTuple):
         """
         kwargs = {
             k: v
-            for k, v in {**cls.defaults(), **kwargs}.items()
+            for k, v in {**cls.defaults(), **(kwargs or {})}.items()
             if k in StorageClassOptions._fields
         }
         storage_options = StorageClassOptions(**kwargs)
@@ -105,9 +115,15 @@ class StorageClassOptions(NamedTuple):
         return storage_options
 
     @classmethod
-    def with_defaults(cls) -> "StorageClassOptions":
-        """Init empty StorageClassOptions (For testing purposes only)"""
-        return StorageClassOptions(**cls.defaults(include_root_export=True))
+    def with_defaults(cls, **kwargs: Optional[Dict[str, Any]]) -> "StorageClassOptions":
+        """
+        Init empty StorageClassOptions with default values.
+        **kwargs: Optional keyword arguments to include in StorageClassOptions instance
+        """
+        return StorageClassOptions(**{
+            **cls.defaults(include_root_export=True),
+            **kwargs
+        })
 
     @property
     def normalized_mount_options(self) -> List[str]:
