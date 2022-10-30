@@ -1,8 +1,7 @@
 import json
 import requests
 from pprint import pformat
-from typing import ClassVar, Optional
-
+from typing import ClassVar
 
 from easypy.bunch import Bunch
 from easypy.collections import shuffled
@@ -84,14 +83,13 @@ class VmsSession(RESTSession):
 
     _vip_round_robin_idx: ClassVar[int] = -1
 
-    def get_vip(self, vip_pool_name: Optional[str] = None, load_balancing: str = None):
+    def get_vip(self, vip_pool_name: str, load_balancing: str = None):
         """
         Get vip pool by provided id.
         Returns:
             One of ips from provided vip pool according to provided load balancing strategy.
         """
         storage_options = StorageClassOptions.with_defaults()
-        vip_pool_name = vip_pool_name or storage_options.vip_pool_name
         load_balancing = load_balancing or storage_options.load_balancing_strategy
         vips = [vip for vip in self.vips() if vip.vippool == vip_pool_name]
         if not vips:
@@ -174,5 +172,36 @@ class VmsSession(RESTSession):
 class TestVmsSession(RESTSession):
     """RestSession simulation for sanity tests"""
 
-    def get_vip(self, *_, **__):
+    def get_vip(self, *_, **__) -> str:
         return self.config.nfs_server
+
+    def get_quota(self, volume_id: str) -> "FakeQuota":
+        """Create fake quota object which can simulate attributes of original Quota butch."""
+
+        parent_self = self
+
+        class FakeQuota:
+
+            def __init__(self, volume_id):
+                self._volume_id = volume_id
+
+            def __str__(self):
+                return "<< FakeQuota >>"
+
+            @property
+            def id(self):
+                return self
+
+            @property
+            def path(self):
+                return parent_self.config.nfs_export[self._volume_id]
+
+        return FakeQuota(volume_id=volume_id)
+
+    def delete_quota(self, quota: "FakeQuota"):
+        """
+        Delete all folders and files under '/csi-volumes/<volume id>
+        Normally in this method quota id should be passed but here we abuse first position argument to
+        pass FakeQuota which were initialized before and has '_volume_id' attribute.
+        """
+        self.config.controller_root_mount[quota._volume_id].delete()

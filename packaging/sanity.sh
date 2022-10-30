@@ -15,10 +15,11 @@ NETWORK=csi-test-net
 
 docker kill test-subject 2> /dev/null || true
 docker rm test-subject 2> /dev/null || true
+docker volume rm -f csi-tests
 
 docker network create $NETWORK 2> /dev/null || true
 
-trap "(docker kill nfs test-subject; docker network rm $NETWORK) 1> /dev/null 2>&1 || true" exit
+trap "(docker kill nfs test-subject; docker network rm $NETWORK; docker volume rm -f csi-tests) 1> /dev/null 2>&1 || true" exit
 
 docker run -d --name nfs --rm --privileged --network $NETWORK erezhorev/dockerized_nfs_server
 
@@ -27,7 +28,7 @@ docker run \
     --name test-subject \
     --network $NETWORK \
     --privileged \
-    -v /mnt/csi-tests:/tmp \
+    -v csi-tests:/tmp \
     -e PYTHONFAULTHANDLER=yes \
     -e CSI_ENDPOINT=0.0.0.0:50051 \
     -e X_CSI_MOCK_VAST=yes \
@@ -42,7 +43,7 @@ docker run \
 if docker run \
     --name csi-sanity \
     --network $NETWORK \
-    -v /mnt/csi-tests:/tmp \
+    -v csi-tests:/tmp \
     --rm \
     csi-sanity:$VERSION \
     /csi-sanity \
