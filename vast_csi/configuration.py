@@ -45,6 +45,9 @@ class Config(TypedEnv):
     vms_password = TypedEnv.Str("X_CSI_VMS_PASSWORD", default="admin")
     ssl_verify = TypedEnv.Bool("X_CSI_DISABLE_VMS_SSL_VERIFICATION", default=False)
 
+    fake_quota_store = local.path("/tmp/volumes")
+    fake_snapshot_store = local.path("/tmp/snapshots")
+
     _mode = TypedEnv.Str("CSI_MODE", default="controller_and_node")
     _endpoint = TypedEnv.Str("CSI_ENDPOINT", default="unix:///var/run/csi.sock")
 

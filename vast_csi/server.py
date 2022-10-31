@@ -239,9 +239,6 @@ class Controller(ControllerServicer, Instrumented):
         # types.CtrlCapabilityType.PUBLISH_READONLY,
     ]
 
-    mock_vol_db = local.path("/tmp/volumes")
-    mock_snp_db = local.path("/tmp/snapshots")
-
     @cached_property
     def vms_session(self):
         session_class = TestVmsSession if CONF.mock_vast else VmsSession
@@ -347,7 +344,7 @@ class Controller(ControllerServicer, Instrumented):
         if not vol_dir.is_dir():
             logger.info(f"{vol_dir} is not dir")
             return
-        with self.mock_vol_db[vol_id].open("rb") as f:
+        with CONF.fake_quota_store[vol_id].open("rb") as f:
             vol = types.Volume()
             vol.ParseFromString(f.read())
             return vol
@@ -392,7 +389,7 @@ class Controller(ControllerServicer, Instrumented):
             storage_options: StorageClassOptions = StorageClassOptions.with_defaults()
             if (
                 volume_content_source
-                and not self.mock_snp_db[
+                and not CONF.fake_snapshot_store[
                     volume_content_source.snapshot.snapshot_id
                 ].exists()
             ):
@@ -552,7 +549,7 @@ class Controller(ControllerServicer, Instrumented):
         if CONF.mock_vast:
 
             try:
-                with self.mock_snp_db[name].open("rb") as f:
+                with CONF.fake_snapshot_store[name].open("rb") as f:
                     snp = types.Snapshot()
                     snp.ParseFromString(f.read())
                 if snp.source_volume_id != volume_id:
@@ -569,7 +566,7 @@ class Controller(ControllerServicer, Instrumented):
                     creation_time=ts,
                     ready_to_use=True,
                 )
-                with self.mock_snp_db[name].open("wb") as f:
+                with CONF.fake_snapshot_store[name].open("wb") as f:
                     f.write(snp.SerializeToString())
         else:
             # Create snapshot using the same path as quota has.
@@ -623,7 +620,7 @@ class Controller(ControllerServicer, Instrumented):
 
     def DeleteSnapshot(self, snapshot_id):
         if CONF.mock_vast:
-            self.mock_snp_db[snapshot_id].delete()
+            CONF.fake_snapshot_store[snapshot_id].delete()
         else:
             self.vms_session.delete_snapshot(snapshot_id)
 
@@ -643,9 +640,9 @@ class Controller(ControllerServicer, Instrumented):
     ):
         if CONF.mock_vast:
             starting_inode = int(starting_token) if starting_token else 0
-            snaps = (d for d in os.scandir(self.mock_snp_db) if d.is_file())
+            snaps = (d for d in os.scandir(CONF.fake_snapshot_store) if d.is_file())
             snaps = sorted(snaps, key=lambda d: d.inode())
-            logger.info(f"Got {len(snaps)} snapshots in {self.mock_snp_db}")
+            logger.info(f"Got {len(snaps)} snapshots in {CONF.fake_snapshot_store}")
             start_idx = 0
 
             logger.info(f"Skipping to {starting_inode}")
@@ -886,8 +883,8 @@ def serve():
         identity.controller = Controller()
         identity.capabilities.append(types.ServiceType.CONTROLLER_SERVICE)
         csi_pb2_grpc.add_ControllerServicer_to_server(identity.controller, server)
-        identity.controller.mock_vol_db.mkdir()
-        identity.controller.mock_snp_db.mkdir()
+        CONF.fake_quota_store.mkdir()
+        CONF.fake_snapshot_store.mkdir()
 
     if CONF.mode in {NODE, CONTROLLER_AND_NODE}:
         identity.node = Node()
