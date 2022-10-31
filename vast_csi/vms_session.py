@@ -205,3 +205,4 @@ class TestVmsSession(RESTSession):
         pass FakeQuota which were initialized before and has '_volume_id' attribute.
         """
         self.config.controller_root_mount[quota._volume_id].delete()
+        self.config.fake_quota_store[quota._volume_id].delete()

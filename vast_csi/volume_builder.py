@@ -203,6 +203,6 @@ class TestVolumeBuilder(BaseBuilder):
             volume_id=self.name,
         )
 
-        with self.controller.mock_vol_db[self.name].open("wb") as f:
+        with self.configuration.fake_quota_store[self.name].open("wb") as f:
             f.write(volume.SerializeToString())
         return volume
