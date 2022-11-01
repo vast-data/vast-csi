@@ -14,16 +14,19 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: vast-csi
+  name: {NAMESPACE}
 ---
 
 apiVersion: storage.k8s.io/v1
 kind: CSIDriver
 metadata:
-  name: csi.vastdata.com
+  name: {PLUGIN_NAME}
 spec:
   attachRequired: true
-  podInfoOnMount: false
+  podInfoOnMount: true
+  volumeLifecycleModes:
+    - Persistent
+    - Ephemeral
 
 ---
 
@@ -31,7 +34,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: csi-vast-mgmt
-  namespace: vast-csi
+  namespace: {NAMESPACE}
 type: Opaque
 data:
   username: {B64_USERNAME}
@@ -42,12 +45,32 @@ data:
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
 metadata:
-  name: vastdata-filesystem
-  namespace: vast-csi
+  name: {STORAGE_CLASS}
+  namespace: {NAMESPACE}
   annotations:
     storageclass.kubernetes.io/is-default-class: "true"
-provisioner: csi.vastdata.com
+provisioner: {PLUGIN_NAME}
+parameters:
+  vip_pool_name: '{VIP_POOL_NAME}'
+  root_export: '{NFS_EXPORT}'
+  lb_strategy: '{LB_STRATEGY}'
+  volume_name_fmt: csi:{{namespace}}:{{name}}:{{id}}
+  snapshot_name_fmt: csi:{{namespace}}:{{name}}:{{id}}
+mountOptions:
+  - '{MOUNT_OPTIONS}'
 allowVolumeExpansion: true
+
+---
+
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: {SNAPCLASS}
+  namespace: {NAMESPACE}
+  annotations:
+    snapshot.storage.kubernetes.io/is-default-class: "true"
+driver: {PLUGIN_NAME}
+deletionPolicy: Delete
 
 ---
 
@@ -61,7 +84,7 @@ kind: StatefulSet
 apiVersion: apps/v1
 metadata:
   name: csi-vast-controller
-  namespace: vast-csi
+  namespace: {NAMESPACE}
 spec:
   serviceName: "csi-vast"
   replicas: 1
@@ -79,7 +102,7 @@ spec:
       hostNetwork: true
       containers:
         - name: csi-provisioner
-          image: quay.io/k8scsi/csi-provisioner:{csi-provisioner}
+          image: k8s.gcr.io/sig-storage/csi-provisioner:{csi-provisioner}
           args:
             - "--csi-address=$(ADDRESS)"
             - "--v=5"
@@ -92,7 +115,7 @@ spec:
             - name: socket-dir
               mountPath: /var/lib/csi/sockets/pluginproxy/
         - name: csi-attacher
-          image: quay.io/k8scsi/csi-attacher:{csi-attacher}
+          image: k8s.gcr.io/sig-storage/csi-attacher:{csi-attacher}
           args:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
@@ -103,8 +126,22 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /var/lib/csi/sockets/pluginproxy/
+        - name: csi-snapshotter
+          image: k8s.gcr.io/sig-storage/csi-snapshotter:{csi-snapshotter}
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--v=5"
+            - "--extra-create-metadata"
+            - "--leader-election=false"
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          imagePullPolicy: {PULL_POLICY}
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
         - name: csi-resizer
-          image: quay.io/k8scsi/csi-resizer:{csi-resizer}
+          image: k8s.gcr.io/sig-storage/csi-resizer:{csi-resizer}
           args:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
@@ -126,22 +163,20 @@ spec:
               add: ["SYS_ADMIN"]
             allowPrivilegeEscalation: true
           env:
+            - name: X_CSI_PLUGIN_NAME
+              value: {PLUGIN_NAME}
             - name: X_CSI_VMS_HOST
               value: {VMS_HOST}
             - name: X_CSI_VIP_POOL_NAME
               value: {VIP_POOL_NAME}
+            - name: X_CSI_MOUNT_OPTIONS
+              value: {MOUNT_OPTIONS}
             - name: X_CSI_DISABLE_VMS_SSL_VERIFICATION
               value: {DISABLE_SSL}
-            - name: X_CSI_LB_STRATEGY
-              value: {LB_STRATEGY}
-            - name: X_CSI_NFS_EXPORT
-              value: {NFS_EXPORT}
             - name: CSI_ENDPOINT
               value: unix:///var/lib/csi/sockets/pluginproxy/csi.sock
             - name: X_CSI_MODE
               value: controller
-            - name: X_CSI_VOLUME_NAME_FMT
-              value: csi:{{namespace}}:{{name}}:{{id}}
             - name: X_CSI_VMS_USER
               valueFrom:
                 secretKeyRef:
@@ -164,7 +199,7 @@ kind: ServiceAccount
 apiVersion: v1
 metadata:
   name: csi-vast-controller-sa
-  namespace: vast-csi
+  namespace: {NAMESPACE}
 
 ---
 kind: ClusterRole
@@ -195,10 +230,16 @@ rules:
     verbs: ["get", "list"]
   - apiGroups: ["snapshot.storage.k8s.io"]
     resources: ["volumesnapshotcontents"]
-    verbs: ["get", "list"]
+    verbs: ["get", "list", "watch", "update", "patch"]
   - apiGroups: [""]
     resources: ["nodes"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotcontents/status"]
+    verbs: ["update", "patch"]
 
 ---
 
@@ -209,7 +250,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: csi-vast-controller-sa
-    namespace: vast-csi
+    namespace: {NAMESPACE}
 roleRef:
   kind: ClusterRole
   name: csi-vast-provisioner-role
@@ -243,7 +284,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: csi-vast-controller-sa
-    namespace: vast-csi
+    namespace: {NAMESPACE}
 roleRef:
   kind: ClusterRole
   name: csi-vast-attacher-role
@@ -281,7 +322,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: csi-vast-controller-sa
-    namespace: vast-csi
+    namespace: {NAMESPACE}
 roleRef:
   kind: ClusterRole
   name: external-resizer-runner
@@ -298,7 +339,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: csi-vast-node
-  namespace: vast-csi
+  namespace: {NAMESPACE}
 spec:
   selector:
     matchLabels:
@@ -314,7 +355,7 @@ spec:
       hostNetwork: true
       containers:
         - name: csi-node-driver-registrar
-          image: quay.io/k8scsi/csi-node-driver-registrar:{csi-node-driver-registrar}
+          image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:{csi-node-driver-registrar}
           args:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
@@ -322,12 +363,12 @@ spec:
           lifecycle:
             preStop:
               exec:
-                command: ["/bin/sh", "-c", "rm -rf /registration/csi.vastdata.com /registration/csi.vastdata.com-reg.sock"]
+                command: ["/bin/sh", "-c", "rm -rf /registration/{PLUGIN_NAME} /registration/{PLUGIN_NAME}-reg.sock"]
           env:
             - name: ADDRESS
               value: /csi/csi.sock
             - name: DRIVER_REG_SOCK_PATH
-              value: /var/lib/kubelet/plugins/csi.vastdata.com/csi.sock
+              value: /var/lib/kubelet/plugins/{PLUGIN_NAME}/csi.sock
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
@@ -343,12 +384,30 @@ spec:
             - "serve"
           imagePullPolicy: {PULL_POLICY}
           env:
+            - name: X_CSI_PLUGIN_NAME
+              value: {PLUGIN_NAME}
+            - name: X_CSI_VMS_HOST
+              value: {VMS_HOST}
+            - name: X_CSI_VIP_POOL_NAME
+              value: {VIP_POOL_NAME}
+            - name: X_CSI_MOUNT_OPTIONS
+              value: {MOUNT_OPTIONS}
+            - name: X_CSI_DISABLE_VMS_SSL_VERIFICATION
+              value: {DISABLE_SSL}
+            - name: X_CSI_VMS_USER
+              valueFrom:
+                secretKeyRef:
+                  name: csi-vast-mgmt
+                  key: username
+            - name: X_CSI_VMS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: csi-vast-mgmt
+                  key: password
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
             - name: X_CSI_MODE
               value: node
-            - name: X_CSI_MOUNT_OPTIONS
-              value: {MOUNT_OPTIONS}
             - name: X_CSI_NODE_ID
               valueFrom:
                 fieldRef:
@@ -376,7 +435,7 @@ spec:
             type: DirectoryOrCreate
         - name: plugin-dir
           hostPath:
-            path: /var/lib/kubelet/plugins/csi.vastdata.com
+            path: /var/lib/kubelet/plugins/{PLUGIN_NAME}
             type: DirectoryOrCreate
         - name: pods-mount-dir
           hostPath:
@@ -391,4 +450,4 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: csi-vast-node-sa
-  namespace: vast-csi
+  namespace: {NAMESPACE}

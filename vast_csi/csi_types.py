@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 
 from google.protobuf import wrappers_pb2 as wrappers
+from google.protobuf.timestamp_pb2 import Timestamp
 
 from . import csi_pb2
 

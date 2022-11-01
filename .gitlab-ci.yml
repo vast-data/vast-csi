@@ -3,6 +3,7 @@ image: docker:latest
 variables:
   DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
   IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:${CI_PIPELINE_ID}
+  ORION_BRANCH: comet/master
 
 build_csi:
   stage: build
@@ -23,34 +24,37 @@ build_csi:
     - vast-dev-builder
 
 
-.test_csi: &test_csi
-  stage: test
-  # when: manual
-  variables:
-    VAST_COMET_KWARG: csi_plugin_version=${CI_PIPELINE_ID}
-  trigger:
-    project: dev/orion
-    branch: comet/master
-    strategy: depend
-  allow_failure: true
-
 
 test_csi:
-  <<: *test_csi
+  stage: test
+  when: manual
+  trigger:
+    project: dev/orion
+    branch: $ORION_BRANCH
+    strategy: depend
+  allow_failure: true
   parallel:
     matrix:
       - INSTALL_IMAGE:
-        - latest-3.6.0
-        - latest-4.0.0
-        - latest-4.2.0
-        - latest-4.3.0
+        - release-4-2-0-sp13-712743
+        - release-4-3-0-sp9-723094
+        - release-4-4-0-731903
+        - latest-4.5.0
+        - latest-4.6.0
+  variables:
+    VAST_COMET_KWARG: csi_plugin_version=${CI_PIPELINE_ID}
+    UPGRADE_TO: $INSTALL_IMAGE
 
-
-update_dockerhub:
+update_dockerhub [prod]: &update_dockerhub
   stage: deploy
+  environment: prod
   script: |
     set -x
-    VERSION=$(cat version.txt)
+    if [[ "$CI_ENVIRONMENT_NAME" == "prod" ]]; then
+      VERSION=$(cat version.txt)
+    else
+      VERSION=$CI_ENVIRONMENT_NAME-$CI_PIPELINE_ID
+    fi
     RELEASE_NAME=docker.io/vastdataorg/csi:${VERSION}
 
     docker pull ${IMAGE_NAME}
@@ -63,11 +67,14 @@ update_dockerhub:
 
   after_script:
   - docker logout $DOCKER_HUB
-  only:
-  - master
   when: manual
   tags:
     - vast-dev-builder
+
+
+update_dockerhub [beta]:
+  <<: *update_dockerhub
+  environment: beta
 
 
 update_github:
@@ -99,16 +106,18 @@ update_github:
     git push -f --tags github HEAD:public
 
   only:
-  - master
+  - /^v\d.*/
   when: manual
   tags:
     - vast-dev-builder
 
 
 mark_stable:
+  image: 
+    name: amazon/aws-cli
+    entrypoint: [""]
   stage: deploy
-  script: |
-    ./scripts/aws_retag_image.sh ${IMAGE_NAME} stable
+  script: ./scripts/aws_retag_image.sh ${IMAGE_NAME} stable
   tags:
     - vast-dev-builder
   when: manual
