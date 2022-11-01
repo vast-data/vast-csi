@@ -106,16 +106,18 @@ update_github:
     git push -f --tags github HEAD:public
 
   only:
-  - master
+  - /^v\d.*/
   when: manual
   tags:
     - vast-dev-builder
 
 
 mark_stable:
+  image: 
+    name: amazon/aws-cli
+    entrypoint: [""]
   stage: deploy
-  script: |
-    ./scripts/aws_retag_image.sh ${IMAGE_NAME} stable
+  script: ./scripts/aws_retag_image.sh ${IMAGE_NAME} stable
   tags:
     - vast-dev-builder
   when: manual
