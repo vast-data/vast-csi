@@ -1,0 +1,47 @@
+{{/* Generate one or more storage classes from 'storageClasses' section.  */}}
+
+{{/* Iterate over StorageClasses from manifest */}}
+{{- range $name, $options := .Values.storageClasses }}
+{{-
+    $is_default_class := pluck "setDefaultStorageClass"
+    $options $.Values.storageClassDefaults | first | quote
+-}}
+{{- if not (or (kindIs "bool" $is_default_class ) ( $is_default_class | mustRegexMatch "true|false" )) -}}
+  {{- fail "setDefaultStorageClass should be either 'true' or 'false'" -}}
+{{- end }}
+
+{{- $lb_strategy := pluck "lbStrategy" $options $.Values.storageClassDefaults | first | quote -}}
+{{- if not ( $lb_strategy | mustRegexMatch "roundrobin|random" ) -}}
+  {{- fail "lbStrategy should be either 'random' or 'roundrobin'" -}}
+{{- end }}
+
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+provisioner: csi.vastdata.com
+metadata:
+  name: {{ required "A StorageClass name must be not empty" $name }}
+  namespace: {{ include "vastcsi.namespace" $ }}
+  annotations:
+    storageclass.kubernetes.io/is-default-class: {{ $is_default_class }}
+  labels:
+  {{- include "vastcsi.labels" $ | nindent 4 }}
+parameters:
+  vip_pool_name: {{
+                    required "vipPool is required value. Plese specify valid vip pool"
+                    ( pluck "vipPool" $options $.Values.storageClassDefaults | first ) | quote
+                  }}
+  root_export: {{
+                  required "nfsExport is required value. Plese specify valid root export path"
+                  ( pluck "nfsExport" $options $.Values.storageClassDefaults | first ) | quote
+               }}
+  lb_strategy: {{ $lb_strategy }}
+  volume_name_fmt: {{ pluck "volumeNameFormat" $options $.Values.storageClassDefaults | first | quote }}
+  snapshot_name_fmt: {{ pluck "snapshotNameFormat" $options $.Values.storageClassDefaults | first | quote }}
+allowVolumeExpansion: {{
+                         pluck "allowVolumeExpansion" $options $.Values.storageClassDefaults |
+                         first | quote | mustRegexMatch "true" | ternary true false
+                      }}
+mountOptions:
+  - {{ pluck "nfsMountOptions" $options $.Values.storageClassDefaults | first | quote }}
+---
+{{- end }}
