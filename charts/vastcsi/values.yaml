@@ -1,0 +1,124 @@
+####################
+# VAST REST SESSION ATTRIBUTES
+####################
+# Credentials to login - must be provided by user
+username: ""
+password: ""
+# API endpoint of VAST appliance - must be provided by user
+endpoint: ""
+# Set to false to bypass certificate validity test
+verifySsl: false
+
+####################
+# VAST CSI STORAGE CLASS OPTIONS
+####################
+# storageClassDefaults is set of options that will be using by default if option is not provided
+# for particular storageClass in 'storageClasses' section
+storageClassDefaults:
+  # Where volumes will be located on VAST
+  storagePath: ""
+  # Name of VAST VIP pool to use - must be provided by user
+  vipPool: ""
+  # Allows resizing existing volumes
+  allowVolumeExpansion: true
+  # Load-balancing strategy
+  # Options:
+  #   roundrobin, random
+  lbStrategy: roundrobin
+  # If true, sets Vast CSI as the cluster-wide storage class default
+  setDefaultStorageClass: false
+  # String template for CSI-provisioned volume names, within VAST
+  volumeNameFormat: "csi:{namespace}:{name}:{id}"
+  # String template for CSI-provisioned snapshot names, within VAST
+  snapshotNameFormat: "csi:{namespace}:{name}:{id}"
+  # Add any extra NFS options desired here
+  nfsMountOptions: ""
+
+# Default storage class to use with CSI DRIVER.
+# The only required value is 'vipPool' name where user should provide name of existing vip pool on
+# VAST cluster.
+# User can extend this section using more storage classes with different storage class parameters and options.
+storageClasses:
+  # StorageClass name. This field must be unique across all storage classes.
+  vastdata-filesystem:
+    # Name of VAST VIP pool to use - must be provided by user
+    vipPool: ""
+    # ... Any other options from 'storageClassDefaults' section. If not provided then default value
+    # will be using.
+# User can add more storage classes to this section eg:
+#  vastdata-filesystem2:
+#    vipPool: "vippool-2"
+#    .... other options
+#
+#  vastdata-filesystem3:
+#    vipPool: "vippool-3"
+#    ....  other options
+
+
+####################
+# VAST CSI SNAPSHOTS CLASS OPTIONS
+####################
+snapshotClass:
+  snapshotClassName: "vastdata-snapshot"
+  # On snapshot delete behavior. By default Vast Cluster snapshot will be removed as well.
+  deletionPolicy: "Delete"
+  # If true, sets Vast CSI as the cluster-wide snapshot class default
+  setDefaultStorageClass: true
+
+
+####################
+# VAST CONTROLLER AND NODE BEHAVIOR
+####################
+# Kubernetes image pull policies control when Kubelet should fetch an updated image version.
+# Pull policies are used when a new Pod is starting up.
+imagePullPolicy: "Always"
+
+# csiImage is base docker image for Controller and Node.
+csiImage: "vastdataorg/csi"
+
+# csiImageTag represents version of docker image that serves  CSI Controller and CSI Node.
+# To check latest stable tag refer https://support.vastdata.com/hc/en-us/articles/360010932159-VAST-with-Kubernetes
+csiImageTag: v2.1.0
+
+# nodeSelector is the way to restrict CSI Controller and and CSI Node to be assigned on certain node/nodes.
+# Specify node selector if you want node and controller containers to be assigned only to specific node/nodes of
+# your cluster.
+#  https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector.
+nodeSelector: {}
+
+# tolerations is similar to nodeSelector concept but restrict node to accept pods that tolerate conditions
+# https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
+tolerations: []
+
+# affinity is more expressive way to restrict pods to be scheduled on certain nodes that allow you
+# to specify percentage of pods that allowed to be sheduled on node etc.
+# https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+affinity: {}
+
+# podAnnotations is additional key/value metadata you can pass to pods manifest.
+podAnnotations: {}
+
+# rbac flag indicated it Role-based access control from this chart should be used to create apropriate
+# permissions for CSI Controller and CSI Node. Use default value unless you understand necessary permissions
+# and can provide it other way.
+rbac: true
+
+# resources is initial amount of resources to be used by CSI Controller and CSI node
+# Example:
+# resources:
+#   requests:
+#      memory: "64Mi"
+#      cpu: "250m"
+resources: {}
+
+# limits are high level resources threshold that CSI Controller and CSI Node can use.
+# Example:
+# resources:
+# requests:
+#  limits:
+#    memory: "128Mi"
+#    cpu: "500m"
+limits: {}
+
+# Log level of CSI plugin
+logLevel: 5
