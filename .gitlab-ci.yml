@@ -79,6 +79,7 @@ update_dockerhub [beta]:
 
 
 update_github:
+  needs: []
   image:
     name: alpine/git
     entrypoint: [""]
@@ -86,6 +87,7 @@ update_github:
   script: |
     set -x
     VERSION=$(cat version.txt)
+    VERSION_BRANCH=$CI_COMMIT_REF_NAME
 
     mkdir ~/.ssh/
     cp $GITHUB_KEY ~/.ssh/id_rsa
@@ -96,15 +98,15 @@ update_github:
 
     git remote -v
     git remote add github git@github.com:vast-data/vast-csi.git || true
-    git fetch github public
-    git checkout -B public FETCH_HEAD
+    git fetch github $VERSION_BRANCH
+    git checkout -B $VERSION_BRANCH FETCH_HEAD
     git checkout $CI_COMMIT_SHA -- .
     git commit -am "VAST Data CSI Plugin - $VERSION
 
       (from $CI_COMMIT_SHA)"
 
     git tag -f $VERSION
-    git push -f --tags github HEAD:public
+    git push -f --tags github HEAD:$VERSION_BRANCH
 
   only:
   - /^v\d.*/
