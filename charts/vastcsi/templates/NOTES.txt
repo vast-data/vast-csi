@@ -9,4 +9,4 @@ To learn more about the release, try:
   $ helm get all -n {{ .Release.Namespace}} {{ .Release.Name }}
 
 Examples on how to configure a storage class and start using the driver are here:
-https://support.vastdata.com/hc/en-us/articles/360010932159-VAST-with-Kubernetes
+{{ .Chart.Home }}

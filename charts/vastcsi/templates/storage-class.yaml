@@ -5,8 +5,7 @@
 
 {{/* Validate  setDefaultStorageClass option. Options should be either true or false */}}
 {{-
-    $is_default_class := pluck "setDefaultStorageClass"
-    $options $.Values.storageClassDefaults | first | quote
+    $is_default_class := pluck "setDefaultStorageClass" $options $.Values.storageClassDefaults | first | quote
 -}}
 {{- if not (or (kindIs "bool" $is_default_class ) ( $is_default_class | mustRegexMatch "true|false" )) -}}
   {{- fail "setDefaultStorageClass should be either 'true' or 'false'" -}}
@@ -25,9 +24,15 @@
 {{- end }}
 
 {{/* Validate  storagePath parameter. Parameter should be not empty string. */}}
-{{- $root_export := pluck "storagePath" $options $.Values.storageClassDefaults | first | quote -}}
-{{- if eq $root_export ( quote "" ) -}}
+{{- $storage_path := pluck "storagePath" $options $.Values.storageClassDefaults | first | quote -}}
+{{- if eq $storage_path ( quote "" ) -}}
   {{- fail "storagePath is required value. Plese specify valid root export path" -}}
+{{- end }}
+
+{{/* Validate  viewPolicy parameter. Parameter should be not empty string. */}}
+{{- $view_policy := pluck "viewPolicy" $options $.Values.storageClassDefaults | first | quote -}}
+{{- if eq $view_policy ( quote "" ) -}}
+{{- fail "viewPolicy is required value. Plese specify valid policy name" -}}
 {{- end }}
 
 kind: StorageClass
@@ -42,10 +47,11 @@ metadata:
   {{- include "vastcsi.labels" $ | nindent 4 }}
 parameters:
   vip_pool_name: {{ $vip_pool_name }}
-  root_export: {{ $root_export }}
+  root_export: {{ $storage_path }}
+  view_policy: {{ $view_policy }}
   lb_strategy: {{ $lb_strategy }}
   volume_name_fmt: {{ pluck "volumeNameFormat" $options $.Values.storageClassDefaults | first | quote }}
-  snapshot_name_fmt: {{ pluck "snapshotNameFormat" $options $.Values.storageClassDefaults | first | quote }}
+  eph_volume_name_fmt: {{ pluck "ephemeralVolumeNameFormat" $options $.Values.storageClassDefaults | first | quote }}
 allowVolumeExpansion: {{
                          pluck "allowVolumeExpansion" $options $.Values.storageClassDefaults |
                          first | quote | mustRegexMatch "true" | ternary true false

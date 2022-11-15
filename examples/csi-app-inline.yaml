@@ -14,3 +14,7 @@ spec:
     - name: my-csi-volume
       csi:
         driver: csi.vastdata.com
+        volumeAttributes:
+          vip_pool_name: 'vippool-1'
+          root_export: '/k8s'
+          view_policy: 'default'
