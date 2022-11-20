@@ -83,6 +83,24 @@ class VmsSession(RESTSession):
 
     _vip_round_robin_idx: ClassVar[int] = -1
 
+    # ----------------------------
+    # Clusters
+    def get_cluster(self) -> Bunch:
+        """Get cluster info"""
+        return Bunch.from_dict(self.clusters()[0])
+
+    def delete_folder(self, path: str):
+        """Delete remote cluster folder by provided path."""
+        try:
+            self.delete(f"/clusters/{self.cluster.id}/delete_folder/", json={"path": path})
+        except ApiError as e:
+            if "no such directory" in e.render():
+                logger.debug(f"remote folder was probably already deleted ({e})")
+            else:
+                raise
+
+    # ----------------------------
+    # vip pools
     def get_vip(self, vip_pool_name: str, load_balancing: str = None):
         """
         Get vip pool by provided id.
@@ -206,3 +224,7 @@ class TestVmsSession(RESTSession):
         """
         self.config.controller_root_mount[quota._volume_id].delete()
         self.config.fake_quota_store[quota._volume_id].delete()
+
+    def delete_folder(self, *args, **kwargs):
+        """Method needs to be declared for compatibility with sanity tests."""
+        pass

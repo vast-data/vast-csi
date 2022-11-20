@@ -429,28 +429,12 @@ class Controller(ControllerServicer, Instrumented):
         return types.CreateResp(volume=volume)
 
     def DeleteVolume(self, volume_id):
-        tmpdir = local.path(None)
         if quota := self.vms_session.get_quota(volume_id):
-            base_quota_path = local.path(quota.path).dirname
-            nfs_server = self.vms_session.get_vip(
-                vip_pool_name=CONF.vip_pool_name,
-            )
-            mount_spec = f"{nfs_server}:{base_quota_path}"
-            with TemporaryDirectory() as tmpdir:
-                tmpdir = local.path(tmpdir) # convert string to local.path
-                mount(
-                    mount_spec,
-                    tmpdir,
-                    flags=",".join(CONF.mount_options),
-                )
-                logger.info(f"mounted successfully: {tmpdir}")
-                tmpdir[volume_id].delete()
-                cmd.umount[tmpdir] & logger.pipe_info("umount >>")
-
-                self.vms_session.delete_quota(quota.id)
-                logger.info(f"Quota removed: {quota.id}")
-
-        logger.info(f"Removed volume: {tmpdir}")
+            # Delete folder using vast API
+            self.vms_session.delete_folder(quota.path)
+            logger.info(f"Removed volume: {quota.path}")
+            self.vms_session.delete_quota(quota.id)
+            logger.info(f"Quota removed: {quota.id}")
         return types.DeleteResp()
 
     def ControllerPublishVolume(
