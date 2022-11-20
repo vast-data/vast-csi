@@ -8,7 +8,7 @@ There are 2 prerequisites to execute script:
     2. kubectl utility should be installed and prepared to works with appropriate k8s cluster
 
 Usage:
-    python migrate-pv.py --storage_path < your input >  --vip_pool_name < your input >
+    python migrate-pv.py --root_export < your input >  --vip_pool_name < your input >
 """
 import sys
 import json
@@ -151,7 +151,7 @@ async def grab_required_params() -> Namespace:
     color, label = INFO_ATTRS
     parser = ArgumentParser()
 
-    parser.add_argument("--storage_path", required=True, help="Base path where volumes will be located on VAST")
+    parser.add_argument("--root_export", required=True, help="Base path where volumes will be located on VAST")
     parser.add_argument("--vip_pool_name", required=True, help="Name of VAST VIP pool to use")
     args = parser.parse_args()
     print_with_label(color=color, label=label, text=f"The user has chosen following parameters: {vars(args)}")
@@ -183,10 +183,10 @@ async def process_migrate(
     _print = partial(print_with_label, color=color, label=label)
     if candidates:
 
-        # Convert 'storage_path' key/value to 'root_export' key/value
+        # Convert 'root_export' key/value to 'root_export' key/value
         # as driver v2.1 uses 'root_export' param internally.
         user_params = {
-            "root_export": user_params.storage_path,
+            "root_export": user_params.root_export,
             "vip_pool_name": user_params.vip_pool_name
         }
 
@@ -224,7 +224,7 @@ async def main(loop: asyncio.AbstractEventLoop) -> None:
     color, label = INFO_ATTRS
     _print = partial(print_with_label, color=color, label=label)
 
-    # Grab user inputs (storage_path and vip_pool_name) from command line arguments.
+    # Grab user inputs (root_export and vip_pool_name) from command line arguments.
     user_params = await grab_required_params()
 
     # Create base bash executor.
