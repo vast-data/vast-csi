@@ -42,7 +42,8 @@ def print_with_label(color: int, label: str, text: str):
     print(f'\x1b[1;{color}m  {label} \x1b[0m', text)
 
 
-class UserError(Exception): ...
+class UserError(Exception):
+    pass
 
 
 class ExecutionFactory:
@@ -239,7 +240,7 @@ async def main(loop: asyncio.AbstractEventLoop) -> None:
     kubectl_ex = SubprocessProtocol(base_command=kubectl_path)
 
     vers = await kubectl_ex.exec("version --client=true --output=yaml")
-    if not "clientVersion" in vers:
+    if "clientVersion" not in vers:
         raise UserError("Something wrong with kubectl. Unable to get client version")
 
     all_pvs = await kubectl_ex.exec("get pv -o json", True)
@@ -254,11 +255,6 @@ async def main(loop: asyncio.AbstractEventLoop) -> None:
             missing_params = REQUIRED_PARAMETERS.difference(volume_attributes)
             if missing_params:
                 _print(text=f"PV {pv['metadata']['name']} will be patched {', '.join(missing_params)}")
-                for missing_param in missing_params:
-                    # Validate if missing_param were provided by user as command line argument. If not raise error.
-                    if not getattr(user_params, missing_param):
-                        raise UserError(f"{missing_param!r} is required."
-                                         f" Use --{missing_param} < your input > while execution this script.")
                 candidates.append(pv)
 
     # Start migration process
