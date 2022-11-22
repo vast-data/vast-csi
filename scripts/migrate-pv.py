@@ -8,7 +8,7 @@ There are 2 prerequisites to execute script:
     2. kubectl utility should be installed and prepared to works with appropriate k8s cluster
 
 Usage:
-    python migrate-pv.py --root_export < your input >  --vip_pool_name < your input >
+    python migrate-pv.py --vast-csi-namespace < your input >  --verbose < True|False >
 """
 import sys
 import json
@@ -17,7 +17,7 @@ from pathlib import Path
 from functools import partial
 from tempfile import gettempdir
 from argparse import ArgumentParser, Namespace
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, ClassVar
 
 TMP = Path(gettempdir())
 
@@ -28,8 +28,14 @@ OUT_ATTRS = 42, "out >>>"  # color & label
 INFO_ATTRS = 45, "info"  # color & label ( used for any auxiliary information )
 
 # Filter criteria by storage class name.
-# We should skip PersistentVolumes where storageClassName != vastdata-filesystem
-STORAGE_CLASS_NAME = "vastdata-filesystem"
+# We should skip PersistentVolumes where
+# "pv.kubernetes.io/provisioned-by" annotation is not equal to csi.vastdata.com
+VAST_PROVISIONER = "csi.vastdata.com"
+VAST_DRIVER_VERSION = "2.0"
+
+# Required environment variables
+X_CSI_VIP_POOL_NAME = "X_CSI_VIP_POOL_NAME"
+X_CSI_NFS_EXPORT = "X_CSI_NFS_EXPORT"
 
 # These fields are required for csi driver 2.1 to work properly. If at least one parameter is missing it means
 # PV must be updated.
@@ -48,6 +54,8 @@ class UserError(Exception):
 
 class ExecutionFactory:
     """Wrapper around SubprocessProtocol that allows to communicate with subprocess and store subprocess stdout."""
+
+    VERBOSE: ClassVar[bool] = True # Show full command output.
 
     def __init__(self, executor: "SubprocessProtocol"):
         self.executor = executor
@@ -69,10 +77,12 @@ class ExecutionFactory:
         Returns:
             Combined output (stdout + stderr) after process is terminated.
         """
-        color, label = IN_ATTRS
         command = f"{self.base_command} {command}".strip()
-        # Print input command
-        print_with_label(color=color, label=label, text=command)
+
+        if self.VERBOSE:
+            color, label = IN_ATTRS
+            # Print input command
+            print_with_label(color=color, label=label, text=command)
 
         loop = asyncio.get_event_loop()
         transport, prot = await loop.subprocess_shell(partial(self.executor, supress_output=supress_output), command)
@@ -121,6 +131,7 @@ class SubprocessProtocol(asyncio.SubprocessProtocol):
             fd: Integer file descriptor. 1 - stdout; 2 - stderr
             data: Received byte data.
         """
+        verbose = self._factory_instance.VERBOSE
         color, label = OUT_ATTRS
         text = data.decode("utf-8")
         self._factory_instance.stdout += text
@@ -132,13 +143,14 @@ class SubprocessProtocol(asyncio.SubprocessProtocol):
             # of error.
             print_with_label(color=color, label=label, text=text)
 
-        elif not self.supress_output:
-            # Show command output
-            print_with_label(color=color, label=label, text=text)
+        elif verbose:
+            if not self.supress_output:
+                # Show command output
+                print_with_label(color=color, label=label, text=text)
 
-        else:
-            # If flag 'supress_output' is True show '...' instead full stdout data.
-            print_with_label(color=color, label=label, text="...")
+            else:
+                # If flag 'supress_output' is True show '...' instead full stdout data.
+                print_with_label(color=color, label=label, text="...")
 
     def process_exited(self):
         """Called when subprocess has exited."""
@@ -152,8 +164,12 @@ async def grab_required_params() -> Namespace:
     color, label = INFO_ATTRS
     parser = ArgumentParser()
 
-    parser.add_argument("--root_export", required=True, help="Base path where volumes will be located on VAST")
-    parser.add_argument("--vip_pool_name", required=True, help="Name of VAST VIP pool to use")
+    parser.add_argument("--vast-csi-namespace", default="vast-csi", help="Namespace where csi driver was deployed.")
+    parser.add_argument("--verbose", help="Show commands output.", default=False)
+    parser.add_argument("--root_export", help="Base path where volumes will be located on VAST")
+    parser.add_argument("--vip_pool_name", help="Name of VAST VIP pool to use")
+    parser.add_argument("--force", help="Forced migration - refer to Vast Support documentation on when to use this flag")
+
     args = parser.parse_args()
     print_with_label(color=color, label=label, text=f"The user has chosen following parameters: {vars(args)}")
     return args
@@ -179,45 +195,65 @@ async def process_migrate(
     2. Write manifest to temporary file
     3. Remove all finalizers from PV
     4. replace PV resource on kubernetes from temporary file.
+    5. Add annotation csi.vastdata.com/migrated-from=2.0
     """
     color, label = INFO_ATTRS
     _print = partial(print_with_label, color=color, label=label)
-    if candidates:
 
-        # Convert 'root_export' key/value to 'root_export' key/value
-        # as driver v2.1 uses 'root_export' param internally.
-        user_params = {
-            "root_export": user_params.root_export,
-            "vip_pool_name": user_params.vip_pool_name
-        }
-
-        names = [c["metadata"]["name"] for c in candidates]
-        _print(text=f"Found {len(names)} PV(s) to update:\nNames: {', '.join(names)}")
-
-        for candidate in candidates:
-            pv_name = candidate['metadata']['name']
-            pv_manifest = TMP / f"{pv_name}.json"
-            candidate["spec"]["csi"]["volumeAttributes"].update(user_params)
-
-            with pv_manifest.open("w") as f:
-                json.dump(candidate, f)
-
-            # Add custom finalizer "vastdata.com/pv-migration-protection" in order to protect PV from being deleted
-            # by csi driver at the moment of patching.
-            await executor.exec(
-                f"patch pv {pv_name} " +
-                "-p '{\"metadata\":{\"finalizers\":[\"vastdata.com/pv-migration-protection\"]}}'")
-
-            # Run task that remove all finalizers in the background.
-            loop.create_task(patch_terminated_pv(pv_name=pv_name, executor=executor))
-
-            # Replace original PV resource with patched version.
-            await executor.exec(f"replace -f {pv_manifest} --force")
-            _print(text=f"PV {pv_name} updated.")
+    if user_params.force:
+        root_export = user_params.root_export
+        vip_pool_name = user_params.vip_pool_name
 
     else:
-        _print(text="No outdated PVs found.")
-    _print(text="Done.")
+        csi_namespace = user_params.vast_csi_namespace
+        controller_info = await executor.exec(f"get pod csi-vast-controller-0 -n {csi_namespace} -o json", True)
+        try:
+            controller_info = json.loads(controller_info)
+        except json.decoder.JSONDecodeError:
+            # In case of 'Error from server (NotFound) ...'
+            raise UserError(f"Could not find our csi driver in namespace '{csi_namespace}'"
+                            f" - please verify that the 'csi-vast-controller-0' is deployed in your cluster.\n"
+                            f"If you've used a different namespace, specify it using the --vast-csi-namespace flag.")
+
+        controller_env = dict()
+        for container in controller_info["spec"]["containers"]:
+            for env_pair in container["env"]:
+                controller_env[env_pair["name"]] = env_pair.get("value")
+
+        root_export = controller_env.get(X_CSI_NFS_EXPORT)
+        vip_pool_name = controller_env.get(X_CSI_VIP_POOL_NAME)
+
+        if not root_export or not vip_pool_name:
+            raise UserError("It looks like you've already upgraded your Vast CSI Driver - "
+                            "Please refer to Vast Support documentation on how to use this script in 'post-upgrade' mode.")
+    patch_params = {
+        "root_export": root_export,
+        "vip_pool_name": vip_pool_name
+    }
+    _print(text=f"Parameters for migration: {patch_params}")
+
+    for candidate in candidates:
+        pv_name = candidate['metadata']['name']
+        pv_manifest = TMP / f"{pv_name}.json"
+        candidate["spec"]["csi"]["volumeAttributes"].update(patch_params)
+
+        with pv_manifest.open("w") as f:
+            json.dump(candidate, f)
+
+        # Add custom finalizer "vastdata.com/pv-migration-protection" in order to protect PV from being deleted
+        # by csi driver at the moment of patching.
+        await executor.exec(
+            f"patch pv {pv_name} "
+            "-p '{\"metadata\":{\"finalizers\":[\"vastdata.com/pv-migration-protection\"]}}'")
+
+        # Run task that remove all finalizers in the background.
+        loop.create_task(patch_terminated_pv(pv_name=pv_name, executor=executor))
+
+        # Replace original PV resource with patched version.
+        await executor.exec(f"replace -f {pv_manifest} --force")
+        # Add new annotation to existing PV's annotations. Use --overwrite=true in case migration key already exist.
+        await executor.exec(f"annotate pv {pv_name} --overwrite=true csi.vastdata.com/migrated-from=2.0")
+        _print(text=f"PV {pv_name} updated.")
 
 
 async def main(loop: asyncio.AbstractEventLoop) -> None:
@@ -227,6 +263,14 @@ async def main(loop: asyncio.AbstractEventLoop) -> None:
 
     # Grab user inputs (root_export and vip_pool_name) from command line arguments.
     user_params = await grab_required_params()
+
+    force_migrate = user_params.force
+
+    if force_migrate and (not user_params.root_export or not user_params.vip_pool_name):
+        raise UserError("--vip_pool_name and --root_export must be provided if you're using --force flag")
+
+    # Set output verbosity
+    SubprocessProtocol.VERBOSE = user_params.verbose
 
     # Create base bash executor.
     bash_ex = SubprocessProtocol()
@@ -248,17 +292,27 @@ async def main(loop: asyncio.AbstractEventLoop) -> None:
 
     candidates = []
     for pv in all_pvs:
-        # Filter only PersistentVolumes where storageClassName == 'vastdata-filesystem'
+
         pv_spec = pv["spec"]
-        if pv_spec["storageClassName"] == STORAGE_CLASS_NAME:
-            volume_attributes = pv_spec["csi"]["volumeAttributes"]
-            missing_params = REQUIRED_PARAMETERS.difference(volume_attributes)
-            if missing_params:
-                _print(text=f"PV {pv['metadata']['name']} will be patched {', '.join(missing_params)}")
-                candidates.append(pv)
+        pv_annotations = pv["metadata"].get("annotations", {})
+        volume_attributes = pv_spec["csi"]["volumeAttributes"]
+        missing_params = REQUIRED_PARAMETERS.difference(volume_attributes)
+
+        if pv_annotations.get("csi.vastdata.com/migrated-from") == VAST_DRIVER_VERSION and force_migrate:
+            # Force migrate. Assumed previous parameters will be overwritten.
+            _print(text=f"PV {pv['metadata']['name']} will be patched (re-migrating)")
+            candidates.append(pv)
+
+        elif pv_annotations.get("pv.kubernetes.io/provisioned-by") == VAST_PROVISIONER and missing_params:
+            # Regular migrate. Assumed only PVs with missing required parameters will be updated.
+            _print(text=f"PV {pv['metadata']['name']} will be patched {', '.join(missing_params)}")
+            candidates.append(pv)
 
     # Start migration process
-    await process_migrate(candidates=candidates, user_params=user_params, executor=kubectl_ex, loop=loop)
+    if candidates:
+        await process_migrate(candidates=candidates, user_params=user_params, executor=kubectl_ex, loop=loop)
+    else:
+        _print(text="No outdated PVs found.")
 
 
 if __name__ == '__main__':
