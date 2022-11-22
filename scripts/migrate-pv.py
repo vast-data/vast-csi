@@ -10,7 +10,6 @@ There are 2 prerequisites to execute script:
 Usage:
     python migrate-pv.py --vast-csi-namespace < your input >  --verbose < True|False >
 """
-import re
 import sys
 import json
 import asyncio
@@ -267,17 +266,6 @@ async def main(loop: asyncio.AbstractEventLoop) -> None:
 
     force_migrate = user_params.force
 
-    if force_migrate:
-        # Filter only PersistentVolumes  where
-        # "csi.vastdata.com/migrated-from" annotation == 2.0
-        search_key = "csi.vastdata.com/migrated-from"
-        search_value = VAST_DRIVER_VERSION
-    else:
-        # Filter only PersistentVolumes  where
-        # "pv.kubernetes.io/provisioned-by" annotation == csi.vastdata.com
-        search_key = "pv.kubernetes.io/provisioned-by"
-        search_value = VAST_PROVISIONER
-
     if force_migrate and (not user_params.root_export or not user_params.vip_pool_name):
         raise UserError("--vip_pool_name and --root_export must be provided if you're using --force flag")
 
@@ -306,29 +294,25 @@ async def main(loop: asyncio.AbstractEventLoop) -> None:
     for pv in all_pvs:
 
         pv_spec = pv["spec"]
-        if pv["metadata"].get("annotations", {}).get(search_key) == search_value:
-            volume_attributes = pv_spec["csi"]["volumeAttributes"]
-            if force_migrate:
-                # Force migrate. Assumed previous parameters will be overwritten.
-                _print(text=f"PV {pv['metadata']['name']} will be patched (re-migrating)")
-                candidates.append(pv)
+        pv_annotations = pv["metadata"].get("annotations", {})
+        volume_attributes = pv_spec["csi"]["volumeAttributes"]
+        missing_params = REQUIRED_PARAMETERS.difference(volume_attributes)
 
-            else:
-                # Regular migrate. Assumed only PVs with missing required parameters will be updated.
-                missing_params = REQUIRED_PARAMETERS.difference(volume_attributes)
-                if missing_params:
-                    _print(text=f"PV {pv['metadata']['name']} will be patched {', '.join(missing_params)}")
-                    candidates.append(pv)
+        if pv_annotations.get("csi.vastdata.com/migrated-from") == VAST_DRIVER_VERSION and force_migrate:
+            # Force migrate. Assumed previous parameters will be overwritten.
+            _print(text=f"PV {pv['metadata']['name']} will be patched (re-migrating)")
+            candidates.append(pv)
+
+        elif pv_annotations.get("pv.kubernetes.io/provisioned-by") == VAST_PROVISIONER and missing_params:
+            # Regular migrate. Assumed only PVs with missing required parameters will be updated.
+            _print(text=f"PV {pv['metadata']['name']} will be patched {', '.join(missing_params)}")
+            candidates.append(pv)
 
     # Start migration process
     if candidates:
         await process_migrate(candidates=candidates, user_params=user_params, executor=kubectl_ex, loop=loop)
     else:
-        if force_migrate:
-            msg = "No PVs with annotation 'csi.vastdata.com/migrated-from' found."
-        else:
-            msg = "No outdated PVs found."
-        _print(text=msg)
+        _print(text="No outdated PVs found.")
 
 
 if __name__ == '__main__':
