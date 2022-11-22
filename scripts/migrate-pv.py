@@ -224,18 +224,18 @@ async def process_migrate(
         vip_pool_name = controller_env.get(X_CSI_VIP_POOL_NAME)
 
         if not root_export or not vip_pool_name:
-            raise UserError("It looks like you've already upgraded your Vast CSI Driver to version 2.1+;"
-                            " Please refer to Vast Support documentation on how to use this script in 'post-upgrade' mode.")
-    user_params = {
+            raise UserError("It looks like you've already upgraded your Vast CSI Driver - "
+                            "Please refer to Vast Support documentation on how to use this script in 'post-upgrade' mode.")
+    patch_params = {
         "root_export": root_export,
         "vip_pool_name": vip_pool_name
     }
-    _print(text=f"Next parameters has been found in Controller environment: {user_params}")
+    _print(text=f"Parameters for migration: {patch_params}")
 
     for candidate in candidates:
         pv_name = candidate['metadata']['name']
         pv_manifest = TMP / f"{pv_name}.json"
-        candidate["spec"]["csi"]["volumeAttributes"].update(user_params)
+        candidate["spec"]["csi"]["volumeAttributes"].update(patch_params)
 
         with pv_manifest.open("w") as f:
             json.dump(candidate, f)
@@ -243,7 +243,7 @@ async def process_migrate(
         # Add custom finalizer "vastdata.com/pv-migration-protection" in order to protect PV from being deleted
         # by csi driver at the moment of patching.
         await executor.exec(
-            f"patch pv {pv_name} " +
+            f"patch pv {pv_name} "
             "-p '{\"metadata\":{\"finalizers\":[\"vastdata.com/pv-migration-protection\"]}}'")
 
         # Run task that remove all finalizers in the background.
