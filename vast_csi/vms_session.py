@@ -31,7 +31,7 @@ class RESTSession(requests.Session):
         self.headers["Content-Type"] = "application/json"
         self.config = Config()
 
-    def request(self, verb, api_method, *, params=None, **kwargs):
+    def request(self, verb, api_method, *, params=None, log_result=True, **kwargs):
         verb = verb.upper()
         api_method = api_method.strip("/")
         url = f"{self.base_url}/{api_method}/"
@@ -55,8 +55,12 @@ class RESTSession(requests.Session):
         logger.info(f"<<< [{verb}] {url}")
         if ret.content:
             ret = Bunch.from_dict(ret.json())
-            for line in pformat(ret).splitlines():
-                logger.info(f"    {line}")
+            if log_result:
+                for line in pformat(ret).splitlines():
+                    logger.info(f"    {line}")
+            else:
+                size = len(ret) if isinstance(ret, (dict, tuple, list, str)) else '-'
+                logger.info(f"{type(ret)[{size}]}")
         else:
             ret = None
         logger.info(f"--- [{verb}] {url}: Done")
@@ -66,8 +70,8 @@ class RESTSession(requests.Session):
         if attr.startswith("_"):
             raise AttributeError(attr)
 
-        def func(**params):
-            return self.request("get", attr, params=params)
+        def func(log_result=True, **params):
+            return self.request("get", attr, params=params, log_result=log_result)
 
         func.__name__ = attr
         func.__qualname__ = f"{self.__class__.__qualname__}.{attr}"
@@ -91,7 +95,7 @@ class VmsSession(RESTSession):
         """
         storage_options = StorageClassOptions.with_defaults()
         load_balancing = load_balancing or storage_options.load_balancing_strategy
-        vips = [vip for vip in self.vips() if vip.vippool == vip_pool_name]
+        vips = [vip for vip in self.vips(log_result=False) if vip.vippool == vip_pool_name]
         if not vips:
             raise Exception(f"No vips in pool {vip_pool_name}")
 

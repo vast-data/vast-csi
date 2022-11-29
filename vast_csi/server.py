@@ -20,7 +20,7 @@ from pprint import pformat
 from datetime import datetime
 import inspect
 from uuid import uuid4
-from tempfile import  TemporaryDirectory
+from tempfile import mkdtemp
 
 import json
 from json import JSONDecodeError
@@ -84,7 +84,7 @@ def mount(src, tgt, flags=""):
     if flags:
         executable = executable["-o", ",".join(flags)]
     try:
-        executable[src, tgt] & logger.pipe_info("mount >>")
+        executable['-v', src, tgt] & logger.pipe_info("mount >>")
     except ProcessExecutionError as exc:
         if exc.retcode == 32:
             raise MountFailed(detail=exc.stderr, src=src, tgt=tgt)
@@ -422,7 +422,7 @@ class Controller(ControllerServicer, Instrumented):
             capacity_range=capacity_range,
             storage_options=storage_options,
             pvc_name=parameters.get("csi.storage.k8s.io/pvc/name"),
-            pvc_namespace = parameters.get("csi.storage.k8s.io/pvc/namespace"),
+            pvc_namespace=parameters.get("csi.storage.k8s.io/pvc/namespace"),
             volume_content_source=volume_content_source,
             ephemeral_volume_name=ephemeral_volume_name,
         ).build_volume()
@@ -436,19 +436,26 @@ class Controller(ControllerServicer, Instrumented):
                 vip_pool_name=CONF.vip_pool_name,
             )
             mount_spec = f"{nfs_server}:{base_quota_path}"
-            with TemporaryDirectory() as tmpdir:
-                tmpdir = local.path(tmpdir) # convert string to local.path
-                mount(
-                    mount_spec,
-                    tmpdir,
-                    flags=",".join(CONF.mount_options),
-                )
-                logger.info(f"mounted successfully: {tmpdir}")
-                tmpdir[volume_id].delete()
-                cmd.umount[tmpdir] & logger.pipe_info("umount >>")
 
-                self.vms_session.delete_quota(quota.id)
-                logger.info(f"Quota removed: {quota.id}")
+            mounted = False
+            tmpdir = local.path(mkdtemp())  # convert string to local.path
+            tmpdir['.csi-unmounted'].touch()
+
+            try:
+                mount(mount_spec, tmpdir, flags=",".join(CONF.mount_options))
+                assert not tmpdir['.csi-unmounted'].exists()
+                mounted = True
+
+                logger.info(f"deleting {tmpdir[volume_id]}")
+                tmpdir[volume_id].delete()  # idempotent - does not fail on dir-no-exists
+            finally:
+                if mounted:
+                    cmd.umount['-v', tmpdir] & logger.pipe_info("umount >>", retcode=None)  # don't fail if not mounted
+                os.remove(tmpdir['.csi-unmounted'])  # will fail if still mounted somehow
+                os.rmdir(tmpdir)  # will fail if not empty directory
+
+            self.vms_session.delete_quota(quota.id)
+            logger.info(f"Quota removed: {quota.id}")
 
         logger.info(f"Removed volume: {tmpdir}")
         return types.DeleteResp()
