@@ -3,9 +3,9 @@ entries:
   vastcsi:
   - apiVersion: v2
     appVersion: 2.1.0
-    created: "2022-11-12T22:24:46.005098358Z"
+    created: "2022-12-03T22:48:48.744696886Z"
     description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
-    digest: 507e913857bbd91f3bcc41261965cfe88657e038208fd1908c5015d3c05fbcd9
+    digest: b5190693e3a4bf394cb4777089a14e31961c2e0132b43dd605aba08bf792bdad
     home: https://support.vastdata.com/hc/en-us/articles/360010932159-VAST-with-Kubernetes
     icon: https://uploads.vastdata.com/2020/04/vast-white-1.svg
     keywords:
@@ -20,4 +20,4 @@ entries:
     urls:
     - https://github.com/vast-data/vast-csi/releases/download/vastcsi-0.1.0/vastcsi-0.1.0.tgz
     version: 0.1.0
-generated: "2022-11-12T22:24:45.736337921Z"
+generated: "2022-12-03T22:48:48.614381654Z"
