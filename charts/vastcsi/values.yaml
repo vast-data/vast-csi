@@ -6,7 +6,7 @@ username: ""
 password: ""
 # API endpoint of VAST appliance - must be provided by user
 endpoint: ""
-# Set to false to bypass certificate validity test
+# Set false to bypass certificate validity test
 verifySsl: false
 
 ####################
@@ -15,10 +15,12 @@ verifySsl: false
 # storageClassDefaults is set of options that will be using by default if option is not provided
 # for particular storageClass in 'storageClasses' section
 storageClassDefaults:
-  # Where volumes will be located on VAST
+  # Where volumes will be located on VAST - must be provided by user
   storagePath: ""
   # Name of VAST VIP pool to use - must be provided by user
   vipPool: ""
+  # VAST policy name to create views - must be provided by user
+  viewPolicy: ""
   # Allows resizing existing volumes
   allowVolumeExpansion: true
   # Load-balancing strategy
@@ -29,8 +31,8 @@ storageClassDefaults:
   setDefaultStorageClass: false
   # String template for CSI-provisioned volume names, within VAST
   volumeNameFormat: "csi:{namespace}:{name}:{id}"
-  # String template for CSI-provisioned snapshot names, within VAST
-  snapshotNameFormat: "csi:{namespace}:{name}:{id}"
+  # String template for CSI-provisioned ephemeral volumes, within VAST
+  ephemeralVolumeNameFormat: "csi:{namespace}:{name}:{id}"
   # Add any extra NFS options desired here
   nfsMountOptions: ""
 
@@ -44,7 +46,7 @@ storageClasses:
     # Name of VAST VIP pool to use - must be provided by user
     vipPool: ""
     # ... Any other options from 'storageClassDefaults' section. If not provided then default value
-    # will be using.
+    # will be used.
 # User can add more storage classes to this section eg:
 #  vastdata-filesystem2:
 #    vipPool: "vippool-2"
@@ -60,10 +62,12 @@ storageClasses:
 ####################
 snapshotClass:
   snapshotClassName: "vastdata-snapshot"
-  # On snapshot delete behavior. By default Vast Cluster snapshot will be removed as well.
+  # On snapshot delete behavior. By default, Vast Cluster snapshot will be removed as well.
   deletionPolicy: "Delete"
   # If true, sets Vast CSI as the cluster-wide snapshot class default
   setDefaultStorageClass: true
+  # String template for CSI-provisioned snapshot names, within VAST
+  snapshotNameFormat: "csi:{namespace}:{name}:{id}"
 
 
 ####################
@@ -78,7 +82,7 @@ csiImage: "vastdataorg/csi"
 
 # csiImageTag represents version of docker image that serves  CSI Controller and CSI Node.
 # To check latest stable tag refer https://support.vastdata.com/hc/en-us/articles/360010932159-VAST-with-Kubernetes
-csiImageTag: v2.1.0
+csiImageTag: v2.2.0
 
 # nodeSelector is the way to restrict CSI Controller and and CSI Node to be assigned on certain node/nodes.
 # Specify node selector if you want node and controller containers to be assigned only to specific node/nodes of
@@ -86,7 +90,7 @@ csiImageTag: v2.1.0
 #  https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector.
 nodeSelector: {}
 
-# tolerations is similar to nodeSelector concept but restrict node to accept pods that tolerate conditions
+# If specified, the pod's tolerations
 # https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
 tolerations: []
 
@@ -103,7 +107,7 @@ podAnnotations: {}
 # and can provide it other way.
 rbac: true
 
-# resources is initial amount of resources to be used by CSI Controller and CSI node
+# compute resources required by CSI Controller and CSI node
 # Example:
 # resources:
 #   requests:
@@ -111,7 +115,8 @@ rbac: true
 #      cpu: "250m"
 resources: {}
 
-# limits are high level resources threshold that CSI Controller and CSI Node can use.
+# "Limits describes the maximum amount of compute resource allowed.
+# More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
 # Example:
 # resources:
 # requests:

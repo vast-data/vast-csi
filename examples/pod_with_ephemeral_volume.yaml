@@ -19,5 +19,6 @@ spec:
       volumeAttributes:
         root_export: /k8s
         size: 1G
+        view_policy: default
         vip_pool_name: vippool-1
     name: my-eph-vol

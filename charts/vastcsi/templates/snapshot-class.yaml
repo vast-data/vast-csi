@@ -12,4 +12,6 @@ metadata:
     {{- include "vastcsi.labels" $ | nindent 4 }}
 driver: csi.vastdata.com
 deletionPolicy: {{ .deletionPolicy | quote }}
+parameters:
+  snapshot_name_fmt: {{ .snapshotNameFormat | quote }}
 {{- end }}
