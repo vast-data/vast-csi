@@ -17,6 +17,9 @@ def main():
     info_parse.add_argument("--output", default="json", choices=['json', 'yaml'], help="Output format")
     info_parse.set_defaults(func=_info)
 
+    test_parse = subparsers.add_parser("test", help='Start unit tests')
+    test_parse.set_defaults(func=_test)
+
     args = parser.parse_args(namespace=Bunch())
     args.pop("func")(args)
 
@@ -36,6 +39,12 @@ def _info(args):
         json.dump(info, sys.stdout)
     else:
         assert False, f"invalid output format: {args.output}"
+
+
+def _test(args):
+    """Runs the tests without code coverage"""
+    import pytest
+    sys.exit(pytest.main(["-x", "tests", "-s", "-v"]))
 
 
 def _serve(args):

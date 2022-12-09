@@ -373,3 +373,4 @@ class TestVmsSession(RESTSession):
     update_quota = _empty
     delete_view = _empty
     delete_folder = _empty
+    get_view_by_path = _empty
