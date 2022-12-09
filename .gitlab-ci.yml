@@ -15,6 +15,7 @@ build_csi:
       docker tag $LATEST vast-csi:latest  # the cache-source for our subsequent build
     fi
     /bin/sh -x packaging/build.sh  # --> vast-csi:dev
+    docker run  vast-csi:dev test # start unit tests
     docker tag vast-csi:dev ${IMAGE_NAME}
     docker tag vast-csi:dev ${LATEST}
     docker push ${IMAGE_NAME}
@@ -22,7 +23,6 @@ build_csi:
     echo "pushed ${IMAGE_NAME}"
   tags:
     - vast-dev-builder
-
 
 
 test_csi:

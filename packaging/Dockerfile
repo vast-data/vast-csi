@@ -13,6 +13,8 @@ RUN apk add --no-cache \
 	cd /usr/libexec/gcc/x86_64-alpine-linux-musl/*/ && rm -fv cc1 cc1obj cc1plus lto1
 
 COPY vast_csi vast_csi
+COPY charts charts
+COPY tests tests
 COPY deployment .
 COPY k8s_supported.txt .
 

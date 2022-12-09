@@ -20,7 +20,6 @@ from pprint import pformat
 from datetime import datetime
 import inspect
 from uuid import uuid4
-from tempfile import  TemporaryDirectory
 
 import json
 from json import JSONDecodeError
@@ -31,7 +30,6 @@ import grpc
 from easypy.tokens import ROUNDROBIN, RANDOM, CONTROLLER_AND_NODE, CONTROLLER, NODE
 from easypy.misc import kwargs_resilient, at_least
 from easypy.caching import cached_property
-from easypy.exceptions import TException
 from easypy.bunch import Bunch
 
 from .logging import logger, init_logging

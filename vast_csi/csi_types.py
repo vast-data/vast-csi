@@ -43,7 +43,11 @@ CtrlUnpublishResp = csi_pb2.ControllerUnpublishVolumeResponse
 CtrlExpandResp = csi_pb2.ControllerExpandVolumeResponse
 
 CapabilitiesResp = csi_pb2.GetPluginCapabilitiesResponse
-AccessModeType = EnumWrapper(csi_pb2.VolumeCapability.AccessMode.Mode)
+
+VolumeCapability = csi_pb2.VolumeCapability
+MountVolume = VolumeCapability.MountVolume
+AccessMode = VolumeCapability.AccessMode
+AccessModeType = EnumWrapper(AccessMode.Mode)
 
 StageResp = csi_pb2.NodeStageVolumeResponse
 UnstageResp = csi_pb2.NodeUnstageVolumeResponse
