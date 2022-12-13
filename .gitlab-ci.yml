@@ -1,9 +1,39 @@
+stages:
+  - build_base
+  - build
+  - deploy
+  - test
+
 image: docker:latest
 
 variables:
   DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
   IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:${CI_PIPELINE_ID}
+  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2022-12-09
   ORION_BRANCH: comet/master
+
+
+build_csi_base:
+  stage: build_base
+  script: |
+    set -x
+    LATEST=${DOCKER_REGISTRY}/dev/vast-csi-base:latest
+    if (docker pull $LATEST) ; then
+      docker tag $LATEST vast-csi-base:latest  # the cache-source for our subsequent build
+    fi
+    docker build \
+        -t vast-csi-base:dev \
+        --cache-from vast-csi-base:latest \
+        -f packaging/base_Dockerfile .
+    docker tag vast-csi-base:dev ${BASE_IMAGE_NAME}
+    docker tag vast-csi-base:dev ${LATEST}
+    docker push ${BASE_IMAGE_NAME}
+    docker push ${LATEST}
+    echo "pushed ${BASE_IMAGE_NAME}"
+  when: manual
+  tags:
+    - vast-dev-builder
+
 
 build_csi:
   stage: build
@@ -14,8 +44,8 @@ build_csi:
     if (docker pull $LATEST) ; then
       docker tag $LATEST vast-csi:latest  # the cache-source for our subsequent build
     fi
-    /bin/sh -x packaging/build.sh  # --> vast-csi:dev
-    docker run  vast-csi:dev test # start unit tests
+    /bin/sh -x packaging/build.sh ${BASE_IMAGE_NAME} # --> vast-csi:dev
+    docker run vast-csi:dev test # start unit tests
     docker tag vast-csi:dev ${IMAGE_NAME}
     docker tag vast-csi:dev ${LATEST}
     docker push ${IMAGE_NAME}
