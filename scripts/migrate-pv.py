@@ -234,6 +234,7 @@ async def process_migrate(
 
     for candidate in candidates:
         pv_name = candidate['metadata']['name']
+        pvc_name = candidate['spec']['claimRef']['name']
         pv_manifest = TMP / f"{pv_name}.json"
         candidate["spec"]["csi"]["volumeAttributes"].update(patch_params)
 
@@ -254,6 +255,16 @@ async def process_migrate(
         # Add new annotation to existing PV's annotations. Use --overwrite=true in case migration key already exist.
         await executor.exec(f"annotate pv {pv_name} --overwrite=true csi.vastdata.com/migrated-from=2.0")
         _print(text=f"PV {pv_name} updated.")
+
+        # Remove PVC events about "Lost" status
+        await asyncio.sleep(1)
+        pvc_events = await executor.exec(f'get events --field-selector involvedObject.name={pvc_name} -o json')
+        pvc_events = json.loads(pvc_events)['items']
+
+        for event in pvc_events:
+            if 'Bound claim has lost its PersistentVolume' in event['message']:
+                event_name = event['metadata']['name']
+                await executor.exec(f'delete event {event_name}')
 
 
 async def main(loop: asyncio.AbstractEventLoop) -> None:
