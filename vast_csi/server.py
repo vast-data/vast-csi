@@ -779,7 +779,12 @@ class Node(NodeServicer, Instrumented):
             raise Abort(INVALID_ARGUMENT, "missing 'volume_capability'")
 
         nfs_server_ip = publish_context["nfs_server_ip"]
-        export_path = publish_context["export_path"]
+
+        schema = "1" if not volume_context else volume_context.get("schema", "1")
+        if schema == "2":
+            export_path = volume_context["export_path"]
+        else:
+            export_path = publish_context["export_path"]
         mount_spec = f"{nfs_server_ip}:{export_path}"
 
         _validate_capabilities([volume_capability])
