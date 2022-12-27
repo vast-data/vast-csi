@@ -50,10 +50,9 @@ update_dockerhub [prod]: &update_dockerhub
   environment: prod
   script: |
     set -x
-    if [[ "$CI_ENVIRONMENT_NAME" == "prod" ]]; then
-      VERSION=$(cat version.txt)
-    else
-      VERSION=$CI_ENVIRONMENT_NAME-$CI_PIPELINE_ID
+    VERSION=$(cat version.txt)
+    if [[ "$CI_ENVIRONMENT_NAME" != "prod" ]]; then
+      VERSION=$VERSION-$CI_ENVIRONMENT_NAME-$CI_PIPELINE_ID
     fi
     RELEASE_NAME=docker.io/vastdataorg/csi:${VERSION}
 
