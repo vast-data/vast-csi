@@ -34,10 +34,6 @@ INFO_ATTRS = 45, "info"  # color & label ( used for any auxiliary information )
 VAST_PROVISIONER = "csi.vastdata.com"
 VAST_DRIVER_VERSION = "2.0"
 
-# Required environment variables
-X_CSI_VIP_POOL_NAME = "X_CSI_VIP_POOL_NAME"
-X_CSI_NFS_EXPORT = "X_CSI_NFS_EXPORT"
-
 # These fields are required for csi driver 2.1 to work properly. If at least one parameter is missing it means
 # PV must be updated.
 REQUIRED_PARAMETERS = {"root_export", "vip_pool_name"}
@@ -224,17 +220,22 @@ async def process_migrate(
             for env_pair in container["env"]:
                 controller_env[env_pair["name"]] = env_pair.get("value")
 
-        root_export = controller_env.get(X_CSI_NFS_EXPORT)
-        vip_pool_name = controller_env.get(X_CSI_VIP_POOL_NAME)
+        root_export = controller_env.get("X_CSI_NFS_EXPORT")
+        vip_pool_name = controller_env.get("X_CSI_VIP_POOL_NAME")
+        mount_options = controller_env.get("X_CSI_MOUNT_OPTIONS", "")
+        mount_options = list({p for p in mount_options.strip().split(",") if p})
 
         if not root_export or not vip_pool_name:
-            raise UserError("It looks like you've already upgraded your Vast CSI Driver - "
-                            "Please refer to Vast Support documentation on how to use this script in 'post-upgrade' mode.")
+            raise UserError(
+                "It looks like you've already upgraded your Vast CSI Driver - "
+                "Please refer to Vast Support documentation on how to use this script in 'post-upgrade' mode.")
+
     patch_params = {
         "root_export": root_export,
         "vip_pool_name": vip_pool_name,
         "schema": "2"
     }
+
     _print(text=f"Parameters for migration: {patch_params}")
 
     for candidate in candidates:
@@ -244,6 +245,8 @@ async def process_migrate(
 
         patch_params['export_path'] = os.path.join(root_export, pv_name)
         candidate["spec"]["csi"]["volumeAttributes"].update(patch_params)
+        if mount_options:
+            candidate["spec"]["mountOptions"] = mount_options
 
         with pv_manifest.open("w") as f:
             json.dump(candidate, f)
