@@ -10,10 +10,11 @@ IS_INTERACTIVE = sys.stdin.isatty()
 
 
 CSI_SIDECAR_VERSIONS = {
-    'csi-provisioner':           'v1.6.0',  # min k8s: v1.17
+    'csi-provisioner':           'v3.2.1',  # min k8s: v1.20
     'csi-attacher':              'v3.1.0',  # min k8s: v1.17
     'csi-resizer':               'v1.1.0',  # min k8s: v1.16
     'csi-node-driver-registrar': 'v2.0.1',  # min k8s: v1.13
+    'csi-snapshotter':           'v6.0.1',  # min k8s: v1.20
 }
 
 
@@ -29,7 +30,7 @@ def main():
     serve_parse.set_defaults(func=_serve)
 
     template_parse = subparsers.add_parser("template", help='Generate a kubectl template for deploying this CSI plugin')
-    for p in "image hostname username password vippool export load-balancing pull-policy mount-options".split():
+    for p in "image hostname username password vippool export load-balancing pull-policy mount-options deployment".split():
         template_parse.add_argument("--" + p)
     template_parse.set_defaults(func=_template)
 
@@ -42,11 +43,12 @@ def main():
 
 
 def _info(args):
-    from . server import Config
+    from . configuration import Config
     conf = Config()
     info = dict(
         name=conf.plugin_name, version=conf.plugin_version, commit=conf.git_commit,
-        supported_k8s_versions=open("k8s_supported.txt").read().split()
+        supported_k8s_versions=open("k8s_supported.txt").read().split(),
+        sidecars=CSI_SIDECAR_VERSIONS,
     )
     if args.output == "yaml":
         import yaml
@@ -64,23 +66,27 @@ def _serve(args):
 
 
 def _template(args):
+    if deployment := (args.get("deployment") or ""):
+        deployment = f"-{deployment}"
+
     try:
-        fname = "vast-csi-deployment.yaml"
+        fname = f"vast-csi-deployment{deployment}.yaml"
         with open(f"/out/{fname}", "w") as file:
-            generate_deployment(file, **args)
+            storage_class = generate_deployment(file, **args)
         print(C(f"\nWritten to WHITE<<{fname}>>\n"))
         print("Inspect the file and then run:")
         print(C(f">> CYAN<<kubectl apply -f {fname}>>\n"))
         print(C("YELLOW<<Be sure to delete the file when done, as it contains Vast Management credentials>>\n"))
+        print(C(f"Use CYAN<<storageClassName: {storage_class}>> in your PVCs\n"))
     except KeyboardInterrupt:
         return
 
 
 def generate_deployment(
         file, load_balancing=None, pull_policy=None, image=None, hostname=None,
-        username=None, password=None, vippool=None, export=None, mount_options=None):
+        username=None, password=None, vippool=None, export=None, mount_options=None, deployment=None):
 
-    from . utils import RESTSession
+    from . vms_session import VmsSession
     from requests import HTTPError, ConnectionError
     from base64 import b64encode
     from prompt_toolkit.completion import WordCompleter
@@ -89,6 +95,20 @@ def generate_deployment(
 
     style = Style.from_dict({'': '#AAAABB', 'prompt': '#ffffff'})
     context = Bunch()
+
+    from . configuration import Config
+    conf = Config()
+    name = conf.plugin_name
+    namespace = "vast-csi"
+    storage_class = "vastdata-filesystem"
+    snap_class = "vastdata-snapshot"
+    if deployment:
+        name = f"{deployment}.{name}"
+        namespace = f"{namespace}-{deployment}"
+        storage_class = f"{storage_class}-{deployment}"
+        snap_class = f"{snap_class}-{deployment}"
+
+    context.update(PLUGIN_NAME=name, NAMESPACE=namespace, STORAGE_CLASS=storage_class, SNAPCLASS=snap_class)
 
     def prompt(arg, message, **kwargs):
         if not IS_INTERACTIVE:
@@ -125,7 +145,7 @@ def generate_deployment(
             import urllib3
             urllib3.disable_warnings()
 
-        vms = RESTSession(
+        vms = VmsSession(
             base_url=f"https://{context.VMS_HOST}/api",
             auth=(username, password),
             ssl_verify=ssl_verify)
@@ -178,6 +198,7 @@ def generate_deployment(
 
     template = open("vast-csi.yaml").read()
     print(re.sub("#.*", "", template.format(**context)).strip(), file=file)
+    return storage_class
 
 
 if __name__ == '__main__':

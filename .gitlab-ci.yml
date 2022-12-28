@@ -3,6 +3,7 @@ image: docker:latest
 variables:
   DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
   IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:${CI_PIPELINE_ID}
+  ORION_BRANCH: comet/master
 
 build_csi:
   stage: build
@@ -23,38 +24,45 @@ build_csi:
     - vast-dev-builder
 
 
-.test_csi: &test_csi
+test_csi [latest]: &test_csi
   stage: test
-  when: manual
-  variables:
-    VAST_COMET_KWARG: csi_plugin_version=${CI_PIPELINE_ID}
+  when: always
+  except:
+    - /v[\d]\.[\d]+/
   trigger:
     project: dev/orion
-    branch: comet/master
+    branch: $ORION_BRANCH
     strategy: depend
-  allow_failure: true
+  variables:
+    INSTALL_IMAGE: latest-4.6.0
+    VAST_COMET_KWARG: csi_plugin_version=${CI_PIPELINE_ID}
+    UPGRADE_TO: $INSTALL_IMAGE
 
 
 test_csi:
   <<: *test_csi
+  when: manual
+  allow_failure: true
   parallel:
     matrix:
       - INSTALL_IMAGE:
-        - latest-3.6.0
-        - latest-4.0.0
-        - latest-4.2.0
-        - latest-4.3.0
+        - latest-4-2-0
+        - latest-4-3-0
+        - latest-4-4-0
+        - latest-4.5.0
+        - latest-4.6.0
 
 
 update_dockerhub [prod]: &update_dockerhub
   stage: deploy
   environment: prod
+  only:
+    - /v[\d]\.[\d]+/
   script: |
     set -x
-    if [[ "$CI_ENVIRONMENT_NAME" == "prod" ]]; then
-      VERSION=$(cat version.txt)
-    else
-      VERSION=$CI_ENVIRONMENT_NAME-$CI_PIPELINE_ID
+    VERSION=$(cat version.txt)
+    if [[ "$CI_ENVIRONMENT_NAME" != "prod" ]]; then
+      VERSION=$VERSION-$CI_ENVIRONMENT_NAME-$CI_PIPELINE_ID
     fi
     RELEASE_NAME=docker.io/vastdataorg/csi:${VERSION}
 
@@ -79,15 +87,15 @@ update_dockerhub [beta]:
 
 
 update_github:
-  needs: []
   image:
     name: alpine/git
     entrypoint: [""]
   stage: deploy
+  only:
+    - /v[\d]\.[\d]+/
   script: |
     set -x
     VERSION=$(cat version.txt)
-    VERSION_BRANCH=$CI_COMMIT_REF_NAME
 
     mkdir ~/.ssh/
     cp $GITHUB_KEY ~/.ssh/id_rsa
@@ -98,15 +106,15 @@ update_github:
 
     git remote -v
     git remote add github git@github.com:vast-data/vast-csi.git || true
-    git fetch github $VERSION_BRANCH
-    git checkout -B $VERSION_BRANCH FETCH_HEAD
+    git fetch github $CI_COMMIT_REF_NAME
+    git checkout -B $CI_COMMIT_REF_NAME FETCH_HEAD
     git checkout $CI_COMMIT_SHA -- .
     git commit -am "VAST Data CSI Plugin - $VERSION
 
       (from $CI_COMMIT_SHA)"
 
     git tag -f $VERSION
-    git push -f --tags github HEAD:$VERSION_BRANCH
+    git push -f --tags github HEAD:$CI_COMMIT_REF_NAME
 
   only:
   - /^v\d.*/
