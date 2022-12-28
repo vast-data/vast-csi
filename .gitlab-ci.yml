@@ -27,6 +27,8 @@ build_csi:
 test_csi [latest]: &test_csi
   stage: test
   when: always
+  except:
+    - /v[\d]\.[\d]+/
   trigger:
     project: dev/orion
     branch: $ORION_BRANCH
@@ -48,6 +50,7 @@ test_csi:
         - latest-4-3-0
         - latest-4-4-0
         - latest-4.5.0
+        - latest-4.6.0
 
 
 update_dockerhub [prod]: &update_dockerhub
