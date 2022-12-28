@@ -24,26 +24,31 @@ build_csi:
     - vast-dev-builder
 
 
-
-test_csi:
+test_csi [latest]: &test_csi
   stage: test
-  when: manual
+  when: always
   trigger:
     project: dev/orion
     branch: $ORION_BRANCH
     strategy: depend
+  variables:
+    INSTALL_IMAGE: latest-4.6.0
+    VAST_COMET_KWARG: csi_plugin_version=${CI_PIPELINE_ID}
+    UPGRADE_TO: $INSTALL_IMAGE
+
+
+test_csi:
+  <<: *test_csi
+  when: manual
   allow_failure: true
   parallel:
     matrix:
       - INSTALL_IMAGE:
-        - release-4-2-0-sp13-712743
-        - release-4-3-0-sp9-723094
-        - release-4-4-0-731903
+        - latest-4-2-0
+        - latest-4-3-0
+        - latest-4-4-0
         - latest-4.5.0
-        - latest-4.6.0
-  variables:
-    VAST_COMET_KWARG: csi_plugin_version=${CI_PIPELINE_ID}
-    UPGRADE_TO: $INSTALL_IMAGE
+
 
 update_dockerhub [prod]: &update_dockerhub
   stage: deploy
