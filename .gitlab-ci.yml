@@ -56,6 +56,8 @@ test_csi:
 update_dockerhub [prod]: &update_dockerhub
   stage: deploy
   environment: prod
+  only:
+    - /v[\d]\.[\d]+/
   script: |
     set -x
     VERSION=$(cat version.txt)
@@ -89,6 +91,8 @@ update_github:
     name: alpine/git
     entrypoint: [""]
   stage: deploy
+  only:
+    - /v[\d]\.[\d]+/
   script: |
     set -x
     VERSION=$(cat version.txt)
@@ -102,15 +106,15 @@ update_github:
 
     git remote -v
     git remote add github git@github.com:vast-data/vast-csi.git || true
-    git fetch github public
-    git checkout -B public FETCH_HEAD
+    git fetch github $CI_COMMIT_REF_NAME
+    git checkout -B $CI_COMMIT_REF_NAME FETCH_HEAD
     git checkout $CI_COMMIT_SHA -- .
     git commit -am "VAST Data CSI Plugin - $VERSION
 
       (from $CI_COMMIT_SHA)"
 
     git tag -f $VERSION
-    git push -f --tags github HEAD:public
+    git push -f --tags github HEAD:$CI_COMMIT_REF_NAME
 
   only:
   - /^v\d.*/
