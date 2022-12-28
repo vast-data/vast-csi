@@ -215,15 +215,32 @@ async def process_migrate(
                             f" - please verify that the 'csi-vast-controller-0' is deployed in your cluster.\n"
                             f"If you've used a different namespace, specify it using the --vast-csi-namespace flag.")
 
-        controller_env = dict()
-        for container in controller_info["spec"]["containers"]:
-            for env_pair in container["env"]:
-                controller_env[env_pair["name"]] = env_pair.get("value")
+        controller_env = {
+            env_pair["name"]: env_pair.get("value")
+            for container in controller_info["spec"]["containers"]
+            if container['name'] == 'csi-vast-plugin'
+            for env_pair in container["env"]
+        }
+
+        nodes_info = await executor.exec(f"get pod -l app=csi-vast-node -n {csi_namespace} -o json", True)
+        try:
+            nodes_info = json.loads(nodes_info)
+            node_info = nodes_info['items'][0]
+        except (json.decoder.JSONDecodeError, KeyError, IndexError):
+            # In case of 'Error from server (NotFound) ...'
+            raise UserError(f"Could not find our csi driver nodes in namespace '{csi_namespace}'.\n"
+                            f"If you've used a different namespace, specify it using the --vast-csi-namespace flag.")
+
+        node_env = {
+            env_pair["name"]: env_pair.get("value")
+            for container in node_info["spec"]["containers"]
+            if container['name'] == 'csi-vast-plugin'
+            for env_pair in container["env"]
+        }
 
         root_export = controller_env.get("X_CSI_NFS_EXPORT")
         vip_pool_name = controller_env.get("X_CSI_VIP_POOL_NAME")
-        mount_options = controller_env.get("X_CSI_MOUNT_OPTIONS", "")
-        mount_options = list({p for p in mount_options.strip().split(",") if p})
+        mount_options = node_env.get("X_CSI_MOUNT_OPTIONS", "")
 
         if not root_export or not vip_pool_name:
             raise UserError(
@@ -233,6 +250,7 @@ async def process_migrate(
     patch_params = {
         "root_export": root_export,
         "vip_pool_name": vip_pool_name,
+        "mount_options": mount_options,
         "schema": "2"
     }
 
@@ -245,8 +263,6 @@ async def process_migrate(
 
         patch_params['export_path'] = os.path.join(root_export, pv_name)
         candidate["spec"]["csi"]["volumeAttributes"].update(patch_params)
-        if mount_options:
-            candidate["spec"]["mountOptions"] = mount_options
 
         with pv_manifest.open("w") as f:
             json.dump(candidate, f)
