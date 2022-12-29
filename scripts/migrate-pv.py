@@ -165,6 +165,7 @@ async def grab_required_params() -> Namespace:
     parser.add_argument("--verbose", help="Show commands output.", default=False)
     parser.add_argument("--root_export", help="Base path where volumes will be located on VAST")
     parser.add_argument("--vip_pool_name", help="Name of VAST VIP pool to use")
+    parser.add_argument("--mount_options", help="Custom NFS mount options, comma-separated (specify '' for no mount options).")
     parser.add_argument(
         "--force",
         help="Forced migration - refer to Vast Support documentation on when to use this flag",
@@ -203,6 +204,7 @@ async def process_migrate(
     if user_params.force:
         root_export = user_params.root_export
         vip_pool_name = user_params.vip_pool_name
+        mount_options = user_params.mount_options
 
     else:
         csi_namespace = user_params.vast_csi_namespace
@@ -263,6 +265,8 @@ async def process_migrate(
 
         patch_params['export_path'] = os.path.join(root_export, pv_name)
         candidate["spec"]["csi"]["volumeAttributes"].update(patch_params)
+        if mount_options:
+            candidate["spec"]["mountOptions"] = mount_options.split(",")
 
         with pv_manifest.open("w") as f:
             json.dump(candidate, f)
@@ -303,8 +307,12 @@ async def main(loop: asyncio.AbstractEventLoop) -> None:
 
     force_migrate = user_params.force
 
-    if force_migrate and (not user_params.root_export or not user_params.vip_pool_name):
-        raise UserError("--vip_pool_name and --root_export must be provided if you're using --force flag")
+    if force_migrate and not all([
+            user_params.root_export,
+            user_params.vip_pool_name,
+            user_params.mount_options is not None]):
+        raise UserError(
+            "--vip_pool_name, --root_export and --mount_options must be provided if you're using --force flag")
 
     # Set output verbosity
     SubprocessProtocol.VERBOSE = user_params.verbose
