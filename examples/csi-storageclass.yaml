@@ -8,7 +8,6 @@ parameters:
   vip_pool_name: vippool-1
   root_export: /k8s
   mount_options: ''
-  lb_strategy: roundrobin
   volume_name_fmt: csi:{namespace}:{name}:{id}
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
