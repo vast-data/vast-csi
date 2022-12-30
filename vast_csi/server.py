@@ -20,6 +20,7 @@ from pprint import pformat
 from datetime import datetime
 import inspect
 from uuid import uuid4
+from tempfile import mkdtemp
 
 import json
 from json import JSONDecodeError
@@ -78,7 +79,7 @@ def mount(src, tgt, flags=""):
     if flags:
         executable = executable["-o", ",".join(flags)]
     try:
-        executable[src, tgt] & logger.pipe_info("mount >>")
+        executable['-v', src, tgt] & logger.pipe_info("mount >>")
     except ProcessExecutionError as exc:
         if exc.retcode == 32:
             raise MountFailed(detail=exc.stderr, src=src, tgt=tgt)
@@ -359,7 +360,7 @@ class Controller(ControllerServicer, Instrumented):
             name=name,
             capacity_range=capacity_range,
             pvc_name=parameters.get("csi.storage.k8s.io/pvc/name"),
-            pvc_namespace = parameters.get("csi.storage.k8s.io/pvc/namespace"),
+            pvc_namespace=parameters.get("csi.storage.k8s.io/pvc/namespace"),
             volume_content_source=volume_content_source,
             ephemeral_volume_name=ephemeral_volume_name,
             root_export=root_export,
@@ -371,15 +372,64 @@ class Controller(ControllerServicer, Instrumented):
         ).build_volume()
         return types.CreateResp(volume=volume)
 
+    def _delete_data_from_storage(self, path):
+        volume_id = local.path(path).name
+        base_quota_path = local.path(path).dirname
+        nfs_server = self.vms_session.get_vip(
+            vip_pool_name=CONF.vip_pool_name,
+        )
+        mount_spec = f"{nfs_server}:{base_quota_path}"
+
+        mounted = False
+        tmpdir = local.path(mkdtemp())  # convert string to local.path
+        tmpdir['.csi-unmounted'].touch()
+
+        try:
+            mount(mount_spec, tmpdir, flags=",".join(CONF.mount_options))
+            assert not tmpdir['.csi-unmounted'].exists()
+            mounted = True
+
+            if tmpdir[volume_id].exists():
+                logger.info(f"deleting {tmpdir[volume_id]}")
+                tmpdir[volume_id].delete()  # idempotent - does not fail on dir-no-exists
+                logger.info(f"done deleting {tmpdir[volume_id]}")
+            else:
+                logger.info(f"already deleted {tmpdir[volume_id]}")
+        except OSError as exc:
+            if 'not empty' in str(exc):
+                for i, item in enumerate(tmpdir[volume_id].list()):
+                    if i > 9:
+                        logger.debug(" ...")
+                        break
+                    logger.warning(f" - {item}")
+            raise
+        finally:
+            if mounted:
+                cmd.umount['-v', tmpdir] & logger.pipe_info("umount >>", retcode=None)  # don't fail if not mounted
+            os.remove(tmpdir['.csi-unmounted'])  # will fail if still mounted somehow
+            os.rmdir(tmpdir)  # will fail if not empty directory
+
     def DeleteVolume(self, volume_id):
         if quota := self.vms_session.get_quota(volume_id):
-            # Delete folder using vast API
-            self.vms_session.delete_folder(quota.path)
-            logger.info(f"Removed volume: {quota.path}")
+            try:
+                self._delete_data_from_storage(quota.path)
+            except OSError as exc:
+                if 'not empty' not in str(exc):
+                    raise
+                if snaps := self.vms_session.has_snapshots(quota.path):
+                    # this is expected when the volume has snapshots
+                    logger.info(f"{quota.path} will remain due to remaining {len(snaps)} snapshots")
+                else:
+                    raise
+            logger.info(f"Data removed: {quota.path}")
+
             self.vms_session.delete_view(quota.path)
             logger.info(f"View removed: {quota.path}")
+
             self.vms_session.delete_quota(quota.id)
             logger.info(f"Quota removed: {quota.id}")
+
+        logger.info(f"Removed volume: {volume_id}")
         return types.DeleteResp()
 
     def ControllerPublishVolume(
@@ -508,9 +558,7 @@ class Controller(ControllerServicer, Instrumented):
                         pass
                     else:
                         if (k, v) == ("name", "This field must be unique."):
-                            [snap] = self.vms_session.get_snapshot(
-                                snapshot_name=snapshot_name
-                            )
+                            [snap] = self.vms_session.get_snapshot(snapshot_name=snapshot_name)
                             if snap.path != path:
                                 raise Abort(
                                     ALREADY_EXISTS,
@@ -538,7 +586,15 @@ class Controller(ControllerServicer, Instrumented):
         if CONF.mock_vast:
             CONF.fake_snapshot_store[snapshot_id].delete()
         else:
+            snapshot = self.vms_session.get_snapshot(snapshot_id=snapshot_id)
             self.vms_session.delete_snapshot(snapshot_id)
+            if self.vms_session.get_quotas_by_path(snapshot.path):
+                pass  # quotas still exist
+            elif self.vms_session.has_snapshots(snapshot.path):
+                pass  # other snapshots still exist
+            else:
+                logger.info(f"last snapshot for {snapshot.path}, and no more quotas - let's delete this directory")
+                self._delete_data_from_storage(snapshot.path)
 
         return types.DeleteSnapResp()
 
@@ -591,27 +647,29 @@ class Controller(ControllerServicer, Instrumented):
         else:
             page_size = max_entries or 250
 
-            if not starting_token:
-                ret = self.vms_session.snapshot_list(
-                    snapshot_id=snapshot_id, page_size=page_size
-                )
-            else:
+            if starting_token:
                 ret = self.vms_session.get_by_token(starting_token)
-            return types.ListSnapResp(
-                next_token=ret.next,
-                entries=[
-                    types.SnapEntry(
-                        snapshot=types.Snapshot(
-                            size_bytes=0,  # indicates 'unspecified'
-                            snapshot_id=snap.id,
-                            source_volume_id=self._to_volume_id(snap.path) or "n/a",
-                            creation_time=snap.created,
-                            ready_to_use=True,
-                        )
-                    )
-                    for snap in ret.results
-                ],
-            )
+            elif not snapshot_id:
+                ret = self.vms_session.snapshots(page_size=page_size)
+            else:
+                snap = self.vms_session.snapshots(snapshot_id)
+                return types.ListSnapResp(next_token=None, entries=[types.SnapEntry(
+                    snapshot=types.Snapshot(
+                        size_bytes=0,  # indicates 'unspecified'
+                        snapshot_id=snap.id,
+                        source_volume_id=self._to_volume_id(snap.path) or "n/a",
+                        creation_time=snap.created,
+                        ready_to_use=True,
+                    ))])
+
+            return types.ListSnapResp(next_token=ret.next, entries=[types.SnapEntry(
+                snapshot=types.Snapshot(
+                    size_bytes=0,  # indicates 'unspecified'
+                    snapshot_id=snap.id,
+                    source_volume_id=self._to_volume_id(snap.path) or "n/a",
+                    creation_time=snap.created,
+                    ready_to_use=True,
+                )) for snap in ret.results])
 
 
 ################################################################
@@ -686,7 +744,12 @@ class Node(NodeServicer, Instrumented):
             raise Abort(INVALID_ARGUMENT, "missing 'volume_capability'")
 
         nfs_server_ip = publish_context["nfs_server_ip"]
-        export_path = publish_context["export_path"]
+
+        schema = "1" if not volume_context else volume_context.get("schema", "1")
+        if schema == "2":
+            export_path = volume_context["export_path"]
+        else:
+            export_path = publish_context["export_path"]
         mount_spec = f"{nfs_server_ip}:{export_path}"
 
         _validate_capabilities([volume_capability])

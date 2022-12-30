@@ -10,6 +10,7 @@ There are 2 prerequisites to execute script:
 Usage:
     python migrate-pv.py --vast-csi-namespace < your input >  --verbose < True|False >
 """
+import os
 import sys
 import json
 import asyncio
@@ -32,10 +33,6 @@ INFO_ATTRS = 45, "info"  # color & label ( used for any auxiliary information )
 # "pv.kubernetes.io/provisioned-by" annotation is not equal to csi.vastdata.com
 VAST_PROVISIONER = "csi.vastdata.com"
 VAST_DRIVER_VERSION = "2.0"
-
-# Required environment variables
-X_CSI_VIP_POOL_NAME = "X_CSI_VIP_POOL_NAME"
-X_CSI_NFS_EXPORT = "X_CSI_NFS_EXPORT"
 
 # These fields are required for csi driver 2.1 to work properly. If at least one parameter is missing it means
 # PV must be updated.
@@ -168,7 +165,11 @@ async def grab_required_params() -> Namespace:
     parser.add_argument("--verbose", help="Show commands output.", default=False)
     parser.add_argument("--root_export", help="Base path where volumes will be located on VAST")
     parser.add_argument("--vip_pool_name", help="Name of VAST VIP pool to use")
-    parser.add_argument("--force", help="Forced migration - refer to Vast Support documentation on when to use this flag")
+    parser.add_argument("--mount_options", help="Custom NFS mount options, comma-separated (specify '' for no mount options).")
+    parser.add_argument(
+        "--force",
+        help="Forced migration - refer to Vast Support documentation on when to use this flag",
+        action='store_true')
 
     args = parser.parse_args()
     print_with_label(color=color, label=label, text=f"The user has chosen following parameters: {vars(args)}")
@@ -203,6 +204,7 @@ async def process_migrate(
     if user_params.force:
         root_export = user_params.root_export
         vip_pool_name = user_params.vip_pool_name
+        mount_options = user_params.mount_options
 
     else:
         csi_namespace = user_params.vast_csi_namespace
@@ -215,27 +217,56 @@ async def process_migrate(
                             f" - please verify that the 'csi-vast-controller-0' is deployed in your cluster.\n"
                             f"If you've used a different namespace, specify it using the --vast-csi-namespace flag.")
 
-        controller_env = dict()
-        for container in controller_info["spec"]["containers"]:
-            for env_pair in container["env"]:
-                controller_env[env_pair["name"]] = env_pair.get("value")
+        controller_env = {
+            env_pair["name"]: env_pair.get("value")
+            for container in controller_info["spec"]["containers"]
+            if container['name'] == 'csi-vast-plugin'
+            for env_pair in container["env"]
+        }
 
-        root_export = controller_env.get(X_CSI_NFS_EXPORT)
-        vip_pool_name = controller_env.get(X_CSI_VIP_POOL_NAME)
+        nodes_info = await executor.exec(f"get pod -l app=csi-vast-node -n {csi_namespace} -o json", True)
+        try:
+            nodes_info = json.loads(nodes_info)
+            node_info = nodes_info['items'][0]
+        except (json.decoder.JSONDecodeError, KeyError, IndexError):
+            # In case of 'Error from server (NotFound) ...'
+            raise UserError(f"Could not find our csi driver nodes in namespace '{csi_namespace}'.\n"
+                            f"If you've used a different namespace, specify it using the --vast-csi-namespace flag.")
+
+        node_env = {
+            env_pair["name"]: env_pair.get("value")
+            for container in node_info["spec"]["containers"]
+            if container['name'] == 'csi-vast-plugin'
+            for env_pair in container["env"]
+        }
+
+        root_export = controller_env.get("X_CSI_NFS_EXPORT")
+        vip_pool_name = controller_env.get("X_CSI_VIP_POOL_NAME")
+        mount_options = node_env.get("X_CSI_MOUNT_OPTIONS", "")
 
         if not root_export or not vip_pool_name:
-            raise UserError("It looks like you've already upgraded your Vast CSI Driver - "
-                            "Please refer to Vast Support documentation on how to use this script in 'post-upgrade' mode.")
+            raise UserError(
+                "It looks like you've already upgraded your Vast CSI Driver - "
+                "Please refer to Vast Support documentation on how to use this script in 'post-upgrade' mode.")
+
     patch_params = {
         "root_export": root_export,
-        "vip_pool_name": vip_pool_name
+        "vip_pool_name": vip_pool_name,
+        "mount_options": mount_options,
+        "schema": "2"
     }
+
     _print(text=f"Parameters for migration: {patch_params}")
 
     for candidate in candidates:
         pv_name = candidate['metadata']['name']
+        pvc_name = candidate['spec']['claimRef']['name']
         pv_manifest = TMP / f"{pv_name}.json"
+
+        patch_params['export_path'] = os.path.join(root_export, pv_name)
         candidate["spec"]["csi"]["volumeAttributes"].update(patch_params)
+        if mount_options:
+            candidate["spec"]["mountOptions"] = mount_options.split(",")
 
         with pv_manifest.open("w") as f:
             json.dump(candidate, f)
@@ -255,6 +286,16 @@ async def process_migrate(
         await executor.exec(f"annotate pv {pv_name} --overwrite=true csi.vastdata.com/migrated-from=2.0")
         _print(text=f"PV {pv_name} updated.")
 
+        # Remove PVC events about "Lost" status
+        await asyncio.sleep(5)
+        pvc_events = await executor.exec(f'get events --field-selector involvedObject.name={pvc_name} -o json')
+        pvc_events = json.loads(pvc_events)['items']
+
+        for event in pvc_events:
+            if 'Bound claim has lost its PersistentVolume' in event['message']:
+                event_name = event['metadata']['name']
+                await executor.exec(f'delete event {event_name}')
+
 
 async def main(loop: asyncio.AbstractEventLoop) -> None:
     """Main script entrypoint"""
@@ -266,8 +307,12 @@ async def main(loop: asyncio.AbstractEventLoop) -> None:
 
     force_migrate = user_params.force
 
-    if force_migrate and (not user_params.root_export or not user_params.vip_pool_name):
-        raise UserError("--vip_pool_name and --root_export must be provided if you're using --force flag")
+    if force_migrate and not all([
+            user_params.root_export,
+            user_params.vip_pool_name,
+            user_params.mount_options is not None]):
+        raise UserError(
+            "--vip_pool_name, --root_export and --mount_options must be provided if you're using --force flag")
 
     # Set output verbosity
     SubprocessProtocol.VERBOSE = user_params.verbose

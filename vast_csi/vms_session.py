@@ -35,10 +35,13 @@ class RESTSession(requests.Session):
         self.headers["Content-Type"] = "application/json"
         self.config = Config()
 
-    def request(self, verb, api_method, *, params=None, **kwargs):
+    def request(self, verb, api_method, *args, params=None, log_result=True, **kwargs):
         verb = verb.upper()
         api_method = api_method.strip("/")
-        url = f"{self.base_url}/{api_method}/"
+        url = [self.base_url, api_method]
+        url.extend(args)
+        url += [""]  # ensures a '/' at the end
+        url = "/".join(str(p) for p in url)
         logger.info(f">>> [{verb}] {url}")
 
         if "data" in kwargs:
@@ -59,8 +62,12 @@ class RESTSession(requests.Session):
         logger.info(f"<<< [{verb}] {url}")
         if ret.content:
             ret = Bunch.from_dict(ret.json())
-            for line in pformat(ret).splitlines():
-                logger.info(f"    {line}")
+            if log_result:
+                for line in pformat(ret).splitlines():
+                    logger.info(f"    {line}")
+            else:
+                size = len(ret) if isinstance(ret, (dict, tuple, list, str)) else '-'
+                logger.info(f"{type(ret)[{size}]}")
         else:
             ret = None
         logger.info(f"--- [{verb}] {url}: Done")
@@ -70,8 +77,8 @@ class RESTSession(requests.Session):
         if attr.startswith("_"):
             raise AttributeError(attr)
 
-        def func(**params):
-            return self.request("get", attr, params=params)
+        def func(*args, log_result=True, **params):
+            return self.request("get", attr, *args, params=params, log_result=log_result)
 
         func.__name__ = attr
         func.__qualname__ = f"{self.__class__.__qualname__}.{attr}"
@@ -161,7 +168,7 @@ class VmsSession(RESTSession):
             One of ips from provided vip pool according to provided load balancing strategy.
         """
         load_balancing = parse_load_balancing_strategy(load_balancing or self.config.load_balancing)
-        vips = [vip for vip in self.vips() if vip.vippool == vip_pool_name]
+        vips = [vip for vip in self.vips(log_result=False) if vip.vippool == vip_pool_name]
         if not vips:
             raise Exception(f"No vips in pool {vip_pool_name}")
 
@@ -182,7 +189,7 @@ class VmsSession(RESTSession):
 
     # ----------------------------
     # Quotas
-    def list_quotas(self, max_entries):
+    def list_quotas(self, max_entries) -> Bunch:
         """List of quotas"""
         return self.quotas(page_size=max_entries)
 
@@ -201,6 +208,10 @@ class VmsSession(RESTSession):
         else:
             return quotas[0]
 
+    def get_quotas_by_path(self, path):
+        path = path.rstrip("/")
+        return self.quotas(path=path)
+
     def update_quota(self, quota_id, data):
         """Update existing quota."""
         self.patch(f"quotas/{quota_id}", data=data)
@@ -211,8 +222,14 @@ class VmsSession(RESTSession):
 
     # ----------------------------
     # Snapshots
-    def snapshot_list(self, snapshot_id, page_size):
-        return self.snapshots(id=snapshot_id, page_size=page_size)
+
+    def snapshot_list(self, page_size):
+        return self.snapshots(page_size=page_size)
+
+    def has_snapshots(self, path):
+        path = path.rstrip("/") + "/"
+        ret = self.snapshots(path=path, page_size=10)  # we intentionally limit the number of results
+        return ret.results
 
     def create_snapshot(self, data):
         """Create new snapshot."""
@@ -224,9 +241,12 @@ class VmsSession(RESTSession):
         Only one argument should be provided.
         """
         if snapshot_name:
-            return self.snapshots(name=snapshot_name)
+            ret = self.snapshots(name=snapshot_name)
+            if len(ret) > 1:
+                raise Exception(f"Too many snapshots named {snapshot_name}: ({len(ret)})")
+            return ret[0]
         else:
-            return self.request("GET", f"/snapshots/{snapshot_id}")
+            return self.snapshots(snapshot_id)
 
     def delete_snapshot(self, snapshot_id):
         self.delete(f"snapshots/{snapshot_id}")
