@@ -12,4 +12,5 @@ reclaimPolicy: Delete
 volumeBindingMode: Immediate
 allowVolumeExpansion: true
 mountOptions:
-  - "nolock,vers=4"
+  - nolock
+  - vers=4
