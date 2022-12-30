@@ -376,7 +376,7 @@ class Controller(ControllerServicer, Instrumented):
         volume_id = local.path(path).name
         base_quota_path = local.path(path).dirname
         nfs_server = self.vms_session.get_vip(
-            vip_pool_name=CONF.vip_pool_name,
+            vip_pool_name=CONF.deletion_vip_pool,
         )
         mount_spec = f"{nfs_server}:{base_quota_path}"
 
