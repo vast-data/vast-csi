@@ -43,6 +43,7 @@ test_csi:
   <<: *test_csi
   when: manual
   allow_failure: true
+  except: null
   parallel:
     matrix:
       - INSTALL_IMAGE:
