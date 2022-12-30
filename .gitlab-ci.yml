@@ -1,8 +1,8 @@
 stages:
   - build_base
   - build
-  - deploy
   - test
+  - deploy
 
 image: docker:latest
 
