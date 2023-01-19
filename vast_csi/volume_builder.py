@@ -80,17 +80,12 @@ class VolumeBuilder(BaseBuilder):
         if self.ephemeral_volume_name:
             volume_name = self.ephemeral_volume_name
         elif self.pvc_name and self.pvc_namespace:
-                volume_name = volume_name_fmt.format(
-                    namespace=self.pvc_namespace, name=self.pvc_name, id=volume_id
-                )
+            volume_name = volume_name_fmt.format(
+                namespace=self.pvc_namespace, name=self.pvc_name, id=volume_id
+            )
         else:
             volume_name = f"csi-{volume_id}"
 
-        if len(volume_name) > 64:
-            logger.warning(
-                f"cropping volume name ({len(volume_name)}>64): {volume_name}"
-            )
-            volume_name = volume_name[:64]  # crop to Vast's max-length
         return volume_name
 
     def build_volume(self) -> types.Volume:
