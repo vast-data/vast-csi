@@ -9,6 +9,14 @@ endpoint: ""
 # Set false to bypass certificate validity test
 verifySsl: false
 
+
+####################
+# DELETE VOLUMES
+####################
+# Dedicated vip pool to delete volumes. Can have the same value as regular StorageClass option `vipPool`
+# - must be provided by user
+DeletionVipPool: ""
+
 ####################
 # VAST CSI STORAGE CLASS OPTIONS
 ####################

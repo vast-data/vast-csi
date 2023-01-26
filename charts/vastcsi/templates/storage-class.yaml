@@ -20,19 +20,19 @@
 {{/* Validate  vipPool parameter. Parameter should be not empty string. */}}
 {{- $vip_pool_name := pluck "vipPool" $options $.Values.storageClassDefaults | first | quote -}}
 {{- if eq $vip_pool_name ( quote "" ) -}}
-  {{- fail "vipPool is required value. Plese specify valid vip pool" -}}
+  {{- fail "vipPool is required value. Please specify valid vip pool" -}}
 {{- end }}
 
 {{/* Validate  storagePath parameter. Parameter should be not empty string. */}}
 {{- $storage_path := pluck "storagePath" $options $.Values.storageClassDefaults | first | quote -}}
 {{- if eq $storage_path ( quote "" ) -}}
-  {{- fail "storagePath is required value. Plese specify valid root export path" -}}
+  {{- fail "storagePath is required value. Please specify valid root export path" -}}
 {{- end }}
 
 {{/* Validate  viewPolicy parameter. Parameter should be not empty string. */}}
 {{- $view_policy := pluck "viewPolicy" $options $.Values.storageClassDefaults | first | quote -}}
 {{- if eq $view_policy ( quote "" ) -}}
-{{- fail "viewPolicy is required value. Plese specify valid policy name" -}}
+{{- fail "viewPolicy is required value. Please specify valid policy name" -}}
 {{- end }}
 
 kind: StorageClass

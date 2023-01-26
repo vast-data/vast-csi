@@ -38,8 +38,3 @@ image:
     # Don't override this unless you know what you're doing
     # This could change the API the CSI plugin implements
     tag: v6.0.1
-
-# Indicates whether the VAST CSI controller should use rest API to remove volumes.
-# If the flag is set to false, instead of requesting a delete,
-# the controller will use a local mount and delete all data from the volume locally
-useTrashApi: true
