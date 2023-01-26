@@ -15,7 +15,7 @@ verifySsl: false
 ####################
 # Dedicated vip pool to delete volumes. Can have the same value as regular StorageClass option `vipPool`
 # - must be provided by user
-DeletionVipPool: ""
+deletionVipPool: ""
 
 ####################
 # VAST CSI STORAGE CLASS OPTIONS
