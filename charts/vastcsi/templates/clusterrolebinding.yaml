@@ -1,0 +1,46 @@
+{{- if .Values.rbac }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: csi-vast-provisioner-binding
+  labels:
+  {{- include "vastcsi.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: csi-vast-controller-sa
+    namespace: {{ include "vastcsi.namespace" . }}
+roleRef:
+  kind: ClusterRole
+  name: csi-vast-provisioner-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: csi-vast-attacher-binding
+  labels:
+  {{- include "vastcsi.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: csi-vast-controller-sa
+    namespace: {{ include "vastcsi.namespace" . }}
+roleRef:
+  kind: ClusterRole
+  name: csi-vast-attacher-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: csi-resizer-role
+  labels:
+  {{- include "vastcsi.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: csi-vast-controller-sa
+    namespace: {{ include "vastcsi.namespace" . }}
+roleRef:
+  kind: ClusterRole
+  name: external-resizer-runner
+  apiGroup: rbac.authorization.k8s.io
+  {{- end -}}

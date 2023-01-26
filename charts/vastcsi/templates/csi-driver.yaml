@@ -1,0 +1,14 @@
+{{/* Vast csi driver which defines the behaviour rules for all downstream PVS while attachement */}}
+
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: csi.vastdata.com
+  labels:
+  {{- include "vastcsi.labels" . | nindent 4 }}
+spec:
+  attachRequired: true
+  podInfoOnMount: true
+  volumeLifecycleModes:
+    - Persistent
+    - Ephemeral

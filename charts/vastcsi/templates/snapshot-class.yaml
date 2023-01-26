@@ -1,0 +1,17 @@
+{{/* Vast CSI snapshot class */}}
+
+{{- with .Values.snapshotClass }}
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: {{ required "snapshotClassName must be non empty string" .snapshotClassName | quote }}
+  namespace: {{ include "vastcsi.namespace" $ }}
+  annotations:
+    snapshot.storage.kubernetes.io/is-default-class: {{ .setDefaultStorageClass | quote }}
+  labels:
+    {{- include "vastcsi.labels" $ | nindent 4 }}
+driver: csi.vastdata.com
+deletionPolicy: {{ .deletionPolicy | quote }}
+parameters:
+  snapshot_name_fmt: {{ .snapshotNameFormat | quote }}
+{{- end }}

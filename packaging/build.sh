@@ -4,6 +4,11 @@ set -e
 
 log() { echo -e "\033[93m$(date $DATE_PARAM) >> $@\033[0m" 1>&2; }
 
+if [ -z "$1" ]; then
+    log "Base image name is not specified." && exit 1
+fi
+
+BASE_IMAGE_NAME=$1
 VERSION=$(cat version.txt)
 if [ -z $CI_COMMIT_SHA ]; then
     CI_COMMIT_SHA=$(git rev-parse HEAD)
@@ -15,6 +20,7 @@ docker build \
     --build-arg=GIT_COMMIT=$CI_COMMIT_SHA \
     --build-arg=VERSION=$VERSION \
     --build-arg=CI_PIPELINE_ID=$CI_PIPELINE_ID \
+    --build-arg=BASE_IMAGE_NAME=$BASE_IMAGE_NAME \
     -f packaging/Dockerfile \
     .
 

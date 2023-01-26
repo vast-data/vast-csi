@@ -1,0 +1,12 @@
+Thank you for installing {{ .Chart.Name }}.
+
+Your release is named {{ .Release.Name }}.
+The release is installed in namespace {{ .Release.Namespace }}
+
+To learn more about the release, try:
+
+  $ helm status -n {{ .Release.Namespace}} {{ .Release.Name }}
+  $ helm get all -n {{ .Release.Namespace}} {{ .Release.Name }}
+
+Examples on how to configure a storage class and start using the driver are here:
+{{ .Chart.Home }}
