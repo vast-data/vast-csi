@@ -79,7 +79,7 @@ class VolumeBuilder(BaseBuilder):
         if self.ephemeral_volume_name:
             volume_name = self.ephemeral_volume_name
         elif self.pvc_name and self.pvc_namespace:
-            volume_name = volume_name_fmt.format(
+            volume_name = self.volume_name_fmt.format(
                 namespace=self.pvc_namespace, name=self.pvc_name, id=volume_id
             )
         else:
