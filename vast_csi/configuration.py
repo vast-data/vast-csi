@@ -9,11 +9,15 @@ from easypy.tokens import (
     CONTROLLER,
     NODE,
 )
+from easypy.caching import cached_property
 
 
 class Config(TypedEnv):
     class Path(TypedEnv.Str):
         convert = staticmethod(local.path)
+
+    vms_credentials_store = local.path("/opt/vms-auth")
+    vms_ssl_cert = vms_credentials_store["sslCert"]
 
     plugin_name, plugin_version, git_commit = (
         open("version.info").read().strip().split()
@@ -33,8 +37,6 @@ class Config(TypedEnv):
     node_id = TypedEnv.Str("X_CSI_NODE_ID", default=socket.getfqdn())
 
     vms_host = TypedEnv.Str("X_CSI_VMS_HOST", default="vast")
-    vms_user = TypedEnv.Str("X_CSI_VMS_USER", default="admin")
-    vms_password = TypedEnv.Str("X_CSI_VMS_PASSWORD", default="admin")
     ssl_verify = TypedEnv.Bool("X_CSI_DISABLE_VMS_SSL_VERIFICATION", default=False)
     load_balancing = TypedEnv.Str("X_CSI_LB_STRATEGY", default="roundrobin")
 
@@ -45,6 +47,14 @@ class Config(TypedEnv):
 
     fake_quota_store = local.path("/tmp/volumes")
     fake_snapshot_store = local.path("/tmp/snapshots")
+
+    @cached_property
+    def vms_user(self):
+        return self.vms_credentials_store['username'].read().strip()
+
+    @cached_property
+    def vms_password(self):
+        return self.vms_credentials_store['password'].read().strip()
 
     @property
     def mount_options(self):

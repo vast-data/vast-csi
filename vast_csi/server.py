@@ -237,12 +237,13 @@ class Controller(ControllerServicer, Instrumented):
     @cached_property
     def vms_session(self):
         session_class = TestVmsSession if CONF.mock_vast else VmsSession
-        auth = CONF.vms_user, CONF.vms_password
-        return session_class(
-            base_url=f"https://{CONF.vms_host}/api",
-            auth=auth,
-            ssl_verify=CONF.ssl_verify,
+        session = session_class()
+        logger.info(
+            "Custom ssl certificates uploaded for use in VMS session."
+            if CONF.vms_ssl_cert.exists() else
+            "VMS session started without ssl certificates."
         )
+        return session
 
     def ControllerGetCapabilities(self):
         return types.CtrlCapabilityResp(

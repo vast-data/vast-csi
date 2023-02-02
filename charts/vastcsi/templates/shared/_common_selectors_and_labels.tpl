@@ -4,6 +4,7 @@
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
+
 {{/* Common labels */}}
 {{- define "vastcsi.labels" -}}
 helm.sh/chart: {{ include "vastcsi.chart" . }}
