@@ -1,7 +1,7 @@
 {{- define "vastcsi.commonEnv" -}}
 {{- $vast_config := .Files.Get "vast-config.yaml" | fromYaml -}}
 
-{{- if eq .Values.deletionVipPool ( quote "" ) -}}
+{{- if not $.Values.deletionVipPool -}}
   {{- fail "deletionVipPool is required value. Please specify valid deletion vip pool" -}}
 {{- end }}
 
@@ -16,7 +16,7 @@
 - name: X_CSI_DISABLE_VMS_SSL_VERIFICATION
   value: {{ $.Values.verifySsl | quote }}
 - name: X_CSI_DELETION_VIP_POOL_NAME
-  value: .Values.deletionVipPool
+  value: {{ $.Values.deletionVipPool | quote }}
 - name: X_CSI_VMS_USER
   valueFrom:
     secretKeyRef:
