@@ -48,11 +48,11 @@ storageClassDefaults:
 # The only required value is 'vipPool' name where user should provide name of existing vip pool on
 # VAST cluster.
 # User can extend this section using more storage classes with different storage class parameters and options.
-storageClasses:
+storageClasses: {}
   # StorageClass name. This field must be unique across all storage classes.
-  vastdata-filesystem:
+  # vastdata-filesystem:
     # Name of VAST VIP pool to use - must be provided by user
-    vipPool: ""
+    # vipPool: ""
     # ... Any other options from 'storageClassDefaults' section. If not provided then default value
     # will be used.
 # User can add more storage classes to this section eg:
