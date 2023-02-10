@@ -85,6 +85,9 @@ class VolumeBuilder(BaseBuilder):
         else:
             volume_name = f"csi-{volume_id}"
 
+        if self.configuration.truncate_volume_name:
+            volume_name = volume_name[:self.configuration.truncate_volume_name]  # crop to Vast's max-length
+
         return volume_name
 
     def build_volume(self) -> types.Volume:

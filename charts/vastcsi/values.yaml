@@ -87,6 +87,11 @@ snapshotClass:
 ####################
 # VAST CONTROLLER AND NODE IMAGE SPECIFICATION
 ####################
+
+# Truncate VAST quota name if name length is greater then this number.
+# set `truncateVolumeName: null` to disable truncation.
+truncateVolumeName: 64
+
 # Kubernetes image pull policies control when Kubelet should fetch an updated image version.
 # Pull policies are used when a new Pod is starting up.
 imagePullPolicy: "Always"

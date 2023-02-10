@@ -1,5 +1,4 @@
 {{- define "vastcsi.commonEnv" -}}
-{{- $vast_config := .Files.Get "vast-config.yaml" | fromYaml -}}
 
 {{- if not $.Values.deletionVipPool -}}
   {{- fail "deletionVipPool is required value. Please specify valid deletion vip pool" -}}
@@ -21,4 +20,8 @@
   value: {{ $.Values.deletionVipPool | quote }}
 - name: X_CSI_DELETION_VIEW_POLICY
   value: {{ $.Values.deletionViewPolicy | quote }}
+{{ if $.Values.truncateVolumeName -}}
+- name: X_CSI_TRUNCATE_VOLUME_NAME
+  value: {{ $.Values.truncateVolumeName | quote }}
+{{- end }}
 {{- end }}
