@@ -436,40 +436,40 @@ class Controller(ControllerServicer, Instrumented):
                 volume_name = volume_name[:64]  # crop to Vast's max-length
 
         requested_capacity = capacity_range.required_bytes if capacity_range else 0
-        existing_capacity = 0
         volume_context = {}
 
         if CONF.mock_vast:
             volume = self._to_volume(volume_id)
             if volume:
                 existing_capacity = volume.capacity_bytes
-        else:
-            quota = self.get_quota(volume_id)
-            if quota:
-                existing_capacity = quota.hard_limit
-
-        if not existing_capacity:
-            pass
-        elif existing_capacity != requested_capacity:
-            raise Abort(
-                ALREADY_EXISTS,
-                "Volume already exists with different capacity than requested"
-                f"({existing_capacity})")
-
-        if CONF.mock_vast:
+                if existing_capacity != requested_capacity:
+                    raise Abort(
+                        ALREADY_EXISTS,
+                        "Volume already exists with different capacity than requested"
+                        f"({existing_capacity})")
             vol_dir = self.root_mount[volume_id]
-            vol_dir.mkdir()
-        else:
-            data = dict(
-                create_dir=True,
-                name=volume_name,
-                path=str(CONF.root_export[volume_id]),
-            )
-            if requested_capacity:
-                data.update(hard_limit=requested_capacity)
-            quota = self.vms_session.post("quotas", data=data)
-            volume_context.update(quota_id=quota.id)
+            vol_dir.mkdir(exist_ok=True)
 
+        else:
+            if quota := self.get_quota(volume_id):
+                existing_capacity = quota.hard_limit
+                if existing_capacity and existing_capacity != requested_capacity:
+                    raise Abort(
+                        ALREADY_EXISTS,
+                        "Volume already exists with different capacity than requested"
+                        f"({existing_capacity})")
+
+            else:
+                data = dict(
+                    create_dir=True,
+                    name=volume_name,
+                    path=str(CONF.root_export[volume_id]),
+                )
+                if requested_capacity:
+                    data.update(hard_limit=requested_capacity)
+                quota = self.vms_session.post("quotas", data=data)
+
+            volume_context.update(quota_id=quota.id)
         volume = types.Volume(
             capacity_bytes=requested_capacity, volume_id=volume_id,
             volume_context={k: str(v) for k, v in volume_context.items()})
