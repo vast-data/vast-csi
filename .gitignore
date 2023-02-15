@@ -163,7 +163,6 @@ cython_debug/
 .history/
 .lh/
 .DS_Store
-.merge-chain
 /tests/*
 .idea/*
 .pytest_cache
