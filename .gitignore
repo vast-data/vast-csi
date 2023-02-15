@@ -1,4 +1,3 @@
-.merge-chain
 /tests/*
 .idea/*
 .pytest_cache
