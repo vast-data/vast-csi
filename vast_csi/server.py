@@ -374,41 +374,46 @@ class Controller(ControllerServicer, Instrumented):
         return types.CreateResp(volume=volume)
 
     def _delete_data_from_storage(self, path):
-        volume_id = local.path(path).name
-        base_quota_path = local.path(path).dirname
+
+        path = local.path(path)
+        volume_id = path.name
         nfs_server = self.vms_session.get_vip(
             vip_pool_name=CONF.deletion_vip_pool,
         )
-        mount_spec = f"{nfs_server}:{base_quota_path}"
 
-        mounted = False
-        tmpdir = local.path(mkdtemp())  # convert string to local.path
-        tmpdir['.csi-unmounted'].touch()
+        logger.info(f"Creating temporal base view.")
+        policy_id = self.vms_session.get_view_by_path(path).policy_id
+        with self.vms_session.temp_view(path.dirname, policy_id) as base_view:
 
-        try:
-            mount(mount_spec, tmpdir, flags=",".join(CONF.mount_options))
-            assert not tmpdir['.csi-unmounted'].exists()
-            mounted = True
+            mount_spec = f"{nfs_server}:{base_view.alias}"
+            mounted = False
+            tmpdir = local.path(mkdtemp())  # convert string to local.path
+            tmpdir['.csi-unmounted'].touch()
 
-            if tmpdir[volume_id].exists():
-                logger.info(f"deleting {tmpdir[volume_id]}")
-                tmpdir[volume_id].delete()  # idempotent - does not fail on dir-no-exists
-                logger.info(f"done deleting {tmpdir[volume_id]}")
-            else:
-                logger.info(f"already deleted {tmpdir[volume_id]}")
-        except OSError as exc:
-            if 'not empty' in str(exc):
-                for i, item in enumerate(tmpdir[volume_id].list()):
-                    if i > 9:
-                        logger.debug(" ...")
-                        break
-                    logger.warning(f" - {item}")
-            raise
-        finally:
-            if mounted:
-                cmd.umount['-v', tmpdir] & logger.pipe_info("umount >>", retcode=None)  # don't fail if not mounted
-            os.remove(tmpdir['.csi-unmounted'])  # will fail if still mounted somehow
-            os.rmdir(tmpdir)  # will fail if not empty directory
+            try:
+                mount(mount_spec, tmpdir, flags=",".join(CONF.mount_options))
+                assert not tmpdir['.csi-unmounted'].exists()
+                mounted = True
+
+                if tmpdir[volume_id].exists():
+                    logger.info(f"deleting {tmpdir[volume_id]}")
+                    tmpdir[volume_id].delete()  # idempotent - does not fail on dir-no-exists
+                    logger.info(f"done deleting {tmpdir[volume_id]}")
+                else:
+                    logger.info(f"already deleted {tmpdir[volume_id]}")
+            except OSError as exc:
+                if 'not empty' in str(exc):
+                    for i, item in enumerate(tmpdir[volume_id].list()):
+                        if i > 9:
+                            logger.debug(" ...")
+                            break
+                        logger.warning(f" - {item}")
+                raise
+            finally:
+                if mounted:
+                    cmd.umount['-v', tmpdir] & logger.pipe_info("umount >>", retcode=None)  # don't fail if not mounted
+                os.remove(tmpdir['.csi-unmounted'])  # will fail if still mounted somehow
+                os.rmdir(tmpdir)  # will fail if not empty directory
 
     def DeleteVolume(self, volume_id):
         if quota := self.vms_session.get_quota(volume_id):
@@ -424,7 +429,7 @@ class Controller(ControllerServicer, Instrumented):
                     raise
             logger.info(f"Data removed: {quota.path}")
 
-            self.vms_session.delete_view(quota.path)
+            self.vms_session.delete_view_by_path(quota.path)
             logger.info(f"View removed: {quota.path}")
 
             self.vms_session.delete_quota(quota.id)
