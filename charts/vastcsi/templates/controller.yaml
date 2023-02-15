@@ -5,6 +5,7 @@
 {{- $plugin_proxy_sock := "/var/lib/csi/sockets/pluginproxy/csi.sock" -}}
 {{- $plugin_proxy_sock_path := "/var/lib/csi/sockets/pluginproxy/" -}}
 
+
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -107,6 +108,7 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
+            {{- include "vastcsi.vmsAuthVolumeMount" . | indent 12 }}
       hostNetwork: true
       {{- if .Values.nodeSelector }}
       nodeSelector:
@@ -121,3 +123,4 @@ spec:
       volumes:
         - name: socket-dir
           emptyDir: {}
+       {{- include "vastcsi.vmsAuthVolume" . | indent 8 }}

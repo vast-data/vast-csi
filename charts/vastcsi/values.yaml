@@ -6,9 +6,12 @@ username: ""
 password: ""
 # API endpoint of VAST appliance - must be provided by user
 endpoint: ""
-# Set false to bypass certificate validity test
+
+# Set true to enable certificate validity test
 verifySsl: false
 
+# Path (absolute or relative) to root CA certificate. - must be set using `set-file` option eg `--set-file sslCert=VastCerts/sslCert.crt`
+sslCert: ""
 
 ####################
 # DELETE VOLUMES
@@ -79,7 +82,7 @@ snapshotClass:
 
 
 ####################
-# VAST CONTROLLER AND NODE BEHAVIOR
+# VAST CONTROLLER AND NODE IMAGE SPECIFICATION
 ####################
 # Kubernetes image pull policies control when Kubelet should fetch an updated image version.
 # Pull policies are used when a new Pod is starting up.
@@ -91,6 +94,15 @@ csiImage: "vastdataorg/csi"
 # csiImageTag represents version of docker image that serves  CSI Controller and CSI Node.
 # To check latest stable tag refer https://support.vastdata.com/hc/en-us/articles/360010932159-VAST-with-Kubernetes
 csiImageTag: v2.2.0
+
+
+####################
+# VAST CONTROLLER AND NODE BEHAVIOR
+#
+# WARNING - these parameters are for advanced users.
+# Setting these incorrectly may prevent the VAST CSI Driver from running correctly.
+#  We recommend to consult with VAST Support before changing any of the following parameters
+####################
 
 # nodeSelector is the way to restrict CSI Controller and and CSI Node to be assigned on certain node/nodes.
 # Specify node selector if you want node and controller containers to be assigned only to specific node/nodes of

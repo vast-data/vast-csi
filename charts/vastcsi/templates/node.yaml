@@ -93,6 +93,7 @@ spec:
               mountPropagation: "Bidirectional"
             - name: device-dir
               mountPath: /dev
+            {{- include "vastcsi.vmsAuthVolumeMount" . | indent 12 }}
       hostNetwork: true
       {{- if .Values.nodeSelector }}
       nodeSelector:
@@ -120,3 +121,4 @@ spec:
         - name: device-dir
           hostPath:
             path: /dev
+        {{- include "vastcsi.vmsAuthVolume" . | indent 8 }}

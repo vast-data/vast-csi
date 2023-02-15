@@ -26,14 +26,17 @@ from . import csi_types as types
 
 
 class RESTSession(requests.Session):
-    def __init__(self, *args, auth, base_url, ssl_verify, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.base_url = base_url.rstrip("/")
-        self.ssl_verify = ssl_verify
-        self.auth = auth
+    def __init__(self):
+        super().__init__()
         self.headers["Accept"] = "application/json"
         self.headers["Content-Type"] = "application/json"
         self.config = Config()
+        self.base_url = f"https://{self.config.vms_host}/api"
+
+        if self.config.ssl_verify:
+            self.ssl_verify = self.config.vms_ssl_cert if self.config.vms_ssl_cert.exists() else True
+        else:
+            self.ssl_verify = False
 
     def request(self, verb, api_method, *args, params=None, log_result=True, **kwargs):
         verb = verb.upper()
@@ -93,6 +96,10 @@ class VmsSession(RESTSession):
     """
 
     _vip_round_robin_idx: ClassVar[int] = -1
+
+    def __init__(self):
+        super().__init__()
+        self.auth = self.config.vms_user, self.config.vms_password
 
     # ----------------------------
     # Clusters
