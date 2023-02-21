@@ -19,6 +19,9 @@ sslCert: ""
 # Dedicated vip pool to delete volumes. Can have the same value as regular StorageClass option `vipPool`
 # - must be provided by user
 deletionVipPool: ""
+# Dedicated view policy to delete volumes. Can have the same value as regular StorageClass option `viewPolicy`
+# - must be provided by user
+deletionViewPolicy: ""
 
 ####################
 # VAST CSI STORAGE CLASS OPTIONS

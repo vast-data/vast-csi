@@ -4,6 +4,9 @@
 {{- if not $.Values.deletionVipPool -}}
   {{- fail "deletionVipPool is required value. Please specify valid deletion vip pool" -}}
 {{- end }}
+{{- if not $.Values.deletionViewPolicy -}}
+  {{- fail "deletionViewPolicy is required value. Please specify valid deletion view policy" -}}
+{{- end }}
 
 {{- if (urlParse (required "endpoint is required" $.Values.endpoint )).scheme }}
     {{- fail "endpoint requires only host to be provided. Please exclude 'http//|https//' from url." -}}
@@ -16,4 +19,6 @@
   value: {{ $.Values.verifySsl | quote }}
 - name: X_CSI_DELETION_VIP_POOL_NAME
   value: {{ $.Values.deletionVipPool | quote }}
+- name: X_CSI_DELETION_VIEW_POLICY
+  value: {{ $.Values.deletionViewPolicy | quote }}
 {{- end }}

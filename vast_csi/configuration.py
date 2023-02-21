@@ -30,6 +30,7 @@ class Config(TypedEnv):
     mock_vast = TypedEnv.Bool("X_CSI_MOCK_VAST", default=False)
     nfs_server = TypedEnv.Str("X_CSI_NFS_SERVER", default="127.0.0.1")
     deletion_vip_pool = TypedEnv.Str("X_CSI_DELETION_VIP_POOL_NAME", default="k8s")
+    deletion_view_policy = TypedEnv.Str("X_CSI_DELETION_VIEW_POLICY", default="")
     sanity_test_nfs_export = Path("X_CSI_NFS_EXPORT", default=local.path("/k8s"))
 
     log_level = TypedEnv.Str("X_CSI_LOG_LEVEL", default="info")

@@ -422,6 +422,9 @@ class TestVmsSession(RESTSession):
     def get_view_by_path(self, *_, **__):
         return Bunch(id=1, policy_id=1)
 
+    def ensure_view_policy(self, *_, **__):
+        return Bunch(id=1)
+
     def _empty(self, *_, **__):
         """
         empty method for test scenarios
