@@ -377,13 +377,11 @@ class Controller(ControllerServicer, Instrumented):
 
         path = local.path(path)
         volume_id = path.name
-        nfs_server = self.vms_session.get_vip(
-            vip_pool_name=CONF.deletion_vip_pool,
-        )
+        nfs_server = self.vms_session.get_vip(vip_pool_name=CONF.deletion_vip_pool)
+        view_policy = self.vms_session.ensure_view_policy(policy_name=CONF.deletion_view_policy)
 
-        logger.info(f"Creating temporal base view.")
-        policy_id = self.vms_session.get_view_by_path(path).policy_id
-        with self.vms_session.temp_view(path.dirname, policy_id) as base_view:
+        logger.info(f"Creating temporary base view.")
+        with self.vms_session.temp_view(path.dirname, view_policy.id) as base_view:
 
             mount_spec = f"{nfs_server}:{base_view.alias}"
             mounted = False
