@@ -660,7 +660,7 @@ class Controller(ControllerServicer, Instrumented):
                 return types.ListSnapResp(next_token=None, entries=[types.SnapEntry(
                     snapshot=types.Snapshot(
                         size_bytes=0,  # indicates 'unspecified'
-                        snapshot_id=snap.id,
+                        snapshot_id=str(snap.id),
                         source_volume_id=self._to_volume_id(snap.path) or "n/a",
                         creation_time=snap.created,
                         ready_to_use=True,
@@ -669,7 +669,7 @@ class Controller(ControllerServicer, Instrumented):
             return types.ListSnapResp(next_token=ret.next, entries=[types.SnapEntry(
                 snapshot=types.Snapshot(
                     size_bytes=0,  # indicates 'unspecified'
-                    snapshot_id=snap.id,
+                    snapshot_id=str(snap.id),
                     source_volume_id=self._to_volume_id(snap.path) or "n/a",
                     creation_time=snap.created,
                     ready_to_use=True,
