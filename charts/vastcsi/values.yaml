@@ -48,7 +48,7 @@ storageClassDefaults:
   # String template for CSI-provisioned ephemeral volumes, within VAST
   ephemeralVolumeNameFormat: "csi:{namespace}:{name}:{id}"
   # Add any extra NFS options desired here
-  nfsMountOptions: ""
+  mountOptions: ""
 
 # Default storage class to use with CSI DRIVER.
 # The only required value is 'vipPool' name where user should provide name of existing vip pool on
@@ -94,7 +94,7 @@ truncateVolumeName: 64
 
 # Kubernetes image pull policies control when Kubelet should fetch an updated image version.
 # Pull policies are used when a new Pod is starting up.
-imagePullPolicy: "Always"
+imagePullPolicy: "IfNotPresent"
 
 # csiImage is base docker image for Controller and Node.
 csiImage: "vastdataorg/csi"
