@@ -61,6 +61,6 @@ allowVolumeExpansion: {{
                          first | quote | mustRegexMatch "true" | ternary true false
                       }}
 mountOptions:
-  - {{ pluck "nfsMountOptions" $options $.Values.storageClassDefaults | first | quote }}
+  - {{ pluck "mountOptions" $options $.Values.storageClassDefaults | first | quote }}
 ---
 {{- end }}
