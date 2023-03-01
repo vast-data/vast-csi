@@ -1,3 +1,0 @@
-[tool.pytest.ini_options]
-minversion = "6.0"
-python_files = ["test_*.py", "*_test.py", "utest_*.py"]

@@ -4,14 +4,6 @@ from requests.exceptions import HTTPError  # noqa
 from plumbum import local
 from easypy.caching import locking_cache
 
-from easypy.tokens import (
-    Token,
-    ROUNDROBIN,
-    RANDOM,
-)
-
-LOAD_BALANCING_STRATEGIES = {ROUNDROBIN, RANDOM}
-
 
 PATH_ALIASES = {
     re.compile('.*/site-packages'): '*',
@@ -102,20 +94,3 @@ def nice_format_traceback(self):
 def patch_traceback_format():
     from traceback import StackSummary
     orig_format_traceback, StackSummary.format = StackSummary.format, nice_format_traceback
-
-
-def parse_load_balancing_strategy(load_balancing: str):
-    """Convert load balancing to 'Token' representation."""
-    lb = Token(load_balancing.upper())
-    if lb not in LOAD_BALANCING_STRATEGIES:
-        raise Exception(
-            f"invalid load balancing strategy: {lb} (use {'|'.join(LOAD_BALANCING_STRATEGIES)})"
-        )
-    return lb
-
-
-def normalize_mount_options(mount_options: str):
-    """Convert mount options to list if mount options were provided as string on StorageClass parameters level."""
-    s = mount_options.strip()
-    mount_options = list({p for p in s.split(",") if p})
-    return mount_options

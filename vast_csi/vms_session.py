@@ -1,13 +1,10 @@
-import os
 import json
 import requests
 from pprint import pformat
 from typing import ClassVar
 
 from easypy.bunch import Bunch
-from easypy.caching import cached_property
 from easypy.collections import shuffled
-from easypy.misc import at_least
 from easypy.tokens import (
     ROUNDROBIN,
     RANDOM,
@@ -15,14 +12,13 @@ from easypy.tokens import (
     CONTROLLER,
     NODE,
 )
-from plumbum import cmd
-from plumbum import local, ProcessExecutionError
+
+
+LOAD_BALANCING_STRATEGIES = {ROUNDROBIN, RANDOM}
 
 from .logging import logger
-from .configuration import Config
-from .exceptions import ApiError, MountFailed
-from .utils import parse_load_balancing_strategy
-from . import csi_types as types
+from .exceptions import ApiError
+from .configuration import Config, StorageClassOptions
 
 
 class RESTSession(requests.Session):
@@ -94,80 +90,14 @@ class VmsSession(RESTSession):
 
     _vip_round_robin_idx: ClassVar[int] = -1
 
-    # ----------------------------
-    # Clusters
-    @property
-    def cluster(self) -> Bunch:
-        """Get cluster info"""
-        return Bunch.from_dict(self.clusters()[0])
-
-    def delete_folder(self, path: str):
-        """Delete remote cluster folder by provided path."""
-        try:
-            self.delete(f"/clusters/{self.cluster.id}/delete_folder/", json={"path": path})
-        except ApiError as e:
-            if "no such directory" in e.render():
-                logger.debug(f"remote folder was probably already deleted ({e})")
-            else:
-                raise
-
-    # ----------------------------
-    # View policies
-    def get_policy_by_name(self, policy_name: str):
-        """
-        Get view policy by name.
-        Returns: None if policy doesn't exist.
-        """
-        if res := self.viewpolicies(name=policy_name):
-            return Bunch.from_dict(res[0])
-
-    def ensure_view_policy(self, policy_name: str):
-        """Check if view policy exists on remote cluster and if not create new policy with provided name."""
-        if (policy := self.get_policy_by_name(policy_name)) is None:
-            raise Exception(f"No such policy: {policy_name}. Please create policy manually")
-        return policy
-
-    # ----------------------------
-    # Views
-    def get_view_by_path(self, path):
-        """
-        Get list of views that contain provided path.
-        If there is no view for specific path empty list will be returned.
-        """
-        return self.views(path=path)
-
-    def create_view(self, path: str, policy_id: int, create_dir: bool = True):
-        """
-        Create new view on remove cluster
-        Args:
-            path: full system path to create view for.
-            policy_id: id of view policy that should be assigned to view.
-            create_dir: if underlying directory should be created along with view.
-        Returns:
-            newly created view as dictionary.
-        """
-        data = {
-            "path": path,
-            "create_dir": create_dir,
-            "protocols": ["NFS"],
-            "policy_id": policy_id
-        }
-        return self.post("views", data)
-
-    def delete_view(self, path: str):
-        """Delete view by provided path criteria."""
-        if res := self.views(path=path):
-            self.delete(f"views/{res[0]['id']}")
-
-    # ----------------------------
-    # Vip pools
     def get_vip(self, vip_pool_name: str, load_balancing: str = None):
         """
         Get vip pool by provided id.
         Returns:
             One of ips from provided vip pool according to provided load balancing strategy.
         """
-        load_balancing = parse_load_balancing_strategy(load_balancing or self.config.load_balancing)
+        storage_options = StorageClassOptions.with_defaults()
+        load_balancing = load_balancing or storage_options.load_balancing_strategy
         vips = [vip for vip in self.vips(log_result=False) if vip.vippool == vip_pool_name]
         if not vips:
             raise Exception(f"No vips in pool {vip_pool_name}")
@@ -262,19 +192,21 @@ class VmsSession(RESTSession):
 class TestVmsSession(RESTSession):
     """RestSession simulation for sanity tests"""
 
-    def create_fake_quota(self, volume_id):
+    def get_vip(self, *_, **__) -> str:
+        return self.config.nfs_server
+
+    def get_quota(self, volume_id: str) -> "FakeQuota":
+        """Create fake quota object which can simulate attributes of original Quota butch."""
+
+        parent_self = self
+
         class FakeQuota:
 
             def __init__(self, volume_id):
-                super().__init__()
-                self._volume = types.Volume()
                 self._volume_id = volume_id
 
             def __str__(self):
                 return "<< FakeQuota >>"
-
-            def __getattr__(self, item):
-                return getattr(self._volume, item)
 
             @property
             def id(self):
@@ -282,60 +214,9 @@ class TestVmsSession(RESTSession):
 
             @property
             def path(self):
-                return local.path(os.environ["X_CSI_NFS_EXPORT"])[self._volume_id]
-
-            @property
-            def hard_limit(self):
-                return 1000
+                return parent_self.config.nfs_export[self._volume_id]
 
         return FakeQuota(volume_id=volume_id)
-
-    def _mount(self, src, tgt, flags=""):
-        executable = cmd.mount
-        flags = [f.strip() for f in flags.split(",")]
-        flags += "port=2049,nolock,vers=3".split(",")
-        executable = executable["-o", ",".join(flags)]
-        try:
-            executable[src, tgt] & logger.pipe_info("mount >>")
-        except ProcessExecutionError as exc:
-            if exc.retcode == 32:
-                raise MountFailed(detail=exc.stderr, src=src, tgt=tgt)
-            raise
-
-    def _to_mock_volume(self, vol_id):
-        vol_dir = self._mock_mount[vol_id]
-        logger.info(f"{vol_dir}")
-        if not vol_dir.is_dir():
-            logger.info(f"{vol_dir} is not dir")
-            return
-        with self.config.fake_quota_store[vol_id].open("rb") as f:
-            vol = self.create_fake_quota(volume_id=vol_id)
-            vol.ParseFromString(f.read())
-            return vol
-
-    @cached_property
-    def _mock_mount(self):
-        target_path = self.config.controller_root_mount
-        if not target_path.exists():
-            target_path.mkdir()
-
-        if not os.path.ismount(target_path):
-            mount_spec = f"{self.config.nfs_server}:{self.config.sanity_test_nfs_export}"
-            self._mount(
-                mount_spec,
-                target_path,
-                flags=",".join(self.config.mount_options),
-            )
-            logger.info(f"mounted successfully: {target_path}")
-
-        return target_path
-
-    def get_vip(self, *_, **__) -> str:
-        return self.config.nfs_server
-
-    def get_quota(self, volume_id: str) -> "FakeQuota":
-        """Create fake quota object which can simulate attributes of original Quota butch."""
-        return self._to_mock_volume(volume_id)
 
     def delete_quota(self, quota: "FakeQuota"):
         """
@@ -345,52 +226,3 @@ class TestVmsSession(RESTSession):
         """
         self.config.controller_root_mount[quota._volume_id].delete()
         self.config.fake_quota_store[quota._volume_id].delete()
-
-    def list_quotas(self, starting_token=None, max_entries=None):
-        """
-        This method simulates behaviour of list_quotas but instead requesting quotas from remote cluster
-        it gets list of local volumes that were created before.
-        """
-        fields = Bunch.from_dict({
-            "next_token": None,
-            "results": []
-        })
-
-        starting_inode = int(starting_token) if starting_token else 0
-        vols = (d for d in os.scandir(self._mock_mount) if d.is_dir())
-        vols = sorted(vols, key=lambda d: d.inode())
-        logger.info(f"Got {len(vols)} volumes in {self._mock_mount}")
-        start_idx = 0
-
-        logger.info(f"Skipping to {starting_inode}")
-        for start_idx, d in enumerate(vols):
-            if d.inode() > starting_inode:
-                break
-
-        del vols[:start_idx]
-
-        remain = 0
-        if max_entries:
-            remain = at_least(0, len(vols) - max_entries)
-            vols = vols[:max_entries]
-
-        if remain:
-            fields.next_token = str(vols[-1].inode())
-
-        fields.results = [self._to_mock_volume(vol.name) for vol in vols]
-        return fields
-
-    def get_by_token(self, token):
-        return self.list_quotas(starting_token=token)
-
-    def _empty(self, *_, **__):
-        """
-        empty method for test scenarios
-        Method needs to be declared for compatibility with sanity tests.
-        """
-        pass
-
-    update_quota = _empty
-    delete_view = _empty
-    delete_folder = _empty
-    get_view_by_path = _empty

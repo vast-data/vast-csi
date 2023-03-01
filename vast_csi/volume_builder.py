@@ -9,6 +9,7 @@ from . import csi_types as types
 from plumbum import local
 
 from .exceptions import Abort
+from .configuration import StorageClassOptions
 
 CreatedVolumeT = TypeVar("CreatedVolumeT")
 
@@ -51,14 +52,8 @@ class BaseBuilder(VolumeBuilderI):
     configuration: "CONF"
 
     name: str  # Name of volume or snapshot
-    root_export: str
-    volume_name_fmt: str
-    view_policy: str
-    vip_pool_name: str
-    mount_options: str
-    lb_strategy: str
-
     capacity_range: Optional[int]  # Optional desired volume capacity
+    storage_options: StorageClassOptions
     pvc_name: Optional[str]
     pvc_namespace: Optional[str]
     volume_content_source: Optional[str]  # Either volume or snapshot
@@ -68,12 +63,18 @@ class BaseBuilder(VolumeBuilderI):
         """Return desired allocated capacity if provided else return 0"""
         return self.capacity_range.required_bytes if self.capacity_range else 0
 
+    def get_existing_capacity(self) -> Optional[int]:
+        """Return capacity of requested quota"""
+        quota = self.controller.vms_session.get_quota(self.name)
+        if quota:
+            return quota.hard_limit
+
 
 @final
 class VolumeBuilder(BaseBuilder):
     """Builder for k8s PersistentVolumeClaim, PersistentVolume etc."""
 
-    def build_volume_name(self) -> str:
+    def build_volume_name(self, volume_name_fmt: str) -> str:
         """Build volume name using format csi:{namespace}:{name}:{id}"""
         volume_id = self.name
         if self.ephemeral_volume_name:
@@ -92,44 +93,37 @@ class VolumeBuilder(BaseBuilder):
         Main build entrypoint for volumes.
         Create volume from pvc, pv etc.
         """
-        volume_context = {
-            "root_export": self.root_export,
-            "vip_pool_name": self.vip_pool_name,
-            "lb_strategy": self.lb_strategy,
-            "mount_options": self.mount_options,
-        }
-        view_path = str(local.path(self.root_export)[self.name])
+        volume_context = {}
+        root_export = local.path(self.storage_options.root_export_path)
 
-        volume_name = self.build_volume_name()
+        volume_name = self.build_volume_name(
+            volume_name_fmt=self.storage_options.volume_name_fmt
+        )
         requested_capacity = self.get_requested_capacity()
 
-        # Check if view with expected system path already exists.
-        if not self.controller.vms_session.get_view_by_path(view_path):
-            view_policy = self.controller.vms_session.ensure_view_policy(policy_name=self.view_policy)
-            self.controller.vms_session.create_view(path=view_path, policy_id=view_policy.id)
-
-        if quota := self.controller.vms_session.get_quota(self.name):
-            # Check if volume with provided name but another capacity already exists.
-            if quota.hard_limit != requested_capacity:
+        # Check if volume with provided name but another capacity already exists.
+        if existing_capacity := self.get_existing_capacity():
+            if existing_capacity != requested_capacity:
                 raise Abort(
                     grpc.StatusCode.ALREADY_EXISTS,
                     "Volume already exists with different capacity than requested"
-                    f"({quota.hard_limit})")
-        else:
-            data = dict(
-                name=volume_name,
-                path=view_path,
-            )
-            if requested_capacity:
-                data.update(hard_limit=requested_capacity)
-            quota = self.controller.vms_session.create_quota(data=data)
+                    f"({existing_capacity})",
+                )
 
+        data = dict(
+            create_dir=True,
+            name=volume_name,
+            path=str(root_export[self.name]),
+        )
+        if requested_capacity:
+            data.update(hard_limit=requested_capacity)
+        quota = self.controller.vms_session.create_quota(data=data)
         volume_context.update(quota_id=str(quota.id))
 
         return types.Volume(
             capacity_bytes=requested_capacity,
             volume_id=self.name,
-            volume_context=volume_context,
+            volume_context={**volume_context, **self.storage_options.dict()},
         )
 
 
@@ -165,9 +159,9 @@ class SnapshotBuilder(BaseBuilder):
             ),
             volume_context={
                 # Pass vms options via context
+                **self.storage_options.dict(),
                 "snapshot_base_path": snapshot_base_path,
                 "root_export": self.root_export,
-                "vip_pool_name": self.vip_pool_name,
             },
         )
 
@@ -180,7 +174,7 @@ class TestVolumeBuilder(BaseBuilder):
         pass
 
     def get_existing_capacity(self) -> Optional[int]:
-        volume = self.controller.vms_session.get_quota(self.name)
+        volume = self.controller._to_mock_volume(self.name)
         if volume:
             return volume.capacity_bytes
 
@@ -196,7 +190,7 @@ class TestVolumeBuilder(BaseBuilder):
                     f"({existing_capacity})",
                 )
 
-        vol_dir = self.controller.vms_session._mock_mount[self.name]
+        vol_dir = self.controller._mock_mount[self.name]
         vol_dir.mkdir()
 
         volume = types.Volume(
