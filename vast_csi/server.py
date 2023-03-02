@@ -574,7 +574,7 @@ class Controller(ControllerServicer, Instrumented):
                     raise Abort(INVALID_ARGUMENT, str(exc))
 
             creation_time = types.Timestamp()
-            creation_time.FromDatetime(datetime.fromisoformat(snap.created.rstrip("Z")))
+            creation_time.FromJsonString(snap.created)
 
             snp = types.Snapshot(
                 size_bytes=0,  # indicates 'unspecified'
@@ -650,6 +650,7 @@ class Controller(ControllerServicer, Instrumented):
             )
         else:
             page_size = max_entries or 250
+            ts = types.Timestamp()
 
             if starting_token:
                 ret = self.vms_session.get_by_token(starting_token)
@@ -662,7 +663,7 @@ class Controller(ControllerServicer, Instrumented):
                         size_bytes=0,  # indicates 'unspecified'
                         snapshot_id=str(snap.id),
                         source_volume_id=self._to_volume_id(snap.path) or "n/a",
-                        creation_time=snap.created,
+                        creation_time=ts.FromJsonString(snap.created),
                         ready_to_use=True,
                     ))])
 
@@ -671,7 +672,7 @@ class Controller(ControllerServicer, Instrumented):
                     size_bytes=0,  # indicates 'unspecified'
                     snapshot_id=str(snap.id),
                     source_volume_id=self._to_volume_id(snap.path) or "n/a",
-                    creation_time=snap.created,
+                    creation_time=ts.FromJsonString(snap.created),
                     ready_to_use=True,
                 )) for snap in ret.results])
 
