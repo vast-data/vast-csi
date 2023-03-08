@@ -3,7 +3,7 @@ name: Release Charts
 on:
   push:
     branches:
-      - helm-chart_v2
+      - v2.2
 
 jobs:
   release:
