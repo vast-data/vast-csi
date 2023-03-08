@@ -34,7 +34,13 @@ from easypy.caching import cached_property
 from easypy.bunch import Bunch
 
 from .logging import logger, init_logging
-from .utils import patch_traceback_format, get_mount, normalize_mount_options, parse_load_balancing_strategy
+from .utils import (
+    patch_traceback_format,
+    get_mount,
+    normalize_mount_options,
+    parse_load_balancing_strategy,
+    string_to_proto_timestamp
+)
 from . import csi_pb2_grpc
 from .csi_pb2_grpc import ControllerServicer, NodeServicer, IdentityServicer
 from . import csi_types as types
@@ -573,14 +579,11 @@ class Controller(ControllerServicer, Instrumented):
                 if not handled:
                     raise Abort(INVALID_ARGUMENT, str(exc))
 
-            creation_time = types.Timestamp()
-            creation_time.FromJsonString(snap.created)
-
             snp = types.Snapshot(
                 size_bytes=0,  # indicates 'unspecified'
                 snapshot_id=str(snap.id),
                 source_volume_id=volume_id,
-                creation_time=creation_time,
+                creation_time=string_to_proto_timestamp(snap.created),
                 ready_to_use=True,
             )
 
@@ -650,7 +653,6 @@ class Controller(ControllerServicer, Instrumented):
             )
         else:
             page_size = max_entries or 250
-            ts = types.Timestamp()
 
             if starting_token:
                 ret = self.vms_session.get_by_token(starting_token)
@@ -663,7 +665,7 @@ class Controller(ControllerServicer, Instrumented):
                         size_bytes=0,  # indicates 'unspecified'
                         snapshot_id=str(snap.id),
                         source_volume_id=self._to_volume_id(snap.path) or "n/a",
-                        creation_time=ts.FromJsonString(snap.created),
+                        creation_time=string_to_proto_timestamp(snap.created),
                         ready_to_use=True,
                     ))])
 
@@ -672,7 +674,7 @@ class Controller(ControllerServicer, Instrumented):
                     size_bytes=0,  # indicates 'unspecified'
                     snapshot_id=str(snap.id),
                     source_volume_id=self._to_volume_id(snap.path) or "n/a",
-                    creation_time=ts.FromJsonString(snap.created),
+                    creation_time=string_to_proto_timestamp(snap.created),
                     ready_to_use=True,
                 )) for snap in ret.results])
 

@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from requests.exceptions import HTTPError  # noqa
 
 from plumbum import local
@@ -9,6 +10,8 @@ from easypy.tokens import (
     ROUNDROBIN,
     RANDOM,
 )
+from . import csi_types as types
+
 
 LOAD_BALANCING_STRATEGIES = {ROUNDROBIN, RANDOM}
 
@@ -119,3 +122,9 @@ def normalize_mount_options(mount_options: str):
     s = mount_options.strip()
     mount_options = list({p for p in s.split(",") if p})
     return mount_options
+
+
+def string_to_proto_timestamp(str_ts: str):
+    """Convert string to protobuf.Timestamp"""
+    t = datetime.fromisoformat(str_ts.rstrip("Z")).timestamp()
+    return types.Timestamp(seconds=int(t), nanos=int(t % 1 * 1e9))
