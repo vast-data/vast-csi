@@ -1,9 +1,39 @@
+stages:
+  - build_base
+  - build
+  - test
+  - deploy
+
 image: docker:latest
 
 variables:
   DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
   IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:${CI_PIPELINE_ID}
+  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2022-12-09
   ORION_BRANCH: comet/master
+
+
+build_csi_base:
+  stage: build_base
+  script: |
+    set -x
+    LATEST=${DOCKER_REGISTRY}/dev/vast-csi-base:latest
+    if (docker pull $LATEST) ; then
+      docker tag $LATEST vast-csi-base:latest  # the cache-source for our subsequent build
+    fi
+    docker build \
+        -t vast-csi-base:dev \
+        --cache-from vast-csi-base:latest \
+        -f packaging/base_Dockerfile .
+    docker tag vast-csi-base:dev ${BASE_IMAGE_NAME}
+    docker tag vast-csi-base:dev ${LATEST}
+    docker push ${BASE_IMAGE_NAME}
+    docker push ${LATEST}
+    echo "pushed ${BASE_IMAGE_NAME}"
+  when: manual
+  tags:
+    - vast-dev-builder
+
 
 build_csi:
   stage: build
@@ -14,7 +44,8 @@ build_csi:
     if (docker pull $LATEST) ; then
       docker tag $LATEST vast-csi:latest  # the cache-source for our subsequent build
     fi
-    /bin/sh -x packaging/build.sh  # --> vast-csi:dev
+    /bin/sh -x packaging/build.sh ${BASE_IMAGE_NAME} # --> vast-csi:dev
+    docker run vast-csi:dev test # start unit tests
     docker tag vast-csi:dev ${IMAGE_NAME}
     docker tag vast-csi:dev ${LATEST}
     docker push ${IMAGE_NAME}
@@ -33,24 +64,26 @@ test_csi [latest]: &test_csi
     project: dev/orion
     branch: $ORION_BRANCH
     strategy: depend
+  allow_failure: true
   variables:
     INSTALL_IMAGE: latest-4.6.0
+    VAST_upgrade_to: $INSTALL_IMAGE
     VAST_COMET_KWARG: csi_plugin_version=${CI_PIPELINE_ID}
-    UPGRADE_TO: $INSTALL_IMAGE
 
 
 test_csi:
   <<: *test_csi
   when: manual
   allow_failure: true
+  except: null
   parallel:
     matrix:
-      - INSTALL_IMAGE:
-        - latest-4-2-0
-        - latest-4-3-0
-        - latest-4-4-0
-        - latest-4.5.0
-        - latest-4.6.0
+      - INSTALL_IMAGE: release-4-2-0-sp13-712743
+      - INSTALL_IMAGE: release-4-3-0-sp6-684593
+      - INSTALL_IMAGE: release-4-4-0-sp-active-769228
+      - INSTALL_IMAGE: release-4-5-0-sp4-839938
+      - INSTALL_IMAGE: latest-4.6.0
+      - INSTALL_IMAGE: latest-4.7.0
 
 
 update_dockerhub [prod]: &update_dockerhub

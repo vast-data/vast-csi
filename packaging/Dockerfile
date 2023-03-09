@@ -1,18 +1,14 @@
-FROM python:3.9-alpine
+ARG BASE_IMAGE_NAME
+FROM $BASE_IMAGE_NAME
 
-WORKDIR /root
+COPY packaging/files files
 
-COPY packaging/files .
-# RUN apt-get update && apt-get install -y nfs-common && \
-RUN apk add --no-cache \
-	# used by driver to mount
-	nfs-utils \
-	# used to compile grpcio
-	linux-headers build-base && \
-	pip install --no-cache-dir -r requirements.txt && \
-	cd /usr/libexec/gcc/x86_64-alpine-linux-musl/*/ && rm -fv cc1 cc1obj cc1plus lto1
+RUN pip install --no-cache-dir -r files/requirements.txt && rm -rf files
+RUN cd /usr/libexec/gcc/x86_64-alpine-linux-musl/*/ && rm -fv cc1 cc1obj cc1plus lto1
 
 COPY vast_csi vast_csi
+COPY charts charts
+COPY tests tests
 COPY deployment .
 COPY k8s_supported.txt .
 

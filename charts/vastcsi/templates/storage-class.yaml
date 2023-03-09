@@ -1,0 +1,66 @@
+{{/* Generate one or more storage classes from 'storageClasses' section.  */}}
+
+{{- if not .Values.storageClasses -}}
+  {{- fail "`storageClasses` cannot be empty section. Specify at least one StorageClass with required parameters (vipPool, storagePath etc)" -}}
+{{- end -}}
+
+{{/* Iterate over StorageClasses from manifest */}}
+{{- range $name, $options := .Values.storageClasses }}
+
+{{/* Validate  setDefaultStorageClass option. Options should be either true or false */}}
+{{-
+    $is_default_class := pluck "setDefaultStorageClass" $options $.Values.storageClassDefaults | first | quote
+-}}
+{{- if not (or (kindIs "bool" $is_default_class ) ( $is_default_class | mustRegexMatch "true|false" )) -}}
+  {{- fail "setDefaultStorageClass should be either 'true' or 'false'" -}}
+{{- end }}
+
+{{/* Validate  lbStrategy parameter. Parameter should be either random or roundrobin. */}}
+{{- $lb_strategy := pluck "lbStrategy" $options $.Values.storageClassDefaults | first | quote -}}
+{{- if not ( $lb_strategy | mustRegexMatch "roundrobin|random" ) -}}
+  {{- fail "lbStrategy should be either 'random' or 'roundrobin'" -}}
+{{- end }}
+
+{{/* Validate  vipPool parameter. Parameter should be not empty string. */}}
+{{- $vip_pool_name := pluck "vipPool" $options $.Values.storageClassDefaults | first | quote -}}
+{{- if eq $vip_pool_name ( quote "" ) -}}
+  {{- fail "vipPool is required value. Please specify valid vip pool" -}}
+{{- end }}
+
+{{/* Validate  storagePath parameter. Parameter should be not empty string. */}}
+{{- $storage_path := pluck "storagePath" $options $.Values.storageClassDefaults | first | quote -}}
+{{- if eq $storage_path ( quote "" ) -}}
+  {{- fail "storagePath is required value. Please specify valid root export path" -}}
+{{- end }}
+
+{{/* Validate  viewPolicy parameter. Parameter should be not empty string. */}}
+{{- $view_policy := pluck "viewPolicy" $options $.Values.storageClassDefaults | first | quote -}}
+{{- if eq $view_policy ( quote "" ) -}}
+{{- fail "viewPolicy is required value. Please specify valid policy name" -}}
+{{- end }}
+
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+provisioner: csi.vastdata.com
+metadata:
+  name: {{ required "A StorageClass name must be not empty" $name }}
+  namespace: {{ include "vastcsi.namespace" $ }}
+  annotations:
+    storageclass.kubernetes.io/is-default-class: {{ $is_default_class }}
+  labels:
+  {{- include "vastcsi.labels" $ | nindent 4 }}
+parameters:
+  vip_pool_name: {{ $vip_pool_name }}
+  root_export: {{ $storage_path }}
+  view_policy: {{ $view_policy }}
+  lb_strategy: {{ $lb_strategy }}
+  volume_name_fmt: {{ pluck "volumeNameFormat" $options $.Values.storageClassDefaults | first | quote }}
+  eph_volume_name_fmt: {{ pluck "ephemeralVolumeNameFormat" $options $.Values.storageClassDefaults | first | quote }}
+allowVolumeExpansion: {{
+                         pluck "allowVolumeExpansion" $options $.Values.storageClassDefaults |
+                         first | quote | mustRegexMatch "true" | ternary true false
+                      }}
+mountOptions:
+  - {{ pluck "mountOptions" $options $.Values.storageClassDefaults | first | quote }}
+---
+{{- end }}

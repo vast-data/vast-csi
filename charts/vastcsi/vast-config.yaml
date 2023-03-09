@@ -1,0 +1,40 @@
+##################
+# This configuration assumed to be used by developers.
+# Use: '{{- $vast_config := .Files.Get "vast-config.yaml" | fromYaml -}}' to get configuration mapping
+# within templates.
+#################
+image:
+  # Generic CSI attacher
+  csiAttacher:
+    repository: k8s.gcr.io/sig-storage/csi-attacher
+    # Don't override this unless you know what you're doing
+    # This could change the API the CSI plugin implements
+    tag: v3.1.0
+
+  # Generic CSI registrar
+  csiNodeDriverRegistrar:
+    repository: k8s.gcr.io/sig-storage/csi-node-driver-registrar
+    # Don't override this unless you know what you're doing
+    # This could change the API the CSI plugin implements
+    tag: v2.0.1
+
+  # Generic CSI provisioner
+  csiProvisioner:
+    repository: k8s.gcr.io/sig-storage/csi-provisioner
+    # Don't override this unless you know what you're doing
+    # This could change the API the CSI plugin implements
+    tag: v3.2.1
+
+  # Generic CSI resizer
+  csiResizer:
+    repository: k8s.gcr.io/sig-storage/csi-resizer
+    # Don't override this unless you know what you're doing
+    # This could change the API the CSI plugin implements
+    tag: v1.1.0
+
+  # Generic CSI snapshotter
+  csiSnapshotter:
+    repository: k8s.gcr.io/sig-storage/csi-snapshotter
+    # Don't override this unless you know what you're doing
+    # This could change the API the CSI plugin implements
+    tag: v6.0.1
