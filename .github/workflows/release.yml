@@ -3,7 +3,7 @@ name: Release Charts
 on:
   push:
     branches:
-      - v2.2
+      - vast_release
 
 jobs:
   release:
