@@ -29,10 +29,6 @@ class VolumeBuilderI(ABC):
         """Final implementation should return requested capacity based on provided params and/or other inputs"""
         ...
 
-    def get_existing_capacity(self) -> int:
-        """Final implementation should return existing voume capacity based on provided params and/or other inputs"""
-        ...
-
     def build_volume(self, **kwargs) -> CreatedVolumeT:
         """
         Final implementation shoud perform final actions for creationg volume and/or return all necessary
@@ -62,12 +58,6 @@ class BaseBuilder(VolumeBuilderI):
     def get_requested_capacity(self) -> int:
         """Return desired allocated capacity if provided else return 0"""
         return self.capacity_range.required_bytes if self.capacity_range else 0
-
-    def get_existing_capacity(self) -> Optional[int]:
-        """Return capacity of requested quota"""
-        quota = self.controller.vms_session.get_quota(self.name)
-        if quota:
-            return quota.hard_limit
 
 
 @final
@@ -100,24 +90,25 @@ class VolumeBuilder(BaseBuilder):
             volume_name_fmt=self.storage_options.volume_name_fmt
         )
         requested_capacity = self.get_requested_capacity()
+        quota_path = str(root_export[self.name])
 
-        # Check if volume with provided name but another capacity already exists.
-        if existing_capacity := self.get_existing_capacity():
-            if existing_capacity != requested_capacity:
+        if quota := self.controller.vms_session.get_quota(self.name):
+            # Check if volume with provided name but another capacity already exists.
+            if quota.hard_limit != requested_capacity:
                 raise Abort(
                     grpc.StatusCode.ALREADY_EXISTS,
                     "Volume already exists with different capacity than requested"
-                    f"({existing_capacity})",
-                )
+                    f"({quota.hard_limit})")
+        else:
+            data = dict(
+                create_dir=True,
+                name=volume_name,
+                path=quota_path,
+            )
+            if requested_capacity:
+                data.update(hard_limit=requested_capacity)
+            quota = self.controller.vms_session.create_quota(data=data)
 
-        data = dict(
-            create_dir=True,
-            name=volume_name,
-            path=str(root_export[self.name]),
-        )
-        if requested_capacity:
-            data.update(hard_limit=requested_capacity)
-        quota = self.controller.vms_session.create_quota(data=data)
         volume_context.update(quota_id=str(quota.id))
 
         return types.Volume(
