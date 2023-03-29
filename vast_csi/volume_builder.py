@@ -4,8 +4,8 @@ from typing import Optional, final, TypeVar
 
 import grpc
 
-from .logging import logger
 from . import csi_types as types
+from .utils import is_ver_nfs4_present
 from plumbum import local
 
 from .exceptions import Abort
@@ -109,7 +109,8 @@ class VolumeBuilder(BaseBuilder):
         # Check if view with expected system path already exists.
         if not self.controller.vms_session.get_view_by_path(view_path):
             view_policy = self.controller.vms_session.ensure_view_policy(policy_name=self.view_policy)
-            self.controller.vms_session.create_view(path=view_path, policy_id=view_policy.id)
+            protocol = "NFS4" if is_ver_nfs4_present(self.mount_options) else "NFS"
+            self.controller.vms_session.create_view(path=view_path, protocol=protocol, policy_id=view_policy.id)
 
         if quota := self.controller.vms_session.get_quota(self.name):
             # Check if volume with provided name but another capacity already exists.
