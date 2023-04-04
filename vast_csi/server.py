@@ -380,7 +380,6 @@ class Controller(ControllerServicer, Instrumented):
         return types.CreateResp(volume=volume)
 
     def _delete_data_from_storage(self, path):
-
         path = local.path(path)
         volume_id = path.name
         nfs_server = self.vms_session.get_vip(vip_pool_name=CONF.deletion_vip_pool)
@@ -401,10 +400,24 @@ class Controller(ControllerServicer, Instrumented):
 
                 if tmpdir[volume_id].exists():
                     logger.info(f"deleting {tmpdir[volume_id]}")
-                    tmpdir[volume_id].delete()  # idempotent - does not fail on dir-no-exists
+                    tmpdir[volume_id].delete()
                     logger.info(f"done deleting {tmpdir[volume_id]}")
                 else:
                     logger.info(f"already deleted {tmpdir[volume_id]}")
+            except FileNotFoundError as exc:
+                if 'No such file or directory' in str(exc):
+                    logger.warning(
+                        'It appears that multiple processes are attempting to clean a single directory,'
+                        ' leading to unforeseeable concurrent access to the identical file or directory.'
+                        ' The cleaning process will be repeated.'
+                    )
+                    raise Abort(
+                        ABORTED,
+                        f"Concurrent access to an identical file/directory has been detected."
+                        f" A new attempt will be made.",
+                    )
+                else:
+                    raise
             except OSError as exc:
                 if 'not empty' in str(exc):
                     for i, item in enumerate(tmpdir[volume_id].list()):
