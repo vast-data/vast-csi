@@ -147,7 +147,7 @@ class VmsSession(RESTSession):
                 raise Exception(f"Too many views found for path {path}: {views}")
             return Bunch.from_dict(views[0])
 
-    def create_view(self, path: str, policy_id: int, create_dir=True, alias=None):
+    def create_view(self, path: str, policy_id: int, protocol="NFS", create_dir=True, alias=None):
         """
         Create new view on remove cluster
         Args:
@@ -155,13 +155,14 @@ class VmsSession(RESTSession):
             policy_id: id of view policy that should be assigned to view.
             create_dir: if underlying directory should be created along with view.
             alias: view alias
+            protocol: nfs protocol (NFS or NFS4)
         Returns:
             newly created view as dictionary.
         """
         data = {
             "path": str(path),
             "create_dir": create_dir,
-            "protocols": ["NFS"],
+            "protocols": [protocol],
             "policy_id": policy_id
         }
         if alias:

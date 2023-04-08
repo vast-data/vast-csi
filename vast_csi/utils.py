@@ -128,3 +128,12 @@ def string_to_proto_timestamp(str_ts: str):
     """Convert string to protobuf.Timestamp"""
     t = datetime.fromisoformat(str_ts.rstrip("Z")).timestamp()
     return types.Timestamp(seconds=int(t), nanos=int(t % 1 * 1e9))
+
+
+def is_ver_nfs4_present(mount_options: str) -> bool:
+    """Check if vers=4 or nfsvers=4 mount option is present in `mount_options` string"""
+    for opt in mount_options.split(","):
+        name, sep, value = opt.partition("=")
+        if name in ("vers", "nfsvers") and value.startswith("4"):
+            return True
+    return False
