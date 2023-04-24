@@ -14,6 +14,7 @@
 """The Python implementation of the GRPC helloworld.Greeter server."""
 
 import os
+import re
 from concurrent import futures
 from functools import wraps
 from pprint import pformat
@@ -319,7 +320,10 @@ class Controller(ControllerServicer, Instrumented):
         root_export = volume_name_fmt = lb_strategy = view_policy = vip_pool_name = mount_options = ""
         try:
             mount_capability = next(cap for cap in volume_capabilities if cap.HasField("mount"))
-            mount_options = ",".join(mount_capability.mount.mount_flags)
+            mount_flags = mount_capability.mount.mount_flags
+            mount_options = ",".join(mount_flags)
+            # normalize mount options (remove spaces, brackets etc)
+            mount_options = ",".join(re.sub(r"[\[\]]", "", mount_options).replace(",", " ").split())
         except StopIteration:
             pass
 
