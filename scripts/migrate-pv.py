@@ -337,9 +337,12 @@ async def main(loop: asyncio.AbstractEventLoop) -> None:
 
     candidates = []
     for pv in all_pvs:
+        pv_annotations = pv["metadata"].get("annotations", {})
+
+        if pv_annotations.get("pv.kubernetes.io/provisioned-by", "") != VAST_PROVISIONER:
+            continue
 
         pv_spec = pv["spec"]
-        pv_annotations = pv["metadata"].get("annotations", {})
         volume_attributes = pv_spec["csi"]["volumeAttributes"]
         missing_params = REQUIRED_PARAMETERS.difference(volume_attributes)
 
@@ -348,7 +351,7 @@ async def main(loop: asyncio.AbstractEventLoop) -> None:
             _print(text=f"PV {pv['metadata']['name']} will be patched (re-migrating)")
             candidates.append(pv)
 
-        elif pv_annotations.get("pv.kubernetes.io/provisioned-by") == VAST_PROVISIONER and missing_params:
+        elif missing_params:
             # Regular migrate. Assumed only PVs with missing required parameters will be updated.
             _print(text=f"PV {pv['metadata']['name']} will be patched {', '.join(missing_params)}")
             candidates.append(pv)
