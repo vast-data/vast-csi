@@ -14,7 +14,7 @@
   value: "csi.vastdata.com"
 - name: X_CSI_VMS_HOST
   value: {{ $.Values.endpoint | quote }}
-- name: X_CSI_DISABLE_VMS_SSL_VERIFICATION
+- name: X_CSI_ENABLE_VMS_SSL_VERIFICATION
   value: {{ $.Values.verifySsl | quote }}
 - name: X_CSI_DELETION_VIP_POOL_NAME
   value: {{ $.Values.deletionVipPool | quote }}
