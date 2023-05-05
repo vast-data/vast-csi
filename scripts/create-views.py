@@ -6,7 +6,7 @@ There are 2 prerequisites to execute script:
     2. kubectl utility should be installed and prepared to works with appropriate k8s cluster
 
 Usage:
-    python create-views.py --view_policy < your input >  --verbose < True|False >
+    python create-views.py --view_policy < your input > --protocol [nfs3|nfs4] --verbose < True|False >
 """
 import sys
 import json
@@ -62,11 +62,11 @@ class RestSession(Session):
         res.raise_for_status()
         return res.json()
 
-    def create_view(self, path, policy_id):
+    def create_view(self, path, policy_id, protocol):
         data = {
             "path": path,
             "create_dir": True,
-            "protocols": ["NFS"],
+            "protocols": [protocol],
             "policy_id": policy_id
         }
         res = self.post(f"{self.base_url}/views/", json=data, auth=self.auth, verify=self.ssl_verify)
@@ -187,6 +187,9 @@ async def grab_required_params():
 
     parser.add_argument("--view-policy", default="default",
                         help="The name of the existing view policy that will be allocated to newly created views.")
+    parser.add_argument("--protocol", help="nfs version protocol all views will be created with.",
+                        choices=("nfs3", "nfs4"), required=True)
+    parser.add_argument("--namespace", help="Namespace where csi driver was deployed.", required=True)
     parser.add_argument("--verbose", help="Show commands output.", default=False, action='store_true')
     args = parser.parse_args()
     print_with_label(color=color, label=label, text=f"The user has chosen following parameters: {vars(args)}")
@@ -213,20 +216,20 @@ async def main() -> None:
 
     # Prepare kubectl executor.
     kubectl_ex = SubprocessProtocol(base_command=kubectl_path)
+    namespace = user_params.namespace
 
     vers = await kubectl_ex.exec("version --client=true --output=yaml", verbose)
     if "clientVersion" not in vers:
         raise UserError("Something wrong with kubectl. Unable to get client version")
 
+    mgmt_secret = json.loads(await kubectl_ex.exec(f"get secret/csi-vast-mgmt -o json -n {namespace}", False))
     all_pvs = json.loads(await kubectl_ex.exec("get pv -o json", False))["items"]
-    mgmt_secret = json.loads(await kubectl_ex.exec("get secret/csi-vast-mgmt -o json", False))
 
     username = base64.b64decode(mgmt_secret["data"]["username"]).decode('utf-8')
     password = base64.b64decode(mgmt_secret["data"]["password"]).decode('utf-8')
-    csi_namespace = mgmt_secret["metadata"]["annotations"]["meta.helm.sh/release-namespace"]
 
     controller_info = json.loads(
-        await kubectl_ex.exec(f"get pod csi-vast-controller-0 -n {csi_namespace} -o json", False))
+        await kubectl_ex.exec(f"get pod csi-vast-controller-0 -n {namespace} -o json", False))
     controller_env = {
         env_pair["name"]: env_pair.get("value")
         for container in controller_info["spec"]["containers"]
@@ -236,6 +239,7 @@ async def main() -> None:
 
     session = RestSession(base_url=f'https://{controller_env["X_CSI_VMS_HOST"]}/api', auth=(username, password))
     policy_id = session.ensure_view_policy(user_params.view_policy)
+    protocol = "NFS" if user_params.protocol == "nfs3" else "NFS4"
 
     _seen = set()
     for pv in all_pvs:
@@ -252,7 +256,7 @@ async def main() -> None:
             if session.get_view_by_path(quota_path):
                 _print(f"View {quota_path} already exists")
             else:
-                session.create_view(quota_path, policy_id)
+                session.create_view(quota_path, policy_id, protocol)
                 _print(f"View {quota_path} has been created")
 
                 # Mark that pvc has been migrated from v2.1 to v2.2 of csi driver
