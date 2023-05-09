@@ -4,10 +4,8 @@ Script can be used to create missing views on existing PVs after migrating from 
 There are 2 prerequisites to execute script:
     1. Python version >= 3.6 is required
     2. kubectl utility should be installed and prepared to works with appropriate k8s cluster
-
-Usage:
-    python create-views.py --view_policy < your input > --protocol [nfs3|nfs4] --verbose < True|False >
 """
+import re
 import sys
 import json
 import base64
@@ -31,6 +29,14 @@ def print_with_label(text: str, color: int, label: str, ):
     spc = 8 - len(label)
     label = label + ''.join(' ' for _ in range(spc)) if spc > 0 else label
     print(f'\x1b[1;{color}m  {label} \x1b[0m', text)
+
+def is_ver_nfs4_present(mount_options: str) -> bool:
+    """Check if vers=4 or nfsvers=4 mount option is present in `mount_options` string"""
+    for opt in mount_options.split(","):
+        name, sep, value = opt.partition("=")
+        if name in ("vers", "nfsvers") and value.startswith("4"):
+            return True
+    return False
 
 
 class UserError(Exception):
@@ -187,8 +193,6 @@ async def grab_required_params():
 
     parser.add_argument("--view-policy", default="default",
                         help="The name of the existing view policy that will be allocated to newly created views.")
-    parser.add_argument("--protocol", help="nfs version protocol all views will be created with.",
-                        choices=("nfs3", "nfs4"), required=True)
     parser.add_argument("--namespace", help="Namespace where csi driver was deployed.", required=True)
     parser.add_argument("--verbose", help="Show commands output.", default=False, action='store_true')
     args = parser.parse_args()
@@ -239,8 +243,6 @@ async def main() -> None:
 
     session = RestSession(base_url=f'https://{controller_env["X_CSI_VMS_HOST"]}/api', auth=(username, password))
     policy_id = session.ensure_view_policy(user_params.view_policy)
-    protocol = "NFS" if user_params.protocol == "nfs3" else "NFS4"
-
     _seen = set()
     for pv in all_pvs:
         pv_name = pv['metadata']['name']
@@ -256,6 +258,12 @@ async def main() -> None:
             if session.get_view_by_path(quota_path):
                 _print(f"View {quota_path} already exists")
             else:
+                mount_options = pv["spec"].get("mountOptions", [""])[0]
+                mount_options = ",".join(re.sub(r"[\[\]]", "", mount_options).replace(",", " ").split())
+                if is_ver_nfs4_present(mount_options):
+                    protocol = "NFS4"
+                else:
+                    protocol = "NFS"
                 session.create_view(quota_path, policy_id, protocol)
                 _print(f"View {quota_path} has been created")
 
