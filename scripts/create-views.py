@@ -14,7 +14,6 @@ import urllib3
 from functools import partial
 from typing import Optional, ClassVar
 from argparse import ArgumentParser
-from requests import Session
 
 urllib3.disable_warnings()
 
@@ -43,40 +42,43 @@ class UserError(Exception):
     pass
 
 
-class RestSession(Session):
+class RestSession:
 
     def __init__(self, *args, auth, base_url, **kwargs):
         super().__init__(*args, **kwargs)
         self.base_url = base_url.rstrip("/")
-        self.auth = auth
-        self.headers["Accept"] = "application/json"
-        self.headers["Content-Type"] = "application/json"
-        self.ssl_verify = False
+        self.http = urllib3.PoolManager(cert_reqs='CERT_NONE', assert_hostname=False)
+        self.headers = urllib3.util.make_headers(basic_auth=":".join(auth))
+        self.headers['Content-Type'] = 'application/json'
+
+    def _request(self, method, url, data={}):
+        if method == "GET":
+            params = dict(fields=data)
+        else:
+            params = dict(body=data)
+        res = self.http.request(method=method, url=url, headers=self.headers, **params)
+        if res.status not in (200, 201):
+            raise UserError(f"Error occurred while requesting url {url}, reason: {res.reason}")
+        return json.loads(res.data.decode("utf8"))
 
     def ensure_view_policy(self, policy_name):
-        res = self.get(f"{self.base_url}/viewpolicies", params=dict(name=policy_name), verify=self.ssl_verify)
-        res.raise_for_status()
-        return res.json()[0]["id"]
+        res = self._request("GET", f"{self.base_url}/viewpolicies", data=dict(name=policy_name))
+        return res[0]["id"]
 
     def get_quota_by_id(self, quota_id):
-        res = self.get(f"{self.base_url}/quotas/{quota_id}", auth=self.auth, verify=self.ssl_verify)
-        res.raise_for_status()
-        return res.json()
+        return self._request("GET", f"{self.base_url}/quotas/{quota_id}")
 
     def get_view_by_path(self, path):
-        res = self.get(f"{self.base_url}/views", params=dict(path=path), auth=self.auth, verify=self.ssl_verify)
-        res.raise_for_status()
-        return res.json()
+        return self._request("GET", f"{self.base_url}/views", dict(path=path))
 
     def create_view(self, path, policy_id, protocol):
-        data = {
+        data = json.dumps({
             "path": path,
             "create_dir": True,
             "protocols": [protocol],
             "policy_id": policy_id
-        }
-        res = self.post(f"{self.base_url}/views/", json=data, auth=self.auth, verify=self.ssl_verify)
-        res.raise_for_status()
+        })
+        self._request("POST", f"{self.base_url}/views/", data)
 
 
 class ExecutionFactory:
@@ -163,7 +165,7 @@ class SubprocessProtocol(asyncio.SubprocessProtocol):
         text = data.decode("utf-8")
         self._factory_instance.stdout += text
 
-        if int(fd) == 2:
+        if int(fd) == 2 and self.keep_output:
             # Use red color if file descriptor is stderr in order to highlight errors.
             text = f"\x1b[1;30;31m{text.strip()} \x1b[0m"
             # Show full output in case of error. Do not suppress stderr output in order to have full visibility
@@ -193,7 +195,6 @@ async def grab_required_params():
 
     parser.add_argument("--view-policy", default="default",
                         help="The name of the existing view policy that will be allocated to newly created views.")
-    parser.add_argument("--namespace", help="Namespace where csi driver was deployed.", required=True)
     parser.add_argument("--verbose", help="Show commands output.", default=False, action='store_true')
     args = parser.parse_args()
     print_with_label(color=color, label=label, text=f"The user has chosen following parameters: {vars(args)}")
@@ -220,13 +221,24 @@ async def main() -> None:
 
     # Prepare kubectl executor.
     kubectl_ex = SubprocessProtocol(base_command=kubectl_path)
-    namespace = user_params.namespace
 
     vers = await kubectl_ex.exec("version --client=true --output=yaml", verbose)
     if "clientVersion" not in vers:
         raise UserError("Something wrong with kubectl. Unable to get client version")
 
-    mgmt_secret = json.loads(await kubectl_ex.exec(f"get secret/csi-vast-mgmt -o json -n {namespace}", False))
+    namespaces = [
+        ns["metadata"]["name"] for ns in json.loads(await kubectl_ex.exec(f"get ns -o json"))["items"]
+    ]
+    for namespace in namespaces:
+        try:
+            mgmt_secret = json.loads(await kubectl_ex.exec(f"get secret/csi-vast-mgmt -o json -n {namespace}", False))
+            break
+        except json.JSONDecodeError:
+            pass
+    else:
+        _print(f"The CSI driver cannot be found in any of the available namespaces.")
+        sys.exit(1)
+
     all_pvs = json.loads(await kubectl_ex.exec("get pv -o json", False))["items"]
 
     username = base64.b64decode(mgmt_secret["data"]["username"]).decode('utf-8')
