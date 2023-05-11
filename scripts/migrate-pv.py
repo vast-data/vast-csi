@@ -165,7 +165,7 @@ async def grab_required_params() -> Namespace:
     parser.add_argument("--verbose", help="Show commands output.", default=False)
     parser.add_argument("--root_export", help="Base path where volumes will be located on VAST")
     parser.add_argument("--vip_pool_name", help="Name of VAST VIP pool to use")
-    parser.add_argument("--mount_options", help="Custom NFS mount options, comma-separated (specify '' for no mount options).")
+    parser.add_argument("--mount_options", help="Custom NFS mount options, comma-separated (specify '' for no mount options).", default="")
     parser.add_argument(
         "--force",
         help="Forced migration - refer to Vast Support documentation on when to use this flag",
@@ -242,7 +242,7 @@ async def process_migrate(
 
         root_export = controller_env.get("X_CSI_NFS_EXPORT")
         vip_pool_name = controller_env.get("X_CSI_VIP_POOL_NAME")
-        mount_options = node_env.get("X_CSI_MOUNT_OPTIONS", "")
+        mount_options = node_env.get("X_CSI_MOUNT_OPTIONS") or ""
 
         if not root_export or not vip_pool_name:
             raise UserError(
@@ -260,7 +260,7 @@ async def process_migrate(
 
     for candidate in candidates:
         pv_name = candidate['metadata']['name']
-        pvc_name = candidate['spec']['claimRef']['name']
+        pvc_name = candidate['spec'].get('claimRef', {}).get('name')
         pv_manifest = TMP / f"{pv_name}.json"
 
         patch_params['export_path'] = os.path.join(root_export, pv_name)
@@ -286,15 +286,16 @@ async def process_migrate(
         await executor.exec(f"annotate pv {pv_name} --overwrite=true csi.vastdata.com/migrated-from=2.0")
         _print(text=f"PV {pv_name} updated.")
 
-        # Remove PVC events about "Lost" status
-        await asyncio.sleep(5)
-        pvc_events = await executor.exec(f'get events --field-selector involvedObject.name={pvc_name} -o json')
-        pvc_events = json.loads(pvc_events)['items']
+        if pvc_name:
+            # Remove PVC events about "Lost" status
+            await asyncio.sleep(5)
+            pvc_events = await executor.exec(f'get events --field-selector involvedObject.name={pvc_name} -o json')
+            pvc_events = json.loads(pvc_events)['items']
 
-        for event in pvc_events:
-            if 'Bound claim has lost its PersistentVolume' in event['message']:
-                event_name = event['metadata']['name']
-                await executor.exec(f'delete event {event_name}')
+            for event in pvc_events:
+                if 'Bound claim has lost its PersistentVolume' in event['message']:
+                    event_name = event['metadata']['name']
+                    await executor.exec(f'delete event {event_name}')
 
 
 async def main(loop: asyncio.AbstractEventLoop) -> None:
