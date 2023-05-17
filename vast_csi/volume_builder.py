@@ -4,8 +4,8 @@ from typing import Optional, final, TypeVar
 
 import grpc
 
-from .logging import logger
 from . import csi_types as types
+from .utils import is_ver_nfs4_present
 from plumbum import local
 
 from .exceptions import Abort
@@ -95,21 +95,25 @@ class VolumeBuilder(BaseBuilder):
         Main build entrypoint for volumes.
         Create volume from pvc, pv etc.
         """
+        volume_name = self.build_volume_name()
+        view_path = str(local.path(self.root_export)[self.name])
+        requested_capacity = self.get_requested_capacity()
+        protocol = "NFS4" if is_ver_nfs4_present(self.mount_options) else "NFS"
+
         volume_context = {
             "root_export": self.root_export,
             "vip_pool_name": self.vip_pool_name,
             "lb_strategy": self.lb_strategy,
             "mount_options": self.mount_options,
+            "volume_name": volume_name,
+            "view_policy": self.view_policy,
+            "protocol": protocol,
         }
-        view_path = str(local.path(self.root_export)[self.name])
-
-        volume_name = self.build_volume_name()
-        requested_capacity = self.get_requested_capacity()
 
         # Check if view with expected system path already exists.
         if not self.controller.vms_session.get_view_by_path(view_path):
             view_policy = self.controller.vms_session.ensure_view_policy(policy_name=self.view_policy)
-            self.controller.vms_session.create_view(path=view_path, policy_id=view_policy.id)
+            self.controller.vms_session.create_view(path=view_path, protocol=protocol, policy_id=view_policy.id)
 
         if quota := self.controller.vms_session.get_quota(self.name):
             # Check if volume with provided name but another capacity already exists.

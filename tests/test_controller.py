@@ -1,3 +1,4 @@
+import re
 import pytest
 from vast_csi.server import Controller, Abort, MissingParameter
 
@@ -66,3 +67,15 @@ class TestControllerSuite:
         assert session.get_quota.call_count == 1
         assert session.get_view_by_path.call_args.args == ("/foo/bar/test_volume",)
         assert session.get_quota.call_args.args == ("test_volume",)
+
+    @pytest.mark.parametrize("raw_mount_options", [
+        "[vers=4 ,  nolock,   proto=tcp,   nconnect=4]",
+        "[vers=4 nolock proto=tcp nconnect=4]",
+        "[vers=4,nolock,proto=tcp,nconnect=4]",
+        "vers=4 ,  nolock,   proto=tcp,   nconnect=4",
+        "vers=4 nolock proto=tcp nconnect=4",
+        "vers=4,nolock,proto=tcp,nconnect=4",
+    ])
+    def test_parse_mount_options(self, raw_mount_options):
+        mount_options = ",".join(re.sub(r"[\[\]]", "", raw_mount_options).replace(",", " ").split())
+        assert mount_options == "vers=4,nolock,proto=tcp,nconnect=4"
