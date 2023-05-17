@@ -101,7 +101,7 @@ csiImage: "vastdataorg/csi"
 
 # csiImageTag represents version of docker image that serves  CSI Controller and CSI Node.
 # To check latest stable tag refer https://support.vastdata.com/hc/en-us/articles/360010932159-VAST-with-Kubernetes
-csiImageTag: v2.2.0
+csiImageTag: v2.2.1
 
 
 ####################
