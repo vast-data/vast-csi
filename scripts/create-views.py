@@ -10,12 +10,14 @@ import sys
 import json
 import base64
 import asyncio
-import urllib3
 from functools import partial
 from typing import Optional, ClassVar
 from argparse import ArgumentParser
+import urllib.request
+import urllib.parse
+import ssl
 
-urllib3.disable_warnings()
+context = ssl._create_unverified_context()
 
 # Input and output markers.
 # These markers are used to distinguish input commands and output text of these commands.
@@ -28,6 +30,7 @@ def print_with_label(text: str, color: int, label: str, ):
     spc = 8 - len(label)
     label = label + ''.join(' ' for _ in range(spc)) if spc > 0 else label
     print(f'\x1b[1;{color}m  {label} \x1b[0m', text)
+
 
 def is_ver_nfs4_present(mount_options: str) -> bool:
     """Check if vers=4 or nfsvers=4 mount option is present in `mount_options` string"""
@@ -47,38 +50,43 @@ class RestSession:
     def __init__(self, *args, auth, base_url, **kwargs):
         super().__init__(*args, **kwargs)
         self.base_url = base_url.rstrip("/")
-        self.http = urllib3.PoolManager(cert_reqs='CERT_NONE', assert_hostname=False)
-        self.headers = urllib3.util.make_headers(basic_auth=":".join(auth))
-        self.headers['Content-Type'] = 'application/json'
+        auth = base64.b64encode(bytes('{}:{}'.format(*auth), "utf8")).decode()
+        self.headers = {
+            "content-type": "application/json",
+            "authorization": f"Basic {auth}"
+        }
 
     def _request(self, method, url, data={}):
-        if method == "GET":
-            params = dict(fields=data)
+        if method == "get":
+            url += '?' + urllib.parse.urlencode(data)
+            data = None
         else:
-            params = dict(body=data)
-        res = self.http.request(method=method, url=url, headers=self.headers, **params)
-        if res.status not in (200, 201):
-            raise UserError(f"Error occurred while requesting url {url}, reason: {res.reason}")
-        return json.loads(res.data.decode("utf8"))
+            data = json.dumps(data).encode()
+        req = urllib.request.Request(url, headers=self.headers, data=data)
+        with urllib.request.urlopen(req, context=context) as resp:
+            if resp.getcode() not in (200, 201):
+                raise UserError(f"Error occurred while requesting url {url}, reason: {resp.reason}")
+            return json.loads(resp.read().decode())
 
     def ensure_view_policy(self, policy_name):
-        res = self._request("GET", f"{self.base_url}/viewpolicies", data=dict(name=policy_name))
+        if not (res := self._request("get", f"{self.base_url}/viewpolicies", data=dict(name=policy_name))):
+            raise UserError(f"Provided view policy: {policy_name!r} doesn't exist")
         return res[0]["id"]
 
     def get_quota_by_id(self, quota_id):
-        return self._request("GET", f"{self.base_url}/quotas/{quota_id}")
+        return self._request("get", f"{self.base_url}/quotas/{quota_id}")
 
     def get_view_by_path(self, path):
-        return self._request("GET", f"{self.base_url}/views", dict(path=path))
+        return self._request("get", f"{self.base_url}/views", dict(path=path))
 
     def create_view(self, path, policy_id, protocol):
-        data = json.dumps({
+        data = {
             "path": path,
             "create_dir": True,
             "protocols": [protocol],
             "policy_id": policy_id
-        })
-        self._request("POST", f"{self.base_url}/views/", data)
+        }
+        self._request("post", f"{self.base_url}/views/", data)
 
 
 class ExecutionFactory:
@@ -258,7 +266,7 @@ async def main() -> None:
     _seen = set()
     for pv in all_pvs:
         pv_name = pv['metadata']['name']
-        if  pv["metadata"]["annotations"].get("pv.kubernetes.io/provisioned-by", "") != "csi.vastdata.com":
+        if pv["metadata"]["annotations"].get("pv.kubernetes.io/provisioned-by", "") != "csi.vastdata.com":
             continue
         quota_id = pv['spec']['csi']['volumeAttributes'].get("quota_id")
         if not quota_id:
