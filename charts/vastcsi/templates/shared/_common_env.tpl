@@ -20,6 +20,8 @@
   value: {{ $.Values.deletionVipPool | quote }}
 - name: X_CSI_DELETION_VIEW_POLICY
   value: {{ $.Values.deletionViewPolicy | quote }}
+- name: X_CSI_WORKER_THREADS
+  value: {{ $.Values.numWorkers | quote }}
 {{ if $.Values.truncateVolumeName -}}
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}

@@ -891,7 +891,7 @@ def serve():
 
         urllib3.disable_warnings()
 
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=CONF.worker_threads))
 
     identity = Identity()
     csi_pb2_grpc.add_IdentityServicer_to_server(identity, server)
@@ -912,5 +912,5 @@ def serve():
     server.add_insecure_port(CONF.endpoint)
     server.start()
 
-    logger.info(f"Server started as '{CONF.mode}', listening on {CONF.endpoint}")
+    logger.info(f"Server started as '{CONF.mode}', listening on {CONF.endpoint}, spawned threads {CONF.worker_threads}")
     server.wait_for_termination()
