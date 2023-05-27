@@ -1,7 +1,8 @@
 # CHANGELOG
 
 ## Version 2.2.2
-* Added `CHANGELOG.mg` (VCSI-95)
+* added `CHANGELOG.mg` (VCSI-95)
+* added adjustable timeout and number of workers (VCSI-100)
 
 ## Version 2.2.1 (05/16/23)
 * added NFS4 support (inferred from mount options) (VCSI-78)
@@ -20,6 +21,9 @@
     * added unit tests (VCSI-38)
     * exceptions were moved to `exception.py` (VCSI-38)
     * added intermediate base csi image. (VCSI-50)
+
+## Version 2.1.2 (01/28/23)
+* added NFS4 support (VCSI-68)
     
 ## Version 2.1.1 (12/29/22)
 * trim the names to 64 characters (VCSI-68)
