@@ -10,6 +10,7 @@ from easypy.bunch import Bunch
 from easypy.caching import cached_property
 from easypy.collections import shuffled
 from easypy.misc import at_least
+from easypy.resilience import retrying
 from easypy.tokens import (
     ROUNDROBIN,
     RANDOM,
@@ -40,6 +41,14 @@ class RESTSession(requests.Session):
         else:
             self.ssl_verify = False
 
+    def refresh_auth_token(self):
+        resp = self.post(
+            'token', {"username": self.config.vms_user, "password": self.config.vms_password}, log_result=False
+        )
+        token = resp["access"]
+        self.headers['authorization'] = f"Bearer {token}"
+
+    @retrying.debug(times=3, acceptable=retrying.Retry)
     def request(self, verb, api_method, *args, params=None, log_result=True, **kwargs):
         verb = verb.upper()
         api_method = api_method.strip("/")
@@ -53,12 +62,18 @@ class RESTSession(requests.Session):
             kwargs["data"] = json.dumps(kwargs["data"])
 
         if params or kwargs:
-            for line in pformat(dict(kwargs, params=params)).splitlines():
-                logger.info(f"    {line}")
+            if log_result:
+                for line in pformat(dict(kwargs, params=params)).splitlines():
+                    logger.info(f"    {line}")
+            else:
+                logger.info("*** request payload is hidden ***")
 
         ret = super().request(
             verb, url, verify=self.ssl_verify, params=params, **kwargs
         )
+        if ret.status_code == 403 and "Token is invalid or expired" in ret.text:
+            self.refresh_auth_token()
+            raise retrying.Retry("refresh token")
 
         if ret.status_code in (400, 503):
             raise ApiError(response=ret)
@@ -98,10 +113,6 @@ class VmsSession(RESTSession):
     """
 
     _vip_round_robin_idx: ClassVar[int] = -1
-
-    def __init__(self):
-        super().__init__()
-        self.auth = self.config.vms_user, self.config.vms_password
 
     # ----------------------------
     # Clusters
@@ -437,3 +448,5 @@ class TestVmsSession(RESTSession):
     delete_view_by_path = _empty
     delete_view_by_id = _empty
     delete_folder = _empty
+    refresh_auth_token = _empty
+
