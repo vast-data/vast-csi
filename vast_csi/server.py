@@ -250,6 +250,7 @@ class Controller(ControllerServicer, Instrumented):
             if CONF.vms_ssl_cert.exists() else
             "VMS session started without ssl certificates."
         )
+        session.refresh_auth_token()
         return session
 
     def ControllerGetCapabilities(self):
