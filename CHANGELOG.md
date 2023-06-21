@@ -3,6 +3,7 @@
 ## Version 2.2.2
 * added `CHANGELOG.mg` (VCSI-95)
 * added adjustable timeout and number of workers (VCSI-100)
+* added k8s error events and more informative error logging (VCSI-97)
 
 ## Version 2.2.1 (05/16/23)
 * added NFS4 support (inferred from mount options) (VCSI-78)

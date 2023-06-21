@@ -20,7 +20,6 @@ from functools import wraps
 from pprint import pformat
 from datetime import datetime
 import inspect
-from uuid import uuid4
 from tempfile import mkdtemp
 
 import json
@@ -28,11 +27,13 @@ from json import JSONDecodeError
 from plumbum import cmd
 from plumbum import local, ProcessExecutionError
 import grpc
+from requests.exceptions import HTTPError
 
 from easypy.tokens import ROUNDROBIN, RANDOM, CONTROLLER_AND_NODE, CONTROLLER, NODE
 from easypy.misc import kwargs_resilient, at_least
 from easypy.caching import cached_property
 from easypy.bunch import Bunch
+from easypy.exceptions import TException
 
 from .logging import logger, init_logging
 from .utils import (
@@ -88,9 +89,7 @@ def mount(src, tgt, flags=""):
     try:
         executable['-v', src, tgt] & logger.pipe_info("mount >>")
     except ProcessExecutionError as exc:
-        if exc.retcode == 32:
-            raise MountFailed(detail=exc.stderr, src=src, tgt=tgt)
-        raise
+        raise MountFailed(detail=exc.stderr, src=src, tgt=tgt, mount_options=flags)
 
 
 def _validate_capabilities(capabilities):
@@ -155,10 +154,24 @@ class Instrumented:
                 )
                 logger.debug("Traceback", exc_info=True)
                 context.abort(exc.code, exc.message)
+            except HTTPError as exc:
+                reason = exc.response.reason
+                status_code = exc.response.status_code
+                text = exc.response.text.splitlines()[0]
+                resource = exc.request.path_url
+                logger.exception(f"Exception during {method}\n{exc.response.text}")
+                context.abort(
+                    UNKNOWN,
+                    f"[{method}]. Unable to accomplish request to {resource}. {text}, <{reason}({status_code})>"
+                )
+            except TException as exc:
+                # Any exception inherited from TException
+                logger.exception(f"Exception during {method}")
+                context.abort(ABORTED, f"[{method}]. {exc.render(color=False)}")
             except Exception as exc:
-                err_key = f"<{uuid4()}>"
-                logger.exception(f"Exception during {method} ({err_key}): {type(exc)}")
-                context.abort(UNKNOWN, f"Exception during {method}: {err_key}")
+                logger.exception(f"Exception during {method}")
+                text = str(exc)
+                context.abort(UNKNOWN, f"[{method}]: {text}")
             if ret:
                 log(f"{peer} <<< {method}:")
                 for line in pformat(ret).splitlines():
