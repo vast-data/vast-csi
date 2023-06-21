@@ -16,6 +16,10 @@ class ApiError(TException):
     template = "HTTP {response.status_code}: {response.text}"
 
 
+class OperationNotSupported(TException):
+    template = "Cluster does not support this operation - {op!r} (needs {required_version}, got {current_version})"
+
+
 class MissingParameter(Abort):
     def __init__(self, param: str):
         self.param = param

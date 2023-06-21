@@ -5,11 +5,15 @@ from pprint import pformat
 from typing import ClassVar
 from uuid import uuid4
 from contextlib import contextmanager
+from requests import HTTPError
 
 from easypy.bunch import Bunch
 from easypy.caching import cached_property
 from easypy.collections import shuffled
 from easypy.misc import at_least
+from easypy.semver import SemVer
+from easypy.caching import timecache
+from easypy.units import HOUR
 from easypy.resilience import retrying
 from easypy.tokens import (
     ROUNDROBIN,
@@ -23,9 +27,39 @@ from plumbum import local, ProcessExecutionError
 
 from .logging import logger
 from .configuration import Config
-from .exceptions import ApiError, MountFailed
+from .exceptions import ApiError, MountFailed, OperationNotSupported
 from .utils import parse_load_balancing_strategy
 from . import csi_types as types
+
+
+def requisite(semver: str, operation: str = None):
+    """
+    Use this decorator to indicate the minimum required version of the VAST cluster
+     for invoking the API that is being decorated.
+    """
+    required_version = SemVer.loads(semver)
+
+    def dec(fn):
+        nonlocal operation
+        if not operation:
+            operation = fn.__name__
+
+        def _args_wrapper(self, *args, **kwargs):
+            try:
+                return fn(self, *args, **kwargs)
+            except HTTPError as exc:
+                if exc.response.status_code == 404 and self.sw_version < required_version:
+                    raise OperationNotSupported(
+                        op=operation,
+                        required_version=required_version.dumps(),
+                        current_version=self.sw_version.dumps(),
+                        tip="Upgrade VAST cluster or adjust CSI driver settings to avoid unsupported operations"
+                    )
+                raise
+
+        return _args_wrapper
+
+    return dec
 
 
 class RESTSession(requests.Session):
@@ -117,19 +151,23 @@ class VmsSession(RESTSession):
     # ----------------------------
     # Clusters
     @property
-    def cluster(self) -> Bunch:
+    @timecache(HOUR)
+    def cluster_info(self) -> Bunch:
         """Get cluster info"""
-        return Bunch.from_dict(self.clusters()[0])
+        return self.clusters()[0]
 
-    def delete_folder(self, path: str):
-        """Delete remote cluster folder by provided path."""
-        try:
-            self.delete(f"/clusters/{self.cluster.id}/delete_folder/", json={"path": path})
-        except ApiError as e:
-            if "no such directory" in e.render():
-                logger.debug(f"remote folder was probably already deleted ({e})")
-            else:
-                raise
+    @property
+    @timecache(HOUR)
+    def vms_info(self) -> Bunch:
+        return self.vms()[0]
+
+    @property
+    def sw_version(self) -> SemVer:
+        return SemVer.loads_fuzzy(self.vms_info.sw_version)
+
+    @property
+    def cluster_id(self) -> int:
+        return self.cluster_info.id
 
     # ----------------------------
     # View policies
@@ -339,9 +377,7 @@ class TestVmsSession(RESTSession):
         try:
             executable[src, tgt] & logger.pipe_info("mount >>")
         except ProcessExecutionError as exc:
-            if exc.retcode == 32:
-                raise MountFailed(detail=exc.stderr, src=src, tgt=tgt)
-            raise
+            raise MountFailed(detail=exc.stderr, src=src, tgt=tgt)
 
     def _to_mock_volume(self, vol_id):
         vol_dir = self._mock_mount[vol_id]
@@ -447,6 +483,5 @@ class TestVmsSession(RESTSession):
     update_quota = _empty
     delete_view_by_path = _empty
     delete_view_by_id = _empty
-    delete_folder = _empty
     refresh_auth_token = _empty
 
