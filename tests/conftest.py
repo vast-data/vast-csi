@@ -9,6 +9,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 from plumbum import local
 from easypy.aliasing import aliases
+from easypy.bunch import Bunch
 
 ROOT = Path(__file__).resolve().parents[1]
 # Extend python import path to get vast_csi package from here
@@ -82,7 +83,7 @@ class FakeSession:
     """Simulate VAST session behavior"""
 
     def __init__(self,
-                 view: Optional[str] = "/test/view",
+                 view: Optional[Bunch] = Bunch(path="/test/view", id=1),
                  quota_id: Optional[int] = 1,
                  quota_hard_limit: Optional[int] = 1000
                  ):
@@ -103,6 +104,7 @@ class FakeSession:
             return_value=FakeQuota(self.quota_hard_limit, self.quota_id),
             return_condition=self.quota_hard_limit is not None)
         self.get_view_by_path = FakeSessionMethod(return_value=self.view)
+        self.ensure_view = FakeSessionMethod(return_value=self.view)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -138,7 +140,7 @@ def fake_session():
     def __wrapped(
             quota_id: Optional[int] = 1,
             quota_hard_limit: Optional[int] = 1000,
-            view: Optional[str] = "/test/view"
+            view: Optional[str] = Bunch(path="/test/view", id=1)
     ):
         session_mock = FakeSession(view=view, quota_id=quota_id, quota_hard_limit=quota_hard_limit)
         with patch("vast_csi.server.Controller.vms_session", session_mock):
