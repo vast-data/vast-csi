@@ -39,3 +39,18 @@ class MissingParameter(Abort):
 
 class MountFailed(TException):
     template = "Mounting {src} failed"
+
+
+class BuilderFailed(Exception):
+
+    @property
+    def message(self):
+        return self.args[0]
+
+
+class SourceNotFound(BuilderFailed):
+    pass
+
+
+class VolumeAlreadyExists(BuilderFailed):
+    pass

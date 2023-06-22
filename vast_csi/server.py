@@ -46,8 +46,8 @@ from .utils import (
 from . import csi_pb2_grpc
 from .csi_pb2_grpc import ControllerServicer, NodeServicer, IdentityServicer
 from . import csi_types as types
-from .volume_builder import VolumeBuilder, SnapshotBuilder, TestVolumeBuilder
-from .exceptions import Abort, ApiError, MissingParameter, MountFailed
+from .volume_builder import EmptyVolumeBuilder, VolumeFromSnapshotBuilder, VolumeFromVolumeBuilder, TestVolumeBuilder
+from .exceptions import Abort, ApiError, MissingParameter, MountFailed, VolumeAlreadyExists, SourceNotFound
 from .vms_session import VmsSession, TestVmsSession
 from .configuration import Config
 
@@ -71,8 +71,8 @@ OUT_OF_RANGE = grpc.StatusCode.OUT_OF_RANGE
 
 SUPPORTED_ACCESS = [
     types.AccessModeType.SINGLE_NODE_WRITER,
-    # types.AccessModeType.SINGLE_NODE_READER_ONLY,
-    # types.AccessModeType.MULTI_NODE_READER_ONLY,
+    types.AccessModeType.SINGLE_NODE_READER_ONLY,
+    types.AccessModeType.MULTI_NODE_READER_ONLY,
     # types.AccessModeType.MULTI_NODE_SINGLE_WRITER,
     types.AccessModeType.MULTI_NODE_MULTI_WRITER,
 ]
@@ -249,8 +249,8 @@ class Controller(ControllerServicer, Instrumented):
         types.CtrlCapabilityType.EXPAND_VOLUME,
         types.CtrlCapabilityType.CREATE_DELETE_SNAPSHOT,
         types.CtrlCapabilityType.LIST_SNAPSHOTS,
+        types.CtrlCapabilityType.CLONE_VOLUME,
         # types.CtrlCapabilityType.GET_CAPACITY,
-        # types.CtrlCapabilityType.CLONE_VOLUME,
         # types.CtrlCapabilityType.PUBLISH_READONLY,
     ]
 
@@ -331,7 +331,6 @@ class Controller(ControllerServicer, Instrumented):
         _validate_capabilities(volume_capabilities)
         parameters = parameters or dict()
 
-        root_export = volume_name_fmt = lb_strategy = view_policy = vip_pool_name = mount_options = ""
         try:
             mount_capability = next(cap for cap in volume_capabilities if cap.HasField("mount"))
             mount_flags = mount_capability.mount.mount_flags
@@ -339,20 +338,16 @@ class Controller(ControllerServicer, Instrumented):
             # normalize mount options (remove spaces, brackets etc)
             mount_options = ",".join(re.sub(r"[\[\]]", "", mount_options).replace(",", " ").split())
         except StopIteration:
-            pass
-
+            mount_options = ""
+        # check if list of provided access modes contains read-write mode
+        rw_access_modes = [types.AccessModeType.SINGLE_NODE_WRITER, types.AccessModeType.MULTI_NODE_MULTI_WRITER]
+        rw_access_mode = any(
+            cap.access_mode.mode in rw_access_modes for cap in volume_capabilities if cap.HasField("access_mode")
+        )
         # Take appropriate builder for volume, snapshot or test builder
         if CONF.mock_vast:
-            if (
-                volume_content_source
-                and not CONF.fake_snapshot_store[
-                    volume_content_source.snapshot.snapshot_id
-                ].exists()
-            ):
-                raise Abort(
-                    NOT_FOUND,
-                    f"Source snapshot does not exist: {volume_content_source.snapshot.snapshot_id}",
-                )
+            clone_background_sync = True
+            root_export = volume_name_fmt = lb_strategy = view_policy = vip_pool_name = mount_options = ""
             builder = TestVolumeBuilder
 
         else:
@@ -364,12 +359,16 @@ class Controller(ControllerServicer, Instrumented):
                 raise MissingParameter(param="vip_pool_name")
             volume_name_fmt = parameters.get("volume_name_fmt", CONF.name_fmt)
             lb_strategy = parameters.get("lb_strategy", CONF.load_balancing)
+            clone_background_sync = bool(parameters.get("clone_background_sync", True))
 
-            if volume_content_source:
-                builder = SnapshotBuilder
+            if not volume_content_source:
+                builder = EmptyVolumeBuilder
 
-            elif not volume_content_source:
-                builder = VolumeBuilder
+            elif volume_content_source.snapshot.snapshot_id:
+                builder = VolumeFromSnapshotBuilder
+
+            elif volume_content_source.volume.volume_id:
+                builder = VolumeFromVolumeBuilder
 
             else:
                 raise ValueError(
@@ -379,10 +378,11 @@ class Controller(ControllerServicer, Instrumented):
 
         # Create volume, volume from snapshot or mount local path (for testing purposes)
         # depends on chosen builder.
-        volume = builder(
+        builder = builder(
             controller=self,
             configuration=CONF,
             name=name,
+            rw_access_mode=rw_access_mode,
             capacity_range=capacity_range,
             pvc_name=parameters.get("csi.storage.k8s.io/pvc/name"),
             pvc_namespace=parameters.get("csi.storage.k8s.io/pvc/namespace"),
@@ -394,7 +394,14 @@ class Controller(ControllerServicer, Instrumented):
             vip_pool_name=vip_pool_name,
             mount_options=mount_options,
             lb_strategy=lb_strategy,
-        ).build_volume()
+            clone_background_sync=clone_background_sync
+        )
+        try:
+            volume = builder.build_volume()
+        except SourceNotFound as exc:
+            raise Abort(NOT_FOUND, exc.message)
+        except VolumeAlreadyExists as exc:
+            raise Abort(ALREADY_EXISTS, exc.message)
         return types.CreateResp(volume=volume)
 
     def _delete_data_from_storage(self, path):
@@ -451,6 +458,7 @@ class Controller(ControllerServicer, Instrumented):
                 os.rmdir(tmpdir)  # will fail if not empty directory
 
     def DeleteVolume(self, volume_id):
+        self.vms_session.ensure_snapshot_stream_deleted(f"strm-{volume_id}")
         if quota := self.vms_session.get_quota(volume_id):
             try:
                 self._delete_data_from_storage(quota.path)
@@ -497,9 +505,7 @@ class Controller(ControllerServicer, Instrumented):
             export_path = str(root_export[volume_id])
 
         vip_pool_name = None if CONF.mock_vast else volume_context["vip_pool_name"]
-        found = bool(self.vms_session.get_quota(quota_path_fragment))
-
-        if not found:
+        if not bool(self.vms_session.get_quota(quota_path_fragment)):
             raise Abort(NOT_FOUND, f"Unknown volume: {quota_path_fragment}")
 
         if CONF.csi_sanity_test and CONF.node_id != node_id:
@@ -587,9 +593,7 @@ class Controller(ControllerServicer, Instrumented):
             )
             snapshot_name = snapshot_name.replace(":", "-").replace("/", "-")
             try:
-                snap = self.vms_session.create_snapshot(
-                    data=dict(name=snapshot_name, path=path)
-                )
+                snap = self.vms_session.create_snapshot(name=snapshot_name, path=path)
             except ApiError as exc:
                 handled = False
                 if exc.response.status_code == 400:
@@ -599,7 +603,7 @@ class Controller(ControllerServicer, Instrumented):
                         pass
                     else:
                         if (k, v) == ("name", "This field must be unique."):
-                            [snap] = self.vms_session.get_snapshot(snapshot_name=snapshot_name)
+                            snap = self.vms_session.get_snapshot(snapshot_name=snapshot_name)
                             if snap.path != path:
                                 raise Abort(
                                     ALREADY_EXISTS,
@@ -625,7 +629,6 @@ class Controller(ControllerServicer, Instrumented):
             CONF.fake_snapshot_store[snapshot_id].delete()
         else:
             snapshot = self.vms_session.get_snapshot(snapshot_id=snapshot_id)
-            self.vms_session.delete_snapshot(snapshot_id)
             if self.vms_session.get_quotas_by_path(snapshot.path):
                 pass  # quotas still exist
             elif self.vms_session.has_snapshots(snapshot.path):
@@ -633,6 +636,7 @@ class Controller(ControllerServicer, Instrumented):
             else:
                 logger.info(f"last snapshot for {snapshot.path}, and no more quotas - let's delete this directory")
                 self._delete_data_from_storage(snapshot.path)
+            self.vms_session.delete_snapshot(snapshot_id)
 
         return types.DeleteSnapResp()
 

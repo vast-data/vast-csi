@@ -5,7 +5,8 @@ from pprint import pformat
 from typing import ClassVar
 from uuid import uuid4
 from contextlib import contextmanager
-from requests import HTTPError
+from datetime import datetime, timedelta
+from requests.exceptions import HTTPError
 
 from easypy.bunch import Bunch
 from easypy.caching import cached_property
@@ -32,10 +33,13 @@ from .utils import parse_load_balancing_strategy
 from . import csi_types as types
 
 
-def requisite(semver: str, operation: str = None):
+def requisite(semver: str, operation: str = None, ignore: bool = False):
     """
     Use this decorator to indicate the minimum required version of the VAST cluster
      for invoking the API that is being decorated.
+    Decorator works in two modes:
+    1. When ignore == False and version mismatch detected then `OperationNotSupported` exception will be thrown
+    2. When ignore == True and version mismatch detected then method decorated method execution never happened
     """
     required_version = SemVer.loads(semver)
 
@@ -45,10 +49,15 @@ def requisite(semver: str, operation: str = None):
             operation = fn.__name__
 
         def _args_wrapper(self, *args, **kwargs):
+            sw_version = self.sw_version
+            version_mismatch = sw_version < required_version
+            if version_mismatch and ignore:
+                return
+
             try:
                 return fn(self, *args, **kwargs)
             except HTTPError as exc:
-                if exc.response.status_code == 404 and self.sw_version < required_version:
+                if exc.response.status_code == 404 and version_mismatch:
                     raise OperationNotSupported(
                         op=operation,
                         required_version=required_version.dumps(),
@@ -177,7 +186,7 @@ class VmsSession(RESTSession):
         Returns: None if policy doesn't exist.
         """
         if res := self.viewpolicies(name=policy_name):
-            return Bunch.from_dict(res[0])
+            return res[0]
 
     def ensure_view_policy(self, policy_name: str):
         """Check if view policy exists on remote cluster and if not create new policy with provided name."""
@@ -194,7 +203,13 @@ class VmsSession(RESTSession):
         if views := self.views(path=str(path)):
             if len(views) > 1:
                 raise Exception(f"Too many views found for path {path}: {views}")
-            return Bunch.from_dict(views[0])
+            return views[0]
+
+    def ensure_view(self, path, protocol, view_policy):
+        if not (view := self.get_view_by_path(path)):
+            view_policy = self.ensure_view_policy(policy_name=view_policy)
+            view = self.create_view(path=path, protocol=protocol, policy_id=view_policy.id)
+        return view
 
     def create_view(self, path: str, policy_id: int, protocol="NFS", create_dir=True, alias=None):
         """
@@ -301,7 +316,6 @@ class VmsSession(RESTSession):
 
     # ----------------------------
     # Snapshots
-
     def snapshot_list(self, page_size):
         return self.snapshots(page_size=page_size)
 
@@ -310,9 +324,13 @@ class VmsSession(RESTSession):
         ret = self.snapshots(path=path, page_size=10)  # we intentionally limit the number of results
         return ret.results
 
-    def create_snapshot(self, data):
+    def create_snapshot(self, name, path, expiration_delta=None):
         """Create new snapshot."""
-        return self.post("snapshots", data=data)
+        data = dict(name=name, path=path)
+        if expiration_delta:
+            expiration_time = (datetime.utcnow() + expiration_delta).isoformat()
+            data["expiration_time"] = expiration_time
+        return Bunch(self.post("snapshots", data=data))
 
     def get_snapshot(self, snapshot_name=None, snapshot_id=None):
         """
@@ -320,15 +338,58 @@ class VmsSession(RESTSession):
         Only one argument should be provided.
         """
         if snapshot_name:
-            ret = self.snapshots(name=snapshot_name)
-            if len(ret) > 1:
-                raise Exception(f"Too many snapshots named {snapshot_name}: ({len(ret)})")
-            return ret[0]
+            if ret := self.snapshots(name=snapshot_name):
+                if len(ret) > 1:
+                    raise Exception(f"Too many snapshots named {snapshot_name}: ({len(ret)})")
+                return ret[0]
         else:
             return self.snapshots(snapshot_id)
 
+    def ensure_snapshot(self, snapshot_name, path):
+        expiration_delta = timedelta(minutes=1)
+        if snapshot := self.get_snapshot(snapshot_name=snapshot_name):
+            if snapshot.path.strip("/") != path.strip("/"):
+                raise Exception(
+                    f"Snapshot already exists, but the specified path {path}"
+                    f" does not correspond to the path of the snapshot {snapshot.path}"
+                )
+        else:
+            snapshot = self.create_snapshot(name=snapshot_name, path=path, expiration_delta=expiration_delta)
+        return snapshot
+
     def delete_snapshot(self, snapshot_id):
         self.delete(f"snapshots/{snapshot_id}")
+
+    def get_snapshot_stream(self, name):
+        if res := self.globalsnapstreams(name=name):
+            return res[0]
+
+    def stop_snapshot_stream(self, snapshot_stream_id):
+        self.patch(f"globalsnapstreams/{snapshot_stream_id}/stop")
+
+    @requisite(semver="4.7.0", operation="create_globalsnapshotstream")
+    def ensure_snapshot_stream(self, snapshot_id, destination_path, snapshot_stream_name, background_sync):
+        if not (snapshot_stream := self.get_snapshot_stream(name=snapshot_stream_name)):
+            data = dict(
+                loanee_root_path=destination_path,
+                name=snapshot_stream_name,
+                enabled=background_sync,
+            )
+            snapshot_stream = self.post(f"snapshots/{snapshot_id}/clone/", data)
+        return snapshot_stream
+
+    @requisite(semver="4.7.0", ignore=True)
+    def ensure_snapshot_stream_deleted(self, snapshot_stream_name):
+        """
+        Stop global snapshot stream in case it is not finished.
+        Snapshots with expiration time will be deleted as soon as snapshot stream is stopped.
+        """
+        if snapshot_stream := self.get_snapshot_stream(snapshot_stream_name):
+            if snapshot_stream.status.state != "FINISHED":
+                # Just stop the stream. It will be deleted automatically upon stop request.
+                self.stop_snapshot_stream(snapshot_stream.id)
+            else:
+                self.delete(f"globalsnapstreams/{snapshot_stream.id}", data=dict(remove_dir=True))
 
     def get_by_token(self, token):
         """
@@ -473,6 +534,9 @@ class TestVmsSession(RESTSession):
     def ensure_view_policy(self, *_, **__):
         return Bunch(id=1)
 
+    def get_snapshot(self, *_, **__):
+        return []
+
     def _empty(self, *_, **__):
         """
         empty method for test scenarios
@@ -483,5 +547,6 @@ class TestVmsSession(RESTSession):
     update_quota = _empty
     delete_view_by_path = _empty
     delete_view_by_id = _empty
+    ensure_snapshot_stream_deleted = _empty
     refresh_auth_token = _empty
 
