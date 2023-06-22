@@ -1,9 +1,12 @@
 # CHANGELOG
 
-## Version 2.2.2
-* added `CHANGELOG.mg` (VCSI-95)
+## Version 2.3.0
 * added adjustable timeout and number of workers (VCSI-100)
 * added k8s error events and more informative error logging (VCSI-97)
+* added CLONE_VOLUME support (VCSI-83)
+* clone volumes from snapshots in READ_WRITE mode (VCSI-103)
+* Misc
+    * added `CHANGELOG.mg` (VCSI-95)
 
 ## Version 2.2.1 (05/16/23)
 * added NFS4 support (inferred from mount options) (VCSI-78)
