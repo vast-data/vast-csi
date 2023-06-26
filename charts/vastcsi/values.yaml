@@ -75,6 +75,21 @@ storageClasses: {}
 #    vipPool: "vippool-3"
 #    ....  other options
 
+####################
+# VAST PROVISIONER RUNTIME PARAMETERS
+####################
+
+# The number of worker threads the CSI plugin use to serve requests simultaneously.
+numWorkers: 10
+# Timeout of all calls to CSI driver.
+operationTimeout: 15
+# Each time a failure occurs, sidecar containers initiate retries
+# but only after waiting for 'operationRetryIntervalStart' seconds
+# which then doubles with each subsequent failure  until it reaches `operationRetryIntervalMax`
+operationRetryIntervalStart: 10
+
+# Maximum interval between attempts.
+operationRetryIntervalMax: 60
 
 ####################
 # VAST CSI SNAPSHOTS CLASS OPTIONS
@@ -106,7 +121,7 @@ csiImage: "vastdataorg/csi"
 
 # csiImageTag represents version of docker image that serves  CSI Controller and CSI Node.
 # To check latest stable tag refer https://support.vastdata.com/hc/en-us/articles/360010932159-VAST-with-Kubernetes
-csiImageTag: v2.2.1
+csiImageTag: v2.3.0
 
 
 ####################
