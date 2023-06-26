@@ -58,7 +58,7 @@ parameters:
   eph_volume_name_fmt: {{ pluck "ephemeralVolumeNameFormat" $options $.Values.storageClassDefaults | first | quote }}
   clone_background_sync: {{
                                  pluck "cloneBackgroundSync" $options $.Values.storageClassDefaults |
-                                 first | quote | mustRegexMatch "true" | ternary "true" "" | quote
+                                 first | quote | mustRegexMatch "true" | ternary true false | quote
                               }}
 allowVolumeExpansion: {{
                          pluck "allowVolumeExpansion" $options $.Values.storageClassDefaults |

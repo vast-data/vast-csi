@@ -34,6 +34,7 @@ from easypy.misc import kwargs_resilient, at_least
 from easypy.caching import cached_property
 from easypy.bunch import Bunch
 from easypy.exceptions import TException
+from easypy.humanize import yesno_to_bool
 
 from .logging import logger, init_logging
 from .utils import (
@@ -359,7 +360,7 @@ class Controller(ControllerServicer, Instrumented):
                 raise MissingParameter(param="vip_pool_name")
             volume_name_fmt = parameters.get("volume_name_fmt", CONF.name_fmt)
             lb_strategy = parameters.get("lb_strategy", CONF.load_balancing)
-            clone_background_sync = bool(parameters.get("clone_background_sync", True))
+            clone_background_sync = yesno_to_bool(parameters.get("clone_background_sync", "true"))
 
             if not volume_content_source:
                 builder = EmptyVolumeBuilder

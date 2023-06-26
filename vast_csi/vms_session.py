@@ -389,7 +389,7 @@ class VmsSession(RESTSession):
                 # Just stop the stream. It will be deleted automatically upon stop request.
                 self.stop_snapshot_stream(snapshot_stream.id)
             else:
-                self.delete(f"globalsnapstreams/{snapshot_stream.id}", data=dict(remove_dir=True))
+                self.delete(f"globalsnapstreams/{snapshot_stream.id}", data=dict(remove_dir=False))
 
     def get_by_token(self, token):
         """
