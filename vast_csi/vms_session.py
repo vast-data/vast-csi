@@ -420,6 +420,37 @@ class VmsSession(RESTSession):
     def delete_snapshot(self, snapshot_id):
         self.delete(f"snapshots/{snapshot_id}")
 
+    def get_snapshot_stream(self, name):
+        if res := self.globalsnapstreams(name=name):
+            return res[0]
+
+    def stop_snapshot_stream(self, snapshot_stream_id):
+        self.patch(f"globalsnapstreams/{snapshot_stream_id}/stop")
+
+    @requisite(semver="4.7.0", operation="create_globalsnapshotstream")
+    def ensure_snapshot_stream(self, snapshot_id, destination_path, snapshot_stream_name, background_sync):
+        if not (snapshot_stream := self.get_snapshot_stream(name=snapshot_stream_name)):
+            data = dict(
+                loanee_root_path=destination_path,
+                name=snapshot_stream_name,
+                enabled=background_sync,
+            )
+            snapshot_stream = self.post(f"snapshots/{snapshot_id}/clone/", data)
+        return snapshot_stream
+
+    @requisite(semver="4.7.0", ignore=True)
+    def ensure_snapshot_stream_deleted(self, snapshot_stream_name):
+        """
+        Stop global snapshot stream in case it is not finished.
+        Snapshots with expiration time will be deleted as soon as snapshot stream is stopped.
+        """
+        if snapshot_stream := self.get_snapshot_stream(snapshot_stream_name):
+            if snapshot_stream.status.state != "FINISHED":
+                # Just stop the stream. It will be deleted automatically upon stop request.
+                self.stop_snapshot_stream(snapshot_stream.id)
+            else:
+                self.delete(f"globalsnapstreams/{snapshot_stream.id}", data=dict(remove_dir=False))
+
     def get_by_token(self, token):
         """
         This method used to iterate over paginated resources (snapshots, quotas etc).
