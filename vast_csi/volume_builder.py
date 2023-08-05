@@ -48,14 +48,12 @@ class BaseBuilder(VolumeBuilderI):
     configuration: "CONF"
 
     name: str  # Name of volume or snapshot
-    rw_access_mode: bool
     root_export: str
     volume_name_fmt: str
     view_policy: str
     vip_pool_name: str
     mount_options: str
     lb_strategy: str
-    clone_background_sync: bool
 
     capacity_range: Optional[int]  # Optional desired volume capacity
     pvc_name: Optional[str]
@@ -150,47 +148,6 @@ class EmptyVolumeBuilder(BaseBuilder):
 
 
 @final
-class VolumeFromVolumeBuilder(EmptyVolumeBuilder):
-    """Cloning volumes from existing."""
-
-    def build_volume(self) -> types.Volume:
-        volume_name = self.build_volume_name()
-        requested_capacity = self.get_requested_capacity()
-        volume_context = self.volume_context
-        volume_context["volume_name"] = volume_name
-
-        source_volume_id = self.volume_content_source.volume.volume_id
-        if not (source_quota := self.controller.vms_session.get_quota(source_volume_id)):
-            raise SourceNotFound(f"Unknown volume: {source_volume_id}")
-
-        source_path = source_quota.path
-        snapshot_name = f"snp-{self.name}"
-        snapshot_stream_name = f"strm-{self.name}"
-        snapshot = self.controller.vms_session.ensure_snapshot(snapshot_name=snapshot_name, path=source_path)
-
-        snapshot_stream = self.controller.vms_session.ensure_snapshot_stream(
-            snapshot_id=snapshot.id, destination_path=self.view_path,
-            snapshot_stream_name=snapshot_stream_name, background_sync=self.clone_background_sync
-        )
-        volume_context.update(snapshot_stream_name=snapshot_stream.name)
-        view = self.controller.vms_session.ensure_view(
-            path=self.view_path, protocol=self.mount_protocol, view_policy=self.view_policy
-        )
-        volume_context.update(view_id=str(view.id))
-        quota = self._ensure_quota(requested_capacity, volume_name, self.view_path)
-        volume_context.update(quota_id=str(quota.id))
-
-        return types.Volume(
-            capacity_bytes=requested_capacity,
-            volume_id=self.name,
-            content_source=types.VolumeContentSource(
-                volume=types.VolumeSource(volume_id=source_volume_id)
-            ),
-            volume_context=volume_context,
-        )
-
-
-@final
 class VolumeFromSnapshotBuilder(EmptyVolumeBuilder):
     """Builder for k8s Snapshots."""
 
@@ -204,40 +161,17 @@ class VolumeFromSnapshotBuilder(EmptyVolumeBuilder):
             raise SourceNotFound(f"Unknown snapshot: {source_snapshot_id}")
         volume_context = self.volume_context
 
-        if self.rw_access_mode:
-            # Create volume from snapshot for READ_WRITE modes.
-            #   quota and view will be created.
-            #   The contents of the source snapshot will be replicated to view folder
-            #   using an intermediate global snapshot stream.
-            volume_name = self.build_volume_name()
-            requested_capacity = self.get_requested_capacity()
-            volume_context["volume_name"] = volume_name
-
-            snapshot_stream_name = f"strm-{self.name}"
-            snapshot_stream = self.controller.vms_session.ensure_snapshot_stream(
-                snapshot_id=snapshot.id, destination_path=self.view_path,
-                snapshot_stream_name=snapshot_stream_name, background_sync=self.clone_background_sync
-            )
-            volume_context.update(snapshot_stream_name=snapshot_stream.name)
-            view = self.controller.vms_session.ensure_view(
-                path=self.view_path, protocol=self.mount_protocol, view_policy=self.view_policy
-            )
-            volume_context.update(view_id=str(view.id))
-            quota = self._ensure_quota(requested_capacity, volume_name, self.view_path)
-            volume_context.update(quota_id=str(quota.id))
-
-        else:
-            # Create volume from snapshot for READ_ONLY modes.
-            #   Such volume has no quota and view representation on VAST.
-            #   Volume within pod will be directly mounted to snapshot source folder.
-            requested_capacity = 0  # read-only volumes from snapshots have no capacity.
-            snapshot_path = local.path(snapshot.path)
-            # Compute root_export from snapshot path. This value should be passed as context for appropriate
-            # mounting within 'ControllerPublishVolume' endpoint
-            self.root_export = snapshot_path.parent
-            path = snapshot_path / ".snapshot" / snapshot.name
-            snapshot_base_path = str(path.relative_to(self.root_export))
-            volume_context.update(snapshot_base_path=snapshot_base_path, root_export=self.root_export)
+        # Create volume from snapshot for READ_ONLY modes.
+        #   Such volume has no quota and view representation on VAST.
+        #   Volume within pod will be directly mounted to snapshot source folder.
+        requested_capacity = 0  # read-only volumes from snapshots have no capacity.
+        snapshot_path = local.path(snapshot.path)
+        # Compute root_export from snapshot path. This value should be passed as context for appropriate
+        # mounting within 'ControllerPublishVolume' endpoint
+        self.root_export = snapshot_path.parent
+        path = snapshot_path / ".snapshot" / snapshot.name
+        snapshot_base_path = str(path.relative_to(self.root_export))
+        volume_context.update(snapshot_base_path=snapshot_base_path, root_export=self.root_export)
 
         return types.Volume(
             capacity_bytes=requested_capacity,
@@ -267,9 +201,6 @@ class TestVolumeBuilder(BaseBuilder):
             if content_source.snapshot.snapshot_id:
                 if not self.configuration.fake_snapshot_store[content_source.snapshot.snapshot_id].exists():
                     raise SourceNotFound(f"Source snapshot does not exist: {content_source.snapshot.snapshot_id}")
-            elif content_source.volume.volume_id:
-                if not self.configuration.fake_quota_store[content_source.volume.volume_id].exists():
-                    raise SourceNotFound(f"Source volume does not exist: {content_source.volume.volume_id}")
 
         requested_capacity = self.get_requested_capacity()
         if existing_capacity := self.get_existing_capacity():

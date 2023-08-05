@@ -34,7 +34,6 @@ from easypy.misc import kwargs_resilient, at_least
 from easypy.caching import cached_property
 from easypy.bunch import Bunch
 from easypy.exceptions import TException
-from easypy.humanize import yesno_to_bool
 
 from .logging import logger, init_logging
 from .utils import (
@@ -47,7 +46,7 @@ from .utils import (
 from . import csi_pb2_grpc
 from .csi_pb2_grpc import ControllerServicer, NodeServicer, IdentityServicer
 from . import csi_types as types
-from .volume_builder import EmptyVolumeBuilder, VolumeFromSnapshotBuilder, VolumeFromVolumeBuilder, TestVolumeBuilder
+from .volume_builder import EmptyVolumeBuilder, VolumeFromSnapshotBuilder, TestVolumeBuilder
 from .exceptions import Abort, ApiError, MissingParameter, MountFailed, VolumeAlreadyExists, SourceNotFound
 from .vms_session import VmsSession, TestVmsSession
 from .configuration import Config
@@ -72,8 +71,8 @@ OUT_OF_RANGE = grpc.StatusCode.OUT_OF_RANGE
 
 SUPPORTED_ACCESS = [
     types.AccessModeType.SINGLE_NODE_WRITER,
-    types.AccessModeType.SINGLE_NODE_READER_ONLY,
-    types.AccessModeType.MULTI_NODE_READER_ONLY,
+    # types.AccessModeType.SINGLE_NODE_READER_ONLY,
+    # types.AccessModeType.MULTI_NODE_READER_ONLY,
     # types.AccessModeType.MULTI_NODE_SINGLE_WRITER,
     types.AccessModeType.MULTI_NODE_MULTI_WRITER,
 ]
@@ -168,7 +167,7 @@ class Instrumented:
             except TException as exc:
                 # Any exception inherited from TException
                 logger.exception(f"Exception during {method}")
-                context.abort(ABORTED, f"[{method}]. {exc.render(color=False)}")
+                context.abort(UNKNOWN, f"[{method}]. {exc.render(color=False)}")
             except Exception as exc:
                 logger.exception(f"Exception during {method}")
                 text = str(exc)
@@ -250,8 +249,8 @@ class Controller(ControllerServicer, Instrumented):
         types.CtrlCapabilityType.EXPAND_VOLUME,
         types.CtrlCapabilityType.CREATE_DELETE_SNAPSHOT,
         types.CtrlCapabilityType.LIST_SNAPSHOTS,
-        types.CtrlCapabilityType.CLONE_VOLUME,
         # types.CtrlCapabilityType.GET_CAPACITY,
+        # types.CtrlCapabilityType.CLONE_VOLUME,
         # types.CtrlCapabilityType.PUBLISH_READONLY,
     ]
 
@@ -340,14 +339,9 @@ class Controller(ControllerServicer, Instrumented):
             mount_options = ",".join(re.sub(r"[\[\]]", "", mount_options).replace(",", " ").split())
         except StopIteration:
             mount_options = ""
-        # check if list of provided access modes contains read-write mode
-        rw_access_modes = [types.AccessModeType.SINGLE_NODE_WRITER, types.AccessModeType.MULTI_NODE_MULTI_WRITER]
-        rw_access_mode = any(
-            cap.access_mode.mode in rw_access_modes for cap in volume_capabilities if cap.HasField("access_mode")
-        )
+
         # Take appropriate builder for volume, snapshot or test builder
         if CONF.mock_vast:
-            clone_background_sync = True
             root_export = volume_name_fmt = lb_strategy = view_policy = vip_pool_name = mount_options = ""
             builder = TestVolumeBuilder
 
@@ -360,16 +354,12 @@ class Controller(ControllerServicer, Instrumented):
                 raise MissingParameter(param="vip_pool_name")
             volume_name_fmt = parameters.get("volume_name_fmt", CONF.name_fmt)
             lb_strategy = parameters.get("lb_strategy", CONF.load_balancing)
-            clone_background_sync = yesno_to_bool(parameters.get("clone_background_sync", "true"))
 
             if not volume_content_source:
                 builder = EmptyVolumeBuilder
 
             elif volume_content_source.snapshot.snapshot_id:
                 builder = VolumeFromSnapshotBuilder
-
-            elif volume_content_source.volume.volume_id:
-                builder = VolumeFromVolumeBuilder
 
             else:
                 raise ValueError(
@@ -383,7 +373,6 @@ class Controller(ControllerServicer, Instrumented):
             controller=self,
             configuration=CONF,
             name=name,
-            rw_access_mode=rw_access_mode,
             capacity_range=capacity_range,
             pvc_name=parameters.get("csi.storage.k8s.io/pvc/name"),
             pvc_namespace=parameters.get("csi.storage.k8s.io/pvc/namespace"),
@@ -395,7 +384,6 @@ class Controller(ControllerServicer, Instrumented):
             vip_pool_name=vip_pool_name,
             mount_options=mount_options,
             lb_strategy=lb_strategy,
-            clone_background_sync=clone_background_sync
         )
         try:
             volume = builder.build_volume()
@@ -459,7 +447,6 @@ class Controller(ControllerServicer, Instrumented):
                 os.rmdir(tmpdir)  # will fail if not empty directory
 
     def DeleteVolume(self, volume_id):
-        self.vms_session.ensure_snapshot_stream_deleted(f"strm-{volume_id}")
         if quota := self.vms_session.get_quota(volume_id):
             try:
                 self._delete_data_from_storage(quota.path)
