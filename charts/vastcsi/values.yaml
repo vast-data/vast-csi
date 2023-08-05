@@ -49,6 +49,8 @@ storageClassDefaults:
   ephemeralVolumeNameFormat: "csi:{namespace}:{name}:{id}"
   # Add any extra NFS options desired here
   mountOptions: ""
+  # Name of QoS policy associates with the view.
+  qosPolicy: ""
 
 # Default storage class to use with CSI DRIVER.
 # The only required value is 'vipPool' name where user should provide name of existing vip pool on

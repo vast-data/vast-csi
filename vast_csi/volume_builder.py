@@ -54,6 +54,7 @@ class BaseBuilder(VolumeBuilderI):
     vip_pool_name: str
     mount_options: str
     lb_strategy: str
+    qos_policy: Optional[str]
 
     capacity_range: Optional[int]  # Optional desired volume capacity
     pvc_name: Optional[str]
@@ -117,7 +118,7 @@ class EmptyVolumeBuilder(BaseBuilder):
 
         # Check if view with expected system path already exists.
         view = self.controller.vms_session.ensure_view(
-            path=self.view_path, protocol=self.mount_protocol, view_policy=self.view_policy
+            path=self.view_path, protocol=self.mount_protocol, view_policy=self.view_policy, qos_policy=self.qos_policy
         )
         volume_context.update(view_id=str(view.id))
         quota = self._ensure_quota(requested_capacity, volume_name, self.view_path)

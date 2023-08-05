@@ -342,7 +342,7 @@ class Controller(ControllerServicer, Instrumented):
 
         # Take appropriate builder for volume, snapshot or test builder
         if CONF.mock_vast:
-            root_export = volume_name_fmt = lb_strategy = view_policy = vip_pool_name = mount_options = ""
+            root_export = volume_name_fmt = lb_strategy = view_policy = vip_pool_name = mount_options = qos_policy = ""
             builder = TestVolumeBuilder
 
         else:
@@ -354,6 +354,7 @@ class Controller(ControllerServicer, Instrumented):
                 raise MissingParameter(param="vip_pool_name")
             volume_name_fmt = parameters.get("volume_name_fmt", CONF.name_fmt)
             lb_strategy = parameters.get("lb_strategy", CONF.load_balancing)
+            qos_policy = parameters.get("qos_policy")
 
             if not volume_content_source:
                 builder = EmptyVolumeBuilder
@@ -384,6 +385,7 @@ class Controller(ControllerServicer, Instrumented):
             vip_pool_name=vip_pool_name,
             mount_options=mount_options,
             lb_strategy=lb_strategy,
+            qos_policy=qos_policy,
         )
         try:
             volume = builder.build_volume()

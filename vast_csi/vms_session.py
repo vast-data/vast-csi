@@ -162,6 +162,15 @@ class VmsSession(RESTSession):
             raise Exception(f"No such view policy: {policy_name}. Please create policy manually")
 
     # ----------------------------
+    # QoS policies
+    def ensure_qos_policy(self, policy_name: str):
+        """Get QoS policy by name. Raise exception if not found."""
+        if res := self.qospolicies(name=policy_name):
+            return res[0]
+        else:
+            raise Exception(f"No such QoS policy: {policy_name}. Please create policy manually")
+
+    # ----------------------------
     # Views
     def get_view_by_path(self, path) -> Bunch:
         """
@@ -172,18 +181,23 @@ class VmsSession(RESTSession):
                 raise Exception(f"Too many views found for path {path}: {views}")
             return views[0]
 
-    def ensure_view(self, path, protocol, view_policy):
+    def ensure_view(self, path, protocol, view_policy, qos_policy):
         if not (view := self.get_view_by_path(path)):
             view_policy = self.ensure_view_policy(policy_name=view_policy)
-            view = self.create_view(path=path, protocol=protocol, policy_id=view_policy.id)
+            if qos_policy:
+                qos_policy_id = self.ensure_qos_policy(qos_policy).id
+            else:
+                qos_policy_id = None
+            view = self.create_view(path=path, protocol=protocol, policy_id=view_policy.id, qos_policy_id=qos_policy_id)
         return view
 
-    def create_view(self, path: str, policy_id: int, protocol="NFS", create_dir=True, alias=None):
+    def create_view(self, path: str, policy_id: int, qos_policy_id: int, protocol="NFS", create_dir=True, alias=None):
         """
         Create new view on remove cluster
         Args:
             path: full system path to create view for.
             policy_id: id of view policy that should be assigned to view.
+            qos_policy_id: id of QoS policy associated with view
             create_dir: if underlying directory should be created along with view.
             alias: view alias
             protocol: nfs protocol (NFS or NFS4)
@@ -196,6 +210,8 @@ class VmsSession(RESTSession):
             "protocols": [protocol],
             "policy_id": policy_id
         }
+        if qos_policy_id:
+            data["qos_policy_id"] = qos_policy_id
         if alias:
             data["alias"] = alias
         return Bunch.from_dict(self.post("views", data))
