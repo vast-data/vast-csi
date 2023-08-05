@@ -5,7 +5,7 @@ from pprint import pformat
 from typing import ClassVar
 from uuid import uuid4
 from contextlib import contextmanager
-from requests.exceptions import ConnectionError
+from requests.exceptions import ConnectionError, HTTPError
 
 
 from easypy.bunch import Bunch
@@ -28,9 +28,45 @@ from plumbum import local, ProcessExecutionError
 
 from .logging import logger
 from .configuration import Config
-from .exceptions import ApiError, MountFailed
+from .exceptions import ApiError, MountFailed, OperationNotSupported
 from .utils import parse_load_balancing_strategy, generate_ip_range
 from . import csi_types as types
+
+
+def requisite(semver: str, operation: str = None, ignore: bool = False):
+    """
+    Use this decorator to indicate the minimum required version of the VAST cluster
+     for invoking the API that is being decorated.
+    Decorator works in two modes:
+    1. When ignore == False and version mismatch detected then `OperationNotSupported` exception will be thrown
+    2. When ignore == True and version mismatch detected then method decorated method execution never happened
+    """
+
+    required_version = SemVer.loads(semver)
+
+    def dec(fn):
+
+        def _args_wrapper(self, *args, **kwargs):
+            sw_version = self.sw_version
+            version_mismatch = sw_version < required_version
+            if version_mismatch and ignore:
+                return
+
+            try:
+                return fn(self, *args, **kwargs)
+            except HTTPError as exc:
+                if exc.response.status_code == 404 and version_mismatch:
+                    raise OperationNotSupported(
+                        op=operation or fn.__name__,
+                        required_version=required_version.dumps(),
+                        current_version=self.sw_version.dumps(),
+                        tip="Upgrade VAST cluster or adjust CSI driver settings to avoid unsupported operations"
+                    )
+                raise
+
+        return _args_wrapper
+
+    return dec
 
 
 class RESTSession(requests.Session):
@@ -128,6 +164,7 @@ class VmsSession(RESTSession):
     Operations over vip pools, quotas, snapshots etc.
     """
 
+    TRASH_API_INTRODUCED: ClassVar[SemVer] = SemVer.loads("4.6.0")
     _vip_round_robin_idx: ClassVar[int] = -1
 
     # ----------------------------
@@ -150,6 +187,37 @@ class VmsSession(RESTSession):
     @property
     def cluster_id(self) -> int:
         return self.cluster_info.id
+
+    def is_trash_api_usable(self) -> bool:
+        if self.config.dont_use_trash_api or self.sw_version < self.TRASH_API_INTRODUCED:
+            # trash api usage is disabled by csi admin or trash api doesn't exists for cluster
+            return False
+        elif not self.cluster_info.enable_trash:
+            logger.warning(
+                f"Trash Folder Access is disabled"
+                f" - please enable it (https://{self.config.vms_host}/#/settings?category=cluster)"
+            )
+            return False
+        else:
+            # trash API is enabled. Use it!
+            return True
+
+    @requisite(semver="4.6.0")
+    def delete_folder(self, path: str):
+        """Delete remote cluster folder by provided path."""
+        try:
+            self.delete(f"/clusters/{self.cluster_id}/delete_folder/", data={"path": path})
+        except ApiError as e:
+            if "no such directory" in e.render():
+                logger.debug(f"Remote directory might have been removed earlier. ({e})")
+            elif "trash folder disabled" in e.render():
+                # Trash api has been disabled recently so it is not reflected in cache yet.
+                # clear cache in order to take recent `trash_enable` flag next time
+                self.__class__.cluster_info.fget.cache.clear()
+                raise Exception("Trash Folder Access is disabled")
+            else:
+                # unpredictable error
+                raise
 
     # ----------------------------
     # View policies
@@ -512,4 +580,5 @@ class TestVmsSession(RESTSession):
     delete_view_by_path = _empty
     delete_view_by_id = _empty
     refresh_auth_token = _empty
-
+    delete_folder = _empty
+    is_trash_api_usable = _empty

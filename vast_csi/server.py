@@ -396,6 +396,12 @@ class Controller(ControllerServicer, Instrumented):
         return types.CreateResp(volume=volume)
 
     def _delete_data_from_storage(self, path):
+        if self.vms_session.is_trash_api_usable():
+            logger.info(f"Use trash API to delete {path}")
+            self.vms_session.delete_folder(path)
+            return
+
+        logger.info(f"Use local mounting to delete {path}")
         path = local.path(path)
         volume_id = path.name
         view_policy = self.vms_session.ensure_view_policy(policy_name=CONF.deletion_view_policy)

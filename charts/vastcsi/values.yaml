@@ -18,11 +18,15 @@ sslCert: ""
 # DELETE VOLUMES
 ####################
 # Dedicated vip pool to delete volumes. Can have the same value as regular StorageClass option `vipPool`
-# - must be provided by user
+# - value is not required when VAST cluster version is 4.6.0 onwards and `DontUseTrashApi` flag is set to false
 deletionVipPool: ""
 # Dedicated view policy to delete volumes. Can have the same value as regular StorageClass option `viewPolicy`
-# - must be provided by user
+# - value is not required when VAST cluster version is 4.6.0 onwards and `DontUseTrashApi` flag is set to false
 deletionViewPolicy: ""
+# When the flag is set to 'true', the controller will opt to using a local mount for deleting data from discarded volumes,
+# as opposed to sending the request to the VMS over REST.
+# Normally this should be kept as 'false'. Please contact VAST Support if you feel you need to set this to 'true'.
+dontUseTrashApi: false
 
 ####################
 # VAST CSI STORAGE CLASS OPTIONS
