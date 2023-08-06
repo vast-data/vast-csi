@@ -120,8 +120,8 @@ class EmptyVolumeBuilder(BaseBuilder):
         view = self.controller.vms_session.ensure_view(
             path=self.view_path, protocol=self.mount_protocol, view_policy=self.view_policy, qos_policy=self.qos_policy
         )
-        volume_context.update(view_id=str(view.id))
-        quota = self._ensure_quota(requested_capacity, volume_name, self.view_path)
+        volume_context.update(view_id=str(view.id), tenant_id=str(view.tenant_id))
+        quota = self._ensure_quota(requested_capacity, volume_name, self.view_path, view.tenant_id)
         volume_context.update(quota_id=str(quota.id))
 
         return types.Volume(
@@ -130,17 +130,23 @@ class EmptyVolumeBuilder(BaseBuilder):
             volume_context=volume_context,
         )
 
-    def _ensure_quota(self, requested_capacity, volume_name, view_path):
+    def _ensure_quota(self, requested_capacity, volume_name, view_path, tenant_id):
         if quota := self.controller.vms_session.get_quota(self.name):
             # Check if volume with provided name but another capacity already exists.
             if quota.hard_limit != requested_capacity:
                 raise VolumeAlreadyExists(
-                    "Volume already exists with different capacity than requested"
+                    "Volume already exists with different capacity than requested "
                     f"({quota.hard_limit})")
+            if quota.tenant_id != tenant_id:
+                raise VolumeAlreadyExists(
+                    "Volume already exists with different tenancy ownership "
+                    f"({quota.tenant_name})")
+
         else:
             data = dict(
                 name=volume_name,
                 path=view_path,
+                tenant_id=tenant_id
             )
             if requested_capacity:
                 data.update(hard_limit=requested_capacity)
@@ -172,7 +178,9 @@ class VolumeFromSnapshotBuilder(EmptyVolumeBuilder):
         self.root_export = snapshot_path.parent
         path = snapshot_path / ".snapshot" / snapshot.name
         snapshot_base_path = str(path.relative_to(self.root_export))
-        volume_context.update(snapshot_base_path=snapshot_base_path, root_export=self.root_export)
+        volume_context.update(
+            snapshot_base_path=snapshot_base_path, root_export=self.root_export, tenant_id=str(snapshot.tenant_id)
+        )
 
         return types.Volume(
             capacity_bytes=requested_capacity,

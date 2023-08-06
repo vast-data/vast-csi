@@ -3,6 +3,7 @@
 ## Version 2.2.5
 * added adjustable timeout and number of workers (VCSI-100)
 * added k8s error events and more informative error logging (VCSI-97)
+* added multitenancy support (VCSI-114)
 * removed password and username fields from values.yaml. Created new required field `secretName` (VCSI-115)
 * added QoS policy support (VCSI-113)
 * Misc

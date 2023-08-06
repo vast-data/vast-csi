@@ -398,11 +398,11 @@ class Controller(ControllerServicer, Instrumented):
     def _delete_data_from_storage(self, path):
         path = local.path(path)
         volume_id = path.name
-        nfs_server = self.vms_session.get_vip(vip_pool_name=CONF.deletion_vip_pool)
         view_policy = self.vms_session.ensure_view_policy(policy_name=CONF.deletion_view_policy)
+        nfs_server = self.vms_session.get_vip(vip_pool_name=CONF.deletion_vip_pool, tenant_id=view_policy.tenant_id)
 
         logger.info(f"Creating temporary base view.")
-        with self.vms_session.temp_view(path.dirname, view_policy.id) as base_view:
+        with self.vms_session.temp_view(path.dirname, view_policy.id, view_policy.tenant_id) as base_view:
 
             mount_spec = f"{nfs_server}:{base_view.alias}"
             mounted = False
@@ -495,7 +495,7 @@ class Controller(ControllerServicer, Instrumented):
             export_path = str(root_export[volume_id])
 
         vip_pool_name = None if CONF.mock_vast else volume_context["vip_pool_name"]
-        if not bool(self.vms_session.get_quota(quota_path_fragment)):
+        if not (quota := self.vms_session.get_quota(quota_path_fragment)):
             raise Abort(NOT_FOUND, f"Unknown volume: {quota_path_fragment}")
 
         if CONF.csi_sanity_test and CONF.node_id != node_id:
@@ -505,6 +505,7 @@ class Controller(ControllerServicer, Instrumented):
         nfs_server_ip = self.vms_session.get_vip(
             vip_pool_name=vip_pool_name,
             load_balancing=load_balancing,
+            tenant_id=quota.tenant_id,
         )
 
         return types.CtrlPublishResp(
@@ -544,8 +545,7 @@ class Controller(ControllerServicer, Instrumented):
 
         parameters = parameters or dict()
         volume_id = source_volume_id
-        found = self.vms_session.get_quota(volume_id)
-        if not found:
+        if not (quota := self.vms_session.get_quota(volume_id)):
             raise Abort(NOT_FOUND, f"Unknown volume: {volume_id}")
 
         if CONF.mock_vast:
@@ -572,7 +572,8 @@ class Controller(ControllerServicer, Instrumented):
                     f.write(snp.SerializeToString())
         else:
             # Create snapshot using the same path as quota has.
-            path = found.path
+            path = quota.path
+            tenant_id = quota.tenant_id
             snapshot_name = parameters["csi.storage.k8s.io/volumesnapshot/name"]
             snapshot_namespace = parameters[
                 "csi.storage.k8s.io/volumesnapshot/namespace"
@@ -583,7 +584,7 @@ class Controller(ControllerServicer, Instrumented):
             )
             snapshot_name = snapshot_name.replace(":", "-").replace("/", "-")
             try:
-                snap = self.vms_session.create_snapshot(name=snapshot_name, path=path)
+                snap = self.vms_session.ensure_snapshot(snapshot_name=snapshot_name, path=path, tenant_id=tenant_id)
             except ApiError as exc:
                 handled = False
                 if exc.response.status_code == 400:
