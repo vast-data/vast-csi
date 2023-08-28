@@ -7,7 +7,6 @@ from uuid import uuid4
 from contextlib import contextmanager
 from requests.exceptions import ConnectionError, HTTPError
 
-
 from easypy.bunch import Bunch
 from easypy.caching import cached_property
 from easypy.collections import shuffled
