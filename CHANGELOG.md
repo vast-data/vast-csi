@@ -1,10 +1,12 @@
 # CHANGELOG
 
-## Version 2.3.0
+## Version 2.2.5
 * added adjustable timeout and number of workers (VCSI-100)
 * added k8s error events and more informative error logging (VCSI-97)
-* added CLONE_VOLUME support (VCSI-83)
-* clone volumes from snapshots in READ_WRITE mode (VCSI-103)
+* added trash API (VCSI-51)
+* added multitenancy support (VCSI-114)
+* removed password and username fields from values.yaml. Created new required field `secretName` (VCSI-115)
+* added QoS policy support (VCSI-113)
 * Misc
     * added `CHANGELOG.mg` (VCSI-95)
 
