@@ -5,8 +5,7 @@ from pprint import pformat
 from typing import ClassVar
 from uuid import uuid4
 from contextlib import contextmanager
-from datetime import datetime, timedelta
-from requests.exceptions import HTTPError
+from requests.exceptions import ConnectionError, HTTPError
 
 from easypy.bunch import Bunch
 from easypy.caching import cached_property
@@ -29,7 +28,7 @@ from plumbum import local, ProcessExecutionError
 from .logging import logger
 from .configuration import Config
 from .exceptions import ApiError, MountFailed, OperationNotSupported
-from .utils import parse_load_balancing_strategy
+from .utils import parse_load_balancing_strategy, generate_ip_range
 from . import csi_types as types
 
 
@@ -41,12 +40,10 @@ def requisite(semver: str, operation: str = None, ignore: bool = False):
     1. When ignore == False and version mismatch detected then `OperationNotSupported` exception will be thrown
     2. When ignore == True and version mismatch detected then method decorated method execution never happened
     """
+
     required_version = SemVer.loads(semver)
 
     def dec(fn):
-        nonlocal operation
-        if not operation:
-            operation = fn.__name__
 
         def _args_wrapper(self, *args, **kwargs):
             sw_version = self.sw_version
@@ -59,7 +56,7 @@ def requisite(semver: str, operation: str = None, ignore: bool = False):
             except HTTPError as exc:
                 if exc.response.status_code == 404 and version_mismatch:
                     raise OperationNotSupported(
-                        op=operation,
+                        op=operation or fn.__name__,
                         required_version=required_version.dumps(),
                         current_version=self.sw_version.dumps(),
                         tip="Upgrade VAST cluster or adjust CSI driver settings to avoid unsupported operations"
@@ -85,11 +82,22 @@ class RESTSession(requests.Session):
             self.ssl_verify = False
 
     def refresh_auth_token(self):
-        resp = self.post(
-            'token', {"username": self.config.vms_user, "password": self.config.vms_password}, log_result=False
-        )
-        token = resp["access"]
-        self.headers['authorization'] = f"Bearer {token}"
+        try:
+            resp = super().request(
+                "POST", f"{self.base_url}/token/", verify=self.ssl_verify, timeout=5,
+                json={"username": self.config.vms_user, "password": self.config.vms_password}
+            )
+            resp.raise_for_status()
+            token = resp.json()["access"]
+            self.headers['authorization'] = f"Bearer {token}"
+        except ConnectionError as e:
+            raise ApiError(
+                response=Bunch(
+                    status_code=None,
+                    text=f"The vms on the designated host {self.config.vms_host!r} "
+                         f"cannot be accessed. Please verify the specified endpoint. "
+                         f"origin error: {e}"
+                ))
 
     @retrying.debug(times=3, acceptable=retrying.Retry)
     def request(self, verb, api_method, *args, params=None, log_result=True, **kwargs):
@@ -155,6 +163,7 @@ class VmsSession(RESTSession):
     Operations over vip pools, quotas, snapshots etc.
     """
 
+    TRASH_API_INTRODUCED: ClassVar[SemVer] = SemVer.loads("4.6.0")
     _vip_round_robin_idx: ClassVar[int] = -1
 
     # ----------------------------
@@ -178,21 +187,54 @@ class VmsSession(RESTSession):
     def cluster_id(self) -> int:
         return self.cluster_info.id
 
+    def is_trash_api_usable(self) -> bool:
+        if self.config.dont_use_trash_api or self.sw_version < self.TRASH_API_INTRODUCED:
+            # trash api usage is disabled by csi admin or trash api doesn't exists for cluster
+            return False
+        elif not self.cluster_info.enable_trash:
+            logger.warning(
+                f"Trash Folder Access is disabled"
+                f" - please enable it (https://{self.config.vms_host}/#/settings?category=cluster)"
+            )
+            return False
+        else:
+            # trash API is enabled. Use it!
+            return True
+
+    @requisite(semver="4.6.0")
+    def delete_folder(self, path: str):
+        """Delete remote cluster folder by provided path."""
+        try:
+            self.delete(f"/clusters/{self.cluster_id}/delete_folder/", data={"path": path})
+        except ApiError as e:
+            if "no such directory" in e.render():
+                logger.debug(f"Remote directory might have been removed earlier. ({e})")
+            elif "trash folder disabled" in e.render():
+                # Trash api has been disabled recently so it is not reflected in cache yet.
+                # clear cache in order to take recent `trash_enable` flag next time
+                self.__class__.cluster_info.fget.cache.clear()
+                raise Exception("Trash Folder Access is disabled")
+            else:
+                # unpredictable error
+                raise
+
     # ----------------------------
     # View policies
-    def get_policy_by_name(self, policy_name: str):
-        """
-        Get view policy by name.
-        Returns: None if policy doesn't exist.
-        """
+    def ensure_view_policy(self, policy_name: str):
+        """Get view policy by name. Raise exception if not found."""
         if res := self.viewpolicies(name=policy_name):
             return res[0]
+        else:
+            raise Exception(f"No such view policy: {policy_name}. Please create policy manually")
 
-    def ensure_view_policy(self, policy_name: str):
-        """Check if view policy exists on remote cluster and if not create new policy with provided name."""
-        if (policy := self.get_policy_by_name(policy_name)) is None:
-            raise Exception(f"No such policy: {policy_name}. Please create policy manually")
-        return policy
+    # ----------------------------
+    # QoS policies
+    def ensure_qos_policy(self, policy_name: str):
+        """Get QoS policy by name. Raise exception if not found."""
+        if res := self.qospolicies(name=policy_name):
+            return res[0]
+        else:
+            raise Exception(f"No such QoS policy: {policy_name}. Please create policy manually")
 
     # ----------------------------
     # Views
@@ -205,18 +247,30 @@ class VmsSession(RESTSession):
                 raise Exception(f"Too many views found for path {path}: {views}")
             return views[0]
 
-    def ensure_view(self, path, protocol, view_policy):
+    def ensure_view(self, path, protocol, view_policy, qos_policy):
         if not (view := self.get_view_by_path(path)):
             view_policy = self.ensure_view_policy(policy_name=view_policy)
-            view = self.create_view(path=path, protocol=protocol, policy_id=view_policy.id)
+            if qos_policy:
+                qos_policy_id = self.ensure_qos_policy(qos_policy).id
+            else:
+                qos_policy_id = None
+            view = self.create_view(
+                path=path, protocol=protocol, policy_id=view_policy.id,
+                qos_policy_id=qos_policy_id, tenant_id=view_policy.tenant_id
+            )
         return view
 
-    def create_view(self, path: str, policy_id: int, protocol="NFS", create_dir=True, alias=None):
+    def create_view(
+            self, path: str, policy_id: int, tenant_id: int,
+            qos_policy_id=None, protocol="NFS", create_dir=True, alias=None
+    ):
         """
         Create new view on remove cluster
         Args:
             path: full system path to create view for.
             policy_id: id of view policy that should be assigned to view.
+            tenant_id: tenant id associated with view
+            qos_policy_id: id of QoS policy associated with view
             create_dir: if underlying directory should be created along with view.
             alias: view alias
             protocol: nfs protocol (NFS or NFS4)
@@ -227,8 +281,11 @@ class VmsSession(RESTSession):
             "path": str(path),
             "create_dir": create_dir,
             "protocols": [protocol],
-            "policy_id": policy_id
+            "policy_id": policy_id,
+            "tenant_id": tenant_id,
         }
+        if qos_policy_id:
+            data["qos_policy_id"] = qos_policy_id
         if alias:
             data["alias"] = alias
         return Bunch.from_dict(self.post("views", data))
@@ -243,11 +300,11 @@ class VmsSession(RESTSession):
         self.delete(f"views/{id_}")
 
     @contextmanager
-    def temp_view(self, path, policy_id) -> Bunch:
+    def temp_view(self, path, policy_id, tenant_id) -> Bunch:
         """
         Create temporary view with autogenerated alias and delite it on context manager exit.
         """
-        view = self.create_view(path=path, policy_id=policy_id, alias=f"/{uuid4()}")
+        view = self.create_view(path=path, policy_id=policy_id, tenant_id=tenant_id, alias=f"/{uuid4()}")
         try:
             yield view
         finally:
@@ -255,17 +312,22 @@ class VmsSession(RESTSession):
 
     # ----------------------------
     # Vip pools
-    def get_vip(self, vip_pool_name: str, load_balancing: str = None):
+    def get_vip(self, vip_pool_name: str, tenant_id: int = None, load_balancing: str = None):
         """
-        Get vip pool by provided id.
+        Get vip pool by provided vip_pool_name.
         Returns:
             One of ips from provided vip pool according to provided load balancing strategy.
         """
         load_balancing = parse_load_balancing_strategy(load_balancing or self.config.load_balancing)
-        vips = [vip for vip in self.vips(log_result=False) if vip.vippool == vip_pool_name]
-        if not vips:
-            raise Exception(f"No vips in pool {vip_pool_name}")
+        if not (vippools := self.vippools(name=vip_pool_name)):
+            raise Exception(f"No VIP Pool named '{vip_pool_name}'")
 
+        vippool = vippools[0]
+        if tenant_id and vippool.tenant_id != tenant_id:
+            raise Exception(f"Pool {vip_pool_name} belongs to different tenant with name {vippool.tenant_name}")
+
+        vips = generate_ip_range(vippool.ip_ranges)
+        assert vips, f"Pool {vip_pool_name} has no available vips"
         if load_balancing == ROUNDROBIN:
             self._vip_round_robin_idx = (self._vip_round_robin_idx + 1) % len(vips)
             vip = vips[self._vip_round_robin_idx]
@@ -277,9 +339,9 @@ class VmsSession(RESTSession):
             )
 
         logger.info(
-            f"Using {load_balancing} - chose {vip.title}, currently connected to {vip.cnode}"
+            f"Using {load_balancing} - chose {vip}"
         )
-        return vip.ip
+        return vip
 
     # ----------------------------
     # Quotas
@@ -324,12 +386,9 @@ class VmsSession(RESTSession):
         ret = self.snapshots(path=path, page_size=10)  # we intentionally limit the number of results
         return ret.results
 
-    def create_snapshot(self, name, path, expiration_delta=None):
+    def create_snapshot(self, name, path, tenant_id):
         """Create new snapshot."""
-        data = dict(name=name, path=path)
-        if expiration_delta:
-            expiration_time = (datetime.utcnow() + expiration_delta).isoformat()
-            data["expiration_time"] = expiration_time
+        data = dict(name=name, path=path, tenant_id=tenant_id)
         return Bunch(self.post("snapshots", data=data))
 
     def get_snapshot(self, snapshot_name=None, snapshot_id=None):
@@ -345,8 +404,7 @@ class VmsSession(RESTSession):
         else:
             return self.snapshots(snapshot_id)
 
-    def ensure_snapshot(self, snapshot_name, path):
-        expiration_delta = timedelta(minutes=1)
+    def ensure_snapshot(self, snapshot_name, path, tenant_id):
         if snapshot := self.get_snapshot(snapshot_name=snapshot_name):
             if snapshot.path.strip("/") != path.strip("/"):
                 raise Exception(
@@ -354,42 +412,11 @@ class VmsSession(RESTSession):
                     f" does not correspond to the path of the snapshot {snapshot.path}"
                 )
         else:
-            snapshot = self.create_snapshot(name=snapshot_name, path=path, expiration_delta=expiration_delta)
+            snapshot = self.create_snapshot(name=snapshot_name, path=path, tenant_id=tenant_id)
         return snapshot
 
     def delete_snapshot(self, snapshot_id):
         self.delete(f"snapshots/{snapshot_id}")
-
-    def get_snapshot_stream(self, name):
-        if res := self.globalsnapstreams(name=name):
-            return res[0]
-
-    def stop_snapshot_stream(self, snapshot_stream_id):
-        self.patch(f"globalsnapstreams/{snapshot_stream_id}/stop")
-
-    @requisite(semver="4.7.0", operation="create_globalsnapshotstream")
-    def ensure_snapshot_stream(self, snapshot_id, destination_path, snapshot_stream_name, background_sync):
-        if not (snapshot_stream := self.get_snapshot_stream(name=snapshot_stream_name)):
-            data = dict(
-                loanee_root_path=destination_path,
-                name=snapshot_stream_name,
-                enabled=background_sync,
-            )
-            snapshot_stream = self.post(f"snapshots/{snapshot_id}/clone/", data)
-        return snapshot_stream
-
-    @requisite(semver="4.7.0", ignore=True)
-    def ensure_snapshot_stream_deleted(self, snapshot_stream_name):
-        """
-        Stop global snapshot stream in case it is not finished.
-        Snapshots with expiration time will be deleted as soon as snapshot stream is stopped.
-        """
-        if snapshot_stream := self.get_snapshot_stream(snapshot_stream_name):
-            if snapshot_stream.status.state != "FINISHED":
-                # Just stop the stream. It will be deleted automatically upon stop request.
-                self.stop_snapshot_stream(snapshot_stream.id)
-            else:
-                self.delete(f"globalsnapstreams/{snapshot_stream.id}", data=dict(remove_dir=False))
 
     def get_by_token(self, token):
         """
@@ -409,6 +436,8 @@ class TestVmsSession(RESTSession):
                 super().__init__()
                 self._volume = types.Volume()
                 self._volume_id = volume_id
+                self.tenant_id = 1
+                self.tenant_name = "test-tenant"
 
             def __str__(self):
                 return "<< FakeQuota >>"
@@ -522,17 +551,19 @@ class TestVmsSession(RESTSession):
         return self.list_quotas(starting_token=token)
 
     @contextmanager
-    def temp_view(self, path, policy_id):
+    def temp_view(self, path, policy_id, tenant_id):
         yield Bunch(
             id=1,
             alias=path,
+            tenant_id=tenant_id,
+            tenant_name="test-tenant"
         )
 
     def get_view_by_path(self, *_, **__):
-        return Bunch(id=1, policy_id=1)
+        return Bunch(id=1, policy_id=1, tenant_id=1)
 
     def ensure_view_policy(self, *_, **__):
-        return Bunch(id=1)
+        return Bunch(id=1, tenant_id=1, tenant_name="test-tenant")
 
     def get_snapshot(self, *_, **__):
         return []
@@ -547,6 +578,6 @@ class TestVmsSession(RESTSession):
     update_quota = _empty
     delete_view_by_path = _empty
     delete_view_by_id = _empty
-    ensure_snapshot_stream_deleted = _empty
     refresh_auth_token = _empty
-
+    delete_folder = _empty
+    is_trash_api_usable = _empty
