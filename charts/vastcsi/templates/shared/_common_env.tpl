@@ -1,12 +1,5 @@
 {{- define "vastcsi.commonEnv" -}}
 
-{{- if not $.Values.deletionVipPool -}}
-  {{- fail "deletionVipPool is required value. Please specify valid deletion vip pool" -}}
-{{- end }}
-{{- if not $.Values.deletionViewPolicy -}}
-  {{- fail "deletionViewPolicy is required value. Please specify valid deletion view policy" -}}
-{{- end }}
-
 {{- if (urlParse (required "endpoint is required" $.Values.endpoint )).scheme }}
     {{- fail "endpoint requires only host to be provided. Please exclude 'http//|https//' from url." -}}
 {{- end  }}
@@ -20,6 +13,10 @@
   value: {{ $.Values.deletionVipPool | quote }}
 - name: X_CSI_DELETION_VIEW_POLICY
   value: {{ $.Values.deletionViewPolicy | quote }}
+- name: X_CSI_WORKER_THREADS
+  value: {{ $.Values.numWorkers | quote }}
+- name: X_CSI_DONT_USE_TRASH_API
+  value: {{ $.Values.dontUseTrashApi | quote }}
 {{ if $.Values.truncateVolumeName -}}
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}

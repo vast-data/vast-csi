@@ -61,11 +61,11 @@ class TestControllerSuite:
 
         # Assertion
         err = ex_context.value
-        assert err.message == "Volume already exists with different capacity than requested(999)"
+        assert err.message == "Volume already exists with different capacity than requested (999)"
         assert err.code == grpc.StatusCode.ALREADY_EXISTS
-        assert session.get_view_by_path.call_count == 1
+        assert session.ensure_view.call_count == 1
         assert session.get_quota.call_count == 1
-        assert session.get_view_by_path.call_args.args == ("/foo/bar/test_volume",)
+        assert session.ensure_view.call_args.args == ()
         assert session.get_quota.call_args.args == ("test_volume",)
 
     @pytest.mark.parametrize("raw_mount_options", [

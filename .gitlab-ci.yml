@@ -66,7 +66,7 @@ test_csi [latest]: &test_csi
     strategy: depend
   allow_failure: true
   variables:
-    INSTALL_IMAGE: latest-4.6.0
+    INSTALL_IMAGE: "prev_version"
     VAST_upgrade_to: $INSTALL_IMAGE
     VAST_COMET_KWARG: csi_plugin_version=${CI_PIPELINE_ID}
 
@@ -78,12 +78,14 @@ test_csi:
   except: null
   parallel:
     matrix:
-      - INSTALL_IMAGE: release-4-2-0-sp13-712743
-      - INSTALL_IMAGE: release-4-3-0-sp6-684593
-      - INSTALL_IMAGE: release-4-4-0-sp-active-769228
-      - INSTALL_IMAGE: release-4-5-0-sp4-839938
-      - INSTALL_IMAGE: latest-4.6.0
-      - INSTALL_IMAGE: latest-4.7.0
+      - INSTALL_IMAGE: "4.2"
+      - INSTALL_IMAGE: "4.3"
+      - INSTALL_IMAGE: "4.4"
+      - INSTALL_IMAGE: "4.5"
+      - INSTALL_IMAGE: "4.6"
+      - INSTALL_IMAGE: "4.7"
+      - INSTALL_IMAGE: "prev_version"
+      - INSTALL_IMAGE: "latest"
 
 
 update_dockerhub [prod]: &update_dockerhub
