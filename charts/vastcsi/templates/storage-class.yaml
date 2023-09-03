@@ -56,6 +56,7 @@ parameters:
   lb_strategy: {{ $lb_strategy }}
   volume_name_fmt: {{ pluck "volumeNameFormat" $options $.Values.storageClassDefaults | first | quote }}
   eph_volume_name_fmt: {{ pluck "ephemeralVolumeNameFormat" $options $.Values.storageClassDefaults | first | quote }}
+  qos_policy: {{ pluck "qosPolicy" $options $.Values.storageClassDefaults | first | quote }}
 allowVolumeExpansion: {{
                          pluck "allowVolumeExpansion" $options $.Values.storageClassDefaults |
                          first | quote | mustRegexMatch "true" | ternary true false

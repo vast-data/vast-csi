@@ -1,14 +1,12 @@
 from dataclasses import dataclass
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Optional, final, TypeVar
-
-import grpc
 
 from . import csi_types as types
 from .utils import is_ver_nfs4_present
 from plumbum import local
 
-from .exceptions import Abort
+from .exceptions import VolumeAlreadyExists, SourceNotFound
 
 CreatedVolumeT = TypeVar("CreatedVolumeT")
 
@@ -16,7 +14,6 @@ CreatedVolumeT = TypeVar("CreatedVolumeT")
 class VolumeBuilderI(ABC):
     """Base Volume Builder interface"""
 
-    @abstractmethod
     def build_volume_name(self, **kwargs) -> str:
         """
         Final implementation should build volume name from provided argumenents and/or from other params
@@ -57,6 +54,7 @@ class BaseBuilder(VolumeBuilderI):
     vip_pool_name: str
     mount_options: str
     lb_strategy: str
+    qos_policy: Optional[str]
 
     capacity_range: Optional[int]  # Optional desired volume capacity
     pvc_name: Optional[str]
@@ -69,8 +67,7 @@ class BaseBuilder(VolumeBuilderI):
         return self.capacity_range.required_bytes if self.capacity_range else 0
 
 
-@final
-class VolumeBuilder(BaseBuilder):
+class EmptyVolumeBuilder(BaseBuilder):
     """Builder for k8s PersistentVolumeClaim, PersistentVolume etc."""
 
     def build_volume_name(self) -> str:
@@ -90,47 +87,41 @@ class VolumeBuilder(BaseBuilder):
 
         return volume_name
 
+    @property
+    def mount_protocol(self):
+        return "NFS4" if is_ver_nfs4_present(self.mount_options) else "NFS"
+
+    @property
+    def volume_context(self):
+        return {
+            "root_export": self.root_export,
+            "vip_pool_name": self.vip_pool_name,
+            "lb_strategy": self.lb_strategy,
+            "mount_options": self.mount_options,
+            "view_policy": self.view_policy,
+            "protocol": self.mount_protocol,
+        }
+
+    @property
+    def view_path(self):
+        return str(local.path(self.root_export)[self.name])
+
     def build_volume(self) -> types.Volume:
         """
         Main build entrypoint for volumes.
         Create volume from pvc, pv etc.
         """
         volume_name = self.build_volume_name()
-        view_path = str(local.path(self.root_export)[self.name])
         requested_capacity = self.get_requested_capacity()
-        protocol = "NFS4" if is_ver_nfs4_present(self.mount_options) else "NFS"
-
-        volume_context = {
-            "root_export": self.root_export,
-            "vip_pool_name": self.vip_pool_name,
-            "lb_strategy": self.lb_strategy,
-            "mount_options": self.mount_options,
-            "volume_name": volume_name,
-            "view_policy": self.view_policy,
-            "protocol": protocol,
-        }
+        volume_context = self.volume_context
+        volume_context["volume_name"] = volume_name
 
         # Check if view with expected system path already exists.
-        if not self.controller.vms_session.get_view_by_path(view_path):
-            view_policy = self.controller.vms_session.ensure_view_policy(policy_name=self.view_policy)
-            self.controller.vms_session.create_view(path=view_path, protocol=protocol, policy_id=view_policy.id)
-
-        if quota := self.controller.vms_session.get_quota(self.name):
-            # Check if volume with provided name but another capacity already exists.
-            if quota.hard_limit != requested_capacity:
-                raise Abort(
-                    grpc.StatusCode.ALREADY_EXISTS,
-                    "Volume already exists with different capacity than requested"
-                    f"({quota.hard_limit})")
-        else:
-            data = dict(
-                name=volume_name,
-                path=view_path,
-            )
-            if requested_capacity:
-                data.update(hard_limit=requested_capacity)
-            quota = self.controller.vms_session.create_quota(data=data)
-
+        view = self.controller.vms_session.ensure_view(
+            path=self.view_path, protocol=self.mount_protocol, view_policy=self.view_policy, qos_policy=self.qos_policy
+        )
+        volume_context.update(view_id=str(view.id), tenant_id=str(view.tenant_id))
+        quota = self._ensure_quota(requested_capacity, volume_name, self.view_path, view.tenant_id)
         volume_context.update(quota_id=str(quota.id))
 
         return types.Volume(
@@ -139,43 +130,65 @@ class VolumeBuilder(BaseBuilder):
             volume_context=volume_context,
         )
 
+    def _ensure_quota(self, requested_capacity, volume_name, view_path, tenant_id):
+        if quota := self.controller.vms_session.get_quota(self.name):
+            # Check if volume with provided name but another capacity already exists.
+            if quota.hard_limit != requested_capacity:
+                raise VolumeAlreadyExists(
+                    "Volume already exists with different capacity than requested "
+                    f"({quota.hard_limit})")
+            if quota.tenant_id != tenant_id:
+                raise VolumeAlreadyExists(
+                    "Volume already exists with different tenancy ownership "
+                    f"({quota.tenant_name})")
+
+        else:
+            data = dict(
+                name=volume_name,
+                path=view_path,
+                tenant_id=tenant_id
+            )
+            if requested_capacity:
+                data.update(hard_limit=requested_capacity)
+            quota = self.controller.vms_session.create_quota(data=data)
+        return quota
+
 
 @final
-class SnapshotBuilder(BaseBuilder):
+class VolumeFromSnapshotBuilder(EmptyVolumeBuilder):
     """Builder for k8s Snapshots."""
-
-    def build_volume_name(self) -> str:
-        snapshot_id = self.volume_content_source.snapshot.snapshot_id
-        snapshot = self.controller.vms_session.get_snapshot(snapshot_id=snapshot_id)
-        snapshot_path = local.path(snapshot.path)
-
-        # Compute root_export from snapthot path. This value should be passed as context for appropriate
-        # mounting within 'ControllerPublishVolume' endpoint
-        self.root_export = snapshot_path.parent
-
-        path = snapshot_path / ".snapshot" / snapshot.name
-        return str(path.relative_to(self.root_export))
 
     def build_volume(self) -> types.Volume:
         """
         Main entry point for snapshots.
         Create snapshot representation.
         """
-        snapshot_base_path = self.build_volume_name()
-        snapshot_id = self.volume_content_source.snapshot.snapshot_id
-        # Requested capacity is always 0 for snapshots.
+        source_snapshot_id = self.volume_content_source.snapshot.snapshot_id
+        if not (snapshot := self.controller.vms_session.get_snapshot(snapshot_id=source_snapshot_id)):
+            raise SourceNotFound(f"Unknown snapshot: {source_snapshot_id}")
+        volume_context = self.volume_context
+
+        # Create volume from snapshot for READ_ONLY modes.
+        #   Such volume has no quota and view representation on VAST.
+        #   Volume within pod will be directly mounted to snapshot source folder.
+        requested_capacity = 0  # read-only volumes from snapshots have no capacity.
+        snapshot_path = local.path(snapshot.path)
+        # Compute root_export from snapshot path. This value should be passed as context for appropriate
+        # mounting within 'ControllerPublishVolume' endpoint
+        self.root_export = snapshot_path.parent
+        path = snapshot_path / ".snapshot" / snapshot.name
+        snapshot_base_path = str(path.relative_to(self.root_export))
+        volume_context.update(
+            snapshot_base_path=snapshot_base_path, root_export=self.root_export, tenant_id=str(snapshot.tenant_id)
+        )
+
         return types.Volume(
-            capacity_bytes=0,
+            capacity_bytes=requested_capacity,
             volume_id=self.name,
             content_source=types.VolumeContentSource(
-                snapshot=types.SnapshotSource(snapshot_id=snapshot_id)
+                snapshot=types.SnapshotSource(snapshot_id=source_snapshot_id)
             ),
-            volume_context={
-                # Pass vms options via context
-                "snapshot_base_path": snapshot_base_path,
-                "root_export": self.root_export,
-                "vip_pool_name": self.vip_pool_name,
-            },
+            volume_context=volume_context
         )
 
 
@@ -193,12 +206,15 @@ class TestVolumeBuilder(BaseBuilder):
 
     def build_volume(self) -> types.Volume:
         """Main build entrypoint for tests"""
-        requested_capacity = self.get_requested_capacity()
+        if content_source := self.volume_content_source:
+            if content_source.snapshot.snapshot_id:
+                if not self.configuration.fake_snapshot_store[content_source.snapshot.snapshot_id].exists():
+                    raise SourceNotFound(f"Source snapshot does not exist: {content_source.snapshot.snapshot_id}")
 
+        requested_capacity = self.get_requested_capacity()
         if existing_capacity := self.get_existing_capacity():
             if existing_capacity != requested_capacity:
-                raise Abort(
-                    grpc.StatusCode.ALREADY_EXISTS,
+                raise VolumeAlreadyExists(
                     "Volume already exists with different capacity than requested"
                     f"({existing_capacity})",
                 )
