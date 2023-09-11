@@ -395,10 +395,10 @@ class Controller(ControllerServicer, Instrumented):
             raise Abort(ALREADY_EXISTS, exc.message)
         return types.CreateResp(volume=volume)
 
-    def _delete_data_from_storage(self, path):
+    def _delete_data_from_storage(self, path, tenant_id):
         if self.vms_session.is_trash_api_usable():
             logger.info(f"Use trash API to delete {path}")
-            self.vms_session.delete_folder(path)
+            self.vms_session.delete_folder(path, tenant_id)
             return
 
         logger.info(f"Use local mounting to delete {path}")
@@ -457,7 +457,7 @@ class Controller(ControllerServicer, Instrumented):
     def DeleteVolume(self, volume_id):
         if quota := self.vms_session.get_quota(volume_id):
             try:
-                self._delete_data_from_storage(quota.path)
+                self._delete_data_from_storage(quota.path, quota.tenant_id)
             except OSError as exc:
                 if 'not empty' not in str(exc):
                     raise
@@ -632,7 +632,7 @@ class Controller(ControllerServicer, Instrumented):
                 pass  # other snapshots still exist
             else:
                 logger.info(f"last snapshot for {snapshot.path}, and no more quotas - let's delete this directory")
-                self._delete_data_from_storage(snapshot.path)
+                self._delete_data_from_storage(snapshot.path, snapshot.tenant_id)
             self.vms_session.delete_snapshot(snapshot_id)
 
         return types.DeleteSnapResp()

@@ -39,7 +39,7 @@ class TestVmsSessionSuite:
                 patch("vast_csi.vms_session.VmsSession.delete", side_effect=raise_http_err)
         ):
             with pytest.raises(OperationNotSupported) as exc:
-                cont.vms_session.delete_folder("/abc")
+                cont.vms_session.delete_folder("/abc", 1)
 
         # Assertion
         assert f"Cluster does not support this operation - 'delete_folder'" \
@@ -92,7 +92,7 @@ class TestVmsSessionSuite:
                 patch("vast_csi.vms_session.VmsSession.delete", side_effect=raise_http_err),
                 patch("vast_csi.vms_session.VmsSession.vms_info", fake_mgmt),
         ):
-            is_deleted = cont.vms_session.delete_folder("/abc")
+            is_deleted = cont.vms_session.delete_folder("/abc", 1)
 
         # Assertion
         assert is_deleted is None
@@ -121,7 +121,7 @@ class TestVmsSessionSuite:
                 patch("vast_csi.vms_session.VmsSession.vms_info", fake_mgmt),
         ):
             with pytest.raises(Exception) as exc:
-                is_deleted = cont.vms_session.delete_folder("/abc")
+                is_deleted = cont.vms_session.delete_folder("/abc", 1)
 
         # Assertion
         assert "Trash Folder Access is disabled" in str(exc.value)
