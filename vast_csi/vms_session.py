@@ -202,10 +202,10 @@ class VmsSession(RESTSession):
             return True
 
     @requisite(semver="4.6.0")
-    def delete_folder(self, path: str):
+    def delete_folder(self, path: str, tenant_id: int):
         """Delete remote cluster folder by provided path."""
         try:
-            self.delete(f"/clusters/{self.cluster_id}/delete_folder/", data={"path": path})
+            self.delete(f"/clusters/{self.cluster_id}/delete_folder/", data={"path": path, "tenant_id": tenant_id})
         except ApiError as e:
             if "no such directory" in e.render():
                 logger.debug(f"Remote directory might have been removed earlier. ({e})")
