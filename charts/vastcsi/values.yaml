@@ -93,6 +93,9 @@ operationRetryIntervalStart: 10
 # Maximum interval between attempts.
 operationRetryIntervalMax: 60
 
+# The path to the kubelet root dir. must be provided when Kubernetes is not installed in its default directory.
+kubeletPath: "/var/lib/kubelet"
+
 ####################
 # VAST CSI SNAPSHOTS CLASS OPTIONS
 ####################
