@@ -626,6 +626,7 @@ class Controller(ControllerServicer, Instrumented):
             CONF.fake_snapshot_store[snapshot_id].delete()
         else:
             snapshot = self.vms_session.get_snapshot(snapshot_id=snapshot_id)
+            self.vms_session.delete_snapshot(snapshot_id)
             if self.vms_session.get_quotas_by_path(snapshot.path):
                 pass  # quotas still exist
             elif self.vms_session.has_snapshots(snapshot.path):
@@ -633,7 +634,6 @@ class Controller(ControllerServicer, Instrumented):
             else:
                 logger.info(f"last snapshot for {snapshot.path}, and no more quotas - let's delete this directory")
                 self._delete_data_from_storage(snapshot.path, snapshot.tenant_id)
-            self.vms_session.delete_snapshot(snapshot_id)
 
         return types.DeleteSnapResp()
 
