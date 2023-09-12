@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from ipaddress import summarize_address_range, ip_address
 from requests.exceptions import HTTPError  # noqa
 
 from plumbum import local
@@ -137,3 +138,16 @@ def is_ver_nfs4_present(mount_options: str) -> bool:
         if name in ("vers", "nfsvers") and value.startswith("4"):
             return True
     return False
+
+
+def generate_ip_range(ip_ranges):
+    """
+    Generate list of ips from provided ip ranges.
+    `ip_ranges` should be list of ranges where fist ip in range represents start ip and second is end ip
+    eg: [["15.0.0.1", "15.0.0.4"], ["10.0.0.27", "10.0.0.30"]]
+    """
+    return [
+        ip.compressed
+        for start_ip, end_ip in ip_ranges for net in summarize_address_range(ip_address(start_ip), ip_address(end_ip))
+        for ip in net
+    ]

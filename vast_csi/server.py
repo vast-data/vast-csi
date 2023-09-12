@@ -20,7 +20,6 @@ from functools import wraps
 from pprint import pformat
 from datetime import datetime
 import inspect
-from uuid import uuid4
 from tempfile import mkdtemp
 
 import json
@@ -28,11 +27,13 @@ from json import JSONDecodeError
 from plumbum import cmd
 from plumbum import local, ProcessExecutionError
 import grpc
+from requests.exceptions import HTTPError
 
 from easypy.tokens import ROUNDROBIN, RANDOM, CONTROLLER_AND_NODE, CONTROLLER, NODE
 from easypy.misc import kwargs_resilient, at_least
 from easypy.caching import cached_property
 from easypy.bunch import Bunch
+from easypy.exceptions import TException
 
 from .logging import logger, init_logging
 from .utils import (
@@ -45,8 +46,8 @@ from .utils import (
 from . import csi_pb2_grpc
 from .csi_pb2_grpc import ControllerServicer, NodeServicer, IdentityServicer
 from . import csi_types as types
-from .volume_builder import VolumeBuilder, SnapshotBuilder, TestVolumeBuilder
-from .exceptions import Abort, ApiError, MissingParameter, MountFailed
+from .volume_builder import EmptyVolumeBuilder, VolumeFromSnapshotBuilder, TestVolumeBuilder
+from .exceptions import Abort, ApiError, MissingParameter, MountFailed, VolumeAlreadyExists, SourceNotFound
 from .vms_session import VmsSession, TestVmsSession
 from .configuration import Config
 
@@ -88,9 +89,7 @@ def mount(src, tgt, flags=""):
     try:
         executable['-v', src, tgt] & logger.pipe_info("mount >>")
     except ProcessExecutionError as exc:
-        if exc.retcode == 32:
-            raise MountFailed(detail=exc.stderr, src=src, tgt=tgt)
-        raise
+        raise MountFailed(detail=exc.stderr, src=src, tgt=tgt, mount_options=flags)
 
 
 def _validate_capabilities(capabilities):
@@ -155,10 +154,24 @@ class Instrumented:
                 )
                 logger.debug("Traceback", exc_info=True)
                 context.abort(exc.code, exc.message)
+            except HTTPError as exc:
+                reason = exc.response.reason
+                status_code = exc.response.status_code
+                text = exc.response.text.splitlines()[0]
+                resource = exc.request.path_url
+                logger.exception(f"Exception during {method}\n{exc.response.text}")
+                context.abort(
+                    UNKNOWN,
+                    f"[{method}]. Unable to accomplish request to {resource}. {text}, <{reason}({status_code})>"
+                )
+            except TException as exc:
+                # Any exception inherited from TException
+                logger.exception(f"Exception during {method}")
+                context.abort(UNKNOWN, f"[{method}]. {exc.render(color=False)}")
             except Exception as exc:
-                err_key = f"<{uuid4()}>"
-                logger.exception(f"Exception during {method} ({err_key}): {type(exc)}")
-                context.abort(UNKNOWN, f"Exception during {method}: {err_key}")
+                logger.exception(f"Exception during {method}")
+                text = str(exc)
+                context.abort(UNKNOWN, f"[{method}]: {text}")
             if ret:
                 log(f"{peer} <<< {method}:")
                 for line in pformat(ret).splitlines():
@@ -250,6 +263,7 @@ class Controller(ControllerServicer, Instrumented):
             if CONF.vms_ssl_cert.exists() else
             "VMS session started without ssl certificates."
         )
+        session.refresh_auth_token()
         return session
 
     def ControllerGetCapabilities(self):
@@ -317,7 +331,6 @@ class Controller(ControllerServicer, Instrumented):
         _validate_capabilities(volume_capabilities)
         parameters = parameters or dict()
 
-        root_export = volume_name_fmt = lb_strategy = view_policy = vip_pool_name = mount_options = ""
         try:
             mount_capability = next(cap for cap in volume_capabilities if cap.HasField("mount"))
             mount_flags = mount_capability.mount.mount_flags
@@ -325,20 +338,11 @@ class Controller(ControllerServicer, Instrumented):
             # normalize mount options (remove spaces, brackets etc)
             mount_options = ",".join(re.sub(r"[\[\]]", "", mount_options).replace(",", " ").split())
         except StopIteration:
-            pass
+            mount_options = ""
 
         # Take appropriate builder for volume, snapshot or test builder
         if CONF.mock_vast:
-            if (
-                volume_content_source
-                and not CONF.fake_snapshot_store[
-                    volume_content_source.snapshot.snapshot_id
-                ].exists()
-            ):
-                raise Abort(
-                    NOT_FOUND,
-                    f"Source snapshot does not exist: {volume_content_source.snapshot.snapshot_id}",
-                )
+            root_export = volume_name_fmt = lb_strategy = view_policy = vip_pool_name = mount_options = qos_policy = ""
             builder = TestVolumeBuilder
 
         else:
@@ -350,12 +354,13 @@ class Controller(ControllerServicer, Instrumented):
                 raise MissingParameter(param="vip_pool_name")
             volume_name_fmt = parameters.get("volume_name_fmt", CONF.name_fmt)
             lb_strategy = parameters.get("lb_strategy", CONF.load_balancing)
+            qos_policy = parameters.get("qos_policy")
 
-            if volume_content_source:
-                builder = SnapshotBuilder
+            if not volume_content_source:
+                builder = EmptyVolumeBuilder
 
-            elif not volume_content_source:
-                builder = VolumeBuilder
+            elif volume_content_source.snapshot.snapshot_id:
+                builder = VolumeFromSnapshotBuilder
 
             else:
                 raise ValueError(
@@ -365,7 +370,7 @@ class Controller(ControllerServicer, Instrumented):
 
         # Create volume, volume from snapshot or mount local path (for testing purposes)
         # depends on chosen builder.
-        volume = builder(
+        builder = builder(
             controller=self,
             configuration=CONF,
             name=name,
@@ -380,17 +385,30 @@ class Controller(ControllerServicer, Instrumented):
             vip_pool_name=vip_pool_name,
             mount_options=mount_options,
             lb_strategy=lb_strategy,
-        ).build_volume()
+            qos_policy=qos_policy,
+        )
+        try:
+            volume = builder.build_volume()
+        except SourceNotFound as exc:
+            raise Abort(NOT_FOUND, exc.message)
+        except VolumeAlreadyExists as exc:
+            raise Abort(ALREADY_EXISTS, exc.message)
         return types.CreateResp(volume=volume)
 
-    def _delete_data_from_storage(self, path):
+    def _delete_data_from_storage(self, path, tenant_id):
+        if self.vms_session.is_trash_api_usable():
+            logger.info(f"Use trash API to delete {path}")
+            self.vms_session.delete_folder(path, tenant_id)
+            return
+
+        logger.info(f"Use local mounting to delete {path}")
         path = local.path(path)
         volume_id = path.name
-        nfs_server = self.vms_session.get_vip(vip_pool_name=CONF.deletion_vip_pool)
         view_policy = self.vms_session.ensure_view_policy(policy_name=CONF.deletion_view_policy)
+        nfs_server = self.vms_session.get_vip(vip_pool_name=CONF.deletion_vip_pool, tenant_id=view_policy.tenant_id)
 
         logger.info(f"Creating temporary base view.")
-        with self.vms_session.temp_view(path.dirname, view_policy.id) as base_view:
+        with self.vms_session.temp_view(path.dirname, view_policy.id, view_policy.tenant_id) as base_view:
 
             mount_spec = f"{nfs_server}:{base_view.alias}"
             mounted = False
@@ -439,7 +457,7 @@ class Controller(ControllerServicer, Instrumented):
     def DeleteVolume(self, volume_id):
         if quota := self.vms_session.get_quota(volume_id):
             try:
-                self._delete_data_from_storage(quota.path)
+                self._delete_data_from_storage(quota.path, quota.tenant_id)
             except OSError as exc:
                 if 'not empty' not in str(exc):
                     raise
@@ -483,9 +501,7 @@ class Controller(ControllerServicer, Instrumented):
             export_path = str(root_export[volume_id])
 
         vip_pool_name = None if CONF.mock_vast else volume_context["vip_pool_name"]
-        found = bool(self.vms_session.get_quota(quota_path_fragment))
-
-        if not found:
+        if not (quota := self.vms_session.get_quota(quota_path_fragment)):
             raise Abort(NOT_FOUND, f"Unknown volume: {quota_path_fragment}")
 
         if CONF.csi_sanity_test and CONF.node_id != node_id:
@@ -495,6 +511,7 @@ class Controller(ControllerServicer, Instrumented):
         nfs_server_ip = self.vms_session.get_vip(
             vip_pool_name=vip_pool_name,
             load_balancing=load_balancing,
+            tenant_id=quota.tenant_id,
         )
 
         return types.CtrlPublishResp(
@@ -534,8 +551,7 @@ class Controller(ControllerServicer, Instrumented):
 
         parameters = parameters or dict()
         volume_id = source_volume_id
-        found = self.vms_session.get_quota(volume_id)
-        if not found:
+        if not (quota := self.vms_session.get_quota(volume_id)):
             raise Abort(NOT_FOUND, f"Unknown volume: {volume_id}")
 
         if CONF.mock_vast:
@@ -562,7 +578,8 @@ class Controller(ControllerServicer, Instrumented):
                     f.write(snp.SerializeToString())
         else:
             # Create snapshot using the same path as quota has.
-            path = found.path
+            path = quota.path
+            tenant_id = quota.tenant_id
             snapshot_name = parameters["csi.storage.k8s.io/volumesnapshot/name"]
             snapshot_namespace = parameters[
                 "csi.storage.k8s.io/volumesnapshot/namespace"
@@ -573,9 +590,7 @@ class Controller(ControllerServicer, Instrumented):
             )
             snapshot_name = snapshot_name.replace(":", "-").replace("/", "-")
             try:
-                snap = self.vms_session.create_snapshot(
-                    data=dict(name=snapshot_name, path=path)
-                )
+                snap = self.vms_session.ensure_snapshot(snapshot_name=snapshot_name, path=path, tenant_id=tenant_id)
             except ApiError as exc:
                 handled = False
                 if exc.response.status_code == 400:
@@ -585,7 +600,7 @@ class Controller(ControllerServicer, Instrumented):
                         pass
                     else:
                         if (k, v) == ("name", "This field must be unique."):
-                            [snap] = self.vms_session.get_snapshot(snapshot_name=snapshot_name)
+                            snap = self.vms_session.get_snapshot(snapshot_name=snapshot_name)
                             if snap.path != path:
                                 raise Abort(
                                     ALREADY_EXISTS,
@@ -618,7 +633,7 @@ class Controller(ControllerServicer, Instrumented):
                 pass  # other snapshots still exist
             else:
                 logger.info(f"last snapshot for {snapshot.path}, and no more quotas - let's delete this directory")
-                self._delete_data_from_storage(snapshot.path)
+                self._delete_data_from_storage(snapshot.path, snapshot.tenant_id)
 
         return types.DeleteSnapResp()
 
@@ -873,7 +888,7 @@ def serve():
 
         urllib3.disable_warnings()
 
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=CONF.worker_threads))
 
     identity = Identity()
     csi_pb2_grpc.add_IdentityServicer_to_server(identity, server)
@@ -894,5 +909,5 @@ def serve():
     server.add_insecure_port(CONF.endpoint)
     server.start()
 
-    logger.info(f"Server started as '{CONF.mode}', listening on {CONF.endpoint}")
+    logger.info(f"Server started as '{CONF.mode}', listening on {CONF.endpoint}, spawned threads {CONF.worker_threads}")
     server.wait_for_termination()

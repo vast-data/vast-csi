@@ -39,6 +39,15 @@
 {{- fail "viewPolicy is required value. Please specify valid policy name" -}}
 {{- end }}
 
+{{- $volume_name_fmt := pluck "volumeNameFormat" $options $.Values.storageClassDefaults | first | quote -}}
+{{- $eph_volume_name_fmt := pluck "ephemeralVolumeNameFormat" $options $.Values.storageClassDefaults | first | quote -}}
+{{- $qos_policy :=  pluck "qosPolicy" $options $.Values.storageClassDefaults | first | quote -}}
+{{- $mount_options :=  pluck "mountOptions" $options $.Values.storageClassDefaults | first | quote -}}
+{{-
+   $allow_volume_expansion := pluck "allowVolumeExpansion" $options $.Values.storageClassDefaults |
+   first | quote | mustRegexMatch "true" | ternary true false
+-}}
+
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
 provisioner: csi.vastdata.com
@@ -54,13 +63,13 @@ parameters:
   root_export: {{ $storage_path }}
   view_policy: {{ $view_policy }}
   lb_strategy: {{ $lb_strategy }}
-  volume_name_fmt: {{ pluck "volumeNameFormat" $options $.Values.storageClassDefaults | first | quote }}
-  eph_volume_name_fmt: {{ pluck "ephemeralVolumeNameFormat" $options $.Values.storageClassDefaults | first | quote }}
-allowVolumeExpansion: {{
-                         pluck "allowVolumeExpansion" $options $.Values.storageClassDefaults |
-                         first | quote | mustRegexMatch "true" | ternary true false
-                      }}
+  volume_name_fmt: {{ $volume_name_fmt }}
+  eph_volume_name_fmt: {{ $eph_volume_name_fmt }}
+  {{-  if ne $qos_policy ( quote "" ) }}
+  qos_policy: {{ $qos_policy }}
+  {{- end }}
+allowVolumeExpansion: {{ $allow_volume_expansion }}
 mountOptions:
-  - {{ pluck "mountOptions" $options $.Values.storageClassDefaults | first | quote }}
+  - {{ $mount_options }}
 ---
 {{- end }}

@@ -1,5 +1,5 @@
 import pytest
-from vast_csi.utils import is_ver_nfs4_present
+from vast_csi.utils import is_ver_nfs4_present, generate_ip_range
 
 
 @pytest.mark.parametrize(
@@ -24,3 +24,19 @@ from vast_csi.utils import is_ver_nfs4_present
 def test_parse_nfs4_mount_option(options, exepected):
     """Test if nfsvers|vers=4 is parsed properly"""
     assert is_ver_nfs4_present(options) == exepected
+
+
+@pytest.mark.parametrize("ip_ranges, expected", [
+    (
+            [["15.0.0.1", "15.0.0.4"], ["10.0.0.27", "10.0.0.30"]],
+            ['15.0.0.1', '15.0.0.2', '15.0.0.3', '15.0.0.4', '10.0.0.27', '10.0.0.28', '10.0.0.29', '10.0.0.30']
+    ),
+    (
+            [["15.0.0.1", "15.0.0.1"], ["10.0.0.20", "10.0.0.20"]],
+            ['15.0.0.1', '10.0.0.20']
+    ),
+    ([], [])
+])
+def test_generate_ip_range(ip_ranges, expected):
+    ips = generate_ip_range(ip_ranges)
+    assert ips == expected

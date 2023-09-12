@@ -1,11 +1,5 @@
 {{/*Set of templates for working with vms credentials and vms session certificates*/}}
 
-{{/*Unique checksum based on provided username and password.*/}}
-{{- define "vastcsi.credentialsChecksum" -}}
-{{- cat .Values.username  .Values.password | sha256sum -}}
-{{- end }}
-
-
 {{/*Unique checksum based on provided sslCert. Generate empty checksum if sslCert are not provided.*/}}
 {{- define "vastcsi.sslChecksum" -}}
 {{- if .Values.sslCert -}}
@@ -15,23 +9,22 @@
 {{ end }}
 {{- end }}
 
-
 {{/*
-Projected volume based on `csi-vast-mgmt` and `csi-vast-vms-authority` secrets
+Projected volume based on mgmt secret provided by user and `csi-vast-vms-authority` secret
 Expected files within volume:
  - sslCert:  root certificate authority
  - username: vms session username
  - password: vms session password
 */}}
-{{- define "vastcsi.vmsAuthVolume" -}}
 
+{{- define "vastcsi.vmsAuthVolume" -}}
 {{- $ssl_checksum := printf "%s" (include "vastcsi.sslChecksum" .) | trim }}
 - name: vms-auth
   projected:
     defaultMode: 0400
     sources:
     - secret:
-        name: csi-vast-mgmt
+        name: {{ required "secretName field must be specified" $.Values.secretName | quote }}
         items:
         - key: username
           path: username
@@ -48,12 +41,13 @@ Expected files within volume:
 
 
 {{/*
-Volume mount based on `csi-vast-mgmt` and `csi-vast-vms-authority` secrets
+Volume mount based on mgmt secret provided by user and `csi-vast-vms-authority` secret
 Expected files within volume:
  - sslCert:  root certificate authority
  - username: vms session username
  - password: vms session password
 */}}
+
 {{ define "vastcsi.vmsAuthVolumeMount" }}
 - name: vms-auth
   mountPath: /opt/vms-auth

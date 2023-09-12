@@ -2,6 +2,7 @@
 
 {{- $vast_config := .Files.Get "vast-config.yaml"  | fromYaml -}}
 {{- $csi_images := get $vast_config "image" -}}
+{{- $kubelet_path := .Values.kubeletPath | default "/var/lib/kubelet" | trimSuffix "/" }}
 
 apiVersion: apps/v1
 kind: DaemonSet
@@ -46,7 +47,7 @@ spec:
             - name: ADDRESS
               value: /csi/csi.sock
             - name: DRIVER_REG_SOCK_PATH
-              value: /var/lib/kubelet/plugins/csi.vastdata.com/csi.sock
+              value: {{ $kubelet_path }}/plugins/csi.vastdata.com/csi.sock
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
@@ -89,7 +90,7 @@ spec:
             - name: plugin-dir
               mountPath: /csi
             - name: pods-mount-dir
-              mountPath: /var/lib/kubelet
+              mountPath: {{ $kubelet_path }}
               mountPropagation: "Bidirectional"
             - name: device-dir
               mountPath: /dev
@@ -108,15 +109,15 @@ spec:
       volumes:
         - name: registration-dir
           hostPath:
-            path: /var/lib/kubelet/plugins_registry/
+            path: {{ $kubelet_path }}/plugins_registry/
             type: DirectoryOrCreate
         - name: plugin-dir
           hostPath:
-            path: /var/lib/kubelet/plugins/csi.vastdata.com
+            path: {{ $kubelet_path }}/plugins/csi.vastdata.com
             type: DirectoryOrCreate
         - name: pods-mount-dir
           hostPath:
-            path: /var/lib/kubelet
+            path: {{ $kubelet_path }}
             type: Directory
         - name: device-dir
           hostPath:

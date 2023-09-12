@@ -1,9 +1,10 @@
 ####################
 # VAST REST SESSION ATTRIBUTES
 ####################
-# Credentials to login - must be provided by user
-username: ""
-password: ""
+# Secret name with credentials to login - must be provided by user
+# Secret must contain username and password fields
+# Example: kubectl create secret generic vast-mgmt --from-literal=username='< VAST username >' --from-literal=password='< VAST password >'
+secretName: ""
 # API endpoint of VAST appliance - must be provided by user
 endpoint: ""
 
@@ -17,11 +18,15 @@ sslCert: ""
 # DELETE VOLUMES
 ####################
 # Dedicated vip pool to delete volumes. Can have the same value as regular StorageClass option `vipPool`
-# - must be provided by user
+# - value is not required when VAST cluster version is 4.6.0 onwards and `DontUseTrashApi` flag is set to false
 deletionVipPool: ""
 # Dedicated view policy to delete volumes. Can have the same value as regular StorageClass option `viewPolicy`
-# - must be provided by user
+# - value is not required when VAST cluster version is 4.6.0 onwards and `DontUseTrashApi` flag is set to false
 deletionViewPolicy: ""
+# When the flag is set to 'true', the controller will opt to using a local mount for deleting data from discarded volumes,
+# as opposed to sending the request to the VMS over REST.
+# Normally this should be kept as 'false'. Please contact VAST Support if you feel you need to set this to 'true'.
+dontUseTrashApi: false
 
 ####################
 # VAST CSI STORAGE CLASS OPTIONS
@@ -49,6 +54,8 @@ storageClassDefaults:
   ephemeralVolumeNameFormat: "csi:{namespace}:{name}:{id}"
   # Add any extra NFS options desired here
   mountOptions: ""
+  # Name of QoS policy associates with the view.
+  qosPolicy: ""
 
 # Default storage class to use with CSI DRIVER.
 # The only required value is 'vipPool' name where user should provide name of existing vip pool on
@@ -70,6 +77,24 @@ storageClasses: {}
 #    vipPool: "vippool-3"
 #    ....  other options
 
+####################
+# VAST PROVISIONER RUNTIME PARAMETERS
+####################
+
+# The number of worker threads the CSI plugin use to serve requests simultaneously.
+numWorkers: 10
+# Timeout of all calls to CSI driver.
+operationTimeout: 15
+# Each time a failure occurs, sidecar containers initiate retries
+# but only after waiting for 'operationRetryIntervalStart' seconds
+# which then doubles with each subsequent failure  until it reaches `operationRetryIntervalMax`
+operationRetryIntervalStart: 10
+
+# Maximum interval between attempts.
+operationRetryIntervalMax: 60
+
+# The path to the kubelet root dir. must be provided when Kubernetes is not installed in its default directory.
+kubeletPath: "/var/lib/kubelet"
 
 ####################
 # VAST CSI SNAPSHOTS CLASS OPTIONS
@@ -101,7 +126,7 @@ csiImage: "vastdataorg/csi"
 
 # csiImageTag represents version of docker image that serves  CSI Controller and CSI Node.
 # To check latest stable tag refer https://support.vastdata.com/hc/en-us/articles/360010932159-VAST-with-Kubernetes
-csiImageTag: v2.2.1
+csiImageTag: v2.2.5
 
 
 ####################
