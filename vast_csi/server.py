@@ -168,7 +168,7 @@ class Instrumented:
             except TException as exc:
                 # Any exception inherited from TException
                 logger.exception(f"Exception during {method}")
-                context.abort(ABORTED, f"[{method}]. {exc.render(color=False)}")
+                context.abort(UNKNOWN, f"[{method}]. {exc.render(color=False)}")
             except Exception as exc:
                 logger.exception(f"Exception during {method}")
                 text = str(exc)
@@ -397,7 +397,7 @@ class Controller(ControllerServicer, Instrumented):
             mount_options=mount_options,
             lb_strategy=lb_strategy,
             qos_policy=qos_policy,
-            clone_background_sync=clone_background_sync
+            clone_background_sync=clone_background_sync,
         )
         try:
             volume = builder.build_volume()

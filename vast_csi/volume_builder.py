@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from abc import ABC
+from datetime import timedelta
 from typing import Optional, final, TypeVar
 
 from . import csi_types as types
@@ -122,9 +123,8 @@ class EmptyVolumeBuilder(BaseBuilder):
         view = self.controller.vms_session.ensure_view(
             path=self.view_path, protocol=self.mount_protocol, view_policy=self.view_policy, qos_policy=self.qos_policy
         )
-        volume_context.update(view_id=str(view.id), tenant_id=str(view.tenant_id))
         quota = self._ensure_quota(requested_capacity, volume_name, self.view_path, view.tenant_id)
-        volume_context.update(quota_id=str(quota.id))
+        volume_context.update(quota_id=str(quota.id), view_id=str(view.id), tenant_id=str(view.tenant_id))
 
         return types.Volume(
             capacity_bytes=requested_capacity,
@@ -171,21 +171,29 @@ class VolumeFromVolumeBuilder(EmptyVolumeBuilder):
             raise SourceNotFound(f"Unknown volume: {source_volume_id}")
 
         source_path = source_quota.path
+        tenant_id = source_quota.tenant_id
         snapshot_name = f"snp-{self.name}"
         snapshot_stream_name = f"strm-{self.name}"
-        snapshot = self.controller.vms_session.ensure_snapshot(snapshot_name=snapshot_name, path=source_path)
 
+        snapshot = self.controller.vms_session.ensure_snapshot(
+            snapshot_name=snapshot_name, path=source_path,
+            tenant_id=tenant_id, expiration_delta=timedelta(minutes=5)
+        )
         snapshot_stream = self.controller.vms_session.ensure_snapshot_stream(
-            snapshot_id=snapshot.id, destination_path=self.view_path,
+            snapshot_id=snapshot.id, destination_path=self.view_path, tenant_id=tenant_id,
             snapshot_stream_name=snapshot_stream_name, background_sync=self.clone_background_sync
         )
-        volume_context.update(snapshot_stream_name=snapshot_stream.name)
+        # View should go after snapshot stream.
+        # Otherwise snapshot stream action will detect folder already exist and will be rejected
         view = self.controller.vms_session.ensure_view(
-            path=self.view_path, protocol=self.mount_protocol, view_policy=self.view_policy
+            path=self.view_path, protocol=self.mount_protocol,
+            view_policy=self.view_policy, qos_policy=self.qos_policy
         )
-        volume_context.update(view_id=str(view.id))
-        quota = self._ensure_quota(requested_capacity, volume_name, self.view_path)
-        volume_context.update(quota_id=str(quota.id))
+        quota = self._ensure_quota(requested_capacity, volume_name, self.view_path, view.tenant_id)
+        volume_context.update(
+            quota_id=str(quota.id), view_id=str(view.id),
+            tenant_id=str(tenant_id), snapshot_stream_name=snapshot_stream.name
+        )
 
         return types.Volume(
             capacity_bytes=requested_capacity,
@@ -216,22 +224,25 @@ class VolumeFromSnapshotBuilder(EmptyVolumeBuilder):
             #   quota and view will be created.
             #   The contents of the source snapshot will be replicated to view folder
             #   using an intermediate global snapshot stream.
+            tenant_id = snapshot.tenant_id
             volume_name = self.build_volume_name()
             requested_capacity = self.get_requested_capacity()
             volume_context["volume_name"] = volume_name
 
             snapshot_stream_name = f"strm-{self.name}"
             snapshot_stream = self.controller.vms_session.ensure_snapshot_stream(
-                snapshot_id=snapshot.id, destination_path=self.view_path,
+                snapshot_id=snapshot.id, destination_path=self.view_path, tenant_id=tenant_id,
                 snapshot_stream_name=snapshot_stream_name, background_sync=self.clone_background_sync
             )
-            volume_context.update(snapshot_stream_name=snapshot_stream.name)
             view = self.controller.vms_session.ensure_view(
-                path=self.view_path, protocol=self.mount_protocol, view_policy=self.view_policy
+                path=self.view_path, protocol=self.mount_protocol,
+                view_policy=self.view_policy, qos_policy=self.qos_policy
             )
-            volume_context.update(view_id=str(view.id))
-            quota = self._ensure_quota(requested_capacity, volume_name, self.view_path)
-            volume_context.update(quota_id=str(quota.id))
+            quota = self._ensure_quota(requested_capacity, volume_name, self.view_path, tenant_id)
+            volume_context.update(
+                quota_id=str(quota.id), view_id=str(view.id),
+                tenant_id=str(tenant_id), snapshot_stream_name=snapshot_stream.name
+            )
 
         else:
             # Create volume from snapshot for READ_ONLY modes.
@@ -245,8 +256,6 @@ class VolumeFromSnapshotBuilder(EmptyVolumeBuilder):
             path = snapshot_path / ".snapshot" / snapshot.name
             snapshot_base_path = str(path.relative_to(self.root_export))
             volume_context.update(snapshot_base_path=snapshot_base_path, root_export=self.root_export)
-
-        volume_context.update(tenant_id=str(snapshot.tenant_id))
 
         return types.Volume(
             capacity_bytes=requested_capacity,
