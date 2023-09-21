@@ -56,6 +56,11 @@ storageClassDefaults:
   mountOptions: ""
   # Name of QoS policy associates with the view.
   qosPolicy: ""
+  # When cloning a PVC, this flag determines whether the cloning will be performed "Eagerly" (in the background) or "Lazily", upon request.
+  # When enabled, the storage system will eagerly copy the data from the intermediate snapshot to the new path, regardless of the applications IO behavior.
+  # When disabled, data will be copied lazily, when an application attempts to access it, thus saving on the storage system's network and CPU resources.
+  # For temporary volumes or volumes that are not extensively used, it is recommended to set this field to `false`.
+  cloneBackgroundSync: true
 
 # Default storage class to use with CSI DRIVER.
 # The only required value is 'vipPool' name where user should provide name of existing vip pool on
@@ -126,7 +131,7 @@ csiImage: "vastdataorg/csi"
 
 # csiImageTag represents version of docker image that serves  CSI Controller and CSI Node.
 # To check latest stable tag refer https://support.vastdata.com/hc/en-us/articles/360010932159-VAST-with-Kubernetes
-csiImageTag: v2.2.5
+csiImageTag: v2.3.0
 
 
 ####################
