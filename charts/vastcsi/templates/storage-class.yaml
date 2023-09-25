@@ -47,6 +47,10 @@
    $allow_volume_expansion := pluck "allowVolumeExpansion" $options $.Values.storageClassDefaults |
    first | quote | mustRegexMatch "true" | ternary true false
 -}}
+{{-
+    $clone_background_sync := pluck "cloneBackgroundSync" $options $.Values.storageClassDefaults |
+    first | quote | mustRegexMatch "true" | ternary true false
+-}}
 
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
@@ -65,6 +69,9 @@ parameters:
   lb_strategy: {{ $lb_strategy }}
   volume_name_fmt: {{ $volume_name_fmt }}
   eph_volume_name_fmt: {{ $eph_volume_name_fmt }}
+  {{- if not $clone_background_sync }}
+  clone_background_sync: "false"
+  {{- end }}
   {{-  if ne $qos_policy ( quote "" ) }}
   qos_policy: {{ $qos_policy }}
   {{- end }}

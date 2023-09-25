@@ -5,6 +5,7 @@ from pprint import pformat
 from typing import ClassVar
 from uuid import uuid4
 from contextlib import contextmanager
+from datetime import datetime
 from requests.exceptions import ConnectionError, HTTPError
 
 from easypy.bunch import Bunch
@@ -326,8 +327,9 @@ class VmsSession(RESTSession):
 
         vippool = vippools[0]
         if tenant_id and vippool.tenant_id != tenant_id:
-            raise Exception(f"Pool {vip_pool_name} belongs to different tenant with name {vippool.tenant_name}")
-
+            raise Exception(
+                f"Pool {vip_pool_name} belongs to tenant with id {vippool.tenant_id} but {tenant_id=} was requested"
+            )
         vips = generate_ip_range(vippool.ip_ranges)
         assert vips, f"Pool {vip_pool_name} has no available vips"
         if load_balancing == ROUNDROBIN:
@@ -388,9 +390,12 @@ class VmsSession(RESTSession):
         ret = self.snapshots(path=path, page_size=10)  # we intentionally limit the number of results
         return ret.results
 
-    def create_snapshot(self, name, path, tenant_id):
+    def create_snapshot(self, name, path, tenant_id, expiration_delta=None):
         """Create new snapshot."""
         data = dict(name=name, path=path, tenant_id=tenant_id)
+        if expiration_delta:
+            expiration_time = (datetime.utcnow() + expiration_delta).isoformat()
+            data["expiration_time"] = expiration_time
         return Bunch(self.post("snapshots", data=data))
 
     def get_snapshot(self, snapshot_name=None, snapshot_id=None):
@@ -406,7 +411,7 @@ class VmsSession(RESTSession):
         else:
             return self.snapshots(snapshot_id)
 
-    def ensure_snapshot(self, snapshot_name, path, tenant_id):
+    def ensure_snapshot(self, snapshot_name, path, tenant_id, expiration_delta=None):
         if snapshot := self.get_snapshot(snapshot_name=snapshot_name):
             if snapshot.path.strip("/") != path.strip("/"):
                 raise Exception(
@@ -414,7 +419,7 @@ class VmsSession(RESTSession):
                     f" does not correspond to the path of the snapshot {snapshot.path}"
                 )
         else:
-            snapshot = self.create_snapshot(name=snapshot_name, path=path, tenant_id=tenant_id)
+            snapshot = self.create_snapshot(name=snapshot_name, path=path, tenant_id=tenant_id, expiration_delta=expiration_delta)
         return snapshot
 
     def delete_snapshot(self, snapshot_id):
@@ -427,18 +432,19 @@ class VmsSession(RESTSession):
     def stop_snapshot_stream(self, snapshot_stream_id):
         self.patch(f"globalsnapstreams/{snapshot_stream_id}/stop")
 
-    @requisite(semver="4.7.0", operation="create_globalsnapshotstream")
-    def ensure_snapshot_stream(self, snapshot_id, destination_path, snapshot_stream_name, background_sync):
+    @requisite(semver="4.6.0", operation="create_globalsnapshotstream")
+    def ensure_snapshot_stream(self, snapshot_id, tenant_id, destination_path, snapshot_stream_name, background_sync):
         if not (snapshot_stream := self.get_snapshot_stream(name=snapshot_stream_name)):
             data = dict(
                 loanee_root_path=destination_path,
                 name=snapshot_stream_name,
                 enabled=background_sync,
+                loanee_tenant_id=tenant_id, # target tenant_id
             )
             snapshot_stream = self.post(f"snapshots/{snapshot_id}/clone/", data)
         return snapshot_stream
 
-    @requisite(semver="4.7.0", ignore=True)
+    @requisite(semver="4.6.0", ignore=True)
     def ensure_snapshot_stream_deleted(self, snapshot_stream_name):
         """
         Stop global snapshot stream in case it is not finished.
@@ -611,6 +617,7 @@ class TestVmsSession(RESTSession):
     update_quota = _empty
     delete_view_by_path = _empty
     delete_view_by_id = _empty
+    ensure_snapshot_stream_deleted = _empty
     refresh_auth_token = _empty
     delete_folder = _empty
     is_trash_api_usable = _empty
