@@ -4,6 +4,9 @@
 * added CLONE_VOLUME support (VCSI-83)
 * clone volumes from snapshots in READ_WRITE mode (VCSI-103)
 
+## Version 2.2.6
+* added `sslCertsSecretName` parameter, which points to a user-defined secret for the CSI driver to utilize for custom CA bundles. (VCSI-120)
+
 ## Version 2.2.5
 * added adjustable timeout and number of workers (VCSI-100)
 * added k8s error events and more informative error logging (VCSI-97)
