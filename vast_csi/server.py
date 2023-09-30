@@ -258,11 +258,7 @@ class Controller(ControllerServicer, Instrumented):
     def vms_session(self):
         session_class = TestVmsSession if CONF.mock_vast else VmsSession
         session = session_class()
-        logger.info(
-            "Custom ssl certificates uploaded for use in VMS session."
-            if CONF.vms_ssl_cert.exists() else
-            "VMS session started without ssl certificates."
-        )
+        logger.info("VMS ssl verification {}.".format("enabled" if CONF.ssl_verify else "disabled"))
         session.refresh_auth_token()
         return session
 

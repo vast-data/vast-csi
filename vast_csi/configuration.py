@@ -17,8 +17,6 @@ class Config(TypedEnv):
         convert = staticmethod(local.path)
 
     vms_credentials_store = local.path("/opt/vms-auth")
-    vms_ssl_cert = vms_credentials_store["sslCert"]
-
     plugin_name, plugin_version, git_commit = (
         open("version.info").read().strip().split()
     )

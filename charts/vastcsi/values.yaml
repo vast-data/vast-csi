@@ -1,18 +1,25 @@
 ####################
 # VAST REST SESSION ATTRIBUTES
 ####################
-# Secret name with credentials to login - must be provided by user
+# Secret name, which corresponds to a secret containing credentials to login - must be provided by user
 # Secret must contain username and password fields
 # Example: kubectl create secret generic vast-mgmt --from-literal=username='< VAST username >' --from-literal=password='< VAST password >'
 secretName: ""
+
 # API endpoint of VAST appliance - must be provided by user
 endpoint: ""
 
 # Set true to enable certificate validity test
 verifySsl: false
 
-# Path (absolute or relative) to root CA certificate. - must be set using `set-file` option eg `--set-file sslCert=VastCerts/sslCert.crt`
+# Path (absolute or relative) to SSL certificate for verifying the VAST REST API.
+# Must be set using `set-file` option eg `--set-file sslCert=< path to sslCert.crt >`
+# sslCertsSecretName secret and sslCert option in values.yaml are mutually exclusive. Make sure to use only one of them.
 sslCert: ""
+# Secret name, which corresponds to a secret containing an SSL certificate for verifying the VAST REST API
+# Example: kubectl create secret generic vast-tls --from-file=ca-bundle.crt=< path to sslCert.crt >
+# sslCertsSecretName secret and sslCert option in values.yaml are mutually exclusive. Make sure to use only one of them.
+sslCertsSecretName: ""
 
 ####################
 # DELETE VOLUMES
@@ -126,7 +133,7 @@ csiImage: "vastdataorg/csi"
 
 # csiImageTag represents version of docker image that serves  CSI Controller and CSI Node.
 # To check latest stable tag refer https://support.vastdata.com/hc/en-us/articles/360010932159-VAST-with-Kubernetes
-csiImageTag: v2.2.5
+csiImageTag: v2.2.6
 
 
 ####################

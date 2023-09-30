@@ -75,11 +75,10 @@ class RESTSession(requests.Session):
         self.headers["Content-Type"] = "application/json"
         self.config = Config()
         self.base_url = f"https://{self.config.vms_host}/api"
-
-        if self.config.ssl_verify:
-            self.ssl_verify = self.config.vms_ssl_cert if self.config.vms_ssl_cert.exists() else True
-        else:
-            self.ssl_verify = False
+        # Modify the SSL verification CA bundle path established
+        # by the underlying Certifi library's defaults if ssl_verify==True.
+        # This way requests library can use mounted CA bundle or default system CA bundle under the same path.
+        self.ssl_verify = (False, "/etc/ssl/certs/ca-certificates.crt")[self.config.ssl_verify]
 
     def refresh_auth_token(self):
         try:
