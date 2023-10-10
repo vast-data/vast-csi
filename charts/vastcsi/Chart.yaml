@@ -2,7 +2,7 @@ apiVersion: v2
 name: vastcsi
 description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
 type: application
-version: "0.2.5"
+version: "0.2.2"
 kubeVersion: ">= 1.21.0"
 keywords:
   - vast
