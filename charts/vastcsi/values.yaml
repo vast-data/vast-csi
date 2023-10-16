@@ -53,7 +53,7 @@ storageClassDefaults:
   # String template for CSI-provisioned ephemeral volumes, within VAST
   ephemeralVolumeNameFormat: "csi:{namespace}:{name}:{id}"
   # Add any extra NFS options desired here
-  mountOptions: ""
+  mountOptions: []
   # Name of QoS policy associates with the view.
   qosPolicy: ""
 

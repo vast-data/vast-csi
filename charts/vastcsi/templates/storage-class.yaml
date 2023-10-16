@@ -42,7 +42,7 @@
 {{- $volume_name_fmt := pluck "volumeNameFormat" $options $.Values.storageClassDefaults | first | quote -}}
 {{- $eph_volume_name_fmt := pluck "ephemeralVolumeNameFormat" $options $.Values.storageClassDefaults | first | quote -}}
 {{- $qos_policy :=  pluck "qosPolicy" $options $.Values.storageClassDefaults | first | quote -}}
-{{- $mount_options :=  pluck "mountOptions" $options $.Values.storageClassDefaults | first | quote -}}
+{{- $mount_options :=  pluck "mountOptions" $options $.Values.storageClassDefaults | first -}}
 {{-
    $allow_volume_expansion := pluck "allowVolumeExpansion" $options $.Values.storageClassDefaults |
    first | quote | mustRegexMatch "true" | ternary true false
@@ -69,7 +69,7 @@ parameters:
   qos_policy: {{ $qos_policy }}
   {{- end }}
 allowVolumeExpansion: {{ $allow_volume_expansion }}
-mountOptions:
-  - {{ $mount_options }}
+mountOptions: 
+{{ toYaml $mount_options | indent 2 }}
 ---
 {{- end }}
