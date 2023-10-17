@@ -188,8 +188,6 @@ class VmsSession(RESTSession):
         return self.cluster_info.id
 
     def is_trash_api_usable(self) -> bool:
-        return False  # Temporarily disabled as part of ongoing stabilization measures.
-
         if self.config.dont_use_trash_api or self.sw_version < self.TRASH_API_INTRODUCED:
             # trash api usage is disabled by csi admin or trash api doesn't exists for cluster
             return False
