@@ -73,6 +73,6 @@ entries:
     name: vastcsi
     type: application
     urls:
-    - https://github.com/vast-data/vast-csi/releases/download/vastcsi-2.2.6-beta/helm-2.2.6-beta.tgz
+    - https://github.com/vast-data/vast-csi/releases/download/vastcsi-2.2.6-beta/vastcsi-2.2.6-beta.tgz
     version: 2.2.6-beta
 generated: "2023-10-19T09:20:00.527240837Z"
