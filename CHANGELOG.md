@@ -4,6 +4,9 @@
 * added CLONE_VOLUME support (VCSI-83)
 * clone volumes from snapshots in READ_WRITE mode (VCSI-103)
 
+## Version 2.2.7
+* removed kubernetes version check (VCSI-130)
+
 ## Version 2.2.6
 * added `sslCertsSecretName` parameter, which points to a user-defined secret for the CSI driver to utilize for custom CA bundles. (VCSI-120)
 
