@@ -465,6 +465,8 @@ class Controller(ControllerServicer, Instrumented):
     def DeleteVolume(self, volume_id):
         self.vms_session.ensure_snapshot_stream_deleted(f"strm-{volume_id}")
         if quota := self.vms_session.get_quota(volume_id):
+            if self.vms_session.is_trash_api_usable() and (snaps := self.vms_session.has_snapshots(quota.path)):
+                raise Exception(f"Unable to delete volume {volume_id} as it holds {len(snaps)} snapshots.")
             try:
                 self._delete_data_from_storage(quota.path, quota.tenant_id)
             except OSError as exc:
