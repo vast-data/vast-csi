@@ -189,7 +189,7 @@ class VmsSession(RESTSession):
 
     def is_trash_api_usable(self) -> bool:
         if self.config.dont_use_trash_api or self.sw_version < self.TRASH_API_INTRODUCED:
-            # trash api usage is disabled by csi admin or trash api doesn't exists for cluster
+            # trash api usage is disabled by csi admin or trash api doesn't exist for cluster
             return False
         elif not self.cluster_info.enable_trash:
             logger.warning(
@@ -618,3 +618,4 @@ class TestVmsSession(RESTSession):
     refresh_auth_token = _empty
     delete_folder = _empty
     is_trash_api_usable = _empty
+    has_snapshots = _empty
