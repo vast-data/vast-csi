@@ -171,7 +171,7 @@ class VmsSession(RESTSession):
     @timecache(HOUR)
     def cluster_info(self) -> Bunch:
         """Get cluster info"""
-        return self.clusters()[0]
+        return self.clusters(log_result=False)[0]
 
     @property
     @timecache(HOUR)
