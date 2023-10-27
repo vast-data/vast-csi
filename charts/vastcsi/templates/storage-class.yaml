@@ -1,4 +1,4 @@
-{{/* Generate one or more storage classes from 'storageClasses' section.  */}}
+{{/* Generate one or more storage classes from 'storageClasses' section. */}}
 
 {{- if not .Values.storageClasses -}}
   {{- fail "`storageClasses` cannot be empty section. Specify at least one StorageClass with required parameters (vipPool, storagePath etc)" -}}
@@ -69,6 +69,12 @@ parameters:
   qos_policy: {{ $qos_policy }}
   {{- end }}
 allowVolumeExpansion: {{ $allow_volume_expansion }}
+{{- if kindIs "string" $mount_options -}}
+{{/* Keep option to specify mountOptions as string for backward compatibility */}}
+mountOptions:
+  - {{ $mount_options | quote }}
+{{- else }}
 mountOptions: {{ toYaml $mount_options | nindent 2  }}
+{{- end }}
 ---
 {{- end }}
