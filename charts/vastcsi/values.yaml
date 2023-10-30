@@ -60,7 +60,7 @@ storageClassDefaults:
   # String template for CSI-provisioned ephemeral volumes, within VAST
   ephemeralVolumeNameFormat: "csi:{namespace}:{name}:{id}"
   # Add any extra NFS options desired here
-  mountOptions: ""
+  mountOptions: []
   # Name of QoS policy associates with the view.
   qosPolicy: ""
 
@@ -99,9 +99,6 @@ operationRetryIntervalStart: 10
 
 # Maximum interval between attempts.
 operationRetryIntervalMax: 60
-
-# The path to the kubelet root dir. must be provided when Kubernetes is not installed in its default directory.
-kubeletPath: "/var/lib/kubelet"
 
 ####################
 # VAST CSI SNAPSHOTS CLASS OPTIONS
@@ -144,46 +141,95 @@ csiImageTag: v2.2.6-beta-1093185
 #  We recommend to consult with VAST Support before changing any of the following parameters
 ####################
 
-# nodeSelector is the way to restrict CSI Controller and and CSI Node to be assigned on certain node/nodes.
-# Specify node selector if you want node and controller containers to be assigned only to specific node/nodes of
-# your cluster.
-#  https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector.
-nodeSelector: {}
+controller:
+  # runOnMaster flag indicated if CSI Controller should be run on master.
+  runOnMaster: false
+  # runOnControlPlane flag indicated if CSI Controller should be run on control plane node.
+  runOnControlPlane: false
+  # determine how DNS (Domain Name System) resolution should be handled within Pod.
+  # available values: Default, ClusterFirstWithHostNet, ClusterFirst
+  dnsPolicy: Default
+  # nodeSelector is the way to restrict pod to be assigned on certain node/nodes.
+  # Specify node selector if you want node and controller containers to be assigned only to specific node/nodes of
+  # your cluster.
+  #  https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector.
+  nodeSelector: {}
+  # If specified, the pod's tolerations
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
+  tolerations: []
+  # If specified, the pod's scheduling constraints
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  affinity: {}
+  # Resources describes the compute resource requirements.
+  resources:
+    csiProvisioner:
+      limits:
+        memory: 400Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiSnapshotter:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiAttacher:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiResizer:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiVastPlugin:
+      limits:
+        memory: 400Mi
+      requests:
+        cpu: 100m
+        memory: 50Mi
+  # priorityClassName is the name of priority class to be used for the pod.
+  priorityClassName: system-cluster-critical
 
-# If specified, the pod's tolerations
-# https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
-tolerations: []
+node:
+  # See controller.dnsPolicy section for details
+  dnsPolicy: Default
+  # See controller.nodeSelector section for details
+  nodeSelector: {}
+  # See controller.tolerations section for details
+  tolerations: []
+  # See controller.affinity section for details
+  affinity: {}
+  # see controller.resources section for details
+  resources:
+    nodeDriverRegistrar:
+      limits:
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiVastPlugin:
+      limits:
+        memory: 400Mi
+      requests:
+        cpu: 100m
+        memory: 50Mi
+  # See controller.priorityClassName section for details
+  priorityClassName: system-cluster-critical
 
-# affinity is more expressive way to restrict pods to be scheduled on certain nodes that allow you
-# to specify percentage of pods that allowed to be sheduled on node etc.
-# https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
-affinity: {}
-
-# podAnnotations is additional key/value metadata you can pass to pods manifest.
-podAnnotations: {}
-
+# The path to the kubelet root dir. must be provided when Kubernetes is not installed in its default directory.
+kubeletPath: "/var/lib/kubelet"
 # rbac flag indicated it Role-based access control from this chart should be used to create apropriate
 # permissions for CSI Controller and CSI Node. Use default value unless you understand necessary permissions
 # and can provide it other way.
 rbac: true
-
-# compute resources required by CSI Controller and CSI node
-# Example:
-# resources:
-#   requests:
-#      memory: "64Mi"
-#      cpu: "250m"
-resources: {}
-
-# "Limits describes the maximum amount of compute resource allowed.
-# More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
-# Example:
-# resources:
-# requests:
-#  limits:
-#    memory: "128Mi"
-#    cpu: "500m"
-limits: {}
-
+# Reference to one or more secrets to be used when pulling images
+# ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+# - name: "image-pull-secret"
+imagePullSecrets: []
 # Log level of CSI plugin
 logLevel: 5

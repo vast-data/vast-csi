@@ -3,7 +3,6 @@ name: vastcsi
 description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
 type: application
 version: "2.2.6-beta"
-kubeVersion: ">= 1.21.0"
 keywords:
   - vast
   - csi
