@@ -2,6 +2,41 @@ apiVersion: v1
 entries:
   vastcsi:
   - apiVersion: v2
+    created: "2023-10-19T09:35:16.721465452Z"
+    description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
+    digest: 47d3a4191f4ec1e75ffcf28ec9b46b25b7620b7dcc5c39c1dd499ed9aa489d29
+    home: https://support.vastdata.com/hc/en-us/articles/8022914098716
+    icon: https://uploads.vastdata.com/2020/04/vast-white-1.svg
+    keywords:
+    - vast
+    - csi
+    - driver
+    - vastdata
+    - csi-driver
+    kubeVersion: '>= 1.21.0'
+    name: vastcsi
+    type: application
+    urls:
+    - https://github.com/vast-data/vast-csi/releases/download/vastcsi-2.2.6-beta/vastcsi-2.2.6-beta.tgz
+    version: 2.2.6-beta
+  - apiVersion: v2
+    created: "2023-10-30T23:15:31.134661093Z"
+    description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
+    digest: 1c391559829c09b7653f74fefd77f874f28fd0b20593bb4df9f18849f969d125
+    home: https://support.vastdata.com/hc/en-us/articles/8022914098716
+    icon: https://uploads.vastdata.com/2020/04/vast-white-1.svg
+    keywords:
+    - vast
+    - csi
+    - driver
+    - vastdata
+    - csi-driver
+    name: vastcsi
+    type: application
+    urls:
+    - https://github.com/vast-data/vast-csi/releases/download/vastcsi-2.2.6-beta/vastcsi-2.2.6-beta.tgz
+    version: 2.2.6-beta
+  - apiVersion: v2
     created: "2023-10-24T08:58:49.533132946Z"
     description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
     digest: e840708c66ac3af6b6bf4836e001a73f478ce4a98210b5737f136f091d8245a2
@@ -74,22 +109,4 @@ entries:
     urls:
     - https://github.com/vast-data/vast-csi/releases/download/vastcsi-0.1.0/vastcsi-0.1.0.tgz
     version: 0.1.0
-  - apiVersion: v2
-    created: "2023-10-19T09:35:16.721465452Z"
-    description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
-    digest: 47d3a4191f4ec1e75ffcf28ec9b46b25b7620b7dcc5c39c1dd499ed9aa489d29
-    home: https://support.vastdata.com/hc/en-us/articles/8022914098716
-    icon: https://uploads.vastdata.com/2020/04/vast-white-1.svg
-    keywords:
-    - vast
-    - csi
-    - driver
-    - vastdata
-    - csi-driver
-    kubeVersion: '>= 1.21.0'
-    name: vastcsi
-    type: application
-    urls:
-    - https://github.com/vast-data/vast-csi/releases/download/vastcsi-2.2.6-beta/vastcsi-2.2.6-beta.tgz
-    version: 2.2.6-beta
-generated: "2023-10-24T08:58:49.533154946Z"
+generated: "2023-10-30T23:15:31.134688793Z"
