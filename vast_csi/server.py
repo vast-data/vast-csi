@@ -599,7 +599,7 @@ class Controller(ControllerServicer, Instrumented):
                     else:
                         if (k, v) == ("name", "This field must be unique."):
                             snap = self.vms_session.get_snapshot(snapshot_name=snapshot_name)
-                            if snap.path != path:
+                            if snap.path.strip("/") != path.strip("/"):
                                 raise Abort(
                                     ALREADY_EXISTS,
                                     f"Snapshot name '{name}' is already taken",
