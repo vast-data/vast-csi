@@ -416,7 +416,8 @@ class VmsSession(RESTSession):
                     f" does not correspond to the path of the snapshot {snapshot.path}"
                 )
         else:
-            snapshot = self.create_snapshot(name=snapshot_name, path=path, tenant_id=tenant_id, expiration_delta=expiration_delta)
+            path = path.rstrip("/") + "/"
+            snapshot = self.create_snapshot(name=snapshot_name, path=path, tenant_id=tenant_id)
         return snapshot
 
     def delete_snapshot(self, snapshot_id):
