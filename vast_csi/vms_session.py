@@ -411,6 +411,7 @@ class VmsSession(RESTSession):
                     f" does not correspond to the path of the snapshot {snapshot.path}"
                 )
         else:
+            path = path.rstrip("/") + "/"
             snapshot = self.create_snapshot(name=snapshot_name, path=path, tenant_id=tenant_id)
         return snapshot
 
