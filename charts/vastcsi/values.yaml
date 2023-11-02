@@ -33,7 +33,7 @@ deletionViewPolicy: ""
 # When the flag is set to 'true', the controller will opt to using a local mount for deleting data from discarded volumes,
 # as opposed to sending the request to the VMS over REST.
 # Normally this should be kept as 'false'. Please contact VAST Support if you feel you need to set this to 'true'.
-dontUseTrashApi: false
+dontUseTrashApi: true
 
 ####################
 # VAST CSI STORAGE CLASS OPTIONS
