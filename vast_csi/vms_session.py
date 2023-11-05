@@ -68,6 +68,10 @@ def requisite(semver: str, operation: str = None, ignore: bool = False):
     return dec
 
 
+class CannotUseTrashAPI(OperationNotSupported):
+    template = "Cannot delete folder via VMS: {_reason}"
+
+
 class RESTSession(requests.Session):
     def __init__(self):
         super().__init__()
@@ -175,16 +179,9 @@ class VmsSession(RESTSession):
 
     @property
     @timecache(HOUR)
-    def vms_info(self) -> Bunch:
-        return self.vms()[0]
-
-    @property
     def sw_version(self) -> SemVer:
-        return SemVer.loads_fuzzy(self.vms_info.sw_version)
-
-    @property
-    def cluster_id(self) -> int:
-        return self.cluster_info.id
+        versions = self.versions(status='success')[0].sys_version
+        return SemVer.loads_fuzzy(versions)
 
     def is_trash_api_usable(self) -> bool:
         if self.config.dont_use_trash_api or self.sw_version < self.TRASH_API_INTRODUCED:
@@ -200,19 +197,21 @@ class VmsSession(RESTSession):
             # trash API is enabled. Use it!
             return True
 
-    @requisite(semver="4.6.0")
+    @requisite(semver="4.7.0")
     def delete_folder(self, path: str, tenant_id: int):
         """Delete remote cluster folder by provided path."""
+
+        if self.config.dont_use_trash_api:
+            # trash api usage is disabled by csi admin or trash api doesn't exist for cluster
+            raise CannotUseTrashAPI("Disabled by Vast CSI settings (see 'dontUseTrashApi' in your Helm chart)")
+
         try:
-            self.delete(f"/folders/delete_folder/", data={"path": path, "tenant_id": tenant_id})
+            self.delete("/folders/delete_folder/", data={"path": path, "tenant_id": tenant_id})
         except ApiError as e:
             if "no such directory" in e.render():
                 logger.debug(f"Remote directory might have been removed earlier. ({e})")
             elif "trash folder disabled" in e.render():
-                # Trash api has been disabled recently so it is not reflected in cache yet.
-                # clear cache in order to take recent `trash_enable` flag next time
-                self.__class__.cluster_info.fget.cache.clear()
-                raise Exception("Trash Folder Access is disabled")
+                raise CannotUseTrashAPI(reason="Trash Folder Access is disabled (see Settings/Cluster/Features in VMS)")
             else:
                 # unpredictable error
                 raise

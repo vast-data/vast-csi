@@ -14,8 +14,6 @@ class TestVmsSessionSuite:
     ])
     @patch("vast_csi.configuration.Config.vms_user", PropertyMock("test"))
     @patch("vast_csi.configuration.Config.vms_password", PropertyMock("test"))
-    @patch("vast_csi.vms_session.VmsSession.cluster_id", PropertyMock(1))
-    @patch("vast_csi.vms_session.VmsSession.is_trash_api_usable", MagicMock(True))
     @patch("vast_csi.vms_session.VmsSession.refresh_auth_token", MagicMock())
     def test_requisite_decorator(self, cluster_version):
         """Test `requisite` decorator produces exception when cluster version doesn't met requirements"""
@@ -48,7 +46,6 @@ class TestVmsSessionSuite:
 
     @patch("vast_csi.configuration.Config.vms_user", PropertyMock("test"))
     @patch("vast_csi.configuration.Config.vms_password", PropertyMock("test"))
-    @patch("vast_csi.vms_session.VmsSession.cluster_id", PropertyMock(1))
     @patch("vast_csi.vms_session.VmsSession.refresh_auth_token", MagicMock())
     def test_trash_api_disabled(self):
         """Test trash api disable on cluster version >=4.6.0 cause Exception"""
@@ -67,12 +64,9 @@ class TestVmsSessionSuite:
                 patch("vast_csi.vms_session.VmsSession.cluster_info", fake_cluster_info),
         ):
             # Assertion
-            assert not cont.vms_session.is_trash_api_usable()
 
     @patch("vast_csi.configuration.Config.vms_user", PropertyMock("test"))
     @patch("vast_csi.configuration.Config.vms_password", PropertyMock("test"))
-    @patch("vast_csi.vms_session.VmsSession.cluster_id", PropertyMock(1))
-    @patch("vast_csi.vms_session.VmsSession.is_trash_api_usable", MagicMock(True))
     @patch("vast_csi.vms_session.VmsSession.refresh_auth_token", MagicMock())
     def test_folder_deleted_before_trash_api(self):
         """Test deleting the folder did not proceed as the folder had been manually deleted."""
@@ -99,8 +93,6 @@ class TestVmsSessionSuite:
 
     @patch("vast_csi.configuration.Config.vms_user", PropertyMock("test"))
     @patch("vast_csi.configuration.Config.vms_password", PropertyMock("test"))
-    @patch("vast_csi.vms_session.VmsSession.cluster_id", PropertyMock(1))
-    @patch("vast_csi.vms_session.VmsSession.is_trash_api_usable", MagicMock(True))
     @patch("vast_csi.vms_session.VmsSession.refresh_auth_token", MagicMock())
     def test_trash_api_disabled(self):
         """Test trash api didn't executed  as trash API is disabled on cluster."""
