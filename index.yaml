@@ -74,7 +74,7 @@ entries:
     urls:
     - https://github.com/vast-data/vast-csi/releases/download/vastcsi-0.1.0/vastcsi-0.1.0.tgz
     version: 0.1.0
-   - apiVersion: v2
+  - apiVersion: v2
     created: "2023-10-19T09:35:16.721465452Z"
     description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
     digest: 47d3a4191f4ec1e75ffcf28ec9b46b25b7620b7dcc5c39c1dd499ed9aa489d29
