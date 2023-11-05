@@ -171,7 +171,7 @@ class VmsSession(RESTSession):
     @timecache(HOUR)
     def cluster_info(self) -> Bunch:
         """Get cluster info"""
-        return self.clusters()[0]
+        return self.clusters(log_result=False)[0]
 
     @property
     @timecache(HOUR)
@@ -187,10 +187,8 @@ class VmsSession(RESTSession):
         return self.cluster_info.id
 
     def is_trash_api_usable(self) -> bool:
-        return False  # Temporarily disabled as part of ongoing stabilization measures.
-
         if self.config.dont_use_trash_api or self.sw_version < self.TRASH_API_INTRODUCED:
-            # trash api usage is disabled by csi admin or trash api doesn't exists for cluster
+            # trash api usage is disabled by csi admin or trash api doesn't exist for cluster
             return False
         elif not self.cluster_info.enable_trash:
             logger.warning(
@@ -206,7 +204,7 @@ class VmsSession(RESTSession):
     def delete_folder(self, path: str, tenant_id: int):
         """Delete remote cluster folder by provided path."""
         try:
-            self.delete(f"/clusters/{self.cluster_id}/delete_folder/", data={"path": path, "tenant_id": tenant_id})
+            self.delete(f"/folders/delete_folder/", data={"path": path, "tenant_id": tenant_id})
         except ApiError as e:
             if "no such directory" in e.render():
                 logger.debug(f"Remote directory might have been removed earlier. ({e})")
@@ -413,6 +411,7 @@ class VmsSession(RESTSession):
                     f" does not correspond to the path of the snapshot {snapshot.path}"
                 )
         else:
+            path = path.rstrip("/") + "/"
             snapshot = self.create_snapshot(name=snapshot_name, path=path, tenant_id=tenant_id)
         return snapshot
 
@@ -582,3 +581,4 @@ class TestVmsSession(RESTSession):
     refresh_auth_token = _empty
     delete_folder = _empty
     is_trash_api_usable = _empty
+    has_snapshots = _empty

@@ -4,6 +4,7 @@
 * added `sslCertsSecretName` parameter, which points to a user-defined secret for the CSI driver to utilize for custom CA bundles. (VCSI-120)
 * removed kubernetes version check (VCSI-130)
 * advanced resources usage and pod allocation for csi node/controller (VCSI-131)
+* when using Trash API for deletions, disallow removal of volume if it has snapshots, as a workaround for a Vast Storage temporary limitation (VCI-128)
 
 ## Version 2.2.5
 * added adjustable timeout and number of workers (VCSI-100)

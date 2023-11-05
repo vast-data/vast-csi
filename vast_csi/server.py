@@ -452,6 +452,8 @@ class Controller(ControllerServicer, Instrumented):
 
     def DeleteVolume(self, volume_id):
         if quota := self.vms_session.get_quota(volume_id):
+            if self.vms_session.is_trash_api_usable() and self.vms_session.has_snapshots(quota.path):
+                raise Exception(f"Unable to delete volume {volume_id} as it holds snapshots.")
             try:
                 self._delete_data_from_storage(quota.path, quota.tenant_id)
             except OSError as exc:
@@ -597,7 +599,7 @@ class Controller(ControllerServicer, Instrumented):
                     else:
                         if (k, v) == ("name", "This field must be unique."):
                             snap = self.vms_session.get_snapshot(snapshot_name=snapshot_name)
-                            if snap.path != path:
+                            if snap.path.strip("/") != path.strip("/"):
                                 raise Abort(
                                     ALREADY_EXISTS,
                                     f"Snapshot name '{name}' is already taken",

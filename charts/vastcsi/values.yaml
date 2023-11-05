@@ -32,8 +32,8 @@ deletionVipPool: ""
 deletionViewPolicy: ""
 # When the flag is set to 'true', the controller will opt to using a local mount for deleting data from discarded volumes,
 # as opposed to sending the request to the VMS over REST.
-# Normally this should be kept as 'false'. Please contact VAST Support if you feel you need to set this to 'true'.
-dontUseTrashApi: false
+# Please contact VAST Support before modifying this setting.
+dontUseTrashApi: true
 
 ####################
 # VAST CSI STORAGE CLASS OPTIONS
@@ -130,7 +130,7 @@ csiImage: "vastdataorg/csi"
 
 # csiImageTag represents version of docker image that serves  CSI Controller and CSI Node.
 # To check latest stable tag refer https://support.vastdata.com/hc/en-us/articles/360010932159-VAST-with-Kubernetes
-csiImageTag: v2.2.6-beta-1093185
+csiImageTag: v2.2.6-beta-1122642
 
 
 ####################
