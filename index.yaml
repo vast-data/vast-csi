@@ -107,5 +107,5 @@ entries:
     type: application
     urls:
     - https://github.com/vast-data/vast-csi/releases/download/vastcsi-2.2.6-beta/vastcsi-2.2.6-beta.tgz
-    version: 2.2.6-beta
+    version: 2.2.6-beta3
 generated: "2023-11-05T20:56:41.771910767Z"
