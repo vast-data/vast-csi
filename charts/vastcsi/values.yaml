@@ -105,6 +105,10 @@ operationRetryIntervalStart: 10
 # Maximum interval between attempts.
 operationRetryIntervalMax: 60
 
+# Truncate VAST quota name if name length is greater then this number.
+# set `truncateVolumeName: null` to disable truncation.
+truncateVolumeName: 64
+
 ####################
 # VAST CSI SNAPSHOTS CLASS OPTIONS
 ####################
@@ -122,21 +126,31 @@ snapshotClass:
 # VAST CONTROLLER AND NODE IMAGE SPECIFICATION
 ####################
 
-# Truncate VAST quota name if name length is greater then this number.
-# set `truncateVolumeName: null` to disable truncation.
-truncateVolumeName: 64
-
-# Kubernetes image pull policies control when Kubelet should fetch an updated image version.
-# Pull policies are used when a new Pod is starting up.
-imagePullPolicy: "IfNotPresent"
-
-# csiImage is base docker image for Controller and Node.
-csiImage: "vastdataorg/csi"
-
-# csiImageTag represents version of docker image that serves  CSI Controller and CSI Node.
-# To check latest stable tag refer https://support.vastdata.com/hc/en-us/articles/360010932159-VAST-with-Kubernetes
-csiImageTag: v2.3.0
-
+image:
+  csiVastPlugin:
+    repository: vastdataorg/csi
+    tag: v2.2.6
+    imagePullPolicy: IfNotPresent
+  csiAttacher:
+    repository: k8s.gcr.io/sig-storage/csi-attacher
+    tag: v3.1.0
+    imagePullPolicy: IfNotPresent
+  csiNodeDriverRegistrar:
+    repository: k8s.gcr.io/sig-storage/csi-node-driver-registrar
+    tag: v2.0.1
+    imagePullPolicy: IfNotPresent
+  csiProvisioner:
+    repository: k8s.gcr.io/sig-storage/csi-provisioner
+    tag: v3.2.1
+    imagePullPolicy: IfNotPresent
+  csiResizer:
+    repository: k8s.gcr.io/sig-storage/csi-resizer
+    tag: v1.1.0
+    imagePullPolicy: IfNotPresent
+  csiSnapshotter:
+    repository: k8s.gcr.io/sig-storage/csi-snapshotter
+    tag: v6.0.1
+    imagePullPolicy: IfNotPresent
 
 ####################
 # VAST CONTROLLER AND NODE BEHAVIOR
