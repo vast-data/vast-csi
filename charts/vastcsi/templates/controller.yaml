@@ -1,7 +1,6 @@
 {{/* Vast CSI Controller */}}
 
-{{- $vast_config := .Files.Get "vast-config.yaml" | fromYaml -}}
-{{- $csi_images := get $vast_config "image" -}}
+{{- $csi_images := .Values.image -}}
 {{- $plugin_proxy_sock := "/var/lib/csi/sockets/pluginproxy/csi.sock" -}}
 {{- $plugin_proxy_sock_path := "/var/lib/csi/sockets/pluginproxy/" -}}
 {{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
@@ -48,7 +47,7 @@ spec:
           env:
             - name: ADDRESS
               value: {{ $plugin_proxy_sock }}
-          imagePullPolicy: {{ .Values.imagePullPolicy | default  "IfNotPresent" }}
+          imagePullPolicy: {{ $csi_images.csiProvisioner.imagePullPolicy | default  "IfNotPresent" }}
           volumeMounts:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
@@ -63,7 +62,7 @@ spec:
           env:
             - name: ADDRESS
               value: {{ $plugin_proxy_sock }}
-          imagePullPolicy: {{ .Values.imagePullPolicy | default  "IfNotPresent" }}
+          imagePullPolicy: {{ $csi_images.csiAttacher.imagePullPolicy | default  "IfNotPresent" }}
           volumeMounts:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
@@ -80,7 +79,7 @@ spec:
           env:
             - name: ADDRESS
               value: {{ $plugin_proxy_sock }}
-          imagePullPolicy: {{ .Values.imagePullPolicy | default  "IfNotPresent" }}
+          imagePullPolicy: {{ $csi_images.csiSnapshotter.imagePullPolicy | default  "IfNotPresent" }}
           volumeMounts:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
@@ -95,16 +94,16 @@ spec:
           env:
             - name: ADDRESS
               value: {{ $plugin_proxy_sock }}
-          imagePullPolicy: {{ .Values.imagePullPolicy | default  "IfNotPresent" }}
+          imagePullPolicy: {{ $csi_images.csiResizer.imagePullPolicy | default  "IfNotPresent" }}
           volumeMounts:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
           resources: {{- toYaml .Values.controller.resources.csiResizer | nindent 12 }}
         - name: csi-vast-plugin
-          image: {{ printf "%s:%s" .Values.csiImage .Values.csiImageTag }}
+          image: {{ printf "%s:%s" $csi_images.csiVastPlugin.repository $csi_images.csiVastPlugin.tag }}
           args:
             - "serve"
-          imagePullPolicy: {{ .Values.imagePullPolicy | default  "IfNotPresent" }}
+          imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default  "IfNotPresent" }}
           securityContext:
             privileged: true
             capabilities:
