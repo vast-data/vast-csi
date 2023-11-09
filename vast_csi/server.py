@@ -266,7 +266,7 @@ class Controller(ControllerServicer, Instrumented):
     @cached_property
     def vms_session(self):
         session_class = TestVmsSession if CONF.mock_vast else VmsSession
-        session = session_class()
+        session = session_class(config=CONF)
         logger.info("VMS ssl verification {}.".format("enabled" if CONF.ssl_verify else "disabled"))
         session.refresh_auth_token()
         return session
@@ -405,6 +405,7 @@ class Controller(ControllerServicer, Instrumented):
             try:
                 logger.info(f"Attempting trash API to delete {path}")
                 self.vms_session.delete_folder(path, tenant_id)
+                return  # Successfully deleted. Prevent using local mounting
             except OperationNotSupported as exc:
                 logger.debug(f"Trash API not available {exc}")
                 CONF.avoid_trash_api.reset()
@@ -412,6 +413,10 @@ class Controller(ControllerServicer, Instrumented):
         logger.info(f"Use local mounting to delete {path}")
         path = local.path(path)
         volume_id = path.name
+        assert CONF.deletion_view_policy and CONF.deletion_vip_pool, (
+            "Ensure that deletionVipPool and deletionViewPolicy are properly "
+            "configured in your Helm configuration to perform local volume deletion."
+        )
         view_policy = self.vms_session.ensure_view_policy(policy_name=CONF.deletion_view_policy)
         nfs_server = self.vms_session.get_vip(vip_pool_name=CONF.deletion_vip_pool, tenant_id=view_policy.tenant_id)
 
