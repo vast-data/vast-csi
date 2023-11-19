@@ -1,10 +1,9 @@
 {{/* Vast CSI Controller */}}
 
-{{- $vast_config := .Files.Get "vast-config.yaml" | fromYaml -}}
-{{- $csi_images := get $vast_config "image" -}}
+{{- $csi_images := .Values.image -}}
 {{- $plugin_proxy_sock := "/var/lib/csi/sockets/pluginproxy/csi.sock" -}}
 {{- $plugin_proxy_sock_path := "/var/lib/csi/sockets/pluginproxy/" -}}
-
+{{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
 
 apiVersion: apps/v1
 kind: StatefulSet
@@ -25,18 +24,17 @@ spec:
     metadata:
       annotations:
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
-        {{- if .Values.podAnnotations }}
-          {{- .Values.podAnnotations | nindent 8 }}
-        {{- end }}
       labels:
         role: csi-vast
         app: csi-vast-controller
         {{- include "vastcsi.labels" . | nindent 8 }}
     spec:
-      {{- if .Values.affinity }}
-      affinity:
-        {{- .Values.affinity | nindent 8 }}
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
       {{- end }}
+      affinity:
+{{ toYaml .Values.controller.affinity | indent 8 }}
       containers:
         - name: csi-provisioner
           image: {{ printf "%s:%s" $csi_images.csiProvisioner.repository $csi_images.csiProvisioner.tag }}
@@ -49,14 +47,11 @@ spec:
           env:
             - name: ADDRESS
               value: {{ $plugin_proxy_sock }}
-          imagePullPolicy: {{ .Values.imagePullPolicy | default  "IfNotPresent" }}
-          {{- if .Values.resources }}
-          resources:
-            {{- .Values.resources | nindent 12 }}
-          {{- end }}
+          imagePullPolicy: {{ $csi_images.csiProvisioner.imagePullPolicy | default  "IfNotPresent" }}
           volumeMounts:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
+          resources: {{- toYaml .Values.controller.resources.csiProvisioner | nindent 12 }}
         - name: csi-attacher
           image: {{ printf "%s:%s" $csi_images.csiAttacher.repository $csi_images.csiAttacher.tag }}
           args: {{- include "vastcsi.commonArgs" . | nindent 12 }}
@@ -67,10 +62,11 @@ spec:
           env:
             - name: ADDRESS
               value: {{ $plugin_proxy_sock }}
-          imagePullPolicy: {{ .Values.imagePullPolicy | default  "IfNotPresent" }}
+          imagePullPolicy: {{ $csi_images.csiAttacher.imagePullPolicy | default  "IfNotPresent" }}
           volumeMounts:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
+          resources: {{- toYaml .Values.controller.resources.csiAttacher | nindent 12 }}
         - name: csi-snapshotter
           image: {{ printf "%s:%s" $csi_images.csiSnapshotter.repository $csi_images.csiSnapshotter.tag }}
           args: {{- include "vastcsi.commonArgs" . | nindent 12 }}
@@ -83,10 +79,11 @@ spec:
           env:
             - name: ADDRESS
               value: {{ $plugin_proxy_sock }}
-          imagePullPolicy: {{ .Values.imagePullPolicy | default  "IfNotPresent" }}
+          imagePullPolicy: {{ $csi_images.csiSnapshotter.imagePullPolicy | default  "IfNotPresent" }}
           volumeMounts:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
+          resources: {{- toYaml .Values.controller.resources.csiSnapshotter | nindent 12 }}
         - name: csi-resizer
           image: {{ printf "%s:%s" $csi_images.csiResizer.repository $csi_images.csiResizer.tag }}
           args: {{- include "vastcsi.commonArgs" . | nindent 12 }}
@@ -97,19 +94,16 @@ spec:
           env:
             - name: ADDRESS
               value: {{ $plugin_proxy_sock }}
-          imagePullPolicy: {{ .Values.imagePullPolicy | default  "IfNotPresent" }}
-          {{- if .Values.resources }}
-          resources:
-            {{- .Values.resources | nindent 12 }}
-          {{- end }}
+          imagePullPolicy: {{ $csi_images.csiResizer.imagePullPolicy | default  "IfNotPresent" }}
           volumeMounts:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
+          resources: {{- toYaml .Values.controller.resources.csiResizer | nindent 12 }}
         - name: csi-vast-plugin
-          image: {{ printf "%s:%s" .Values.csiImage .Values.csiImageTag }}
+          image: {{ printf "%s:%s" $csi_images.csiVastPlugin.repository $csi_images.csiVastPlugin.tag }}
           args:
             - "serve"
-          imagePullPolicy: {{ .Values.imagePullPolicy | default  "IfNotPresent" }}
+          imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default  "IfNotPresent" }}
           securityContext:
             privileged: true
             capabilities:
@@ -124,19 +118,23 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
-            {{- include "vastcsi.vmsAuthVolumeMount" . | indent 12 }}
+            {{- include "vastcsi.vmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 12 }}
+          resources: {{- toYaml .Values.controller.resources.csiVastPlugin | nindent 12 }}
       hostNetwork: true
-      {{- if .Values.nodeSelector }}
+      dnsPolicy: {{ .Values.controller.dnsPolicy }}
       nodeSelector:
-        {{ .Values.nodeSelector | nindent 8 }}
-      {{- end }}
-      priorityClassName: system-cluster-critical
+        {{- if .Values.controller.runOnMaster}}
+        node-role.kubernetes.io/master: ""
+        {{- end}}
+        {{- if .Values.controller.runOnControlPlane}}
+        node-role.kubernetes.io/control-plane: ""
+        {{- end}}
+{{ toYaml .Values.controller.nodeSelector | indent 8 }}
+      priorityClassName: {{ .Values.controller.priorityClassName }}
       serviceAccount: csi-vast-controller-sa
-      {{- if .Values.tolerations }}
       tolerations:
-        {{- .Values.tolerations | nindent 8 }}
-      {{- end }}
+{{ toYaml .Values.controller.tolerations | indent 8 }}
       volumes:
         - name: socket-dir
           emptyDir: {}
-       {{- include "vastcsi.vmsAuthVolume" . | indent 8 }}
+       {{- include "vastcsi.vmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}

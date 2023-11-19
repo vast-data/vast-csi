@@ -29,7 +29,7 @@ from plumbum import local, ProcessExecutionError
 import grpc
 from requests.exceptions import HTTPError
 
-from easypy.tokens import ROUNDROBIN, RANDOM, CONTROLLER_AND_NODE, CONTROLLER, NODE
+from easypy.tokens import CONTROLLER_AND_NODE, CONTROLLER, NODE
 from easypy.misc import kwargs_resilient, at_least
 from easypy.caching import cached_property
 from easypy.bunch import Bunch
@@ -47,7 +47,16 @@ from . import csi_pb2_grpc
 from .csi_pb2_grpc import ControllerServicer, NodeServicer, IdentityServicer
 from . import csi_types as types
 from .volume_builder import EmptyVolumeBuilder, VolumeFromSnapshotBuilder, TestVolumeBuilder
-from .exceptions import Abort, ApiError, MissingParameter, MountFailed, VolumeAlreadyExists, SourceNotFound
+from .exceptions import (
+    Abort,
+    ApiError,
+    MissingParameter,
+    MountFailed,
+    VolumeAlreadyExists,
+    SourceNotFound,
+    OperationNotSupported
+)
+
 from .vms_session import VmsSession, TestVmsSession
 from .configuration import Config
 
@@ -257,12 +266,8 @@ class Controller(ControllerServicer, Instrumented):
     @cached_property
     def vms_session(self):
         session_class = TestVmsSession if CONF.mock_vast else VmsSession
-        session = session_class()
-        logger.info(
-            "Custom ssl certificates uploaded for use in VMS session."
-            if CONF.vms_ssl_cert.exists() else
-            "VMS session started without ssl certificates."
-        )
+        session = session_class(config=CONF)
+        logger.info("VMS ssl verification {}.".format("enabled" if CONF.ssl_verify else "disabled"))
         session.refresh_auth_token()
         return session
 
@@ -396,14 +401,22 @@ class Controller(ControllerServicer, Instrumented):
         return types.CreateResp(volume=volume)
 
     def _delete_data_from_storage(self, path, tenant_id):
-        if self.vms_session.is_trash_api_usable():
-            logger.info(f"Use trash API to delete {path}")
-            self.vms_session.delete_folder(path, tenant_id)
-            return
+        if CONF.avoid_trash_api.expired:
+            try:
+                logger.info(f"Attempting trash API to delete {path}")
+                self.vms_session.delete_folder(path, tenant_id)
+                return  # Successfully deleted. Prevent using local mounting
+            except OperationNotSupported as exc:
+                logger.debug(f"Trash API not available {exc}")
+                CONF.avoid_trash_api.reset()
 
         logger.info(f"Use local mounting to delete {path}")
         path = local.path(path)
         volume_id = path.name
+        assert CONF.deletion_view_policy and CONF.deletion_vip_pool, (
+            "Ensure that deletionVipPool and deletionViewPolicy are properly "
+            "configured in your Helm configuration to perform local volume deletion."
+        )
         view_policy = self.vms_session.ensure_view_policy(policy_name=CONF.deletion_view_policy)
         nfs_server = self.vms_session.get_vip(vip_pool_name=CONF.deletion_vip_pool, tenant_id=view_policy.tenant_id)
 
@@ -456,6 +469,10 @@ class Controller(ControllerServicer, Instrumented):
 
     def DeleteVolume(self, volume_id):
         if quota := self.vms_session.get_quota(volume_id):
+            # this is a check we have to do until Vast provides access to orphaned snapshots (ORION-135599)
+            might_use_trash_folder = not CONF.dont_use_trash_api
+            if might_use_trash_folder and self.vms_session.has_snapshots(quota.path):
+                raise Exception(f"Unable to delete {volume_id} as it holds snapshots")
             try:
                 self._delete_data_from_storage(quota.path, quota.tenant_id)
             except OSError as exc:
@@ -601,7 +618,7 @@ class Controller(ControllerServicer, Instrumented):
                     else:
                         if (k, v) == ("name", "This field must be unique."):
                             snap = self.vms_session.get_snapshot(snapshot_name=snapshot_name)
-                            if snap.path != path:
+                            if snap.path.strip("/") != path.strip("/"):
                                 raise Abort(
                                     ALREADY_EXISTS,
                                     f"Snapshot name '{name}' is already taken",

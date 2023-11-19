@@ -5,7 +5,7 @@ from pprint import pformat
 from typing import ClassVar
 from uuid import uuid4
 from contextlib import contextmanager
-from requests.exceptions import ConnectionError, HTTPError
+from requests.exceptions import ConnectionError
 
 from easypy.bunch import Bunch
 from easypy.caching import cached_property
@@ -26,7 +26,6 @@ from plumbum import cmd
 from plumbum import local, ProcessExecutionError
 
 from .logging import logger
-from .configuration import Config
 from .exceptions import ApiError, MountFailed, OperationNotSupported
 from .utils import parse_load_balancing_strategy, generate_ip_range
 from . import csi_types as types
@@ -40,46 +39,44 @@ def requisite(semver: str, operation: str = None, ignore: bool = False):
     1. When ignore == False and version mismatch detected then `OperationNotSupported` exception will be thrown
     2. When ignore == True and version mismatch detected then method decorated method execution never happened
     """
-
-    required_version = SemVer.loads(semver)
+    required_version = SemVer.loads_fuzzy(semver)
 
     def dec(fn):
 
         def _args_wrapper(self, *args, **kwargs):
-            sw_version = self.sw_version
-            version_mismatch = sw_version < required_version
-            if version_mismatch and ignore:
-                return
 
-            try:
-                return fn(self, *args, **kwargs)
-            except HTTPError as exc:
-                if exc.response.status_code == 404 and version_mismatch:
-                    raise OperationNotSupported(
-                        op=operation or fn.__name__,
-                        required_version=required_version.dumps(),
-                        current_version=self.sw_version.dumps(),
-                        tip="Upgrade VAST cluster or adjust CSI driver settings to avoid unsupported operations"
-                    )
-                raise
+            sw_version = self.sw_version
+            if sw_version < required_version:
+                if ignore:
+                    return
+                raise OperationNotSupported(
+                    op=operation or fn.__name__,
+                    required_version=required_version.dumps(),
+                    current_version=self.sw_version.dumps(),
+                    tip="Upgrade VAST cluster or adjust CSI driver settings to avoid unsupported operations"
+                )
+            return fn(self, *args, **kwargs)
 
         return _args_wrapper
 
     return dec
 
 
+class CannotUseTrashAPI(OperationNotSupported):
+    template = "Cannot delete folder via VMS: {reason}"
+
+
 class RESTSession(requests.Session):
-    def __init__(self):
+    def __init__(self, config):
         super().__init__()
         self.headers["Accept"] = "application/json"
         self.headers["Content-Type"] = "application/json"
-        self.config = Config()
+        self.config = config
         self.base_url = f"https://{self.config.vms_host}/api"
-
-        if self.config.ssl_verify:
-            self.ssl_verify = self.config.vms_ssl_cert if self.config.vms_ssl_cert.exists() else True
-        else:
-            self.ssl_verify = False
+        # Modify the SSL verification CA bundle path established
+        # by the underlying Certifi library's defaults if ssl_verify==True.
+        # This way requests library can use mounted CA bundle or default system CA bundle under the same path.
+        self.ssl_verify = (False, "/etc/ssl/certs/ca-certificates.crt")[self.config.ssl_verify]
 
     def refresh_auth_token(self):
         try:
@@ -162,60 +159,29 @@ class VmsSession(RESTSession):
     Communication with vms cluster.
     Operations over vip pools, quotas, snapshots etc.
     """
-
-    TRASH_API_INTRODUCED: ClassVar[SemVer] = SemVer.loads("4.6.0")
     _vip_round_robin_idx: ClassVar[int] = -1
 
-    # ----------------------------
-    # Clusters
     @property
     @timecache(HOUR)
-    def cluster_info(self) -> Bunch:
-        """Get cluster info"""
-        return self.clusters()[0]
-
-    @property
-    @timecache(HOUR)
-    def vms_info(self) -> Bunch:
-        return self.vms()[0]
-
-    @property
     def sw_version(self) -> SemVer:
-        return SemVer.loads_fuzzy(self.vms_info.sw_version)
+        versions = self.versions(status='success')[0].sys_version
+        return SemVer.loads_fuzzy(versions)
 
-    @property
-    def cluster_id(self) -> int:
-        return self.cluster_info.id
-
-    def is_trash_api_usable(self) -> bool:
-        return False  # Temporarily disabled as part of ongoing stabilization measures.
-
-        if self.config.dont_use_trash_api or self.sw_version < self.TRASH_API_INTRODUCED:
-            # trash api usage is disabled by csi admin or trash api doesn't exists for cluster
-            return False
-        elif not self.cluster_info.enable_trash:
-            logger.warning(
-                f"Trash Folder Access is disabled"
-                f" - please enable it (https://{self.config.vms_host}/#/settings?category=cluster)"
-            )
-            return False
-        else:
-            # trash API is enabled. Use it!
-            return True
-
-    @requisite(semver="4.6.0")
+    @requisite(semver="4.7.0")
     def delete_folder(self, path: str, tenant_id: int):
         """Delete remote cluster folder by provided path."""
+
+        if self.config.dont_use_trash_api:
+            # trash api usage is disabled by csi admin or trash api doesn't exist for cluster
+            raise CannotUseTrashAPI(reason="Disabled by Vast CSI settings (see 'dontUseTrashApi' in your Helm chart)")
+
         try:
-            self.delete(f"/clusters/{self.cluster_id}/delete_folder/", data={"path": path, "tenant_id": tenant_id})
+            self.delete("/folders/delete_folder/", data={"path": path, "tenant_id": tenant_id})
         except ApiError as e:
             if "no such directory" in e.render():
                 logger.debug(f"Remote directory might have been removed earlier. ({e})")
             elif "trash folder disabled" in e.render():
-                # Trash api has been disabled recently so it is not reflected in cache yet.
-                # clear cache in order to take recent `trash_enable` flag next time
-                self.__class__.cluster_info.fget.cache.clear()
-                raise Exception("Trash Folder Access is disabled")
+                raise CannotUseTrashAPI(reason="Trash Folder Access is disabled (see Settings/Cluster/Features in VMS)")
             else:
                 # unpredictable error
                 raise
@@ -414,6 +380,7 @@ class VmsSession(RESTSession):
                     f" does not correspond to the path of the snapshot {snapshot.path}"
                 )
         else:
+            path = path.rstrip("/") + "/"
             snapshot = self.create_snapshot(name=snapshot_name, path=path, tenant_id=tenant_id)
         return snapshot
 
@@ -582,4 +549,4 @@ class TestVmsSession(RESTSession):
     delete_view_by_id = _empty
     refresh_auth_token = _empty
     delete_folder = _empty
-    is_trash_api_usable = _empty
+    has_snapshots = _empty

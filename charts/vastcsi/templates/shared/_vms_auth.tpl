@@ -1,54 +1,43 @@
 {{/*Set of templates for working with vms credentials and vms session certificates*/}}
 
-{{/*Unique checksum based on provided sslCert. Generate empty checksum if sslCert are not provided.*/}}
-{{- define "vastcsi.sslChecksum" -}}
-{{- if .Values.sslCert -}}
-{{- .Values.sslCert | sha256sum -}}
-{{- else -}}
-""
-{{ end }}
-{{- end }}
-
-{{/*
-Projected volume based on mgmt secret provided by user and `csi-vast-vms-authority` secret
-Expected files within volume:
- - sslCert:  root certificate authority
- - username: vms session username
- - password: vms session password
-*/}}
-
+{{/* Volume declarations for vms credentials and vms session certificates */}}
 {{- define "vastcsi.vmsAuthVolume" -}}
-{{- $ssl_checksum := printf "%s" (include "vastcsi.sslChecksum" .) | trim }}
+{{- if and .Values.sslCert .Values.sslCertsSecretName -}}
+{{-
+    fail (printf "Ambiguous origin of the 'sslCert'. The certificate is found in both the '%s' secret and the command line --from-file argument." .Values.secretName)
+-}}
+{{- end -}}
+{{- if and .ca_bundle (not .Values.verifySsl) -}}
+  {{- fail "When sslCert is provided `verifySsl` must be set to true." -}}
+{{- end }}
+
 - name: vms-auth
-  projected:
-    defaultMode: 0400
-    sources:
-    - secret:
-        name: {{ required "secretName field must be specified" $.Values.secretName | quote }}
-        items:
-        - key: username
-          path: username
-        - key: password
-          path: password
-    {{- if ne $ssl_checksum ( quote "" ) }}
-    - secret:
-        name: csi-vast-vms-authority
-        items:
-        - key: sslCert
-          path: sslCert
-    {{- end }}
+  secret:
+    secretName: {{ required "secretName field must be specified" .Values.secretName | quote }}
+    items:
+    - key: username
+      path: username
+    - key: password
+      path: password
+{{- if $.ca_bundle }}
+- name: vms-ca-bundle
+  secret:
+    secretName: {{ $.ca_bundle }}
+    items:
+    - key: ca-bundle.crt
+      path: ca-certificates.crt
+{{- end }}
 {{- end }}
 
 
-{{/*
-Volume mount based on mgmt secret provided by user and `csi-vast-vms-authority` secret
-Expected files within volume:
- - sslCert:  root certificate authority
- - username: vms session username
- - password: vms session password
-*/}}
-
+{{/* Volume bindings for vms credentials and vms session certificates */}}
 {{ define "vastcsi.vmsAuthVolumeMount" }}
 - name: vms-auth
   mountPath: /opt/vms-auth
+  readOnly: true
+{{- if $.ca_bundle }}
+- name: vms-ca-bundle
+  mountPath: /etc/ssl/certs
+  readOnly: true
+{{- end }}
 {{- end }}
