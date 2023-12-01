@@ -6,7 +6,7 @@ from typing import ClassVar
 from uuid import uuid4
 from contextlib import contextmanager
 from datetime import datetime
-from requests.exceptions import ConnectionError, HTTPError
+from requests.exceptions import ConnectionError
 
 from easypy.bunch import Bunch
 from easypy.caching import cached_property
@@ -15,7 +15,7 @@ from easypy.misc import at_least
 from easypy.semver import SemVer
 from easypy.caching import timecache
 from easypy.units import HOUR
-from easypy.resilience import retrying
+from easypy.resilience import retrying, resilient
 from easypy.tokens import (
     ROUNDROBIN,
     RANDOM,
@@ -96,6 +96,15 @@ class RESTSession(requests.Session):
                          f"cannot be accessed. Please verify the specified endpoint. "
                          f"origin error: {e}"
                 ))
+        self.usage_report()
+
+    @resilient.error(msg="failed to report usage to VMS")
+    def usage_report(self):
+        self.post("plugins/usage/", data={
+            "vendor": "vastdata", "name": "vast-csi",
+            "version": self.config.plugin_version, "build": self.config.git_commit[:10]
+        })
+
 
     @retrying.debug(times=3, acceptable=retrying.Retry)
     def request(self, verb, api_method, *args, params=None, log_result=True, **kwargs):
