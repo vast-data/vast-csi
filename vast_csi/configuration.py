@@ -20,7 +20,7 @@ class Config(TypedEnv):
         convert = staticmethod(local.path)
 
     vms_credentials_store = local.path("/opt/vms-auth")
-    plugin_name, plugin_version, git_commit = (
+    plugin_name, plugin_version, git_commit, ci_pipe = (
         open("version.info").read().strip().split()
     )
     plugin_name = TypedEnv.Str("X_CSI_PLUGIN_NAME", default=plugin_name)
@@ -45,7 +45,7 @@ class Config(TypedEnv):
     worker_threads = TypedEnv.Int("X_CSI_WORKER_THREADS", default=10)
     dont_use_trash_api = TypedEnv.Bool("X_CSI_DONT_USE_TRASH_API", default=True)
 
-    _mode = TypedEnv.Str("CSI_MODE", default="controller_and_node")
+    _mode = TypedEnv.Str("X_CSI_MODE", default="controller_and_node")
     _endpoint = TypedEnv.Str("CSI_ENDPOINT", default="unix:///var/run/csi.sock")
     _mount_options = TypedEnv.Str("X_CSI_MOUNT_OPTIONS", default="")  # For example: "port=2049,nolock,vers=3"
     name_fmt = "csi:{namespace}:{name}:{id}"
