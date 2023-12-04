@@ -7,6 +7,7 @@ from uuid import uuid4
 from contextlib import contextmanager
 from datetime import datetime
 from requests.exceptions import ConnectionError
+from requests.utils import default_user_agent
 
 from easypy.bunch import Bunch
 from easypy.caching import cached_property
@@ -70,9 +71,10 @@ class CannotUseTrashAPI(OperationNotSupported):
 class RESTSession(requests.Session):
     def __init__(self, config):
         super().__init__()
+        self.config = config
         self.headers["Accept"] = "application/json"
         self.headers["Content-Type"] = "application/json"
-        self.config = config
+        self.headers["User-Agent"] = f"VastCSI/{config.plugin_version}.{config.ci_pipe}.{config.git_commit[:10]} ({config._mode.capitalize()}) {default_user_agent()}"
         self.base_url = f"https://{self.config.vms_host}/api"
         # Modify the SSL verification CA bundle path established
         # by the underlying Certifi library's defaults if ssl_verify==True.
