@@ -234,7 +234,7 @@ class Identity(IdentityServicer, Instrumented):
             return types.ProbeRespOK
         elif self.controller:
             try:
-                assert self.controller.vms_session.sw_version
+                self.controller.vms_session.versions(status="success", log_result=False)
             except ApiError as exc:
                 raise Abort(FAILED_PRECONDITION, str(exc))
             return types.ProbeRespOK
