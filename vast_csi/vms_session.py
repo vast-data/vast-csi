@@ -397,7 +397,7 @@ class VmsSession(RESTSession):
                 )
         else:
             path = path.rstrip("/") + "/"
-            snapshot = self.create_snapshot(name=snapshot_name, path=path, tenant_id=tenant_id)
+            snapshot = self.create_snapshot(name=snapshot_name, path=path, tenant_id=tenant_id, expiration_delta=expiration_delta)
         return snapshot
 
     def delete_snapshot(self, snapshot_id):
