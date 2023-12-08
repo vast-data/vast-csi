@@ -363,8 +363,8 @@ class VmsSession(RESTSession):
         return self.snapshots(page_size=page_size)
 
     def has_snapshots(self, path):
-        path = path.rstrip("/") + "/"
-        ret = self.snapshots(path=path, page_size=10)  # we intentionally limit the number of results
+        # we intentionally limit the number of results
+        ret = self.snapshots(path__startswith=path.rstrip("/"), page_size=10)
         return ret.results
 
     def create_snapshot(self, name, path, tenant_id, expiration_delta=None):
