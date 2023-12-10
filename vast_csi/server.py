@@ -34,7 +34,6 @@ from easypy.misc import kwargs_resilient, at_least
 from easypy.caching import cached_property
 from easypy.bunch import Bunch
 from easypy.exceptions import TException
-from easypy.humanize import yesno_to_bool
 
 from .logging import logger, init_logging
 from .utils import (
@@ -351,7 +350,6 @@ class Controller(ControllerServicer, Instrumented):
         )
         # Take appropriate builder for volume, snapshot or test builder
         if CONF.mock_vast:
-            clone_background_sync = True
             root_export = volume_name_fmt = lb_strategy = view_policy = vip_pool_name = mount_options = qos_policy = ""
             builder = TestVolumeBuilder
 
@@ -365,7 +363,6 @@ class Controller(ControllerServicer, Instrumented):
             volume_name_fmt = parameters.get("volume_name_fmt", CONF.name_fmt)
             lb_strategy = parameters.get("lb_strategy", CONF.load_balancing)
             qos_policy = parameters.get("qos_policy")
-            clone_background_sync = yesno_to_bool(parameters.get("clone_background_sync", "true"))
 
             if not volume_content_source:
                 builder = EmptyVolumeBuilder
@@ -401,7 +398,6 @@ class Controller(ControllerServicer, Instrumented):
             mount_options=mount_options,
             lb_strategy=lb_strategy,
             qos_policy=qos_policy,
-            clone_background_sync=clone_background_sync,
         )
         try:
             volume = builder.build_volume()
