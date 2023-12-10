@@ -57,7 +57,6 @@ class BaseBuilder(VolumeBuilderI):
     mount_options: str
     lb_strategy: str
     qos_policy: Optional[str]
-    clone_background_sync: bool
 
     capacity_range: Optional[int]  # Optional desired volume capacity
     pvc_name: Optional[str]
@@ -181,7 +180,7 @@ class VolumeFromVolumeBuilder(EmptyVolumeBuilder):
         )
         snapshot_stream = self.controller.vms_session.ensure_snapshot_stream(
             snapshot_id=snapshot.id, destination_path=self.view_path, tenant_id=tenant_id,
-            snapshot_stream_name=snapshot_stream_name, background_sync=self.clone_background_sync
+            snapshot_stream_name=snapshot_stream_name,
         )
         # View should go after snapshot stream.
         # Otherwise snapshot stream action will detect folder already exist and will be rejected
@@ -232,7 +231,7 @@ class VolumeFromSnapshotBuilder(EmptyVolumeBuilder):
             snapshot_stream_name = f"strm-{self.name}"
             snapshot_stream = self.controller.vms_session.ensure_snapshot_stream(
                 snapshot_id=snapshot.id, destination_path=self.view_path, tenant_id=tenant_id,
-                snapshot_stream_name=snapshot_stream_name, background_sync=self.clone_background_sync
+                snapshot_stream_name=snapshot_stream_name,
             )
             view = self.controller.vms_session.ensure_view(
                 path=self.view_path, protocol=self.mount_protocol,

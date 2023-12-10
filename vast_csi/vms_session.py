@@ -411,12 +411,12 @@ class VmsSession(RESTSession):
         self.patch(f"globalsnapstreams/{snapshot_stream_id}/stop")
 
     @requisite(semver="4.6.0", operation="create_globalsnapshotstream")
-    def ensure_snapshot_stream(self, snapshot_id, tenant_id, destination_path, snapshot_stream_name, background_sync):
+    def ensure_snapshot_stream(self, snapshot_id, tenant_id, destination_path, snapshot_stream_name):
         if not (snapshot_stream := self.get_snapshot_stream(name=snapshot_stream_name)):
             data = dict(
                 loanee_root_path=destination_path,
                 name=snapshot_stream_name,
-                enabled=background_sync,
+                enabled=True,
                 loanee_tenant_id=tenant_id, # target tenant_id
             )
             snapshot_stream = self.post(f"snapshots/{snapshot_id}/clone/", data)
