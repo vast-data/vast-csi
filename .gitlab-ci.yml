@@ -121,13 +121,13 @@ update_dockerhub [beta]:
   environment: beta
 
 
-update_github:
+update_github [prod]:  &update_github
   image:
     name: alpine/git
     entrypoint: [""]
   stage: deploy
   only:
-    - /v[\d]\.[\d]+/
+    - /^v[\d]\.[\d]+/
   script: |
     set -x
     VERSION=$(cat version.txt)
@@ -151,11 +151,15 @@ update_github:
     git tag -f $VERSION
     git push -f --tags github HEAD:$CI_COMMIT_REF_NAME
 
-  only:
-  - /^v\d.*/
   when: manual
   tags:
     - vast-dev-builder
+
+
+update_github [beta]:
+  <<: *update_github
+  only:
+    - /v[\d]\.[\d]+-beta.*/
 
 
 mark_stable:
