@@ -1,7 +1,7 @@
 import pytest
 from io import BytesIO
 from unittest.mock import patch, PropertyMock, MagicMock
-from vast_csi.server import Controller
+from vast_csi.server import CsiController
 from requests import Response, Request, HTTPError
 from vast_csi.exceptions import OperationNotSupported, ApiError
 from easypy.semver import SemVer
@@ -18,7 +18,7 @@ class TestVmsSessionSuite:
     def test_requisite_decorator(self, cluster_version):
         """Test `requisite` decorator produces exception when cluster version doesn't met requirements"""
         # Preparation
-        cont = Controller()
+        cont = CsiController()
         fake_mgmt = PropertyMock(return_value=SemVer.loads_fuzzy(cluster_version))
         stripped_version = SemVer.loads_fuzzy(cluster_version).dumps()
 
@@ -46,7 +46,7 @@ class TestVmsSessionSuite:
     def test_trash_api_disabled_helm_config(self):
         """Test trash api disable in helm chart cause Exception"""
         # Preparation
-        cont = Controller()
+        cont = CsiController()
         cont.vms_session.config.dont_use_trash_api = True
         fake_mgmt = PropertyMock(return_value=SemVer.loads_fuzzy("4.7.0"))
 
@@ -64,7 +64,7 @@ class TestVmsSessionSuite:
     def test_trash_api_disabled_cluster_settings(self):
         """Test trash api disable on cluster cause Exception"""
         # Preparation
-        cont = Controller()
+        cont = CsiController()
         cont.vms_session.config.dont_use_trash_api = True
         fake_mgmt = PropertyMock(return_value=SemVer.loads_fuzzy("5.0.0.25"))
 
@@ -91,7 +91,7 @@ class TestVmsSessionSuite:
     def test_delete_folder_local_mounting_requires_configuration(self):
         """Test deleting the folder via local mounting requires deletionVipPool and deletionVipPolicy to be provided."""
         # Preparation
-        cont = Controller()
+        cont = CsiController()
         cont.vms_session.config.dont_use_trash_api = True
         fake_mgmt = PropertyMock(return_value=SemVer.loads_fuzzy("4.6.0"))
 
@@ -109,7 +109,7 @@ class TestVmsSessionSuite:
     def test_delete_folder_unsuccesful_attempt_cache_result(self):
         """Test if Trash API has been failed it wont be executed second time."""
         # Preparation
-        cont = Controller()
+        cont = CsiController()
         cont.vms_session.config.dont_use_trash_api = False
         cont.vms_session.config.avoid_trash_api.reset(-1)
         fake_mgmt = PropertyMock(return_value=SemVer.loads_fuzzy("4.7.0"))

@@ -200,7 +200,7 @@ class VmsSession(RESTSession):
 
     # ----------------------------
     # View policies
-    def ensure_view_policy(self, policy_name: str):
+    def get_view_policy(self, policy_name: str):
         """Get view policy by name. Raise exception if not found."""
         if res := self.viewpolicies(name=policy_name):
             return res[0]
@@ -209,7 +209,7 @@ class VmsSession(RESTSession):
 
     # ----------------------------
     # QoS policies
-    def ensure_qos_policy(self, policy_name: str):
+    def get_qos_policy(self, policy_name: str):
         """Get QoS policy by name. Raise exception if not found."""
         if res := self.qospolicies(name=policy_name):
             return res[0]
@@ -218,31 +218,57 @@ class VmsSession(RESTSession):
 
     # ----------------------------
     # Views
-    def get_view_by_path(self, path) -> Bunch:
+    def get_view(self, **kwargs) -> Bunch:
         """
-        Get view that contain provided path.
+        Get view that contain provided search kwargs eg path, bucket_name
         """
-        if views := self.views(path=str(path)):
+        if views := self.views(**kwargs):
             if len(views) > 1:
-                raise Exception(f"Too many views found for path {path}: {views}")
+                raise Exception(f"Too many views were found by condition {kwargs}: {views}")
             return views[0]
 
-    def ensure_view(self, path, protocol, view_policy, qos_policy):
-        if not (view := self.get_view_by_path(path)):
-            view_policy = self.ensure_view_policy(policy_name=view_policy)
+    def ensure_view(self, path, protocols, view_policy, qos_policy):
+        if not (view := self.get_view(path=str(path))):
+            view_policy = self.get_view_policy(policy_name=view_policy)
             if qos_policy:
-                qos_policy_id = self.ensure_qos_policy(qos_policy).id
+                qos_policy_id = self.get_qos_policy(qos_policy).id
             else:
                 qos_policy_id = None
             view = self.create_view(
-                path=path, protocol=protocol, policy_id=view_policy.id,
+                path=path, protocols=protocols, policy_id=view_policy.id,
                 qos_policy_id=qos_policy_id, tenant_id=view_policy.tenant_id
+            )
+        return view
+
+    def ensure_s3view(
+            self, root_export, bucket_name, bucket_owner, s3_policy, qos_policy, protocols,
+            s3_locks_retention_mode, s3_versioning, locking, default_retention_period,
+            allow_s3_anonymous_access, s3_locks, s3_locks_retention_period,
+    ):
+        if not (view := self.get_view(bucket=bucket_name)):
+            view_policy = self.get_view_policy(policy_name=s3_policy)
+            root_export = root_export.strip("/")
+            path = f"/{root_export}/{bucket_name}" if root_export else f"/{bucket_name}"
+            if qos_policy:
+                qos_policy_id = self.get_qos_policy(qos_policy).id
+            else:
+                qos_policy_id = None
+            view = self.create_view(
+                path=path, protocols=protocols, policy_id=view_policy.id,
+                bucket=bucket_name, bucket_owner=bucket_owner,
+                qos_policy_id=qos_policy_id, tenant_id=view_policy.tenant_id,
+                s3_locks_retention_mode=s3_locks_retention_mode, s3_versioning=s3_versioning,
+                locking=locking, default_retention_period=default_retention_period,
+                allow_s3_anonymous_access=allow_s3_anonymous_access, s3_locks=s3_locks,
+                s3_locks_retention_period=s3_locks_retention_period,
             )
         return view
 
     def create_view(
             self, path: str, policy_id: int, tenant_id: int,
-            qos_policy_id=None, protocol="NFS", create_dir=True, alias=None
+            qos_policy_id=None, protocols=["NFS"], create_dir=True, alias=None, bucket=None, bucket_owner=None,
+            s3_locks_retention_mode=None, s3_versioning=None, locking=None, default_retention_period=None,
+            allow_s3_anonymous_access=None, s3_locks=None, s3_locks_retention_period=None,
     ):
         """
         Create new view on remove cluster
@@ -253,14 +279,16 @@ class VmsSession(RESTSession):
             qos_policy_id: id of QoS policy associated with view
             create_dir: if underlying directory should be created along with view.
             alias: view alias
-            protocol: nfs protocol (NFS or NFS4)
+            protocols: client protocols to access view
+            bucket: bucket name associated with view
+            bucket_owner: bucket owner associated with view
         Returns:
             newly created view as dictionary.
         """
         data = {
             "path": str(path),
             "create_dir": create_dir,
-            "protocols": [protocol],
+            "protocols": protocols,
             "policy_id": policy_id,
             "tenant_id": tenant_id,
         }
@@ -268,11 +296,31 @@ class VmsSession(RESTSession):
             data["qos_policy_id"] = qos_policy_id
         if alias:
             data["alias"] = alias
+        if bucket:
+            data["bucket"] = bucket
+        if bucket_owner:
+            data["bucket_owner"] = bucket_owner
+        if "SMB" in protocols:
+            data["share"] = os.path.basename(path)
+        if s3_locks_retention_mode:
+            data["s3_locks_retention_mode"] = s3_locks_retention_mode
+        if s3_locks:
+            data["s3_locks"] = s3_locks
+        if s3_locks_retention_period:
+            data["s3_locks_retention_period"] = s3_locks_retention_period
+        if s3_versioning is not None:
+            data["s3_versioning"] = s3_versioning
+        if locking is not None:
+            data["locking"] = locking
+        if default_retention_period:
+            data["default_retention_period"] = default_retention_period
+        if allow_s3_anonymous_access is not None:
+            data["allow_s3_anonymous_access"] = allow_s3_anonymous_access
         return Bunch.from_dict(self.post("views", data))
 
     def delete_view_by_path(self, path: str):
         """Delete view by provided path criteria."""
-        if view := self.get_view_by_path(path=path):
+        if view := self.get_view(path=path):
             self.delete_view_by_id(view.id)
 
     def delete_view_by_id(self, id_: int):
@@ -428,6 +476,42 @@ class VmsSession(RESTSession):
             else:
                 self.delete(f"globalsnapstreams/{snapshot_stream.id}", data=dict(remove_dir=False))
 
+    def get_by_token(self, token):
+        """
+        This method used to iterate over paginated resources (snapshots, quotas etc).
+        Where after first request to resource list token for next page is returned.
+        """
+        return self.get(token)
+
+    # ----------------------------
+    # Users
+    def create_user(self, name, uid, allow_create_bucket=False, allow_delete_bucket=False):
+        return self.post("users", data={
+            "name": name, "uid": uid,
+            "allow_create_bucket": allow_create_bucket, "allow_delete_bucket": allow_delete_bucket
+        })
+
+    def get_user(self, name):
+        if users := self.users(name=name):
+            return users[0]
+
+    def ensure_user(self, name, uid, allow_create_bucket=False, allow_delete_bucket=False):
+        if user := self.get_user(name=name):
+            return user
+        return self.create_user(
+            name=name, uid=uid, allow_create_bucket=allow_create_bucket, allow_delete_bucket=allow_delete_bucket
+        )
+
+    def delete_user(self, user_id):
+        self.delete(f"users/{user_id}")
+
+    def generate_access_key(self, user_id):
+        return self.post(f"users/{user_id}/access_keys/", log_result=False)
+
+    def delete_access_key(self, user_id, access_key):
+        return self.delete(f"users/{user_id}/access_keys/", data={"access_key": access_key}, log_result=False)
+
+
 class TestVmsSession(RESTSession):
     """RestSession simulation for sanity tests"""
 
@@ -524,10 +608,10 @@ class TestVmsSession(RESTSession):
             tenant_name="test-tenant"
         )
 
-    def get_view_by_path(self, *_, **__):
+    def get_view(self, *_, **__):
         return Bunch(id=1, policy_id=1, tenant_id=1)
 
-    def ensure_view_policy(self, *_, **__):
+    def get_view_policy(self, *_, **__):
         return Bunch(id=1, tenant_id=1, tenant_name="test-tenant")
 
     def get_snapshot(self, *_, **__):
