@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## Version 2.4.0
+* added volume stats metrics on Node (VCSI-125)
+
 ## Version 2.3.0
 * added CLONE_VOLUME support (VCSI-83)
 * clone volumes from snapshots in READ_WRITE mode (VCSI-103)
