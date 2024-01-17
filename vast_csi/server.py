@@ -253,10 +253,10 @@ class Controller(ControllerServicer, Instrumented):
     CAPABILITIES = [
         types.CtrlCapabilityType.CREATE_DELETE_VOLUME,
         types.CtrlCapabilityType.PUBLISH_UNPUBLISH_VOLUME,
-        types.CtrlCapabilityType.LIST_VOLUMES,
+        # types.CtrlCapabilityType.LIST_VOLUMES,
         types.CtrlCapabilityType.EXPAND_VOLUME,
         types.CtrlCapabilityType.CREATE_DELETE_SNAPSHOT,
-        types.CtrlCapabilityType.LIST_SNAPSHOTS,
+        # types.CtrlCapabilityType.LIST_SNAPSHOTS,
         types.CtrlCapabilityType.CLONE_VOLUME,
         # types.CtrlCapabilityType.GET_CAPACITY,
         # types.CtrlCapabilityType.PUBLISH_READONLY,
@@ -300,28 +300,6 @@ class Controller(ControllerServicer, Instrumented):
         )
 
         return types.ValidateResp(confirmed=confirmed)
-
-    def ListVolumes(self, starting_token=None, max_entries=None):
-        if starting_token == "invalid-token":
-            raise Abort(ABORTED, "Invalid starting_token")
-
-        if starting_token:
-            ret = self.vms_session.list_quotas(max_entries=max_entries)
-        else:
-            ret = self.vms_session.get_by_token(token=starting_token)
-        return types.ListResp(
-            next_token=ret.next_token,
-            entries=[
-                types.ListResp.Entry(
-                    volume=types.Volume(
-                        capacity_bytes=quota.hard_limit,
-                        volume_id=self._to_volume_id(quota.path),
-                        volume_context=dict(quota_id=str(quota.id)),
-                    )
-                )
-                for quota in ret.results
-            ],
-        )
 
     def CreateVolume(
         self,
@@ -425,6 +403,10 @@ class Controller(ControllerServicer, Instrumented):
             "configured in your Helm configuration to perform local volume deletion."
         )
         view_policy = self.vms_session.ensure_view_policy(policy_name=CONF.deletion_view_policy)
+        assert tenant_id == view_policy.tenant_id, (
+            f"Volume and deletionViewPolicy must be in the same tenant. "
+            f"Make sure deletionViewPolicy belongs to tenant {tenant_id} or use Trash API for deletion."
+        )
         nfs_server = self.vms_session.get_vip(vip_pool_name=CONF.deletion_vip_pool, tenant_id=view_policy.tenant_id)
 
         logger.info(f"Creating temporary base view.")
@@ -666,74 +648,6 @@ class Controller(ControllerServicer, Instrumented):
     def _to_volume_id(cls, path):
         vol_id = str(local.path(path).relative_to(CONF.sanity_test_nfs_export))
         return None if vol_id.startswith("..") else vol_id
-
-    def ListSnapshots(
-        self,
-        max_entries=None,
-        starting_token=None,
-        source_volume_id=None,
-        snapshot_id=None,
-    ):
-        if CONF.mock_vast:
-            starting_inode = int(starting_token) if starting_token else 0
-            snaps = (d for d in os.scandir(CONF.fake_snapshot_store) if d.is_file())
-            snaps = sorted(snaps, key=lambda d: d.inode())
-            logger.info(f"Got {len(snaps)} snapshots in {CONF.fake_snapshot_store}")
-            start_idx = 0
-
-            logger.info(f"Skipping to {starting_inode}")
-            for start_idx, d in enumerate(snaps):
-                if d.inode() > starting_inode:
-                    break
-            del snaps[:start_idx]
-
-            def to_snapshot(dentry):
-                with local.path(dentry.path).open("rb") as f:
-                    snap = types.Snapshot()
-                    snap.ParseFromString(f.read())
-                if source_volume_id and snap.source_volume_id != source_volume_id:
-                    return
-                if snapshot_id and snap.snapshot_id != snapshot_id:
-                    return
-                return snap, dentry.inode()
-
-            snaps = list(filter(None, map(to_snapshot, snaps)))
-            remain = 0
-            if max_entries:
-                remain = at_least(0, len(snaps) - max_entries)
-                snaps = snaps[:max_entries]
-
-            next_token = str(snaps[-1][1]) if remain else None
-            return types.ListSnapResp(
-                next_token=next_token,
-                entries=[types.SnapEntry(snapshot=snap) for snap, _ in snaps],
-            )
-        else:
-            page_size = max_entries or 250
-
-            if starting_token:
-                ret = self.vms_session.get_by_token(starting_token)
-            elif not snapshot_id:
-                ret = self.vms_session.snapshots(page_size=page_size)
-            else:
-                snap = self.vms_session.snapshots(snapshot_id)
-                return types.ListSnapResp(next_token=None, entries=[types.SnapEntry(
-                    snapshot=types.Snapshot(
-                        size_bytes=0,  # indicates 'unspecified'
-                        snapshot_id=str(snap.id),
-                        source_volume_id=self._to_volume_id(snap.path) or "n/a",
-                        creation_time=string_to_proto_timestamp(snap.created),
-                        ready_to_use=True,
-                    ))])
-
-            return types.ListSnapResp(next_token=ret.next, entries=[types.SnapEntry(
-                snapshot=types.Snapshot(
-                    size_bytes=0,  # indicates 'unspecified'
-                    snapshot_id=str(snap.id),
-                    source_volume_id=self._to_volume_id(snap.path) or "n/a",
-                    creation_time=string_to_proto_timestamp(snap.created),
-                    ready_to_use=True,
-                )) for snap in ret.results])
 
 
 ################################################################

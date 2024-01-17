@@ -326,10 +326,6 @@ class VmsSession(RESTSession):
 
     # ----------------------------
     # Quotas
-    def list_quotas(self, max_entries) -> Bunch:
-        """List of quotas"""
-        return self.quotas(page_size=max_entries)
-
     def create_quota(self, data):
         """Create new quota"""
         return self.post("quotas", data=data)
@@ -359,9 +355,6 @@ class VmsSession(RESTSession):
 
     # ----------------------------
     # Snapshots
-    def snapshot_list(self, page_size):
-        return self.snapshots(page_size=page_size)
-
     def has_snapshots(self, path):
         # we intentionally limit the number of results
         ret = self.snapshots(path__startswith=path.rstrip("/"), page_size=10)
@@ -434,14 +427,6 @@ class VmsSession(RESTSession):
                 self.stop_snapshot_stream(snapshot_stream.id)
             else:
                 self.delete(f"globalsnapstreams/{snapshot_stream.id}", data=dict(remove_dir=False))
-
-    def get_by_token(self, token):
-        """
-        This method used to iterate over paginated resources (snapshots, quotas etc).
-        Where after first request to resource list token for next page is returned.
-        """
-        return self.get(token)
-
 
 class TestVmsSession(RESTSession):
     """RestSession simulation for sanity tests"""
@@ -529,43 +514,6 @@ class TestVmsSession(RESTSession):
         """
         self.config.controller_root_mount[quota._volume_id].delete()
         self.config.fake_quota_store[quota._volume_id].delete()
-
-    def list_quotas(self, starting_token=None, max_entries=None):
-        """
-        This method simulates behaviour of list_quotas but instead requesting quotas from remote cluster
-        it gets list of local volumes that were created before.
-        """
-        fields = Bunch.from_dict({
-            "next_token": None,
-            "results": []
-        })
-
-        starting_inode = int(starting_token) if starting_token else 0
-        vols = (d for d in os.scandir(self._mock_mount) if d.is_dir())
-        vols = sorted(vols, key=lambda d: d.inode())
-        logger.info(f"Got {len(vols)} volumes in {self._mock_mount}")
-        start_idx = 0
-
-        logger.info(f"Skipping to {starting_inode}")
-        for start_idx, d in enumerate(vols):
-            if d.inode() > starting_inode:
-                break
-
-        del vols[:start_idx]
-
-        remain = 0
-        if max_entries:
-            remain = at_least(0, len(vols) - max_entries)
-            vols = vols[:max_entries]
-
-        if remain:
-            fields.next_token = str(vols[-1].inode())
-
-        fields.results = [self._to_mock_volume(vol.name) for vol in vols]
-        return fields
-
-    def get_by_token(self, token):
-        return self.list_quotas(starting_token=token)
 
     @contextmanager
     def temp_view(self, path, policy_id, tenant_id):
