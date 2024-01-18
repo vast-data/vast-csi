@@ -10,7 +10,7 @@ class TestControllerSuite:
 
     @pytest.mark.parametrize("fs_type, mount_flags, mode, err_message", [
         ("abc", "abc", types.AccessModeType.SINGLE_NODE_WRITER, "Unsupported file system type: abc"),
-        ("ext4", "", types.AccessModeType.SINGLE_NODE_READER_ONLY, "Unsupported access mode: 2 (use [1, 5])"),
+        ("ext4", "", types.AccessModeType.MULTI_NODE_SINGLE_WRITER, "Unsupported access mode: 4 (use [1, 2, 3, 5])"),
     ])
     def test_create_volume_invalid_capability(self, volume_capabilities, fs_type, mount_flags, mode, err_message):
         """Test invalid VolumeCapabilities must be validated"""

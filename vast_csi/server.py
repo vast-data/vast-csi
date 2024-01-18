@@ -46,7 +46,7 @@ from .utils import (
 from . import csi_pb2_grpc
 from .csi_pb2_grpc import ControllerServicer, NodeServicer, IdentityServicer
 from . import csi_types as types
-from .volume_builder import EmptyVolumeBuilder, VolumeFromSnapshotBuilder, TestVolumeBuilder
+from .volume_builder import EmptyVolumeBuilder, VolumeFromSnapshotBuilder, VolumeFromVolumeBuilder, TestVolumeBuilder
 from .exceptions import (
     Abort,
     ApiError,
@@ -56,7 +56,6 @@ from .exceptions import (
     SourceNotFound,
     OperationNotSupported
 )
-
 from .vms_session import VmsSession, TestVmsSession
 from .configuration import Config
 
@@ -80,8 +79,8 @@ OUT_OF_RANGE = grpc.StatusCode.OUT_OF_RANGE
 
 SUPPORTED_ACCESS = [
     types.AccessModeType.SINGLE_NODE_WRITER,
-    # types.AccessModeType.SINGLE_NODE_READER_ONLY,
-    # types.AccessModeType.MULTI_NODE_READER_ONLY,
+    types.AccessModeType.SINGLE_NODE_READER_ONLY,
+    types.AccessModeType.MULTI_NODE_READER_ONLY,
     # types.AccessModeType.MULTI_NODE_SINGLE_WRITER,
     types.AccessModeType.MULTI_NODE_MULTI_WRITER,
 ]
@@ -234,7 +233,7 @@ class Identity(IdentityServicer, Instrumented):
             return types.ProbeRespOK
         elif self.controller:
             try:
-                self.controller.vms_session.get_vip()
+                self.controller.vms_session.versions(status="success", log_result=False)
             except ApiError as exc:
                 raise Abort(FAILED_PRECONDITION, str(exc))
             return types.ProbeRespOK
@@ -258,8 +257,8 @@ class Controller(ControllerServicer, Instrumented):
         types.CtrlCapabilityType.EXPAND_VOLUME,
         types.CtrlCapabilityType.CREATE_DELETE_SNAPSHOT,
         types.CtrlCapabilityType.LIST_SNAPSHOTS,
+        types.CtrlCapabilityType.CLONE_VOLUME,
         # types.CtrlCapabilityType.GET_CAPACITY,
-        # types.CtrlCapabilityType.CLONE_VOLUME,
         # types.CtrlCapabilityType.PUBLISH_READONLY,
     ]
 
@@ -344,7 +343,11 @@ class Controller(ControllerServicer, Instrumented):
             mount_options = ",".join(re.sub(r"[\[\]]", "", mount_options).replace(",", " ").split())
         except StopIteration:
             mount_options = ""
-
+        # check if list of provided access modes contains read-write mode
+        rw_access_modes = [types.AccessModeType.SINGLE_NODE_WRITER, types.AccessModeType.MULTI_NODE_MULTI_WRITER]
+        rw_access_mode = any(
+            cap.access_mode.mode in rw_access_modes for cap in volume_capabilities if cap.HasField("access_mode")
+        )
         # Take appropriate builder for volume, snapshot or test builder
         if CONF.mock_vast:
             root_export = volume_name_fmt = lb_strategy = view_policy = vip_pool_name = mount_options = qos_policy = ""
@@ -367,6 +370,9 @@ class Controller(ControllerServicer, Instrumented):
             elif volume_content_source.snapshot.snapshot_id:
                 builder = VolumeFromSnapshotBuilder
 
+            elif volume_content_source.volume.volume_id:
+                builder = VolumeFromVolumeBuilder
+
             else:
                 raise ValueError(
                     "Invalid condition. Either volume_content_source"
@@ -379,6 +385,7 @@ class Controller(ControllerServicer, Instrumented):
             controller=self,
             configuration=CONF,
             name=name,
+            rw_access_mode=rw_access_mode,
             capacity_range=capacity_range,
             pvc_name=parameters.get("csi.storage.k8s.io/pvc/name"),
             pvc_namespace=parameters.get("csi.storage.k8s.io/pvc/namespace"),
@@ -468,6 +475,7 @@ class Controller(ControllerServicer, Instrumented):
                 os.rmdir(tmpdir)  # will fail if not empty directory
 
     def DeleteVolume(self, volume_id):
+        self.vms_session.ensure_snapshot_stream_deleted(f"strm-{volume_id}")
         if quota := self.vms_session.get_quota(volume_id):
             # this is a check we have to do until Vast provides access to orphaned snapshots (ORION-135599)
             might_use_trash_folder = not CONF.dont_use_trash_api

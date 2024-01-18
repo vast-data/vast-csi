@@ -1,9 +1,9 @@
 name: Release Charts
 
-on:
-  push:
-    branches:
-      - v2.2
+on: [push]
+
+permissions:
+  contents: write
 
 jobs:
   release:
@@ -14,12 +14,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Prepare releaser configuration
+        run: |
+          python .github/workflows/prepare_releaser_configuration.py
+
       - name: Configure Git
+        if: ${{ hashFiles('releaser-config.yml') != '' }}
         run: |
           git config user.name "$GITHUB_ACTOR"
           git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
 
       - name: Run chart-releaser
-        uses: helm/chart-releaser-action@v1.4.0
+        if: ${{ hashFiles('releaser-config.yml') != '' }}
+        uses: helm/chart-releaser-action@v1.6.0
+        with:
+          config: releaser-config.yml
         env:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"

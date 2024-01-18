@@ -5,7 +5,9 @@ from pprint import pformat
 from typing import ClassVar
 from uuid import uuid4
 from contextlib import contextmanager
+from datetime import datetime
 from requests.exceptions import ConnectionError
+from requests.utils import default_user_agent
 
 from easypy.bunch import Bunch
 from easypy.caching import cached_property
@@ -14,7 +16,7 @@ from easypy.misc import at_least
 from easypy.semver import SemVer
 from easypy.caching import timecache
 from easypy.units import HOUR
-from easypy.resilience import retrying
+from easypy.resilience import retrying, resilient
 from easypy.tokens import (
     ROUNDROBIN,
     RANDOM,
@@ -69,9 +71,10 @@ class CannotUseTrashAPI(OperationNotSupported):
 class RESTSession(requests.Session):
     def __init__(self, config):
         super().__init__()
+        self.config = config
         self.headers["Accept"] = "application/json"
         self.headers["Content-Type"] = "application/json"
-        self.config = config
+        self.headers["User-Agent"] = f"VastCSI/{config.plugin_version}.{config.ci_pipe}.{config.git_commit[:10]} ({config._mode.capitalize()}) {default_user_agent()}"
         self.base_url = f"https://{self.config.vms_host}/api"
         # Modify the SSL verification CA bundle path established
         # by the underlying Certifi library's defaults if ssl_verify==True.
@@ -95,6 +98,15 @@ class RESTSession(requests.Session):
                          f"cannot be accessed. Please verify the specified endpoint. "
                          f"origin error: {e}"
                 ))
+        self.usage_report()
+
+    @resilient.error(msg="failed to report usage to VMS")
+    def usage_report(self):
+        self.post("plugins/usage/", data={
+            "vendor": "vastdata", "name": "vast-csi",
+            "version": self.config.plugin_version, "build": self.config.git_commit[:10]
+        })
+
 
     @retrying.debug(times=3, acceptable=retrying.Retry)
     def request(self, verb, api_method, *args, params=None, log_result=True, **kwargs):
@@ -292,8 +304,9 @@ class VmsSession(RESTSession):
 
         vippool = vippools[0]
         if tenant_id and vippool.tenant_id != tenant_id:
-            raise Exception(f"Pool {vip_pool_name} belongs to different tenant with name {vippool.tenant_name}")
-
+            raise Exception(
+                f"Pool {vip_pool_name} belongs to tenant with id {vippool.tenant_id} but {tenant_id=} was requested"
+            )
         vips = generate_ip_range(vippool.ip_ranges)
         assert vips, f"Pool {vip_pool_name} has no available vips"
         if load_balancing == ROUNDROBIN:
@@ -350,13 +363,16 @@ class VmsSession(RESTSession):
         return self.snapshots(page_size=page_size)
 
     def has_snapshots(self, path):
-        path = path.rstrip("/") + "/"
-        ret = self.snapshots(path=path, page_size=10)  # we intentionally limit the number of results
+        # we intentionally limit the number of results
+        ret = self.snapshots(path__startswith=path.rstrip("/"), page_size=10)
         return ret.results
 
-    def create_snapshot(self, name, path, tenant_id):
+    def create_snapshot(self, name, path, tenant_id, expiration_delta=None):
         """Create new snapshot."""
         data = dict(name=name, path=path, tenant_id=tenant_id)
+        if expiration_delta:
+            expiration_time = (datetime.utcnow() + expiration_delta).isoformat()
+            data["expiration_time"] = expiration_time
         return Bunch(self.post("snapshots", data=data))
 
     def get_snapshot(self, snapshot_name=None, snapshot_id=None):
@@ -372,7 +388,7 @@ class VmsSession(RESTSession):
         else:
             return self.snapshots(snapshot_id)
 
-    def ensure_snapshot(self, snapshot_name, path, tenant_id):
+    def ensure_snapshot(self, snapshot_name, path, tenant_id, expiration_delta=None):
         if snapshot := self.get_snapshot(snapshot_name=snapshot_name):
             if snapshot.path.strip("/") != path.strip("/"):
                 raise Exception(
@@ -381,11 +397,43 @@ class VmsSession(RESTSession):
                 )
         else:
             path = path.rstrip("/") + "/"
-            snapshot = self.create_snapshot(name=snapshot_name, path=path, tenant_id=tenant_id)
+            snapshot = self.create_snapshot(name=snapshot_name, path=path, tenant_id=tenant_id, expiration_delta=expiration_delta)
         return snapshot
 
     def delete_snapshot(self, snapshot_id):
         self.delete(f"snapshots/{snapshot_id}")
+
+    def get_snapshot_stream(self, name):
+        if res := self.globalsnapstreams(name=name):
+            return res[0]
+
+    def stop_snapshot_stream(self, snapshot_stream_id):
+        self.patch(f"globalsnapstreams/{snapshot_stream_id}/stop")
+
+    @requisite(semver="4.6.0", operation="create_globalsnapshotstream")
+    def ensure_snapshot_stream(self, snapshot_id, tenant_id, destination_path, snapshot_stream_name):
+        if not (snapshot_stream := self.get_snapshot_stream(name=snapshot_stream_name)):
+            data = dict(
+                loanee_root_path=destination_path,
+                name=snapshot_stream_name,
+                enabled=True,
+                loanee_tenant_id=tenant_id, # target tenant_id
+            )
+            snapshot_stream = self.post(f"snapshots/{snapshot_id}/clone/", data)
+        return snapshot_stream
+
+    @requisite(semver="4.6.0", ignore=True)
+    def ensure_snapshot_stream_deleted(self, snapshot_stream_name):
+        """
+        Stop global snapshot stream in case it is not finished.
+        Snapshots with expiration time will be deleted as soon as snapshot stream is stopped.
+        """
+        if snapshot_stream := self.get_snapshot_stream(snapshot_stream_name):
+            if snapshot_stream.status.state != "FINISHED":
+                # Just stop the stream. It will be deleted automatically upon stop request.
+                self.stop_snapshot_stream(snapshot_stream.id)
+            else:
+                self.delete(f"globalsnapstreams/{snapshot_stream.id}", data=dict(remove_dir=False))
 
     def get_by_token(self, token):
         """
@@ -547,6 +595,8 @@ class TestVmsSession(RESTSession):
     update_quota = _empty
     delete_view_by_path = _empty
     delete_view_by_id = _empty
+    ensure_snapshot_stream_deleted = _empty
     refresh_auth_token = _empty
     delete_folder = _empty
+    is_trash_api_usable = _empty
     has_snapshots = _empty

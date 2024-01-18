@@ -19,7 +19,7 @@ docker build \
     --cache-from vast-csi:latest \
     --build-arg=GIT_COMMIT=$CI_COMMIT_SHA \
     --build-arg=VERSION=$VERSION \
-    --build-arg=CI_PIPELINE_ID=$CI_PIPELINE_ID \
+    --build-arg=CI_PIPELINE_ID=${CI_PIPELINE_ID:-local} \
     --build-arg=BASE_IMAGE_NAME=$BASE_IMAGE_NAME \
     -f packaging/Dockerfile \
     .

@@ -18,7 +18,7 @@ sys.path += [ROOT.as_posix()]
 with local.cwd(gettempdir()) as tempdir:
     # Temporary change working directory and create version.info file in order to allow reading
     # driver name, version and git commit by Config.
-    tempdir["version.info"].open("w").write("csi.vastdata.com v0.0.0 ####")
+    tempdir["version.info"].open("w").write("csi.vastdata.com v0.0.0 #### local")
     from vast_csi.server import Controller, Node, Config
     import vast_csi.csi_types as types
 
