@@ -1,0 +1,68 @@
+{{/* Generate one or more bucket classes from 'bucketClasses' section. */}}
+
+{{/* Iterate over BucketClasses from manifest */}}
+{{- range $name, $options := .Values.bucketClasses }}
+
+{{- $deletion_policy :=  pluck "deletionPolicy" $options $.Values.bucketClassDefaults | first | quote -}}
+{{- $view_policy :=  pluck "viewPolicy" $options $.Values.bucketClassDefaults | first | quote -}}
+{{- $vip_pool_name := pluck "vipPool" $options $.Values.bucketClassDefaults | first | quote -}}
+{{- if eq $vip_pool_name ( quote "" ) -}}
+  {{- fail "vipPool is required value. Please specify valid vip pool" -}}
+{{- end }}
+{{- $scheme := pluck "scheme" $options $.Values.bucketClassDefaults | first | quote -}}
+{{- if not ( $scheme | mustRegexMatch "http|https" ) -}}
+  {{- fail "scheme should be either 'http' or 'https'" -}}
+{{- end }}
+{{- $storage_path := pluck "storagePath" $options $.Values.bucketClassDefaults | first | quote -}}
+{{- if eq $storage_path ( quote "" ) -}}
+  {{- fail "storagePath is required value. Please specify valid storage path" -}}
+{{- end }}
+{{- $qos_policy :=  pluck "qosPolicy" $options $.Values.bucketClassDefaults | first | quote -}}
+{{- $protocols :=  pluck "protocols" $options $.Values.bucketClassDefaults | first | quote -}}
+{{- $s3_locks_retention_mode :=  pluck "s3LocksRetentionMode" $options $.Values.bucketClassDefaults | first | quote -}}
+{{-
+    $s3_locks := pluck "s3Locks" $options $.Values.bucketClassDefaults |
+    first | quote | mustRegexMatch "true" | ternary true false | quote
+-}}
+{{-
+    $s3_versioning := pluck "s3Versioning" $options $.Values.bucketClassDefaults |
+    first | quote | mustRegexMatch "true" | ternary true false | quote
+-}}
+{{-
+    $locking := pluck "locking" $options $.Values.bucketClassDefaults |
+    first | quote | mustRegexMatch "true" | ternary true false | quote
+-}}
+{{- $default_retention_period :=  pluck "defaultRetentionPeriod" $options $.Values.bucketClassDefaults | first | quote -}}
+{{- $s3_locks_retention_period :=  pluck "s3LocksRetentionPeriod" $options $.Values.bucketClassDefaults | first | quote -}}
+{{-
+    $allow_s3_anonymous_access := pluck "allowS3AnonymousAccess" $options $.Values.bucketClassDefaults |
+    first | quote | mustRegexMatch "true" | ternary true false | quote
+-}}
+
+
+kind: BucketClass
+apiVersion: objectstorage.k8s.io/v1alpha1
+metadata:
+  name: {{ required "A BucketClass name must be not empty" $name }}
+  namespace: {{ include "vastcsi.namespace" $ }}
+  labels:
+  {{- include "vastcsi.labels" $ | nindent 4 }}
+driverName: csi.vastdata.com
+deletionPolicy: {{ $deletion_policy }}
+parameters:
+  root_export: {{ $storage_path }}
+  view_policy: {{ $view_policy }}
+  vip_pool_name: {{ $vip_pool_name }}
+  qos_policy: {{ $qos_policy }}
+  protocols: {{ $protocols }}
+  s3_locks: {{ $s3_locks }}
+  s3_locks_retention_period: {{ $s3_locks_retention_period }}
+  s3_locks_retention_mode: {{ $s3_locks_retention_mode }}
+  s3_versioning: {{ $s3_versioning }}
+  locking: {{ $locking }}
+  default_retention_period: {{ $default_retention_period }}
+  allow_s3_anonymous_access: {{ $allow_s3_anonymous_access }}
+  scheme: {{ $scheme }}
+
+---
+{{- end }}

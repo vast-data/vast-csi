@@ -120,7 +120,7 @@ class EmptyVolumeBuilder(BaseBuilder):
 
         # Check if view with expected system path already exists.
         view = self.controller.vms_session.ensure_view(
-            path=self.view_path, protocol=self.mount_protocol, view_policy=self.view_policy, qos_policy=self.qos_policy
+            path=self.view_path, protocols=[self.mount_protocol], view_policy=self.view_policy, qos_policy=self.qos_policy
         )
         quota = self._ensure_quota(requested_capacity, volume_name, self.view_path, view.tenant_id)
         volume_context.update(quota_id=str(quota.id), view_id=str(view.id), tenant_id=str(view.tenant_id))
@@ -183,9 +183,9 @@ class VolumeFromVolumeBuilder(EmptyVolumeBuilder):
             snapshot_stream_name=snapshot_stream_name,
         )
         # View should go after snapshot stream.
-        # Otherwise snapshot stream action will detect folder already exist and will be rejected
+        # Otherwise, snapshot stream action will detect folder already exist and will be rejected
         view = self.controller.vms_session.ensure_view(
-            path=self.view_path, protocol=self.mount_protocol,
+            path=self.view_path, protocols=[self.mount_protocol],
             view_policy=self.view_policy, qos_policy=self.qos_policy
         )
         quota = self._ensure_quota(requested_capacity, volume_name, self.view_path, view.tenant_id)
