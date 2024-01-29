@@ -1,6 +1,6 @@
 import re
 import pytest
-from vast_csi.server import Controller, Abort, MissingParameter
+from vast_csi.server import CsiController, Abort, MissingParameter
 
 import grpc
 import vast_csi.csi_types as types
@@ -15,7 +15,7 @@ class TestControllerSuite:
     def test_create_volume_invalid_capability(self, volume_capabilities, fs_type, mount_flags, mode, err_message):
         """Test invalid VolumeCapabilities must be validated"""
         # Preparation
-        cont = Controller()
+        cont = CsiController()
         capabilities = volume_capabilities(fs_type=fs_type, mount_flags=mount_flags, mode=mode)
 
         # Execution
@@ -35,7 +35,7 @@ class TestControllerSuite:
     def test_validate_parameters(self, volume_capabilities, parameters, err_message):
         """Test all required parameters must be provided"""
         # Preparation
-        cont = Controller()
+        cont = CsiController()
         capabilities = volume_capabilities(fs_type="ext4", mount_flags="", mode=types.AccessModeType.SINGLE_NODE_WRITER)
 
         # Execution
@@ -50,7 +50,7 @@ class TestControllerSuite:
     def test_quota_hard_limit_not_match(self, volume_capabilities, fake_session: "FakeSession"):
         """Test quota exists but provided capacity doesnt match"""
         # Preparation
-        cont = Controller()
+        cont = CsiController()
         parameters = dict(root_export="/foo/bar", view_policy="default", vip_pool_name="vippool-1")
         capabilities = volume_capabilities(fs_type="ext4", mount_flags="", mode=types.AccessModeType.SINGLE_NODE_WRITER)
 

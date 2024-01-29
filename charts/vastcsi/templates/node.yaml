@@ -75,9 +75,6 @@ spec:
                   fieldPath: spec.nodeName
           securityContext:
             privileged: true
-            capabilities:
-              add: ["SYS_ADMIN"]
-            allowPrivilegeEscalation: true
           volumeMounts:
             - name: plugin-dir
               mountPath: /csi

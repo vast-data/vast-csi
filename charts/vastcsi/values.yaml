@@ -118,13 +118,66 @@ snapshotClass:
 
 
 ####################
+# VAST COSI BUCKET CLASS OPTIONS
+####################
+
+bucketClassDefaults:
+  # Where buckets will be located on VAST - must be provided by user
+  storagePath: ""
+  # Name of VAST VIP pool to use - must be provided by user
+  vipPool: ""
+  # Name of S3 policy to create bucket - must be provided by user
+  viewPolicy: ""
+  # On bucket delete behavior. By default, Vast Cluster bucket will be removed.
+  deletionPolicy: "Delete"
+  # Name of QoS policy associates with the view.
+  qosPolicy: ""
+  # Comma separated list of client protocols that can access the view.
+  # 'NFS' is NFS version 3, 'NFS4' is NFS version 4.1, S3' creates an S3 bucket on the view,
+  # 'ENDPOINT' creates an S3 endpoint, used as template for views created via S3 RPCs, DATABASE exposes the view as a VAST database.
+  # 'S3' is default value if not provided.
+  protocols: ""
+  # Whether S3 Object Locking is enabled on S3 bucket. Must be set to true if s3LocksRetentionMode is specified.
+  s3Locks: false
+  # The retention mode for new object versions stored in the bucket. Valid values are NONE, GOVERNANCE, COMPLIANCE.
+  s3LocksRetentionMode: ""
+  # Default retention period for objects in the bucket.
+  # If set, object versions that are placed in the bucket are automatically protected with the specified retention lock.
+  # Otherwise, by default, each object version has no automatic protection but can be configured with a retention period or legal hold. Format: 0d, 2d, 1y, 2y etc.
+  s3LocksRetentionPeriod: ""
+  # Enable S3 Versioning if S3 bucket. Versioning cannot be disabled after the view is created.
+  s3Versioning: false
+  # Set to true to enable object locking on a view.
+  # Object locking cannot be disabled after the view is created. Must be true if s3Versioning is true.
+  locking: false
+  # Relevant if locking is enabled. Required if s3_locks_retention_mode is set to governance or compliance.
+  # Specifies a default retention period for objects in the bucket. If set, object versions that are placed in the bucket
+  # are automatically protected with the specified retention lock. Otherwise, by default,
+  # each object version has no automatic protection but can be configured with a retention period or legal hold.
+  # Specify as an integer followed by h for hours, d for days, m for months, or y for years. For example: 2d or 1y.
+  defaultRetentionPeriod: ""
+  # Allow S3 anonymous access to S3 bucket.
+  # If true, anonymous requests are granted provided that the object ACL grants access to the All Users group (in S3 Native security flavor)
+  # or the permission mode bits on the requested file and directory path grant access permission to 'others' (in NFS security flavor).
+  allowS3AnonymousAccess: false
+  # Scheme utilized for creating bucket endpoint. Must be one of: http, https
+  scheme: "http"
+
+bucketClasses: {}
+# bucketClasses:
+#   BucketClass name. This field must be unique across all bucket classes.
+#   vastdata-bucket:
+#     vipPool: vippool-1
+#     viewPolicy: s3_policy
+
+####################
 # VAST CONTROLLER AND NODE IMAGE SPECIFICATION
 ####################
 
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.3.0
+    tag: v2.2.6
     imagePullPolicy: IfNotPresent
   csiAttacher:
     repository: k8s.gcr.io/sig-storage/csi-attacher
@@ -145,6 +198,10 @@ image:
   csiSnapshotter:
     repository: k8s.gcr.io/sig-storage/csi-snapshotter
     tag: v6.0.1
+    imagePullPolicy: IfNotPresent
+  objectstorageProvisionerSidecar:
+    repository: gcr.io/k8s-staging-sig-storage/objectstorage-sidecar/objectstorage-sidecar
+    tag: v20221117-v0.1.0-22-g0e67387
     imagePullPolicy: IfNotPresent
 
 ####################
@@ -206,6 +263,12 @@ controller:
       requests:
         cpu: 100m
         memory: 50Mi
+    objectstorageProvisionerSidecar:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
   # priorityClassName is the name of priority class to be used for the pod.
   priorityClassName: system-cluster-critical
 
@@ -235,6 +298,15 @@ node:
   # See controller.priorityClassName section for details
   priorityClassName: system-cluster-critical
 
+cosiplugin:
+  resources:
+    objectstorageProvisionerSidecar:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+
 # The path to the kubelet root dir. must be provided when Kubernetes is not installed in its default directory.
 kubeletPath: "/var/lib/kubelet"
 # rbac flag indicated it Role-based access control from this chart should be used to create apropriate
@@ -247,3 +319,4 @@ rbac: true
 imagePullSecrets: []
 # Log level of CSI plugin
 logLevel: 5
+

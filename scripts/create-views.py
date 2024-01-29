@@ -68,7 +68,7 @@ class RestSession:
                 raise UserError(f"Error occurred while requesting url {url}, reason: {resp.reason}")
             return json.loads(resp.read().decode())
 
-    def ensure_view_policy(self, policy_name):
+    def get_view_policy(self, policy_name):
         if not (res := self._request("get", f"{self.base_url}/viewpolicies", data=dict(name=policy_name))):
             raise UserError(f"Provided view policy: {policy_name!r} doesn't exist")
         return res[0]["id"]
@@ -262,7 +262,7 @@ async def main() -> None:
     }
 
     session = RestSession(base_url=f'https://{controller_env["X_CSI_VMS_HOST"]}/api', auth=(username, password))
-    policy_id = session.ensure_view_policy(user_params.view_policy)
+    policy_id = session.get_view_policy(user_params.view_policy)
     _seen = set()
     for pv in all_pvs:
         pv_name = pv['metadata']['name']

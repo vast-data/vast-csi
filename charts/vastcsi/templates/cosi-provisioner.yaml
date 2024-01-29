@@ -1,0 +1,53 @@
+{{- $csi_images := .Values.image -}}
+{{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cosi-vast-provisioner
+  labels:
+    app.kubernetes.io/csi-role: "cosi-provisioner"
+    {{- include "vastcsi.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cosi-provisioner
+      {{- include "vastcsi.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: cosi-provisioner
+        {{- include "vastcsi.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: objectstorage-provisioner-sa
+      containers:
+      - name: cosi-vast-plugin
+        image: {{ printf "%s:%s" $csi_images.csiVastPlugin.repository $csi_images.csiVastPlugin.tag }}
+        args:
+          - "serve"
+        imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default  "IfNotPresent" }}
+        env:
+          {{- include "vastcsi.commonEnv" . | indent 10 }}
+          - name: CSI_ENDPOINT
+            value: unix:///var/lib/cosi/cosi.sock
+          - name: X_CSI_MODE
+            value: cosi_plugin
+        volumeMounts:
+          {{- include "vastcsi.vmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 10 }}
+          - mountPath: /var/lib/cosi
+            name: socket-dir
+        resources: {{- toYaml .Values.controller.resources.csiVastPlugin | nindent 10 }}
+      - name: objectstorage-provisioner-sidecar
+        image: {{ printf "%s:%s" $csi_images.objectstorageProvisionerSidecar.repository $csi_images.objectstorageProvisionerSidecar.tag }}
+        imagePullPolicy: {{ $csi_images.objectstorageProvisionerSidecar.imagePullPolicy | default  "IfNotPresent" }}
+        args:
+        - "--v=5"
+        volumeMounts:
+        - mountPath: /var/lib/cosi
+          name: socket-dir
+        resources: {{- toYaml .Values.cosiplugin.resources.objectstorageProvisionerSidecar | nindent 10 }}
+      volumes:
+        - name: socket-dir
+          emptyDir: {}
+        {{- include "vastcsi.vmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}

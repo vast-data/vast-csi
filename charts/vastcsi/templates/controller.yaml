@@ -106,9 +106,6 @@ spec:
           imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default  "IfNotPresent" }}
           securityContext:
             privileged: true
-            capabilities:
-              add: ["SYS_ADMIN"]
-            allowPrivilegeEscalation: true
           env:
              {{- include "vastcsi.commonEnv" . | indent 12 }}
             - name: CSI_ENDPOINT

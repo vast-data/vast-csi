@@ -8,6 +8,7 @@ from easypy.tokens import (
     CONTROLLER_AND_NODE,
     CONTROLLER,
     NODE,
+    COSI_PLUGIN
 )
 
 from easypy.caching import cached_property
@@ -71,7 +72,7 @@ class Config(TypedEnv):
     @property
     def mode(self):
         mode = Token(self._mode.upper())
-        assert mode in {CONTROLLER_AND_NODE, CONTROLLER, NODE}, f"invalid mode: {mode}"
+        assert mode in {CONTROLLER_AND_NODE, CONTROLLER, NODE, COSI_PLUGIN}, f"invalid mode: {mode}"
         return mode
 
     @property

@@ -15,6 +15,7 @@
 
 import os
 import re
+from random import randint
 from concurrent import futures
 from functools import wraps
 from pprint import pformat
@@ -29,11 +30,12 @@ from plumbum import local, ProcessExecutionError
 import grpc
 from requests.exceptions import HTTPError
 
-from easypy.tokens import CONTROLLER_AND_NODE, CONTROLLER, NODE
+from easypy.tokens import CONTROLLER_AND_NODE, CONTROLLER, NODE, COSI_PLUGIN
 from easypy.misc import kwargs_resilient, at_least
 from easypy.caching import cached_property
 from easypy.bunch import Bunch
 from easypy.exceptions import TException
+from easypy.humanize import yesno_to_bool
 
 from .logging import logger, init_logging
 from .utils import (
@@ -43,8 +45,8 @@ from .utils import (
     parse_load_balancing_strategy,
     string_to_proto_timestamp
 )
-from . import csi_pb2_grpc
-from .csi_pb2_grpc import ControllerServicer, NodeServicer, IdentityServicer
+from .proto import csi_pb2_grpc as csi_grpc
+from .proto import cosi_pb2_grpc as cosi_grpc
 from . import csi_types as types
 from .volume_builder import EmptyVolumeBuilder, VolumeFromSnapshotBuilder, VolumeFromVolumeBuilder, TestVolumeBuilder
 from .exceptions import (
@@ -117,6 +119,17 @@ def _validate_capabilities(capabilities):
                 INVALID_ARGUMENT,
                 f"Unsupported file system type: {capability.mount.fs_type}",
             )
+
+
+class SessionMixin:
+
+    @cached_property
+    def vms_session(self):
+        session_class = TestVmsSession if CONF.mock_vast else VmsSession
+        session = session_class(config=CONF)
+        logger.info("VMS ssl verification {}.".format("enabled" if CONF.ssl_verify else "disabled"))
+        session.refresh_auth_token()
+        return session
 
 
 class Instrumented:
@@ -206,7 +219,7 @@ class Instrumented:
 ################################################################
 
 
-class Identity(IdentityServicer, Instrumented):
+class CsiIdentity(csi_grpc.IdentityServicer, Instrumented):
     def __init__(self):
         self.capabilities = []
         self.controller = None
@@ -248,27 +261,19 @@ class Identity(IdentityServicer, Instrumented):
 ################################################################
 
 
-class Controller(ControllerServicer, Instrumented):
+class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
 
     CAPABILITIES = [
         types.CtrlCapabilityType.CREATE_DELETE_VOLUME,
         types.CtrlCapabilityType.PUBLISH_UNPUBLISH_VOLUME,
-        types.CtrlCapabilityType.LIST_VOLUMES,
+        # types.CtrlCapabilityType.LIST_VOLUMES,
         types.CtrlCapabilityType.EXPAND_VOLUME,
         types.CtrlCapabilityType.CREATE_DELETE_SNAPSHOT,
-        types.CtrlCapabilityType.LIST_SNAPSHOTS,
+        # types.CtrlCapabilityType.LIST_SNAPSHOTS,
         types.CtrlCapabilityType.CLONE_VOLUME,
         # types.CtrlCapabilityType.GET_CAPACITY,
         # types.CtrlCapabilityType.PUBLISH_READONLY,
     ]
-
-    @cached_property
-    def vms_session(self):
-        session_class = TestVmsSession if CONF.mock_vast else VmsSession
-        session = session_class(config=CONF)
-        logger.info("VMS ssl verification {}.".format("enabled" if CONF.ssl_verify else "disabled"))
-        session.refresh_auth_token()
-        return session
 
     def ControllerGetCapabilities(self):
         return types.CtrlCapabilityResp(
@@ -300,28 +305,6 @@ class Controller(ControllerServicer, Instrumented):
         )
 
         return types.ValidateResp(confirmed=confirmed)
-
-    def ListVolumes(self, starting_token=None, max_entries=None):
-        if starting_token == "invalid-token":
-            raise Abort(ABORTED, "Invalid starting_token")
-
-        if starting_token:
-            ret = self.vms_session.list_quotas(max_entries=max_entries)
-        else:
-            ret = self.vms_session.get_by_token(token=starting_token)
-        return types.ListResp(
-            next_token=ret.next_token,
-            entries=[
-                types.ListResp.Entry(
-                    volume=types.Volume(
-                        capacity_bytes=quota.hard_limit,
-                        volume_id=self._to_volume_id(quota.path),
-                        volume_context=dict(quota_id=str(quota.id)),
-                    )
-                )
-                for quota in ret.results
-            ],
-        )
 
     def CreateVolume(
         self,
@@ -424,7 +407,11 @@ class Controller(ControllerServicer, Instrumented):
             "Ensure that deletionVipPool and deletionViewPolicy are properly "
             "configured in your Helm configuration to perform local volume deletion."
         )
-        view_policy = self.vms_session.ensure_view_policy(policy_name=CONF.deletion_view_policy)
+        view_policy = self.vms_session.get_view_policy(policy_name=CONF.deletion_view_policy)
+        assert tenant_id == view_policy.tenant_id, (
+            f"Volume and deletionViewPolicy must be in the same tenant. "
+            f"Make sure deletionViewPolicy belongs to tenant {tenant_id} or use Trash API for deletion."
+        )
         nfs_server = self.vms_session.get_vip(vip_pool_name=CONF.deletion_vip_pool, tenant_id=view_policy.tenant_id)
 
         logger.info(f"Creating temporary base view.")
@@ -667,74 +654,6 @@ class Controller(ControllerServicer, Instrumented):
         vol_id = str(local.path(path).relative_to(CONF.sanity_test_nfs_export))
         return None if vol_id.startswith("..") else vol_id
 
-    def ListSnapshots(
-        self,
-        max_entries=None,
-        starting_token=None,
-        source_volume_id=None,
-        snapshot_id=None,
-    ):
-        if CONF.mock_vast:
-            starting_inode = int(starting_token) if starting_token else 0
-            snaps = (d for d in os.scandir(CONF.fake_snapshot_store) if d.is_file())
-            snaps = sorted(snaps, key=lambda d: d.inode())
-            logger.info(f"Got {len(snaps)} snapshots in {CONF.fake_snapshot_store}")
-            start_idx = 0
-
-            logger.info(f"Skipping to {starting_inode}")
-            for start_idx, d in enumerate(snaps):
-                if d.inode() > starting_inode:
-                    break
-            del snaps[:start_idx]
-
-            def to_snapshot(dentry):
-                with local.path(dentry.path).open("rb") as f:
-                    snap = types.Snapshot()
-                    snap.ParseFromString(f.read())
-                if source_volume_id and snap.source_volume_id != source_volume_id:
-                    return
-                if snapshot_id and snap.snapshot_id != snapshot_id:
-                    return
-                return snap, dentry.inode()
-
-            snaps = list(filter(None, map(to_snapshot, snaps)))
-            remain = 0
-            if max_entries:
-                remain = at_least(0, len(snaps) - max_entries)
-                snaps = snaps[:max_entries]
-
-            next_token = str(snaps[-1][1]) if remain else None
-            return types.ListSnapResp(
-                next_token=next_token,
-                entries=[types.SnapEntry(snapshot=snap) for snap, _ in snaps],
-            )
-        else:
-            page_size = max_entries or 250
-
-            if starting_token:
-                ret = self.vms_session.get_by_token(starting_token)
-            elif not snapshot_id:
-                ret = self.vms_session.snapshots(page_size=page_size)
-            else:
-                snap = self.vms_session.snapshots(snapshot_id)
-                return types.ListSnapResp(next_token=None, entries=[types.SnapEntry(
-                    snapshot=types.Snapshot(
-                        size_bytes=0,  # indicates 'unspecified'
-                        snapshot_id=str(snap.id),
-                        source_volume_id=self._to_volume_id(snap.path) or "n/a",
-                        creation_time=string_to_proto_timestamp(snap.created),
-                        ready_to_use=True,
-                    ))])
-
-            return types.ListSnapResp(next_token=ret.next, entries=[types.SnapEntry(
-                snapshot=types.Snapshot(
-                    size_bytes=0,  # indicates 'unspecified'
-                    snapshot_id=str(snap.id),
-                    source_volume_id=self._to_volume_id(snap.path) or "n/a",
-                    creation_time=string_to_proto_timestamp(snap.created),
-                    ready_to_use=True,
-                )) for snap in ret.results])
-
 
 ################################################################
 #
@@ -743,11 +662,11 @@ class Controller(ControllerServicer, Instrumented):
 ################################################################
 
 
-class Node(NodeServicer, Instrumented):
+class CsiNode(csi_grpc.NodeServicer, Instrumented):
 
     CAPABILITIES = [
         # types.NodeCapabilityType.STAGE_UNSTAGE_VOLUME,
-        # types.NodeCapabilityType.GET_VOLUME_STATS,
+        types.NodeCapabilityType.GET_VOLUME_STATS,
     ]
 
     def NodeGetCapabilities(self):
@@ -787,7 +706,7 @@ class Node(NodeServicer, Instrumented):
                 namespace=pod_namespace, name=pod_name, id=pod_uid
             )
 
-            controller = Controller()
+            controller = CsiController()
             controller.CreateVolume.__wrapped__(
                 controller,
                 name=volume_id,
@@ -881,7 +800,7 @@ class Node(NodeServicer, Instrumented):
                 with target_path[".vast-csi-meta"].open("r") as f:
                     meta = json.load(f)
                 if meta.get("is_ephemeral"):
-                    controller = Controller()
+                    controller = CsiController()
                     controller.DeleteVolume.__wrapped__(controller, meta["volume_id"])
 
             if target_path[".vast-csi-meta"].exists():
@@ -892,6 +811,120 @@ class Node(NodeServicer, Instrumented):
 
     def NodeGetInfo(self):
         return types.NodeInfoResp(node_id=CONF.node_id)
+
+    def NodeGetVolumeStats(self, volume_id, volume_path):
+        if not os.path.ismount(volume_path):
+            raise Abort(NOT_FOUND, f"{volume_path} is not a mountpoint")
+        # See http://man7.org/linux/man-pages/man2/statfs.2.html for details.
+        fstats = os.statvfs(volume_path)
+        return types.VolumeStatsResp(
+            usage=[
+                types.VolumeUsage(
+                    unit=types.UsageUnit.BYTES,
+                    available=fstats.f_bavail * fstats.f_bsize,
+                    total=fstats.f_blocks * fstats.f_bsize,
+                    used=(fstats.f_blocks - fstats.f_bfree) * fstats.f_bsize,
+                ),
+                types.VolumeUsage(
+                    unit=types.UsageUnit.INODES,
+                    available=fstats.f_ffree,
+                    total=fstats.f_files,
+                    used=fstats.f_files - fstats.f_ffree,
+                )
+            ]
+        )
+
+
+
+class CosiIdentity(cosi_grpc.IdentityServicer, Instrumented):
+
+    def DriverGetInfo(self, request, context):
+        return types.DriverGetInfoResp(name=CONF.plugin_name)
+
+
+class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented, SessionMixin):
+
+    def DriverCreateBucket(self, name, parameters):
+        if (root_export := parameters.get("root_export")) is None:
+            raise MissingParameter(param="root_export")
+        if not (vip_pool_name := parameters.get("vip_pool_name")):
+            raise MissingParameter(param="vip_pool_name")
+        view_policy = parameters.get("view_policy", "s3_default_policy")
+        qos_policy = parameters.get("qos_policy")
+        protocols = parameters.get("protocols") or []
+        scheme = parameters.get("scheme", "http")
+        s3_locks_retention_mode = parameters.get("s3_locks_retention_mode")
+        s3_versioning = yesno_to_bool(parameters.get("s3_versioning", "no"))
+        s3_locks = yesno_to_bool(parameters.get("s3_locks", "no"))
+        locking = yesno_to_bool(parameters.get("locking", "no"))
+        s3_locks_retention_period = parameters.get("s3_locks_retention_period")
+        default_retention_period = parameters.get("default_retention_period")
+        allow_s3_anonymous_access = yesno_to_bool(parameters.get("allow_s3_anonymous_access", "no"))
+
+        if CONF.truncate_volume_name:
+            name = name[:CONF.truncate_volume_name]  # crop to Vast's max-length
+
+        uid = randint(50000, 60000)
+        self.vms_session.ensure_user(uid=uid, name=name, allow_create_bucket=True)
+
+        if protocols:
+            protocols = list(map(lambda p: p.upper().strip(), protocols.split(",")))
+        if "S3" not in protocols:
+            protocols.append("S3")
+        if s3_locks_retention_mode:
+            s3_locks_retention_mode = s3_locks_retention_mode.upper().strip()
+        view = self.vms_session.ensure_s3view(
+            root_export=root_export, bucket_name=name,
+            bucket_owner=name, s3_policy=view_policy, qos_policy=qos_policy, protocols=protocols,
+            s3_versioning=s3_versioning, locking=locking, default_retention_period=default_retention_period,
+            allow_s3_anonymous_access=allow_s3_anonymous_access,
+            s3_locks_retention_mode=s3_locks_retention_mode, s3_locks=s3_locks,
+            s3_locks_retention_period=s3_locks_retention_period,
+        )
+        port = 443 if scheme == "https" else 80
+        vip = self.vms_session.get_vip(vip_pool_name=vip_pool_name, tenant_id=view.tenant_id)
+        # bucket_id contains bucket name and enpoint
+        # should be smth like test-bucket-caf9e0d0-0b9a-4b5e-8b0a-9b0brb0b4c0c@https://172.0.0.1:443
+        return types.DriverCreateBucketResp(
+            bucket_id=f"{name}@{scheme}://{vip}:{port}",
+            bucket_info=types.Protocol(
+                s3=types.S3(
+                    region="N/A",
+                    signature_version=types.S3SignatureVersion.UnknownSignature
+                )
+            )
+        )
+
+    def DriverDeleteBucket(self, bucket_id, delete_context):
+        bucket_id, _ = self._parse_bucket_id(bucket_id)
+        if view := self.vms_session.get_view(bucket=bucket_id):
+            self.vms_session.delete_view_by_id(view.id)
+        if user := self.vms_session.get_user(bucket_id):
+            self.vms_session.delete_user(user.id)
+        return types.DriverDeleteBucketResp()
+
+    def DriverGrantBucketAccess(self, bucket_id, name):
+        bucket_id, endpoint = self._parse_bucket_id(bucket_id)
+        user = self.vms_session.get_user(bucket_id)
+        creds = self.vms_session.generate_access_key(user.id)
+        credentials = dict(
+            s3=types.CredentialDetails(
+                secrets={"accessKeyID": creds.access_key, "accessSecretKey": creds.secret_key, "endpoint": endpoint}
+            )
+        )
+        return types.DriverGrantBucketAccessResp(
+            account_id=creds.access_key,
+            credentials=credentials
+        )
+
+    def DriverRevokeBucketAccess(self, bucket_id, account_id):
+        bucket_id, _ = self._parse_bucket_id(bucket_id)
+        if user := self.vms_session.get_user(bucket_id):
+            self.vms_session.delete_access_key(user.id, account_id)
+        return types.DriverRevokeBucketAccessResp()
+
+    def _parse_bucket_id(self, bucket_id):
+        return bucket_id.partition('@')[::2]
 
 
 ################################################################
@@ -915,21 +948,29 @@ def serve():
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=CONF.worker_threads))
 
-    identity = Identity()
-    csi_pb2_grpc.add_IdentityServicer_to_server(identity, server)
+    identity = CsiIdentity()
+    csi_grpc.add_IdentityServicer_to_server(identity, server)
 
     identity.capabilities.append(types.ExpansionType.ONLINE)
 
     if CONF.mode in {CONTROLLER, CONTROLLER_AND_NODE}:
-        identity.controller = Controller()
+        identity.controller = CsiController()
         identity.capabilities.append(types.ServiceType.CONTROLLER_SERVICE)
-        csi_pb2_grpc.add_ControllerServicer_to_server(identity.controller, server)
+        csi_grpc.add_ControllerServicer_to_server(identity.controller, server)
         CONF.fake_quota_store.mkdir()
         CONF.fake_snapshot_store.mkdir()
 
     if CONF.mode in {NODE, CONTROLLER_AND_NODE}:
-        identity.node = Node()
-        csi_pb2_grpc.add_NodeServicer_to_server(identity.node, server)
+        identity.node = CsiNode()
+        csi_grpc.add_NodeServicer_to_server(identity.node, server)
+
+    # COSI
+    if CONF.mode == COSI_PLUGIN:
+        cosi_identity = CosiIdentity()
+        cosi_grpc.add_IdentityServicer_to_server(cosi_identity, server)
+
+        cosi_provisioner = CosiProvisioner()
+        cosi_grpc.add_ProvisionerServicer_to_server(cosi_provisioner, server)
 
     server.add_insecure_port(CONF.endpoint)
     server.start()

@@ -1,9 +1,10 @@
 from __future__ import absolute_import
 
-from google.protobuf import wrappers_pb2 as wrappers
 from google.protobuf.timestamp_pb2 import Timestamp
+from google.protobuf import wrappers_pb2 as wrappers
 
-from . import csi_pb2
+from .proto import csi_pb2
+from .proto import cosi_pb2
 
 
 class EnumWrapper(object):
@@ -75,3 +76,14 @@ VolumeUsage = csi_pb2.VolumeUsage
 UsageUnit = EnumWrapper(VolumeUsage.Unit)
 
 Topology = csi_pb2.Topology
+
+# COSI types
+DriverGetInfoResp = cosi_pb2.DriverGetInfoResponse
+DriverCreateBucketResp = cosi_pb2.DriverCreateBucketResponse
+DriverGrantBucketAccessResp = cosi_pb2.DriverGrantBucketAccessResponse
+DriverRevokeBucketAccessResp = cosi_pb2.DriverRevokeBucketAccessResponse
+DriverDeleteBucketResp = cosi_pb2.DriverDeleteBucketResponse
+Protocol = cosi_pb2.Protocol
+S3 = cosi_pb2.S3
+S3SignatureVersion = cosi_pb2.S3SignatureVersion
+CredentialDetails = cosi_pb2.CredentialDetails
