@@ -17,5 +17,5 @@ entries:
     type: application
     urls:
     - https://github.com/vast-data/vast-csi/releases/download/helm-2.3.0-beta.2b66c93/vastcsi-2.3.0-beta.2b66c93.tgz
-    version: 2.3.0-beta.2b66c93
+    version: 2.3.0
 generated: "2024-01-29T18:00:40.35181817Z"
