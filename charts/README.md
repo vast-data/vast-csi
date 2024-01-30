@@ -12,7 +12,7 @@ helm install csi-driver vastcsi/vast-csi -f values.yaml -n vast-csi --create-nam
 
 ### install beta version of the driver:
 ```console
-helm repo add vastcsi https://raw.githubusercontent.com/vast-data/vast-csi/gh_pages_beta
+helm repo add vastcsi https://raw.githubusercontent.com/vast-data/vast-csi/gh-pages-beta
 helm install csi-driver vastcsi/vast-csi -f values.yaml -n vast-csi --create-namespace
 ```
 

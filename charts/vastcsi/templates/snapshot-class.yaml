@@ -1,17 +1,24 @@
-{{/* Vast CSI snapshot class */}}
+{{/* Generate one or more storage classes from 'snapshotClasses' section. */}}
 
-{{- with .Values.snapshotClass }}
+{{- range $name, $options := .Values.snapshotClasses }}
+{{-
+    $is_default_class := pluck "setDefaultSnapshotClass" $options $.Values.snapshotClassDefaults | first | quote
+-}}
+{{- $snapshot_name_fmt := pluck "snapshotNameFormat" $options $.Values.snapshotClassDefaults | first | quote -}}
+{{- $deletion_policy :=  pluck "deletionPolicy" $options $.Values.snapshotClassDefaults | first | quote -}}
+
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotClass
 metadata:
-  name: {{ required "snapshotClassName must be non empty string" .snapshotClassName | quote }}
+  name: {{ required "A SnapshotClass name must be not empty" $name }}
   namespace: {{ include "vastcsi.namespace" $ }}
   annotations:
-    snapshot.storage.kubernetes.io/is-default-class: {{ .setDefaultStorageClass | quote }}
+    snapshot.storage.kubernetes.io/is-default-class: {{ $is_default_class }}
   labels:
     {{- include "vastcsi.labels" $ | nindent 4 }}
 driver: csi.vastdata.com
-deletionPolicy: {{ .deletionPolicy | quote }}
+deletionPolicy: {{ $deletion_policy }}
 parameters:
-  snapshot_name_fmt: {{ .snapshotNameFormat | quote }}
+  snapshot_name_fmt: {{ $snapshot_name_fmt }}
+---
 {{- end }}

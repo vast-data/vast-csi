@@ -1,9 +1,5 @@
 {{/* Generate one or more storage classes from 'storageClasses' section. */}}
 
-{{- if not .Values.storageClasses -}}
-  {{- fail "`storageClasses` cannot be empty section. Specify at least one StorageClass with required parameters (vipPool, storagePath etc)" -}}
-{{- end -}}
-
 {{/* Iterate over StorageClasses from manifest */}}
 {{- range $name, $options := .Values.storageClasses }}
 

@@ -107,14 +107,17 @@ truncateVolumeName: 64
 ####################
 # VAST CSI SNAPSHOTS CLASS OPTIONS
 ####################
-snapshotClass:
-  snapshotClassName: "vastdata-snapshot"
-  # On snapshot delete behavior. By default, Vast Cluster snapshot will be removed as well.
+# snapshotClassDefaults is set of options that will be using by default if option is not provided
+# for particular snapshotClass in 'snapshotClasses' section
+snapshotClassDefaults:
+  # On snapshot delete behavior. By default, snapshot will be removed.
   deletionPolicy: "Delete"
   # If true, sets Vast CSI as the cluster-wide snapshot class default
-  setDefaultStorageClass: true
+  setDefaultSnapshotClass: true
   # String template for CSI-provisioned snapshot names, within VAST
   snapshotNameFormat: "csi:{namespace}:{name}:{id}"
+
+snapshotClasses: {}
 
 
 ####################
