@@ -180,7 +180,7 @@ bucketClasses: {}
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.2.6
+    tag: v2.3.0-beta-1215170
     imagePullPolicy: IfNotPresent
   csiAttacher:
     repository: k8s.gcr.io/sig-storage/csi-attacher
