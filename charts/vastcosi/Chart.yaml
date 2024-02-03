@@ -1,6 +1,6 @@
 apiVersion: v2
-name: vastcsi
-description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
+name: vastcosi
+description: Helm chart for Deployment of VAST Container Object Storage Interface (COSI)
 type: application
 version: "0.1.0" #  will be updated by the release ci
 keywords:
@@ -8,6 +8,7 @@ keywords:
   - csi
   - driver
   - vastdata
-  - csi-driver
+  - cosi
+  - cosi-driver
 icon: "https://uploads.vastdata.com/2020/04/vast-white-1.svg"
 home: "https://support.vastdata.com/hc/en-us/articles/8022914098716"
