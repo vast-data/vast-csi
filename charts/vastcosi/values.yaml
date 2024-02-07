@@ -1,0 +1,146 @@
+####################
+# VAST REST SESSION ATTRIBUTES
+####################
+# Secret name, which corresponds to a secret containing credentials to login - must be provided by user
+# Secret must contain username and password fields
+# Example: kubectl create secret generic vast-mgmt --from-literal=username='< VAST username >' --from-literal=password='< VAST password >'
+secretName: ""
+
+# API endpoint of VAST appliance - must be provided by user
+endpoint: ""
+
+# Set true to enable certificate validity test
+verifySsl: false
+
+# Path (absolute or relative) to SSL certificate for verifying the VAST REST API.
+# Must be set using `set-file` option eg `--set-file sslCert=< path to sslCert.crt >`
+# sslCertsSecretName secret and sslCert option in values.yaml are mutually exclusive. Make sure to use only one of them.
+sslCert: ""
+# Secret name, which corresponds to a secret containing an SSL certificate for verifying the VAST REST API
+# Example: kubectl create secret generic vast-tls --from-file=ca-bundle.crt=< path to sslCert.crt >
+# sslCertsSecretName secret and sslCert option in values.yaml are mutually exclusive. Make sure to use only one of them.
+sslCertsSecretName: ""
+
+####################
+# VAST COSI BUCKET CLASS OPTIONS
+####################
+
+bucketClassDefaults:
+  # Where buckets will be located on VAST - must be provided by user
+  storagePath: ""
+  # Name of VAST VIP pool to use - must be provided by user
+  vipPool: ""
+  # Name of S3 policy to create bucket - must be provided by user
+  viewPolicy: ""
+  # On bucket delete behavior. By default, Vast Cluster bucket will be removed.
+  deletionPolicy: "Delete"
+  # Name of QoS policy associates with the view.
+  qosPolicy: ""
+  # Comma separated list of client protocols that can access the view.
+  # 'NFS' is NFS version 3, 'NFS4' is NFS version 4.1, S3' creates an S3 bucket on the view,
+  # 'ENDPOINT' creates an S3 endpoint, used as template for views created via S3 RPCs, DATABASE exposes the view as a VAST database.
+  # 'S3' is default value if not provided.
+  protocols: ""
+  # Whether S3 Object Locking is enabled on S3 bucket. Must be set to true if s3LocksRetentionMode is specified.
+  s3Locks: false
+  # The retention mode for new object versions stored in the bucket. Valid values are NONE, GOVERNANCE, COMPLIANCE.
+  s3LocksRetentionMode: ""
+  # Default retention period for objects in the bucket.
+  # If set, object versions that are placed in the bucket are automatically protected with the specified retention lock.
+  # Otherwise, by default, each object version has no automatic protection but can be configured with a retention period or legal hold. Format: 0d, 2d, 1y, 2y etc.
+  s3LocksRetentionPeriod: ""
+  # Enable S3 Versioning if S3 bucket. Versioning cannot be disabled after the view is created.
+  s3Versioning: false
+  # Set to true to enable object locking on a view.
+  # Object locking cannot be disabled after the view is created. Must be true if s3Versioning is true.
+  locking: false
+  # Relevant if locking is enabled. Required if s3_locks_retention_mode is set to governance or compliance.
+  # Specifies a default retention period for objects in the bucket. If set, object versions that are placed in the bucket
+  # are automatically protected with the specified retention lock. Otherwise, by default,
+  # each object version has no automatic protection but can be configured with a retention period or legal hold.
+  # Specify as an integer followed by h for hours, d for days, m for months, or y for years. For example: 2d or 1y.
+  defaultRetentionPeriod: ""
+  # Allow S3 anonymous access to S3 bucket.
+  # If true, anonymous requests are granted provided that the object ACL grants access to the All Users group (in S3 Native security flavor)
+  # or the permission mode bits on the requested file and directory path grant access permission to 'others' (in NFS security flavor).
+  allowS3AnonymousAccess: false
+  # Scheme utilized for creating bucket endpoint. Must be one of: http, https
+  scheme: "http"
+
+bucketClasses: {}
+# bucketClasses:
+#   BucketClass name. This field must be unique across all bucket classes.
+#   vastdata-bucket:
+#     vipPool: vippool-1
+#     viewPolicy: s3_policy
+
+####################
+# COSI PLUGIN RUNTIME PARAMETERS
+####################
+
+# The number of worker threads the COSI plugin use to serve requests simultaneously.
+numWorkers: 10
+
+# Truncate VAST bucket name if name length is greater than this number.
+# set `truncateVolumeName: null` to disable truncation.
+truncateVolumeName: 64
+
+####################
+# VAST COSI PLUGIN OPTIONS
+####################
+
+image:
+  csiVastPlugin:
+    repository: vastdataorg/csi
+    tag: v2.4.0
+    imagePullPolicy: IfNotPresent
+  objectstorageProvisioner:
+    repository: gcr.io/k8s-staging-sig-storage/objectstorage-sidecar/objectstorage-sidecar
+    tag: v20221117-v0.1.0-22-g0e67387
+    imagePullPolicy: IfNotPresent
+
+####################
+# VAST COSI PLUGIN BEHAVIOR
+#
+# WARNING - these parameters are for advanced users.
+# Setting these incorrectly may prevent the VAST COSI Driver from running correctly.
+#  We recommend to consult with VAST Support before changing any of the following parameters
+####################
+
+cosiplugin:
+  # determine how DNS (Domain Name System) resolution should be handled within Pod.
+  # available values: Default, ClusterFirstWithHostNet, ClusterFirst
+  dnsPolicy: Default
+  # nodeSelector is the way to restrict pod to be assigned on certain node/nodes.
+  # Specify node selector if you want node and controller containers to be assigned only to specific node/nodes of
+  # your cluster.
+  #  https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector.
+  nodeSelector: {}
+  # If specified, the pod's tolerations
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
+  tolerations: []
+  # If specified, the pod's scheduling constraints
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  affinity: {}
+  # Resources describes the compute resource requirements.
+  resources:
+    objectstorageProvisioner:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    cosiVastPlugin:
+      limits:
+        memory: 400Mi
+      requests:
+        cpu: 100m
+        memory: 50Mi
+  # priorityClassName is the name of priority class to be used for the pod.
+  priorityClassName: system-cluster-critical
+
+# Reference to one or more secrets to be used when pulling images
+# ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+# - name: "image-pull-secret"
+imagePullSecrets: []
+

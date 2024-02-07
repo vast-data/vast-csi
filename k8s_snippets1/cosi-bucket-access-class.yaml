@@ -1,0 +1,6 @@
+kind: BucketAccessClass
+apiVersion: objectstorage.k8s.io/v1alpha1
+metadata:
+  name: sample-bac
+driverName: csi.vastdata.com
+authenticationType: KEY

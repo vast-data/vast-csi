@@ -1,0 +1,13 @@
+endpoint: 172.31.50.142
+secretName: vast-mgmt
+
+bucketClasses:
+  vastdata-bucket:
+    vipPool: vippool-1
+    storagePath: /buckets
+
+
+image:
+  csiVastPlugin:
+    repository: fnn45/vast-csi
+    tag: dev

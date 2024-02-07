@@ -2,6 +2,7 @@
 
 ## Version 2.4.0
 * added volume stats metrics on Node (VCSI-125)
+* added Container Object Storage Interface (COSI) support (VCSI-159)
 
 ## Version 2.3.0
 * added CLONE_VOLUME support (VCSI-83)
