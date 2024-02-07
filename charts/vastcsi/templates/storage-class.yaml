@@ -57,7 +57,7 @@ metadata:
   annotations:
     storageclass.kubernetes.io/is-default-class: {{ $is_default_class }}
   labels:
-  {{- include "vastcsi.labels" $ | nindent 4 }}
+{{- include "vastcsi.labels" $ | nindent 4 }}
 parameters:
   vip_pool_name: {{ $vip_pool_name }}
   root_export: {{ $storage_path }}
@@ -65,7 +65,7 @@ parameters:
   lb_strategy: {{ $lb_strategy }}
   volume_name_fmt: {{ $volume_name_fmt }}
   eph_volume_name_fmt: {{ $eph_volume_name_fmt }}
-  {{-  if ne $qos_policy ( quote "" ) }}
+{{-  if ne $qos_policy ( quote "" ) }}
   qos_policy: {{ $qos_policy }}
   {{- end }}
 allowVolumeExpansion: {{ $allow_volume_expansion }}

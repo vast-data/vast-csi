@@ -3,9 +3,9 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: objectstorage-provisioner-role
-  namespace: {{ include "vastcsi.namespace" . }}
+  namespace: {{ include "vastcosinamespace" . }}
   labels:
-    {{- include "vastcsi.labels" . | nindent 4 }}
+    {{- include "vastcosilabels" . | nindent 4 }}
 rules:
 - apiGroups: ["objectstorage.k8s.io"]
   resources: ["buckets", "bucketaccesses", "bucketclaims", "bucketaccessclasses", "buckets/status", "bucketaccesses/status", "bucketclaims/status", "bucketaccessclasses/status"]
@@ -23,9 +23,9 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: objectstorage-provisioner-role-binding
-  namespace: {{ include "vastcsi.namespace" . }}
+  namespace: {{ include "vastcosinamespace" . }}
   labels:
-    {{- include "vastcsi.labels" . | nindent 4 }}
+    {{- include "vastcosilabels" . | nindent 4 }}
 subjects:
   - kind: ServiceAccount
     name: objectstorage-provisioner-sa
@@ -43,6 +43,6 @@ metadata:
   name: objectstorage-provisioner-sa
   namespace: default
   labels:
-    {{- include "vastcsi.labels" . | nindent 4 }}
+    {{- include "vastcosilabels" . | nindent 4 }}
 
 ---

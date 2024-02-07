@@ -1,0 +1,65 @@
+{{- $csi_images := .Values.image -}}
+{{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cosi-vast-provisioner
+  labels:
+    app.kubernetes.io/csi-role: "cosi-provisioner"
+{{- include "vastcosilabels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cosi-provisioner
+{{- include "vastcosiselectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: cosi-provisioner
+{{- include "vastcosilabels" . | nindent 8 }}
+    spec:
+{{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
+      {{- end }}
+      affinity:
+{{ toYaml .Values.cosiplugin.affinity | indent 8 }}
+      serviceAccountName: objectstorage-provisioner-sa
+      containers:
+      - name: cosi-vast-plugin
+        image: {{ printf "%s:%s" $csi_images.csiVastPlugin.repository $csi_images.csiVastPlugin.tag }}
+        args:
+          - "serve"
+        imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default  "IfNotPresent" }}
+        env:
+{{- include "vastcosicommonEnv" . | indent 10 }}
+          - name: CSI_ENDPOINT
+            value: unix:///var/lib/cosi/cosi.sock
+          - name: X_CSI_MODE
+            value: cosi_plugin
+        volumeMounts:
+{{- include "vastcosivmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 10 }}
+          - mountPath: /var/lib/cosi
+            name: socket-dir
+        resources: {{- toYaml .Values.cosiplugin.resources.cosiVastPlugin | nindent 10 }}
+      - name: objectstorage-provisioner
+        image: {{ printf "%s:%s" $csi_images.objectstorageProvisioner.repository $csi_images.objectstorageProvisioner.tag }}
+        imagePullPolicy: {{ $csi_images.objectstorageProvisioner.imagePullPolicy | default  "IfNotPresent" }}
+        args:
+        - "--v=5"
+        volumeMounts:
+        - mountPath: /var/lib/cosi
+          name: socket-dir
+        resources: {{- toYaml .Values.cosiplugin.resources.objectstorageProvisioner | nindent 10 }}
+      dnsPolicy: {{ .Values.cosiplugin.dnsPolicy }}
+      nodeSelector:
+{{ toYaml .Values.cosiplugin.nodeSelector | indent 8 }}
+      priorityClassName: {{ .Values.cosiplugin.priorityClassName }}
+      tolerations:
+{{ toYaml .Values.cosiplugin.tolerations | indent 8 }}
+      volumes:
+        - name: socket-dir
+          emptyDir: {}
+{{- include "vastcosivmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}
