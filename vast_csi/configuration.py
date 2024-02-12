@@ -44,7 +44,7 @@ class Config(TypedEnv):
     load_balancing = TypedEnv.Str("X_CSI_LB_STRATEGY", default="roundrobin")
     truncate_volume_name = TypedEnv.Int("X_CSI_TRUNCATE_VOLUME_NAME", default=None)
     worker_threads = TypedEnv.Int("X_CSI_WORKER_THREADS", default=10)
-    dont_use_trash_api = TypedEnv.Bool("X_CSI_DONT_USE_TRASH_API", default=True)
+    dont_use_trash_api = TypedEnv.Bool("X_CSI_DONT_USE_TRASH_API", default=False)
 
     _mode = TypedEnv.Str("X_CSI_MODE", default="controller_and_node")
     _endpoint = TypedEnv.Str("CSI_ENDPOINT", default="unix:///var/run/csi.sock")

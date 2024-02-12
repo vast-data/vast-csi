@@ -898,6 +898,7 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented, SessionMixin)
     def DriverDeleteBucket(self, bucket_id, delete_context):
         bucket_id, _ = self._parse_bucket_id(bucket_id)
         if view := self.vms_session.get_view(bucket=bucket_id):
+            self.vms_session.delete_folder(view.path, view.tenant_id)
             self.vms_session.delete_view_by_id(view.id)
         if user := self.vms_session.get_user(bucket_id):
             self.vms_session.delete_user(user.id)
