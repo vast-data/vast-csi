@@ -29,7 +29,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: objectstorage-provisioner-sa
-    namespace: default
+    namespace: {{ include "vastcosinamespace" . }}
 roleRef:
   kind: ClusterRole
   name: objectstorage-provisioner-role
@@ -41,7 +41,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: objectstorage-provisioner-sa
-  namespace: default
+  namespace: {{ include "vastcosinamespace" . }}
   labels:
     {{- include "vastcosilabels" . | nindent 4 }}
 
