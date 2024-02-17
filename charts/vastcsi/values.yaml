@@ -218,6 +218,9 @@ node:
   tolerations: []
   # See controller.affinity section for details
   affinity: {}
+  # the default host `/etc/nfsmount.d` mount configuration directory as source for mount options
+  # https://man7.org/linux/man-pages/man5/nfsmount.conf.5.html
+  propagateHostMountOptions: true
   # see controller.resources section for details
   resources:
     nodeDriverRegistrar:
