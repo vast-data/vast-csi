@@ -3,7 +3,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: csi-vast-provisioner-role
+  name: {{ .Release.Name }}-vast-provisioner-role
   labels:
     {{- include "vastcsi.labels" . | nindent 4 }}
 rules:
@@ -44,7 +44,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: csi-vast-attacher-role
+  name: {{ .Release.Name }}-vast-attacher-role
   labels:
     {{- include "vastcsi.labels" . | nindent 4 }}
 rules:
@@ -64,7 +64,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: external-resizer-runner
+  name: {{ .Release.Name }}-external-resizer-runner
   labels:
     {{- include "vastcsi.labels" . | nindent 4 }}
 rules:

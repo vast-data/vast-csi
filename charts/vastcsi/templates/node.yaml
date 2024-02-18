@@ -98,7 +98,7 @@ spec:
       nodeSelector:
 {{ toYaml .Values.node.nodeSelector | indent 8 }}
       priorityClassName: {{ .Values.node.priorityClassName }}
-      serviceAccount: csi-vast-node-sa
+      serviceAccount: {{ .Release.Name }}-vast-node-sa
       tolerations:
 {{ toYaml .Values.node.tolerations | indent 8 }}
       volumes:

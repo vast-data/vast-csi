@@ -135,7 +135,7 @@ spec:
         {{- end}}
 {{ toYaml .Values.controller.nodeSelector | indent 8 }}
       priorityClassName: {{ .Values.controller.priorityClassName }}
-      serviceAccount: csi-vast-controller-sa
+      serviceAccount: {{ .Release.Name }}-vast-controller-sa
       tolerations:
 {{ toYaml .Values.controller.tolerations | indent 8 }}
       volumes:
