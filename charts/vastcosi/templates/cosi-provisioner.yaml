@@ -26,7 +26,7 @@ spec:
       {{- end }}
       affinity:
 {{ toYaml .Values.cosiplugin.affinity | indent 8 }}
-      serviceAccountName: objectstorage-provisioner-sa
+      serviceAccountName: {{ .Release.Name }}-objectstorage-provisioner-sa
       containers:
       - name: cosi-vast-plugin
         image: {{ printf "%s:%s" $csi_images.csiVastPlugin.repository $csi_images.csiVastPlugin.tag }}
