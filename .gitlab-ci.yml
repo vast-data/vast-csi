@@ -78,12 +78,11 @@ test_csi:
   except: null
   parallel:
     matrix:
-      - INSTALL_IMAGE: "4.2"
-      - INSTALL_IMAGE: "4.3"
-      - INSTALL_IMAGE: "4.4"
       - INSTALL_IMAGE: "4.5"
       - INSTALL_IMAGE: "4.6"
       - INSTALL_IMAGE: "4.7"
+      - INSTALL_IMAGE: "5.0"
+      - INSTALL_IMAGE: "5.1"
       - INSTALL_IMAGE: "prev_version"
       - INSTALL_IMAGE: "latest"
 
