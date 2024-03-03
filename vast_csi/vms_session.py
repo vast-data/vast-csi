@@ -24,6 +24,7 @@ from easypy.tokens import (
     CONTROLLER,
     NODE,
 )
+from easypy.humanize import yesno_to_bool
 from plumbum import cmd
 from plumbum import local, ProcessExecutionError
 
@@ -75,7 +76,7 @@ class RESTSession(requests.Session):
         self.headers["Accept"] = "application/json"
         self.headers["Content-Type"] = "application/json"
         self.headers["User-Agent"] = f"VastCSI/{config.plugin_version}.{config.ci_pipe}.{config.git_commit[:10]} ({config._mode.capitalize()}) {default_user_agent()}"
-        self.base_url = f"https://{self.config.vms_host}/api"
+        self.base_url = f"https://{self.config.vms_host}/api/v1"
         # Modify the SSL verification CA bundle path established
         # by the underlying Certifi library's defaults if ssl_verify==True.
         # This way requests library can use mounted CA bundle or default system CA bundle under the same path.
@@ -240,82 +241,41 @@ class VmsSession(RESTSession):
             )
         return view
 
-    def ensure_s3view(
-            self, root_export, bucket_name, bucket_owner, s3_policy, qos_policy, protocols,
-            s3_locks_retention_mode, s3_versioning, locking, default_retention_period,
-            allow_s3_anonymous_access, s3_locks, s3_locks_retention_period,
-    ):
+    def ensure_s3view(self, bucket_name, root_export, **kwargs):
         if not (view := self.get_view(bucket=bucket_name)):
-            view_policy = self.get_view_policy(policy_name=s3_policy)
+            view_policy = kwargs.pop("view_policy", "s3_default_policy")
+            protocols = kwargs.pop("protocols", None) or []
+            if protocols:
+                protocols = list(map(lambda p: p.upper().strip(), protocols.split(",")))
+            if "S3" not in protocols:
+                protocols.append("S3")
+            view_policy = self.get_view_policy(policy_name=view_policy)
+            policy_id = view_policy.id
+            tenant_id = view_policy.tenant_id
             root_export = root_export.strip("/")
             path = f"/{root_export}/{bucket_name}" if root_export else f"/{bucket_name}"
-            if qos_policy:
-                qos_policy_id = self.get_qos_policy(qos_policy).id
-            else:
-                qos_policy_id = None
+            for key in kwargs.keys():
+               if kwargs[key] in ("true", "false"):
+                   kwargs[key] = yesno_to_bool(kwargs[key])
             view = self.create_view(
-                path=path, protocols=protocols, policy_id=view_policy.id,
-                bucket=bucket_name, bucket_owner=bucket_owner,
-                qos_policy_id=qos_policy_id, tenant_id=view_policy.tenant_id,
-                s3_locks_retention_mode=s3_locks_retention_mode, s3_versioning=s3_versioning,
-                locking=locking, default_retention_period=default_retention_period,
-                allow_s3_anonymous_access=allow_s3_anonymous_access, s3_locks=s3_locks,
-                s3_locks_retention_period=s3_locks_retention_period,
+                bucket=bucket_name, bucket_owner=bucket_name, path=path,
+                protocols=protocols, policy_id=policy_id, tenant_id=tenant_id,
+                **kwargs
             )
         return view
 
-    def create_view(
-            self, path: str, policy_id: int, tenant_id: int,
-            qos_policy_id=None, protocols=["NFS"], create_dir=True, alias=None, bucket=None, bucket_owner=None,
-            s3_locks_retention_mode=None, s3_versioning=None, locking=None, default_retention_period=None,
-            allow_s3_anonymous_access=None, s3_locks=None, s3_locks_retention_period=None,
-    ):
+    def create_view(self, path: str, create_dir=True, **kwargs):
         """
         Create new view on remove cluster
         Args:
             path: full system path to create view for.
-            policy_id: id of view policy that should be assigned to view.
-            tenant_id: tenant id associated with view
-            qos_policy_id: id of QoS policy associated with view
-            create_dir: if underlying directory should be created along with view.
-            alias: view alias
-            protocols: client protocols to access view
-            bucket: bucket name associated with view
-            bucket_owner: bucket owner associated with view
+            **kwargs: additional view parameters.
         Returns:
             newly created view as dictionary.
         """
-        data = {
-            "path": str(path),
-            "create_dir": create_dir,
-            "protocols": protocols,
-            "policy_id": policy_id,
-            "tenant_id": tenant_id,
-        }
-        if qos_policy_id:
-            data["qos_policy_id"] = qos_policy_id
-        if alias:
-            data["alias"] = alias
-        if bucket:
-            data["bucket"] = bucket
-        if bucket_owner:
-            data["bucket_owner"] = bucket_owner
-        if "SMB" in protocols:
+        data = {"path": str(path), "create_dir": create_dir, **kwargs}
+        if "SMB" in kwargs.get("protocols", []):
             data["share"] = os.path.basename(path)
-        if s3_locks_retention_mode:
-            data["s3_locks_retention_mode"] = s3_locks_retention_mode
-        if s3_locks:
-            data["s3_locks"] = s3_locks
-        if s3_locks_retention_period:
-            data["s3_locks_retention_period"] = s3_locks_retention_period
-        if s3_versioning is not None:
-            data["s3_versioning"] = s3_versioning
-        if locking is not None:
-            data["locking"] = locking
-        if default_retention_period:
-            data["default_retention_period"] = default_retention_period
-        if allow_s3_anonymous_access is not None:
-            data["allow_s3_anonymous_access"] = allow_s3_anonymous_access
         return Bunch.from_dict(self.post("views", data))
 
     def delete_view_by_path(self, path: str):

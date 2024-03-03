@@ -84,7 +84,7 @@ class FakeSession:
     """Simulate VAST session behavior"""
 
     def __init__(self,
-                 view: Optional[Bunch] = Bunch(path="/test/view", id=1, tenant_id=1),
+                 view: Optional[Bunch] = Bunch(path="/test/view", id=1, tenant_id=1, tenant_name="default"),
                  quota_id: Optional[int] = 1,
                  quota_hard_limit: Optional[int] = 1000
                  ):
