@@ -6,7 +6,7 @@
 {{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
 
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: csi-vast-controller
   namespace: {{ include "vastcsi.namespace" . }}
