@@ -21,13 +21,15 @@ from functools import wraps
 from pprint import pformat
 from datetime import datetime
 import inspect
-from tempfile import mkdtemp
+from tempfile import mkdtemp, gettempdir
+from contextlib import contextmanager
 
 import json
 from json import JSONDecodeError
 from plumbum import cmd
 from plumbum import local, ProcessExecutionError
 import grpc
+from filelock import FileLock, Timeout
 from requests.exceptions import HTTPError
 
 from easypy.tokens import CONTROLLER_AND_NODE, CONTROLLER, NODE, COSI_PLUGIN
@@ -414,8 +416,19 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
         )
         nfs_server = self.vms_session.get_vip(vip_pool_name=CONF.deletion_vip_pool, tenant_id=view_policy.tenant_id)
 
+        @contextmanager
+        def delete_lock():
+            try:
+                with FileLock(f"{gettempdir()}/{volume_id}.lock", timeout=1):
+                    yield
+            except Timeout:
+                raise Abort(ABORTED, f"concurrent deletion of {volume_id} detected.")
+
         logger.info(f"Creating temporary base view.")
-        with self.vms_session.temp_view(path.dirname, view_policy.id, view_policy.tenant_id) as base_view:
+        with (
+            delete_lock(),
+            self.vms_session.temp_view(path.dirname, view_policy.id, view_policy.tenant_id) as base_view
+        ):
 
             mount_spec = f"{nfs_server}:{base_view.alias}"
             mounted = False
