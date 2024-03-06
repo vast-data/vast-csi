@@ -14,7 +14,6 @@ metadata:
 {{- include "vastcsi.labels" . | nindent 4 }}
     app.kubernetes.io/csi-role: "controller"
 spec:
-  serviceName: "csi-vast"
   replicas: 1
   selector:
     matchLabels:

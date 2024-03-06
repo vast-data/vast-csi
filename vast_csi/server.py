@@ -33,7 +33,7 @@ from filelock import FileLock, Timeout
 from requests.exceptions import HTTPError
 
 from easypy.tokens import CONTROLLER_AND_NODE, CONTROLLER, NODE, COSI_PLUGIN
-from easypy.misc import kwargs_resilient, at_least
+from easypy.misc import kwargs_resilient
 from easypy.caching import cached_property
 from easypy.bunch import Bunch
 from easypy.exceptions import TException
@@ -858,48 +858,24 @@ class CosiIdentity(cosi_grpc.IdentityServicer, Instrumented):
 class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented, SessionMixin):
 
     def DriverCreateBucket(self, name, parameters):
-        if (root_export := parameters.get("root_export")) is None:
+        if (root_export := parameters.pop("root_export", None)) is None:
             raise MissingParameter(param="root_export")
-        if not (vip_pool_name := parameters.get("vip_pool_name")):
+        if not (vip_pool_name := parameters.pop("vip_pool_name", None)):
             raise MissingParameter(param="vip_pool_name")
-        view_policy = parameters.get("view_policy", "s3_default_policy")
-        qos_policy = parameters.get("qos_policy")
-        protocols = parameters.get("protocols") or []
-        scheme = parameters.get("scheme", "http")
-        s3_locks_retention_mode = parameters.get("s3_locks_retention_mode")
-        s3_versioning = yesno_to_bool(parameters.get("s3_versioning", "no"))
-        s3_locks = yesno_to_bool(parameters.get("s3_locks", "no"))
-        locking = yesno_to_bool(parameters.get("locking", "no"))
-        s3_locks_retention_period = parameters.get("s3_locks_retention_period")
-        default_retention_period = parameters.get("default_retention_period")
-        allow_s3_anonymous_access = yesno_to_bool(parameters.get("allow_s3_anonymous_access", "no"))
+        scheme = parameters.pop("scheme", "http")
 
         if CONF.truncate_volume_name:
             name = name[:CONF.truncate_volume_name]  # crop to Vast's max-length
 
         uid = randint(50000, 60000)
         self.vms_session.ensure_user(uid=uid, name=name, allow_create_bucket=True)
-
-        if protocols:
-            protocols = list(map(lambda p: p.upper().strip(), protocols.split(",")))
-        if "S3" not in protocols:
-            protocols.append("S3")
-        if s3_locks_retention_mode:
-            s3_locks_retention_mode = s3_locks_retention_mode.upper().strip()
-        view = self.vms_session.ensure_s3view(
-            root_export=root_export, bucket_name=name,
-            bucket_owner=name, s3_policy=view_policy, qos_policy=qos_policy, protocols=protocols,
-            s3_versioning=s3_versioning, locking=locking, default_retention_period=default_retention_period,
-            allow_s3_anonymous_access=allow_s3_anonymous_access,
-            s3_locks_retention_mode=s3_locks_retention_mode, s3_locks=s3_locks,
-            s3_locks_retention_period=s3_locks_retention_period,
-        )
+        view = self.vms_session.ensure_s3view(bucket_name=name, root_export=root_export, **parameters)
         port = 443 if scheme == "https" else 80
         vip = self.vms_session.get_vip(vip_pool_name=vip_pool_name, tenant_id=view.tenant_id)
-        # bucket_id contains bucket name and enpoint
-        # should be smth like test-bucket-caf9e0d0-0b9a-4b5e-8b0a-9b0brb0b4c0c@https://172.0.0.1:443
+        # bucket_id contains bucket name and endpoint
+        # should be smth like test-bucket-caf9e0d0-0b9a-4b5e-8b0a-9b0brb0b4c0c@1@https://172.0.0.1:443
         return types.DriverCreateBucketResp(
-            bucket_id=f"{name}@{scheme}://{vip}:{port}",
+            bucket_id=f"{name}@{view.tenant_id}@{scheme}://{vip}:{port}",
             bucket_info=types.Protocol(
                 s3=types.S3(
                     region="N/A",
@@ -909,7 +885,7 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented, SessionMixin)
         )
 
     def DriverDeleteBucket(self, bucket_id, delete_context):
-        bucket_id, _ = self._parse_bucket_id(bucket_id)
+        bucket_id, _, _ = bucket_id.split('@')
         if view := self.vms_session.get_view(bucket=bucket_id):
             self.vms_session.delete_folder(view.path, view.tenant_id)
             self.vms_session.delete_view_by_id(view.id)
@@ -918,7 +894,7 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented, SessionMixin)
         return types.DriverDeleteBucketResp()
 
     def DriverGrantBucketAccess(self, bucket_id, name):
-        bucket_id, endpoint = self._parse_bucket_id(bucket_id)
+        bucket_id, _, endpoint = bucket_id.split('@')
         user = self.vms_session.get_user(bucket_id)
         creds = self.vms_session.generate_access_key(user.id)
         credentials = dict(
@@ -932,13 +908,10 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented, SessionMixin)
         )
 
     def DriverRevokeBucketAccess(self, bucket_id, account_id):
-        bucket_id, _ = self._parse_bucket_id(bucket_id)
+        bucket_id, _, _ = bucket_id.split('@')
         if user := self.vms_session.get_user(bucket_id):
             self.vms_session.delete_access_key(user.id, account_id)
         return types.DriverRevokeBucketAccessResp()
-
-    def _parse_bucket_id(self, bucket_id):
-        return bucket_id.partition('@')[::2]
 
 
 ################################################################

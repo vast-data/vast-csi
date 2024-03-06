@@ -12,7 +12,7 @@ COMMON_PARAMS = dict(
     qos_policy="default",
     protocols="nfs, nfs4, smb",
     scheme="http",
-    s3_locks_retention_mode="compliance",
+    s3_locks_retention_mode="COMPILANCE",
     s3_versioning="true",
     s3_locks="true",
     locking="true",
@@ -29,7 +29,7 @@ COMMON_PARAMS = dict(
 @patch("vast_csi.vms_session.VmsSession.get_view", MagicMock(return_value=None))
 @patch(
     "vast_csi.vms_session.VmsSession.get_view_policy",
-    MagicMock(return_value=Bunch(id=1, tenant_id=1)),
+    MagicMock(return_value=Bunch(id=1, tenant_id=1, tenant_name="default")),
 )
 @patch(
     "vast_csi.vms_session.VmsSession.get_qos_policy",
@@ -47,31 +47,34 @@ class TestCosiProvisionerSuite:
         # Preparation
         cosi = CosiProvisioner()
         bucket_name = "test-bucket"
+        m_create_view.return_value = Bunch(tenant_id=1)
 
         # Execution
-        res = self._create_bucket(name=bucket_name, parameters=COMMON_PARAMS)
+        params = COMMON_PARAMS.copy()
+        res = self._create_bucket(name=bucket_name, parameters=params)
 
         # Assertion
-        assert res.bucket_id == "test-bucket@http://172.0.0.1:80"
-        bucket_id, endpoint = cosi._parse_bucket_id(res.bucket_id)
+        assert res.bucket_id == "test-bucket@1@http://172.0.0.1:80"
+        bucket_id, tenant_id, endpoint = res.bucket_id.split("@")
         assert bucket_id == bucket_name
+        assert tenant_id == "1"
         assert endpoint == "http://172.0.0.1:80"
 
         assert m_create_view.call_args.kwargs == {
+            "bucket": "test-bucket",
+            "bucket_owner": "test-bucket",
             "path": "/buckets/test-bucket",
             "protocols": ["NFS", "NFS4", "SMB", "S3"],
             "policy_id": 1,
-            "bucket": "test-bucket",
-            "bucket_owner": "test-bucket",
-            "qos_policy_id": 1,
             "tenant_id": 1,
-            "s3_locks_retention_mode": "COMPLIANCE",
+            "qos_policy": "default",
+            "s3_locks_retention_mode": "COMPILANCE",
             "s3_versioning": True,
+            "s3_locks": True,
             "locking": True,
+            "s3_locks_retention_period": "1d",
             "default_retention_period": "1d",
             "allow_s3_anonymous_access": True,
-            "s3_locks": True,
-            "s3_locks_retention_period": "1d",
         }
         ensure_user_kwargs = m_ensure_user.call_args.kwargs
         assert 50000 <= ensure_user_kwargs.pop("uid") <= 60000
@@ -113,15 +116,7 @@ class TestCosiProvisionerSuite:
             "policy_id": 1,
             "bucket": "test-bucket",
             "bucket_owner": "test-bucket",
-            "qos_policy_id": None,
             "tenant_id": 1,
-            "s3_locks_retention_mode": None,
-            "s3_versioning": False,
-            "locking": False,
-            "default_retention_period": None,
-            "allow_s3_anonymous_access": False,
-            "s3_locks": False,
-            "s3_locks_retention_period": None,
         }
 
     @pytest.mark.parametrize("missing_param", ["root_export", "vip_pool_name"])
