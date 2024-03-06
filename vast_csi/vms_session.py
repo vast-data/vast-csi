@@ -246,7 +246,7 @@ class VmsSession(RESTSession):
             view_policy = kwargs.pop("view_policy", "s3_default_policy")
             protocols = kwargs.pop("protocols", None) or []
             if protocols:
-                protocols = list(map(lambda p: p.upper().strip(), protocols.split(",")))
+                protocols = [p.upper().strip() for p in protocols.split(",")]
             if "S3" not in protocols:
                 protocols.append("S3")
             view_policy = self.get_view_policy(policy_name=view_policy)
