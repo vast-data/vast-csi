@@ -234,7 +234,7 @@ class VolumeFromSnapshotBuilder(EmptyVolumeBuilder):
                 snapshot_stream_name=snapshot_stream_name,
             )
             view = self.controller.vms_session.ensure_view(
-                path=self.view_path, protocol=self.mount_protocol,
+                path=self.view_path, protocols=[self.mount_protocol],
                 view_policy=self.view_policy, qos_policy=self.qos_policy
             )
             quota = self._ensure_quota(requested_capacity, volume_name, self.view_path, tenant_id)
