@@ -848,7 +848,6 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
         )
 
 
-
 class CosiIdentity(cosi_grpc.IdentityServicer, Instrumented):
 
     def DriverGetInfo(self, request, context):
