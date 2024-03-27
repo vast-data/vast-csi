@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## Version 2.4.0
+## Version 2.3.1
 * added volume stats metrics on Node (VCSI-125)
 
 ## Version 2.3.0
