@@ -1,9 +1,11 @@
 # CHANGELOG
 
 ## Version 2.4.0
-* added volume stats metrics on Node (VCSI-125)
 * added Container Object Storage Interface (COSI) support (VCSI-159)
 * host mount options propagation via /etc/nfsmount.conf.d (VCSI-169)
+
+## Version 2.3.1
+* added volume stats metrics on Node (VCSI-125)
 
 ## Version 2.3.0
 * added CLONE_VOLUME support (VCSI-83)
