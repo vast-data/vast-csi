@@ -124,7 +124,7 @@ snapshotClass:
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.3.0
+    tag: v2.3.1  # the version of the Vast CSI driver
     imagePullPolicy: IfNotPresent
   csiAttacher:
     repository: k8s.gcr.io/sig-storage/csi-attacher
