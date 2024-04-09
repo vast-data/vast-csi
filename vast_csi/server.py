@@ -747,7 +747,7 @@ class Node(NodeServicer, Instrumented):
 
     CAPABILITIES = [
         # types.NodeCapabilityType.STAGE_UNSTAGE_VOLUME,
-        # types.NodeCapabilityType.GET_VOLUME_STATS,
+        types.NodeCapabilityType.GET_VOLUME_STATS,
     ]
 
     def NodeGetCapabilities(self):
@@ -892,6 +892,29 @@ class Node(NodeServicer, Instrumented):
 
     def NodeGetInfo(self):
         return types.NodeInfoResp(node_id=CONF.node_id)
+
+    def NodeGetVolumeStats(self, volume_id, volume_path):
+        if not os.path.ismount(volume_path):
+            raise Abort(NOT_FOUND, f"{volume_path} is not a mountpoint")
+        # See http://man7.org/linux/man-pages/man2/statfs.2.html for details.
+        fstats = os.statvfs(volume_path)
+        return types.VolumeStatsResp(
+            usage=[
+                types.VolumeUsage(
+                    unit=types.UsageUnit.BYTES,
+                    available=fstats.f_bavail * fstats.f_bsize,
+                    total=fstats.f_blocks * fstats.f_bsize,
+                    used=(fstats.f_blocks - fstats.f_bfree) * fstats.f_bsize,
+                ),
+                types.VolumeUsage(
+                    unit=types.UsageUnit.INODES,
+                    available=fstats.f_ffree,
+                    total=fstats.f_files,
+                    used=fstats.f_files - fstats.f_ffree,
+                )
+            ]
+        )
+
 
 
 ################################################################

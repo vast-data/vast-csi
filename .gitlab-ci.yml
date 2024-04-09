@@ -40,6 +40,11 @@ build_csi:
   script: |
     set -x
     VERSION=$(cat version.txt)
+    TAGGED=$(grep 'the version of the Vast CSI driver' charts/vastcsi/values.yaml | awk '{print $2}')
+    if [[ "$TAGGED" != "$VERSION" ]]; then
+      echo "version.txt has $VERSION, while our helm chart has $TAGGED (check charts/vastcsi/values.yaml)"
+      exit 5
+    fi
     LATEST=${DOCKER_REGISTRY}/dev/vast-csi:latest
     if (docker pull $LATEST) ; then
       docker tag $LATEST vast-csi:latest  # the cache-source for our subsequent build
@@ -78,12 +83,11 @@ test_csi:
   except: null
   parallel:
     matrix:
-      - INSTALL_IMAGE: "4.2"
-      - INSTALL_IMAGE: "4.3"
-      - INSTALL_IMAGE: "4.4"
       - INSTALL_IMAGE: "4.5"
       - INSTALL_IMAGE: "4.6"
       - INSTALL_IMAGE: "4.7"
+      - INSTALL_IMAGE: "5.0"
+      - INSTALL_IMAGE: "5.1"
       - INSTALL_IMAGE: "prev_version"
       - INSTALL_IMAGE: "latest"
 
