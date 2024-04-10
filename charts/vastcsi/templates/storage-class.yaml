@@ -21,12 +21,6 @@
   {{- fail "lbStrategy should be either 'random' or 'roundrobin'" -}}
 {{- end }}
 
-{{/* Validate  vipPool parameter. Parameter should be not empty string. */}}
-{{- $vip_pool_name := pluck "vipPool" $options $.Values.storageClassDefaults | first | quote -}}
-{{- if eq $vip_pool_name ( quote "" ) -}}
-  {{- fail "vipPool is required value. Please specify valid vip pool" -}}
-{{- end }}
-
 {{/* Validate  storagePath parameter. Parameter should be not empty string. */}}
 {{- $storage_path := pluck "storagePath" $options $.Values.storageClassDefaults | first | quote -}}
 {{- if eq $storage_path ( quote "" ) -}}
@@ -39,6 +33,7 @@
 {{- fail "viewPolicy is required value. Please specify valid policy name" -}}
 {{- end }}
 
+{{- $vip_pool_name := pluck "vipPool" $options $.Values.storageClassDefaults | first | quote -}}
 {{- $volume_name_fmt := pluck "volumeNameFormat" $options $.Values.storageClassDefaults | first | quote -}}
 {{- $eph_volume_name_fmt := pluck "ephemeralVolumeNameFormat" $options $.Values.storageClassDefaults | first | quote -}}
 {{- $qos_policy :=  pluck "qosPolicy" $options $.Values.storageClassDefaults | first | quote -}}
@@ -65,6 +60,9 @@ parameters:
   lb_strategy: {{ $lb_strategy }}
   volume_name_fmt: {{ $volume_name_fmt }}
   eph_volume_name_fmt: {{ $eph_volume_name_fmt }}
+{{-  if ne $vip_pool_name ( quote "" ) }}
+  vip_pool_name: {{ $vip_pool_name }}
+  {{- end }}
 {{-  if ne $qos_policy ( quote "" ) }}
   qos_policy: {{ $qos_policy }}
   {{- end }}

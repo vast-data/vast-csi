@@ -34,6 +34,9 @@ deletionViewPolicy: ""
 # as opposed to sending the request to the VMS over REST.
 # Please contact VAST Support before modifying this setting.
 dontUseTrashApi: false
+# Use this local IP address for mounting, when the StorageClass does not define a vipPool.
+# This is useful for DPU-based deployments.
+useLocalIpForMount: ""
 
 ####################
 # VAST CSI STORAGE CLASS OPTIONS
