@@ -35,7 +35,6 @@ from easypy.misc import kwargs_resilient
 from easypy.caching import cached_property
 from easypy.bunch import Bunch
 from easypy.exceptions import TException
-from easypy.humanize import yesno_to_bool
 
 from .logging import logger, init_logging
 from .utils import (
@@ -43,7 +42,8 @@ from .utils import (
     get_mount,
     normalize_mount_options,
     parse_load_balancing_strategy,
-    string_to_proto_timestamp
+    string_to_proto_timestamp,
+    is_valid_ip,
 )
 from .proto import csi_pb2_grpc as csi_grpc
 from .proto import cosi_pb2_grpc as cosi_grpc
@@ -341,8 +341,11 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
                 raise MissingParameter(param="root_export")
             if not (view_policy := parameters.get("view_policy")):
                 raise MissingParameter(param="view_policy")
-            if not (vip_pool_name := parameters.get("vip_pool_name")):
-                raise MissingParameter(param="vip_pool_name")
+            if not (vip_pool_name := parameters.get("vip_pool_name", "")):
+                if not CONF.use_local_ip_for_mount:
+                    raise Abort(INVALID_ARGUMENT, "vip_pool_name or use_local_ip_for_mount must be provided")
+                elif not is_valid_ip(CONF.use_local_ip_for_mount):
+                    raise Abort(INVALID_ARGUMENT, f"Local IP address: {CONF.use_local_ip_for_mount} is invalid")
             volume_name_fmt = parameters.get("volume_name_fmt", CONF.name_fmt)
             lb_strategy = parameters.get("lb_strategy", CONF.load_balancing)
             qos_policy = parameters.get("qos_policy")
@@ -403,8 +406,8 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
         logger.info(f"Use local mounting to delete {path}")
         path = local.path(path)
         volume_id = path.name
-        assert CONF.deletion_view_policy and CONF.deletion_vip_pool, (
-            "Ensure that deletionVipPool and deletionViewPolicy are properly "
+        assert CONF.deletion_view_policy, (
+            "Ensure that deletionViewPolicy is properly "
             "configured in your Helm configuration to perform local volume deletion."
         )
         view_policy = self.vms_session.get_view_policy(policy_name=CONF.deletion_view_policy)
@@ -412,12 +415,18 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
             f"Volume and deletionViewPolicy must be in the same tenant. "
             f"Make sure deletionViewPolicy belongs to tenant {tenant_id} or use Trash API for deletion."
         )
-        nfs_server = self.vms_session.get_vip(vip_pool_name=CONF.deletion_vip_pool, tenant_id=view_policy.tenant_id)
+        if CONF.use_local_ip_for_mount:
+            nfs_server_ip = CONF.use_local_ip_for_mount
+        else:
+            assert CONF.deletion_vip_pool, (
+                "Ensure that deletionVipPool is properly "
+                "configured in your Helm configuration to perform local volume deletion."
+            )
+            nfs_server_ip = self.vms_session.get_vip(CONF.deletion_vip_pool, view_policy.tenant_id)
 
         logger.info(f"Creating temporary base view.")
         with self.vms_session.temp_view(path.dirname, view_policy.id, view_policy.tenant_id) as base_view:
-
-            mount_spec = f"{nfs_server}:{base_view.alias}"
+            mount_spec = f"{nfs_server_ip}:{base_view.alias}"
             mounted = False
             tmpdir = local.path(mkdtemp())  # convert string to local.path
             tmpdir['.csi-unmounted'].touch()
@@ -512,19 +521,22 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
             quota_path_fragment = volume_id
             export_path = str(root_export[volume_id])
 
-        vip_pool_name = None if CONF.mock_vast else volume_context["vip_pool_name"]
-        if not (quota := self.vms_session.get_quota(quota_path_fragment)):
-            raise Abort(NOT_FOUND, f"Unknown volume: {quota_path_fragment}")
-
         if CONF.csi_sanity_test and CONF.node_id != node_id:
             # for a test that tries to fake a non-existent node
             raise Abort(NOT_FOUND, f"Unknown volume: {node_id}")
 
-        nfs_server_ip = self.vms_session.get_vip(
-            vip_pool_name=vip_pool_name,
-            load_balancing=load_balancing,
-            tenant_id=quota.tenant_id,
-        )
+        vip_pool_name = volume_context.get("vip_pool_name")
+        if vip_pool_name or CONF.mock_vast:
+            if not (quota := self.vms_session.get_quota(quota_path_fragment)):
+                raise Abort(NOT_FOUND, f"Unknown volume: {quota_path_fragment}")
+            nfs_server_ip = self.vms_session.get_vip(
+                vip_pool_name=vip_pool_name,
+                load_balancing=load_balancing,
+                tenant_id=quota.tenant_id,
+            )
+        else:
+            nfs_server_ip = CONF.use_local_ip_for_mount
+            logger.info(f"Using local IP for mount: {nfs_server_ip}")
 
         return types.CtrlPublishResp(
             publish_context=dict(

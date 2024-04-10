@@ -151,3 +151,11 @@ def generate_ip_range(ip_ranges):
         for start_ip, end_ip in ip_ranges for net in summarize_address_range(ip_address(start_ip), ip_address(end_ip))
         for ip in net
     ]
+
+
+def is_valid_ip(ip_str):
+    try:
+        ip_address(ip_str)
+        return True
+    except ValueError:
+        return False
