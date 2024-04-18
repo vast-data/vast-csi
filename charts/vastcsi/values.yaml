@@ -64,7 +64,7 @@ storageClassDefaults:
   # Name of QoS policy associates with the view.
   qosPolicy: ""
   # Reclaim policy to use with the storage class.
-  reclaimPolicy: ""
+  reclaimPolicy: "Delete"
 
 # Default storage class to use with CSI DRIVER.
 # The only required value is 'vipPool' name where user should provide name of existing vip pool on
