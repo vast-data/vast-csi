@@ -94,6 +94,7 @@ spec:
             - "--workers={{ .Values.numWorkers }}"
             - "--retry-interval-start={{ .Values.operationRetryIntervalStart }}s"
             - "--retry-interval-max={{ .Values.operationRetryIntervalMax }}s"
+            - "--handle-volume-inuse-error=false"
           env:
             - name: ADDRESS
               value: {{ $plugin_proxy_sock }}
