@@ -38,6 +38,7 @@
 {{- $eph_volume_name_fmt := pluck "ephemeralVolumeNameFormat" $options $.Values.storageClassDefaults | first | quote -}}
 {{- $qos_policy :=  pluck "qosPolicy" $options $.Values.storageClassDefaults | first | quote -}}
 {{- $mount_options :=  pluck "mountOptions" $options $.Values.storageClassDefaults | first -}}
+{{- $reclaim_policy :=  pluck "reclaimPolicy" $options $.Values.storageClassDefaults | first | quote -}}
 {{-
    $allow_volume_expansion := pluck "allowVolumeExpansion" $options $.Values.storageClassDefaults |
    first | quote | mustRegexMatch "true" | ternary true false
@@ -52,7 +53,8 @@ metadata:
   annotations:
     storageclass.kubernetes.io/is-default-class: {{ $is_default_class }}
   labels:
-{{- include "vastcsi.labels" $ | nindent 4 }}
+  {{- include "vastcsi.labels" $ | nindent 4 }}
+reclaimPolicy: {{ $reclaim_policy }}
 parameters:
   vip_pool_name: {{ $vip_pool_name }}
   root_export: {{ $storage_path }}
