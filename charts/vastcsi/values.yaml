@@ -109,6 +109,12 @@ operationRetryIntervalMax: 60
 # set `truncateVolumeName: null` to disable truncation.
 truncateVolumeName: 64
 
+# indicates this CSI driver requires an attach operation as it implements the `ControllerPublishVolume`
+# if set to false, the driver will perform `ControllerPublishVolume` as a part of NodePublishVolume op
+# which might speed up the volume attach operation significantly but not appropriate for workload nodes where
+# http/https ports are not open.
+attachRequired: true
+
 ####################
 # VAST CSI SNAPSHOTS CLASS OPTIONS
 ####################
