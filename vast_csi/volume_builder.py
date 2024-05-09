@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 from abc import ABC
 from datetime import timedelta
@@ -96,7 +97,7 @@ class EmptyVolumeBuilder(BaseBuilder):
     @property
     def volume_context(self):
         return {
-            "root_export": self.root_export,
+            "root_export": self.root_export_abs,
             "vip_pool_name": self.vip_pool_name,
             "lb_strategy": self.lb_strategy,
             "mount_options": self.mount_options,
@@ -106,7 +107,11 @@ class EmptyVolumeBuilder(BaseBuilder):
 
     @property
     def view_path(self):
-        return str(local.path(self.root_export)[self.name])
+        return os.path.join(self.root_export_abs, self.name)
+
+    @property
+    def root_export_abs(self):
+        return os.path.join("/", self.root_export)
 
     def build_volume(self) -> types.Volume:
         """
