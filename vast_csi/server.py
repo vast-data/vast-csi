@@ -770,7 +770,8 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
                 return types.NodePublishResp()
 
         target_path.mkdir()
-        with target_path[".vast-csi-meta"].open("w") as f:
+        meta_file = target_path[".vast-csi-meta"]
+        with meta_file.open("w") as f:
             json.dump(dict(volume_id=volume_id, is_ephemeral=is_ephemeral), f)
         logger.info(f"created: {target_path}")
 
@@ -779,8 +780,13 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
             flags += volume_capability.mount.mount_flags
         else:
             flags += normalize_mount_options(volume_context.get("mount_options", ""))
-        mount(mount_spec, target_path, flags=",".join(flags))
-        logger.info(f"mounted: {target_path} flags: {flags}")
+        try:
+            mount(mount_spec, target_path, flags=",".join(flags))
+            logger.info(f"mounted: {target_path} flags: {flags}")
+        except Exception:
+            meta_file.delete()
+            raise
+
         return types.NodePublishResp()
 
     def NodeUnpublishVolume(self, target_path):
