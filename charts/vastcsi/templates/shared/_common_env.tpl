@@ -25,6 +25,8 @@
   value: {{ $.Values.dontUseTrashApi | quote }}
 - name: X_CSI_USE_LOCALIP_FOR_MOUNT
   value: {{ $.Values.useLocalIpForMount | quote }}
+- name: X_CSI_ATTACH_REQUIRED
+  value: {{ $.Values.attachRequired | quote }}
 {{ if $.Values.truncateVolumeName -}}
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}

@@ -681,6 +681,10 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
         types.NodeCapabilityType.GET_VOLUME_STATS,
     ]
 
+    @cached_property
+    def controller(self):
+        return CsiController()
+
     def NodeGetCapabilities(self):
         return types.NodeCapabilityResp(
             capabilities=[
@@ -717,18 +721,16 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
             eph_volume_name = eph_volume_name_fmt.format(
                 namespace=pod_namespace, name=pod_name, id=pod_uid
             )
-
-            controller = CsiController()
-            controller.CreateVolume.__wrapped__(
-                controller,
+            self.controller.CreateVolume.__wrapped__(
+                self.controller,
                 name=volume_id,
                 volume_capabilities=[],
                 ephemeral_volume_name=eph_volume_name,
                 capacity_range=capacity_range,
                 parameters=volume_context
             )
-            resp = controller.ControllerPublishVolume.__wrapped__(
-                controller,
+            resp = self.controller.ControllerPublishVolume.__wrapped__(
+                self.controller,
                 node_id=CONF.node_id,
                 volume_id=volume_id,
                 volume_capability=volume_capability,
@@ -737,6 +739,18 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
             publish_context = resp.publish_context
         elif not volume_capability:
             raise Abort(INVALID_ARGUMENT, "missing 'volume_capability'")
+
+        if not publish_context:
+            assert not CONF.attach_required, "missing 'publish_context' when attach_required is enabled"
+            logger.info("attach_required is disabled, obtaining publish context")
+            resp = self.controller.ControllerPublishVolume.__wrapped__(
+                self.controller,
+                node_id=CONF.node_id,
+                volume_id=volume_id,
+                volume_capability=volume_capability,
+                volume_context=volume_context,
+            )
+            publish_context = resp.publish_context
 
         nfs_server_ip = publish_context["nfs_server_ip"]
 
