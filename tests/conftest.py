@@ -19,11 +19,11 @@ with local.cwd(gettempdir()) as tempdir:
     # Temporary change working directory and create version.info file in order to allow reading
     # driver name, version and git commit by Config.
     tempdir["version.info"].open("w").write("csi.vastdata.com v0.0.0 #### local")
-    from vast_csi.server import Controller, Node, Config
+    from vast_csi.server import CsiController, CsiNode, CosiProvisioner, Config
     import vast_csi.csi_types as types
 
 # Restore original methods on Controller and Node in order to get rid of Instrumented logging layer.
-for cls in (Controller, Node):
+for cls in (CsiController, CsiNode, CosiProvisioner):
     for name, _ in inspect.getmembers(cls.__base__, inspect.isfunction):
         if name.startswith("_"):
             continue
@@ -84,7 +84,7 @@ class FakeSession:
     """Simulate VAST session behavior"""
 
     def __init__(self,
-                 view: Optional[Bunch] = Bunch(path="/test/view", id=1, tenant_id=1),
+                 view: Optional[Bunch] = Bunch(path="/test/view", id=1, tenant_id=1, tenant_name="default"),
                  quota_id: Optional[int] = 1,
                  quota_hard_limit: Optional[int] = 1000
                  ):
@@ -144,7 +144,7 @@ def fake_session():
             view: Optional[str] = Bunch(path="/test/view", id=1, tenant_id=1)
     ):
         session_mock = FakeSession(view=view, quota_id=quota_id, quota_hard_limit=quota_hard_limit)
-        with patch("vast_csi.server.Controller.vms_session", session_mock):
+        with patch("vast_csi.server.CsiController.vms_session", session_mock):
             yield session_mock
 
     yield __wrapped

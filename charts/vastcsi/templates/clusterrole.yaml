@@ -1,10 +1,11 @@
 {{- if .Values.rbac }}
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: csi-vast-provisioner-role
+  name: {{ .Release.Name }}-vast-provisioner-role
   labels:
-  {{- include "vastcsi.labels" . | nindent 4 }}
+    {{- include "vastcsi.labels" . | nindent 4 }}
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
@@ -43,9 +44,9 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: csi-vast-attacher-role
+  name: {{ .Release.Name }}-vast-attacher-role
   labels:
-  {{- include "vastcsi.labels" . | nindent 4 }}
+    {{- include "vastcsi.labels" . | nindent 4 }}
 rules:
   - apiGroups: [""]
     resources: ["persistentvolumes"]
@@ -63,9 +64,9 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: external-resizer-runner
+  name: {{ .Release.Name }}-external-resizer-runner
   labels:
-  {{- include "vastcsi.labels" . | nindent 4 }}
+    {{- include "vastcsi.labels" . | nindent 4 }}
 rules:
   - apiGroups: [""]
     resources: ["persistentvolumes"]
@@ -82,4 +83,5 @@ rules:
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["list", "watch", "create", "update", "patch"]
-  {{- end -}}
+---
+{{- end -}}

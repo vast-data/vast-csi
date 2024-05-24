@@ -14,7 +14,10 @@ ROOT = Path.cwd()
 BRANCH = os.environ["GITHUB_REF_NAME"]
 SHA = os.environ["GITHUB_SHA"][:7]
 VERSION = ROOT.joinpath("version.txt").read_text().strip().lstrip("v")
-CHART = ROOT / "charts" / "vastcsi" / "Chart.yaml"
+CHARTS = [
+    ROOT / "charts" / "vastcsi" / "Chart.yaml",
+    ROOT / "charts" / "vastcosi" / "Chart.yaml",
+]
 
 if __name__ == '__main__':
     if not re.search('[0-9]+\.[0-9]+\.?[0-9]*', BRANCH):
@@ -25,15 +28,16 @@ if __name__ == '__main__':
         sys.exit(0)
     is_beta = "beta" in BRANCH
 
-    release_name_template = "helm-{{ .Version }}"
+    release_name_template = "helm-{{ .Name }}-{{ .Version }}"
     pages_branch = "gh-pages-beta" if is_beta else "gh-pages"
     version = f"{VERSION}-beta.{SHA}" if is_beta else VERSION
 
     # Create unique release name based on version and commit sha
-    for line in fileinput.input(CHART, inplace=True):
-        if line.startswith("version:"):
-            line = line.replace(line, f"version: {version}\n")
-        sys.stdout.write(line)
+    for chart in CHARTS:
+        for line in fileinput.input(chart, inplace=True):
+            if line.startswith("version:"):
+                line = line.replace(line, f"version: {version}\n")
+            sys.stdout.write(line)
 
     ROOT.joinpath("releaser-config.yml").open("w").write(
         f"""

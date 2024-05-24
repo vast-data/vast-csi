@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## Version 2.4.0
+* added Container Object Storage Interface (COSI) support (VCSI-159)
+* added formal support for multitenancy via StorageClasses (VCSI-147)
+* added support for mounting using fixed-ips instead of VIP pool (VCSI-170)
+* added support for host mount options propagation via /etc/nfsmount.conf.d (VCSI-169)
+* changed Controller pod to use 'Deployment' instead of 'Statefulset' (VCSI-166)
+
 ## Version 2.3.1
 * added volume stats metrics on Node (VCSI-125)
 

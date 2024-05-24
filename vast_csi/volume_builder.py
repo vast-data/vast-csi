@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 from abc import ABC
 from datetime import timedelta
@@ -96,7 +97,7 @@ class EmptyVolumeBuilder(BaseBuilder):
     @property
     def volume_context(self):
         return {
-            "root_export": self.root_export,
+            "root_export": self.root_export_abs,
             "vip_pool_name": self.vip_pool_name,
             "lb_strategy": self.lb_strategy,
             "mount_options": self.mount_options,
@@ -106,7 +107,11 @@ class EmptyVolumeBuilder(BaseBuilder):
 
     @property
     def view_path(self):
-        return str(local.path(self.root_export)[self.name])
+        return os.path.join(self.root_export_abs, self.name)
+
+    @property
+    def root_export_abs(self):
+        return os.path.join("/", self.root_export)
 
     def build_volume(self) -> types.Volume:
         """
@@ -120,7 +125,7 @@ class EmptyVolumeBuilder(BaseBuilder):
 
         # Check if view with expected system path already exists.
         view = self.controller.vms_session.ensure_view(
-            path=self.view_path, protocol=self.mount_protocol, view_policy=self.view_policy, qos_policy=self.qos_policy
+            path=self.view_path, protocols=[self.mount_protocol], view_policy=self.view_policy, qos_policy=self.qos_policy
         )
         quota = self._ensure_quota(requested_capacity, volume_name, self.view_path, view.tenant_id)
         volume_context.update(quota_id=str(quota.id), view_id=str(view.id), tenant_id=str(view.tenant_id))
@@ -183,9 +188,9 @@ class VolumeFromVolumeBuilder(EmptyVolumeBuilder):
             snapshot_stream_name=snapshot_stream_name,
         )
         # View should go after snapshot stream.
-        # Otherwise snapshot stream action will detect folder already exist and will be rejected
+        # Otherwise, snapshot stream action will detect folder already exist and will be rejected
         view = self.controller.vms_session.ensure_view(
-            path=self.view_path, protocol=self.mount_protocol,
+            path=self.view_path, protocols=[self.mount_protocol],
             view_policy=self.view_policy, qos_policy=self.qos_policy
         )
         quota = self._ensure_quota(requested_capacity, volume_name, self.view_path, view.tenant_id)
@@ -234,7 +239,7 @@ class VolumeFromSnapshotBuilder(EmptyVolumeBuilder):
                 snapshot_stream_name=snapshot_stream_name,
             )
             view = self.controller.vms_session.ensure_view(
-                path=self.view_path, protocol=self.mount_protocol,
+                path=self.view_path, protocols=[self.mount_protocol],
                 view_policy=self.view_policy, qos_policy=self.qos_policy
             )
             quota = self._ensure_quota(requested_capacity, volume_name, self.view_path, tenant_id)

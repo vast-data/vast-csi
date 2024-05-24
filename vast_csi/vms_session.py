@@ -24,6 +24,7 @@ from easypy.tokens import (
     CONTROLLER,
     NODE,
 )
+from easypy.humanize import yesno_to_bool
 from plumbum import cmd
 from plumbum import local, ProcessExecutionError
 
@@ -75,7 +76,7 @@ class RESTSession(requests.Session):
         self.headers["Accept"] = "application/json"
         self.headers["Content-Type"] = "application/json"
         self.headers["User-Agent"] = f"VastCSI/{config.plugin_version}.{config.ci_pipe}.{config.git_commit[:10]} ({config._mode.capitalize()}) {default_user_agent()}"
-        self.base_url = f"https://{self.config.vms_host}/api"
+        self.base_url = f"https://{self.config.vms_host}/api/v1"
         # Modify the SSL verification CA bundle path established
         # by the underlying Certifi library's defaults if ssl_verify==True.
         # This way requests library can use mounted CA bundle or default system CA bundle under the same path.
@@ -200,7 +201,7 @@ class VmsSession(RESTSession):
 
     # ----------------------------
     # View policies
-    def ensure_view_policy(self, policy_name: str):
+    def get_view_policy(self, policy_name: str):
         """Get view policy by name. Raise exception if not found."""
         if res := self.viewpolicies(name=policy_name):
             return res[0]
@@ -209,7 +210,7 @@ class VmsSession(RESTSession):
 
     # ----------------------------
     # QoS policies
-    def ensure_qos_policy(self, policy_name: str):
+    def get_qos_policy(self, policy_name: str):
         """Get QoS policy by name. Raise exception if not found."""
         if res := self.qospolicies(name=policy_name):
             return res[0]
@@ -218,61 +219,68 @@ class VmsSession(RESTSession):
 
     # ----------------------------
     # Views
-    def get_view_by_path(self, path) -> Bunch:
+    def get_view(self, **kwargs) -> Bunch:
         """
-        Get view that contain provided path.
+        Get view that contain provided search kwargs eg path, bucket_name
         """
-        if views := self.views(path=str(path)):
+        if views := self.views(**kwargs):
             if len(views) > 1:
-                raise Exception(f"Too many views found for path {path}: {views}")
+                raise Exception(f"Too many views were found by condition {kwargs}: {views}")
             return views[0]
 
-    def ensure_view(self, path, protocol, view_policy, qos_policy):
-        if not (view := self.get_view_by_path(path)):
-            view_policy = self.ensure_view_policy(policy_name=view_policy)
+    def ensure_view(self, path, protocols, view_policy, qos_policy):
+        if not (view := self.get_view(path=str(path))):
+            view_policy = self.get_view_policy(policy_name=view_policy)
             if qos_policy:
-                qos_policy_id = self.ensure_qos_policy(qos_policy).id
+                qos_policy_id = self.get_qos_policy(qos_policy).id
             else:
                 qos_policy_id = None
             view = self.create_view(
-                path=path, protocol=protocol, policy_id=view_policy.id,
+                path=path, protocols=protocols, policy_id=view_policy.id,
                 qos_policy_id=qos_policy_id, tenant_id=view_policy.tenant_id
             )
         return view
 
-    def create_view(
-            self, path: str, policy_id: int, tenant_id: int,
-            qos_policy_id=None, protocol="NFS", create_dir=True, alias=None
-    ):
+    def ensure_s3view(self, bucket_name, root_export, **kwargs):
+        if not (view := self.get_view(bucket=bucket_name)):
+            view_policy = kwargs.pop("view_policy", "s3_default_policy")
+            protocols = kwargs.pop("protocols", None) or []
+            if protocols:
+                protocols = [p.upper().strip() for p in protocols.split(",")]
+            if "S3" not in protocols:
+                protocols.append("S3")
+            view_policy = self.get_view_policy(policy_name=view_policy)
+            policy_id = view_policy.id
+            tenant_id = view_policy.tenant_id
+            root_export = root_export.strip("/")
+            path = f"/{root_export}/{bucket_name}" if root_export else f"/{bucket_name}"
+            for key in kwargs.keys():
+               if kwargs[key] in ("true", "false"):
+                   kwargs[key] = yesno_to_bool(kwargs[key])
+            view = self.create_view(
+                bucket=bucket_name, bucket_owner=bucket_name, path=path,
+                protocols=protocols, policy_id=policy_id, tenant_id=tenant_id,
+                **kwargs
+            )
+        return view
+
+    def create_view(self, path: str, create_dir=True, **kwargs):
         """
         Create new view on remove cluster
         Args:
             path: full system path to create view for.
-            policy_id: id of view policy that should be assigned to view.
-            tenant_id: tenant id associated with view
-            qos_policy_id: id of QoS policy associated with view
-            create_dir: if underlying directory should be created along with view.
-            alias: view alias
-            protocol: nfs protocol (NFS or NFS4)
+            **kwargs: additional view parameters.
         Returns:
             newly created view as dictionary.
         """
-        data = {
-            "path": str(path),
-            "create_dir": create_dir,
-            "protocols": [protocol],
-            "policy_id": policy_id,
-            "tenant_id": tenant_id,
-        }
-        if qos_policy_id:
-            data["qos_policy_id"] = qos_policy_id
-        if alias:
-            data["alias"] = alias
+        data = {"path": str(path), "create_dir": create_dir, **kwargs}
+        if "SMB" in kwargs.get("protocols", []):
+            data["share"] = os.path.basename(path)
         return Bunch.from_dict(self.post("views", data))
 
     def delete_view_by_path(self, path: str):
         """Delete view by provided path criteria."""
-        if view := self.get_view_by_path(path=path):
+        if view := self.get_view(path=path):
             self.delete_view_by_id(view.id)
 
     def delete_view_by_id(self, id_: int):
@@ -326,10 +334,6 @@ class VmsSession(RESTSession):
 
     # ----------------------------
     # Quotas
-    def list_quotas(self, max_entries) -> Bunch:
-        """List of quotas"""
-        return self.quotas(page_size=max_entries)
-
     def create_quota(self, data):
         """Create new quota"""
         return self.post("quotas", data=data)
@@ -359,9 +363,6 @@ class VmsSession(RESTSession):
 
     # ----------------------------
     # Snapshots
-    def snapshot_list(self, page_size):
-        return self.snapshots(page_size=page_size)
-
     def has_snapshots(self, path):
         # we intentionally limit the number of results
         ret = self.snapshots(path__startswith=path.rstrip("/"), page_size=10)
@@ -441,6 +442,34 @@ class VmsSession(RESTSession):
         Where after first request to resource list token for next page is returned.
         """
         return self.get(token)
+
+    # ----------------------------
+    # Users
+    def create_user(self, name, uid, allow_create_bucket=False, allow_delete_bucket=False):
+        return self.post("users", data={
+            "name": name, "uid": uid,
+            "allow_create_bucket": allow_create_bucket, "allow_delete_bucket": allow_delete_bucket
+        })
+
+    def get_user(self, name):
+        if users := self.users(name=name):
+            return users[0]
+
+    def ensure_user(self, name, uid, allow_create_bucket=False, allow_delete_bucket=False):
+        if user := self.get_user(name=name):
+            return user
+        return self.create_user(
+            name=name, uid=uid, allow_create_bucket=allow_create_bucket, allow_delete_bucket=allow_delete_bucket
+        )
+
+    def delete_user(self, user_id):
+        self.delete(f"users/{user_id}")
+
+    def generate_access_key(self, user_id):
+        return self.post(f"users/{user_id}/access_keys/", log_result=False)
+
+    def delete_access_key(self, user_id, access_key):
+        return self.delete(f"users/{user_id}/access_keys/", data={"access_key": access_key}, log_result=False)
 
 
 class TestVmsSession(RESTSession):
@@ -530,43 +559,6 @@ class TestVmsSession(RESTSession):
         self.config.controller_root_mount[quota._volume_id].delete()
         self.config.fake_quota_store[quota._volume_id].delete()
 
-    def list_quotas(self, starting_token=None, max_entries=None):
-        """
-        This method simulates behaviour of list_quotas but instead requesting quotas from remote cluster
-        it gets list of local volumes that were created before.
-        """
-        fields = Bunch.from_dict({
-            "next_token": None,
-            "results": []
-        })
-
-        starting_inode = int(starting_token) if starting_token else 0
-        vols = (d for d in os.scandir(self._mock_mount) if d.is_dir())
-        vols = sorted(vols, key=lambda d: d.inode())
-        logger.info(f"Got {len(vols)} volumes in {self._mock_mount}")
-        start_idx = 0
-
-        logger.info(f"Skipping to {starting_inode}")
-        for start_idx, d in enumerate(vols):
-            if d.inode() > starting_inode:
-                break
-
-        del vols[:start_idx]
-
-        remain = 0
-        if max_entries:
-            remain = at_least(0, len(vols) - max_entries)
-            vols = vols[:max_entries]
-
-        if remain:
-            fields.next_token = str(vols[-1].inode())
-
-        fields.results = [self._to_mock_volume(vol.name) for vol in vols]
-        return fields
-
-    def get_by_token(self, token):
-        return self.list_quotas(starting_token=token)
-
     @contextmanager
     def temp_view(self, path, policy_id, tenant_id):
         yield Bunch(
@@ -576,10 +568,10 @@ class TestVmsSession(RESTSession):
             tenant_name="test-tenant"
         )
 
-    def get_view_by_path(self, *_, **__):
+    def get_view(self, *_, **__):
         return Bunch(id=1, policy_id=1, tenant_id=1)
 
-    def ensure_view_policy(self, *_, **__):
+    def get_view_policy(self, *_, **__):
         return Bunch(id=1, tenant_id=1, tenant_name="test-tenant")
 
     def get_snapshot(self, *_, **__):

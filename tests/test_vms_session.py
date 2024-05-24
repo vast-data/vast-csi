@@ -1,24 +1,24 @@
 import pytest
 from io import BytesIO
 from unittest.mock import patch, PropertyMock, MagicMock
-from vast_csi.server import Controller
+from vast_csi.server import CsiController
 from requests import Response, Request, HTTPError
 from vast_csi.exceptions import OperationNotSupported, ApiError
 from easypy.semver import SemVer
 
 
+@patch("vast_csi.configuration.Config.vms_user", PropertyMock("test"))
+@patch("vast_csi.configuration.Config.vms_password", PropertyMock("test"))
+@patch("vast_csi.vms_session.VmsSession.refresh_auth_token", MagicMock())
 class TestVmsSessionSuite:
 
     @pytest.mark.parametrize("cluster_version", [
         "4.3.9", "4.0.11.12", "3.4.6.123.1", "4.5.6-1", "4.6.0", "4.6.0-1", "4.6.0-1.1", "4.6.9"
     ])
-    @patch("vast_csi.configuration.Config.vms_user", PropertyMock("test"))
-    @patch("vast_csi.configuration.Config.vms_password", PropertyMock("test"))
-    @patch("vast_csi.vms_session.VmsSession.refresh_auth_token", MagicMock())
     def test_requisite_decorator(self, cluster_version):
         """Test `requisite` decorator produces exception when cluster version doesn't met requirements"""
         # Preparation
-        cont = Controller()
+        cont = CsiController()
         fake_mgmt = PropertyMock(return_value=SemVer.loads_fuzzy(cluster_version))
         stripped_version = SemVer.loads_fuzzy(cluster_version).dumps()
 
@@ -40,13 +40,10 @@ class TestVmsSessionSuite:
                f" (needs 4.7-0, got {stripped_version})\n    current_version = {stripped_version}\n" \
                f"    op = delete_folder\n    required_version = 4.7-0" in exc.value.render(color=False)
 
-    @patch("vast_csi.configuration.Config.vms_user", PropertyMock("test"))
-    @patch("vast_csi.configuration.Config.vms_password", PropertyMock("test"))
-    @patch("vast_csi.vms_session.VmsSession.refresh_auth_token", MagicMock())
     def test_trash_api_disabled_helm_config(self):
         """Test trash api disable in helm chart cause Exception"""
         # Preparation
-        cont = Controller()
+        cont = CsiController()
         cont.vms_session.config.dont_use_trash_api = True
         fake_mgmt = PropertyMock(return_value=SemVer.loads_fuzzy("4.7.0"))
 
@@ -58,13 +55,10 @@ class TestVmsSessionSuite:
         # Assertion
         assert "Cannot delete folder via VMS: Disabled by Vast CSI settings" in exc.value.render(color=False)
 
-    @patch("vast_csi.configuration.Config.vms_user", PropertyMock("test"))
-    @patch("vast_csi.configuration.Config.vms_password", PropertyMock("test"))
-    @patch("vast_csi.vms_session.VmsSession.refresh_auth_token", MagicMock())
     def test_trash_api_disabled_cluster_settings(self):
         """Test trash api disable on cluster cause Exception"""
         # Preparation
-        cont = Controller()
+        cont = CsiController()
         cont.vms_session.config.dont_use_trash_api = True
         fake_mgmt = PropertyMock(return_value=SemVer.loads_fuzzy("5.0.0.25"))
 
@@ -85,13 +79,10 @@ class TestVmsSessionSuite:
         # Assertion
         assert "Cannot delete folder via VMS: Disabled by Vast CSI settings" in exc.value.render(color=False)
 
-    @patch("vast_csi.configuration.Config.vms_user", PropertyMock("test"))
-    @patch("vast_csi.configuration.Config.vms_password", PropertyMock("test"))
-    @patch("vast_csi.vms_session.VmsSession.refresh_auth_token", MagicMock())
     def test_delete_folder_local_mounting_requires_configuration(self):
         """Test deleting the folder via local mounting requires deletionVipPool and deletionVipPolicy to be provided."""
         # Preparation
-        cont = Controller()
+        cont = CsiController()
         cont.vms_session.config.dont_use_trash_api = True
         fake_mgmt = PropertyMock(return_value=SemVer.loads_fuzzy("4.6.0"))
 
@@ -101,15 +92,12 @@ class TestVmsSessionSuite:
                 cont._delete_data_from_storage("/abc", 1)
 
         # Assertion
-        assert "Ensure that deletionVipPool and deletionViewPolicy are properly configured" in str(exc.value)
+        assert "Ensure that deletionViewPolicy is properly configured" in str(exc.value)
 
-    @patch("vast_csi.configuration.Config.vms_user", PropertyMock("test"))
-    @patch("vast_csi.configuration.Config.vms_password", PropertyMock("test"))
-    @patch("vast_csi.vms_session.VmsSession.refresh_auth_token", MagicMock())
     def test_delete_folder_unsuccesful_attempt_cache_result(self):
         """Test if Trash API has been failed it wont be executed second time."""
         # Preparation
-        cont = Controller()
+        cont = CsiController()
         cont.vms_session.config.dont_use_trash_api = False
         cont.vms_session.config.avoid_trash_api.reset(-1)
         fake_mgmt = PropertyMock(return_value=SemVer.loads_fuzzy("4.7.0"))

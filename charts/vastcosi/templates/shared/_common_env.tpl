@@ -4,7 +4,7 @@
 # changes in the corresponding template in the other chart.
 */}}
 
-{{- define "vastcsi.commonEnv" -}}
+{{- define "vastcosicommonEnv" -}}
 
 {{- if (urlParse (required "endpoint is required" $.Values.endpoint )).scheme }}
     {{- fail "endpoint requires only host to be provided. Please exclude 'http//|https//' from url." -}}
@@ -15,18 +15,8 @@
   value: {{ $.Values.endpoint | quote }}
 - name: X_CSI_ENABLE_VMS_SSL_VERIFICATION
   value: {{ $.Values.verifySsl | quote }}
-- name: X_CSI_DELETION_VIP_POOL_NAME
-  value: {{ $.Values.deletionVipPool | quote }}
-- name: X_CSI_DELETION_VIEW_POLICY
-  value: {{ $.Values.deletionViewPolicy | quote }}
 - name: X_CSI_WORKER_THREADS
   value: {{ $.Values.numWorkers | quote }}
-- name: X_CSI_DONT_USE_TRASH_API
-  value: {{ $.Values.dontUseTrashApi | quote }}
-- name: X_CSI_USE_LOCALIP_FOR_MOUNT
-  value: {{ $.Values.useLocalIpForMount | quote }}
-- name: X_CSI_ATTACH_REQUIRED
-  value: {{ $.Values.attachRequired | quote }}
 {{ if $.Values.truncateVolumeName -}}
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}

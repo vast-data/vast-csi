@@ -34,6 +34,9 @@ deletionViewPolicy: ""
 # as opposed to sending the request to the VMS over REST.
 # Please contact VAST Support before modifying this setting.
 dontUseTrashApi: false
+# Use this local IP address for mounting, when the StorageClass does not define a vipPool.
+# This is useful for DPU-based deployments.
+useLocalIpForMount: ""
 
 ####################
 # VAST CSI STORAGE CLASS OPTIONS
@@ -63,6 +66,8 @@ storageClassDefaults:
   mountOptions: []
   # Name of QoS policy associates with the view.
   qosPolicy: ""
+  # Reclaim policy to use with the storage class.
+  reclaimPolicy: "Delete"
 
 # Default storage class to use with CSI DRIVER.
 # The only required value is 'vipPool' name where user should provide name of existing vip pool on
@@ -100,9 +105,15 @@ operationRetryIntervalStart: 10
 # Maximum interval between attempts.
 operationRetryIntervalMax: 60
 
-# Truncate VAST quota name if name length is greater then this number.
+# Truncate VAST quota name if name length is greater than this number.
 # set `truncateVolumeName: null` to disable truncation.
 truncateVolumeName: 64
+
+# indicates this CSI driver requires an attach operation as it implements the `ControllerPublishVolume`
+# if set to false, the driver will perform `ControllerPublishVolume` as a part of NodePublishVolume op
+# which might speed up the volume attach operation significantly but not appropriate for workload nodes where
+# http/https ports are not open.
+attachRequired: true
 
 ####################
 # VAST CSI SNAPSHOTS CLASS OPTIONS
@@ -124,27 +135,27 @@ snapshotClass:
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.3.1  # the version of the Vast CSI driver
+    tag: v2.4.0  # the version of the Vast CSI driver
     imagePullPolicy: IfNotPresent
   csiAttacher:
-    repository: k8s.gcr.io/sig-storage/csi-attacher
-    tag: v3.1.0
+    repository: registry.k8s.io/sig-storage/csi-attacher
+    tag: v4.5.0
     imagePullPolicy: IfNotPresent
   csiNodeDriverRegistrar:
-    repository: k8s.gcr.io/sig-storage/csi-node-driver-registrar
-    tag: v2.0.1
+    repository: registry.k8s.io/sig-storage/csi-node-driver-registrar
+    tag: v2.10.0
     imagePullPolicy: IfNotPresent
   csiProvisioner:
-    repository: k8s.gcr.io/sig-storage/csi-provisioner
-    tag: v3.2.1
+    repository: registry.k8s.io/sig-storage/csi-provisioner
+    tag: v4.0.0
     imagePullPolicy: IfNotPresent
   csiResizer:
-    repository: k8s.gcr.io/sig-storage/csi-resizer
-    tag: v1.1.0
+    repository: registry.k8s.io/sig-storage/csi-resizer
+    tag: v1.10.0
     imagePullPolicy: IfNotPresent
   csiSnapshotter:
-    repository: k8s.gcr.io/sig-storage/csi-snapshotter
-    tag: v6.0.1
+    repository: registry.k8s.io/sig-storage/csi-snapshotter
+    tag: v7.0.1
     imagePullPolicy: IfNotPresent
 
 ####################
@@ -218,6 +229,9 @@ node:
   tolerations: []
   # See controller.affinity section for details
   affinity: {}
+  # the default host `/etc/nfsmount.d` mount configuration directory as source for mount options
+  # https://man7.org/linux/man-pages/man5/nfsmount.conf.5.html
+  propagateHostMountOptions: true
   # see controller.resources section for details
   resources:
     nodeDriverRegistrar:

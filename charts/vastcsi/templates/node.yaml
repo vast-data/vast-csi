@@ -10,23 +10,23 @@ metadata:
   name: csi-vast-node
   namespace: {{ include "vastcsi.namespace" . }}
   labels:
-    {{- include "vastcsi.labels" . | nindent 4 }}
+{{- include "vastcsi.labels" . | nindent 4 }}
     app.kubernetes.io/csi-role: "node"
 spec:
   selector:
     matchLabels:
       app: "csi-vast-node"
-      {{- include "vastcsi.selectorLabels" . | nindent 6 }}
+{{- include "vastcsi.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
         app: csi-vast-node
         role: csi-vast
-        {{- include "vastcsi.labels" . | nindent 8 }}
+{{- include "vastcsi.labels" . | nindent 8 }}
       annotations:
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
     spec:
-      {{- if .Values.imagePullSecrets }}
+{{- if .Values.imagePullSecrets }}
       imagePullSecrets:
 {{ toYaml .Values.imagePullSecrets | indent 8 }}
       {{- end }}
@@ -35,7 +35,8 @@ spec:
       containers:
         - name: csi-node-driver-registrar
           image: {{ printf "%s:%s" $csi_images.csiNodeDriverRegistrar.repository $csi_images.csiNodeDriverRegistrar.tag }}
-          args: {{- include "vastcsi.commonArgs" . | nindent 12 }}
+          args:
+{{- include "vastcsi.commonArgs" . | nindent 12 }}
             - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
           imagePullPolicy: {{ $csi_images.csiNodeDriverRegistrar.imagePullPolicy | default  "IfNotPresent" }}
           lifecycle:
@@ -63,7 +64,7 @@ spec:
             - "serve"
           imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default  "IfNotPresent" }}
           env:
-            {{- include "vastcsi.commonEnv" . | indent 12 }}
+{{- include "vastcsi.commonEnv" . | indent 12 }}
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
             - name: X_CSI_MODE
@@ -86,14 +87,18 @@ spec:
               mountPropagation: "Bidirectional"
             - name: device-dir
               mountPath: /dev
-            {{- include "vastcsi.vmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 12 }}
+          {{- if .Values.node.propagateHostMountOptions }}
+            - name: host-nfsmount-conf-d
+              mountPath: /etc/nfsmount.conf.d
+          {{- end }}
+{{- include "vastcsi.vmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 12 }}
           resources: {{- toYaml .Values.node.resources.csiVastPlugin | nindent 12 }}
       hostNetwork: true
       dnsPolicy: {{ .Values.node.dnsPolicy }}
       nodeSelector:
 {{ toYaml .Values.node.nodeSelector | indent 8 }}
       priorityClassName: {{ .Values.node.priorityClassName }}
-      serviceAccount: csi-vast-node-sa
+      serviceAccount: {{ .Release.Name }}-vast-node-sa
       tolerations:
 {{ toYaml .Values.node.tolerations | indent 8 }}
       volumes:
@@ -112,5 +117,10 @@ spec:
         - name: device-dir
           hostPath:
             path: /dev
-        {{- include "vastcsi.vmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}
-
+{{- include "vastcsi.vmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}
+       {{- if .Values.node.propagateHostMountOptions }}
+        - hostPath:
+            path: /etc/nfsmount.conf.d
+            type: DirectoryOrCreate
+          name: host-nfsmount-conf-d
+        {{- end }}

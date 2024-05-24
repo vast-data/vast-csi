@@ -8,6 +8,7 @@ from easypy.tokens import (
     CONTROLLER_AND_NODE,
     CONTROLLER,
     NODE,
+    COSI_PLUGIN
 )
 
 from easypy.caching import cached_property
@@ -43,7 +44,9 @@ class Config(TypedEnv):
     load_balancing = TypedEnv.Str("X_CSI_LB_STRATEGY", default="roundrobin")
     truncate_volume_name = TypedEnv.Int("X_CSI_TRUNCATE_VOLUME_NAME", default=None)
     worker_threads = TypedEnv.Int("X_CSI_WORKER_THREADS", default=10)
-    dont_use_trash_api = TypedEnv.Bool("X_CSI_DONT_USE_TRASH_API", default=True)
+    dont_use_trash_api = TypedEnv.Bool("X_CSI_DONT_USE_TRASH_API", default=False)
+    use_local_ip_for_mount = TypedEnv.Str("X_CSI_USE_LOCALIP_FOR_MOUNT", default="")
+    attach_required = TypedEnv.Bool("X_CSI_ATTACH_REQUIRED", default=True)
 
     _mode = TypedEnv.Str("X_CSI_MODE", default="controller_and_node")
     _endpoint = TypedEnv.Str("CSI_ENDPOINT", default="unix:///var/run/csi.sock")
@@ -71,7 +74,7 @@ class Config(TypedEnv):
     @property
     def mode(self):
         mode = Token(self._mode.upper())
-        assert mode in {CONTROLLER_AND_NODE, CONTROLLER, NODE}, f"invalid mode: {mode}"
+        assert mode in {CONTROLLER_AND_NODE, CONTROLLER, NODE, COSI_PLUGIN}, f"invalid mode: {mode}"
         return mode
 
     @property
