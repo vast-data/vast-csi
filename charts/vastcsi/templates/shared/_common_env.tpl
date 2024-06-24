@@ -17,6 +17,8 @@
   value: {{ $.Values.numWorkers | quote }}
 - name: X_CSI_DONT_USE_TRASH_API
   value: {{ $.Values.dontUseTrashApi | quote }}
+- name: X_CSI_VMS_TIMEOUT
+  value: {{ $.Values.operationTimeout | quote }}
 {{ if $.Values.truncateVolumeName -}}
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}
