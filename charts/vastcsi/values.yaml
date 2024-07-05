@@ -80,17 +80,12 @@ storageClassDefaults:
   volumeNameFormat: "csi:{namespace}:{name}:{id}"
   # String template for CSI-provisioned ephemeral volumes, within VAST
   ephemeralVolumeNameFormat: "csi:{namespace}:{name}:{id}"
-  # Add any extra NFS options desired here
+  # Add any extra mount NFS options here
   mountOptions: []
   # Name of QoS policy associates with the view.
   qosPolicy: ""
   # Reclaim policy to use with the storage class.
   reclaimPolicy: "Delete"
-  # Boolean flag signaling whether the driver should use a DNS to create the mount point, instead of an explicit IP. This saves time by skipping the API call
-  # to the VMS for obtaining a random VIP from the vipPool.
-  # NOTE: The driver will prepend the DNS with a random prefix which helps spread the load over the entire VIP pool range.
-  # The random prefix works around an NFS client behavior where it reuses existing connections.
-  getVipFromDNS: ""
 
 # Default storage class to use with CSI DRIVER.
 # The only required value is 'vipPool' name where user should provide name of existing vip pool on
@@ -232,9 +227,15 @@ controller:
   # If specified, the pod's tolerations
   # https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
   tolerations: []
-  # If specified, the pod's scheduling constraints
+  # Allows to specify which nodes your pod is eligible to be scheduled based on labels on pods that are already running on the node.
   # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
-  affinity: {}
+  podAffinity: {}
+  # Allows to specify conditions for preventing pods from being scheduled on nodes where certain labels are already present on other pods.
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  podAntiAffinity: {}
+  # Allows to specify which nodes your pod is eligible to be scheduled on based on labels on the node
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  nodeAffinity: {}
   # Resources describes the compute resource requirements.
   resources:
     csiProvisioner:
@@ -296,8 +297,12 @@ node:
   nodeSelector: {}
   # See controller.tolerations section for details
   tolerations: []
-  # See controller.affinity section for details
-  affinity: {}
+  # See controller.podAffinity section for details
+  podAffinity: {}
+  # See controller.podAntiAffinity section for details
+  podAntiAffinity: {}
+  # See controller.nodeAffinity section for details
+  nodeAffinity: {}
   # the default host `/etc/nfsmount.d` mount configuration directory as source for mount options
   # https://man7.org/linux/man-pages/man5/nfsmount.conf.5.html
   propagateHostMountOptions: true

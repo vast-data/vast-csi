@@ -1,0 +1,12 @@
+####################
+# COMMON
+####################
+
+# Default value, replace with actual endpoint
+endpoint: ""
+# Default value, replace with actual username
+username: ""
+# Default value, replace with actual password
+password: ""
+# Default value, replace with actual SSL cert
+sslCert: ""

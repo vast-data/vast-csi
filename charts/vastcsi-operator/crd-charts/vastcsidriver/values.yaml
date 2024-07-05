@@ -1,0 +1,212 @@
+####################
+# VAST REST SESSION ATTRIBUTES
+####################
+
+# Set true to enable certificate validity test
+verifySsl: false
+
+####################
+# DELETE VOLUMES
+####################
+# Dedicated vip pool to delete volumes. Can have the same value as regular StorageClass option `vipPool`
+# - value is not required when VAST cluster version is 4.6.0 onwards and `DontUseTrashApi` flag is set to false
+deletionVipPool: ""
+# Dedicated view policy to delete volumes. Can have the same value as regular StorageClass option `viewPolicy`
+# - value is not required when VAST cluster version is 4.6.0 onwards and `DontUseTrashApi` flag is set to false
+deletionViewPolicy: ""
+# When the flag is set to 'true', the controller will opt to using a local mount for deleting data from discarded volumes,
+# as opposed to sending the request to the VMS over REST.
+# Please contact VAST Support before modifying this setting.
+dontUseTrashApi: false
+# Use this local IP address for mounting, when the StorageClass does not define a vipPool.
+# This is useful for DPU-based deployments.
+useLocalIpForMount: ""
+
+####################
+# VAST PROVISIONER RUNTIME PARAMETERS
+####################
+
+# The number of worker threads the CSI plugin use to serve requests simultaneously.
+numWorkers: 10
+# Timeout of all calls to CSI driver.
+operationTimeout: 15
+# Each time a failure occurs, sidecar containers initiate retries
+# but only after waiting for 'operationRetryIntervalStart' seconds
+# which then doubles with each subsequent failure  until it reaches `operationRetryIntervalMax`
+operationRetryIntervalStart: 10
+
+# Maximum interval between attempts.
+operationRetryIntervalMax: 60
+
+# Truncate VAST quota name if name length is greater than this number.
+# set `truncateVolumeName: null` to disable truncation.
+truncateVolumeName: 64
+
+# indicates this CSI driver requires an attachment operation as it implements the `ControllerPublishVolume`
+# if set to false, the driver will perform `ControllerPublishVolume` as a part of NodePublishVolume op
+# which might speed up the volume attach operation significantly but not appropriate for workload nodes where
+# http/https ports are not open.
+attachRequired: true
+
+
+####################
+# VAST CONTROLLER AND NODE IMAGE SPECIFICATION
+####################
+
+image:
+  csiVastPlugin:
+    repository: vastdataorg/csi@sha256:a18cf994383111b76b56a60aa2d6b4d40d963e6b02ef5746e806fe8c91e4a0c1
+    imagePullPolicy: IfNotPresent
+  csiAttacher:
+    repository: registry.k8s.io/sig-storage/csi-attacher@sha256:b4d611100ece2f9bc980d1cb19c2285b8868da261e3b1ee8f45448ab5512ab94
+    imagePullPolicy: IfNotPresent
+  csiNodeDriverRegistrar:
+    repository: registry.k8s.io/sig-storage/csi-node-driver-registrar@sha256:f25af73ee708ff9c82595ae99493cdef9295bd96953366cddf36305f82555dac
+    imagePullPolicy: IfNotPresent
+  csiProvisioner:
+    repository: registry.k8s.io/sig-storage/csi-provisioner@sha256:405a14e1aa702f7ea133cea459e8395fe40a6125c088c55569e696d48e1bd385
+    imagePullPolicy: IfNotPresent
+  csiResizer:
+    repository: registry.k8s.io/sig-storage/csi-resizer@sha256:a541e6cc2d8b011bb21b1d4ffec6b090e85270cce6276ee302d86153eec0af43
+    imagePullPolicy: IfNotPresent
+  csiSnapshotter:
+    repository: registry.k8s.io/sig-storage/csi-snapshotter@sha256:2e04046334baf9be425bb0fa1d04c2d1720d770825eedbdbcdb10d430da4ad8c
+    imagePullPolicy: IfNotPresent
+
+####################
+# VAST CONTROLLER AND NODE BEHAVIOR
+#
+# WARNING - these parameters are for advanced users.
+# Setting these incorrectly may prevent the VAST CSI Driver from running correctly.
+#  We recommend to consult with VAST Support before changing any of the following parameters
+####################
+
+controller:
+  # runOnMaster flag indicated if CSI Controller should be run on master.
+  runOnMaster: false
+  # runOnControlPlane flag indicated if CSI Controller should be run on control plane node.
+  runOnControlPlane: false
+  # determine how DNS (Domain Name System) resolution should be handled within Pod.
+  # available values: Default, ClusterFirstWithHostNet, ClusterFirst
+  dnsPolicy: Default
+  # nodeSelector is the way to restrict pod to be assigned on certain node/nodes.
+  # Specify node selector if you want node and controller containers to be assigned only to specific node/nodes of
+  # your cluster.
+  #  https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector.
+  nodeSelector: {}
+  # If specified, the pod's tolerations
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
+  tolerations: []
+  # Allows to specify which nodes your pod is eligible to be scheduled based on labels on pods that are already running on the node.
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  podAffinity: {}
+  # Allows to specify conditions for preventing pods from being scheduled on nodes where certain labels are already present on other pods.
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  podAntiAffinity: {}
+  # Allows to specify which nodes your pod is eligible to be scheduled on based on labels on the node
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  nodeAffinity: {}
+  # Resources describes the compute resource requirements.
+  resources:
+    csiProvisioner:
+      limits:
+        memory: 400Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiSnapshotter:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiAttacher:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiResizer:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiVastPlugin:
+      limits:
+        memory: 400Mi
+      requests:
+        cpu: 100m
+        memory: 50Mi
+  extraArgs:
+    # For further options, check
+    # https://github.com/kubernetes-csi/external-provisioner#command-line-options
+    # Example:
+    # controller:
+    #   extraArgs:
+    #     csiProvisioner:
+    #       - kube-api-qps=500
+    #       - kube-api-burst=1000
+    csiProvisioner: []
+    # For further options, check
+    # https://github.com/kubernetes-csi/external-snapshotter#csi-external-snapshotter-sidecar-command-line-options
+    csiSnapshotter: []
+    # For further options, check
+    # https://github.com/kubernetes-csi/external-attacher#command-line-options
+    csiAttacher: []
+    # For further options, check
+    # https://github.com/kubernetes-csi/external-resizer#recommended-optional-arguments
+    csiResizer: []
+  # priorityClassName is the name of priority class to be used for the pod.
+  # priorityClassName is the name of priority class to be used for the pod.
+  priorityClassName: system-cluster-critical
+
+node:
+  # See controller.dnsPolicy section for details
+  dnsPolicy: Default
+  # See controller.nodeSelector section for details
+  nodeSelector: {}
+  # See controller.tolerations section for details
+  tolerations: []
+  # See controller.podAffinity section for details
+  podAffinity: {}
+   # See controller.podAntiAffinity section for details
+  podAntiAffinity: {}
+  # See controller.podAffinity section for details
+  nodeAffinity: {}
+  # the default host `/etc/nfsmount.d` mount configuration directory as source for mount options
+  # https://man7.org/linux/man-pages/man5/nfsmount.conf.5.html
+  propagateHostMountOptions: true
+  # see controller.resources section for details
+  resources:
+    nodeDriverRegistrar:
+      limits:
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiVastPlugin:
+      limits:
+        memory: 400Mi
+      requests:
+        cpu: 100m
+        memory: 50Mi
+  # See controller.priorityClassName section for details
+  priorityClassName: system-cluster-critical
+
+# The path to the kubelet root dir. must be provided when Kubernetes is not installed in its default directory.
+kubeletPath: "/var/lib/kubelet"
+# Reference to one or more secrets to be used when pulling images
+# ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+# - name: "image-pull-secret"
+imagePullSecrets: []
+# Log level of CSI plugin
+logLevel: 5
+
+####################
+# OPENSHIFT SETTINGS
+####################
+
+# Flag specifies whether to enforce the defined security context constraints for pods using specified
+# service accounts in OpenShift, essential for ensuring proper permissions for mounting volumes.
+applySecurityContextConstraints: true

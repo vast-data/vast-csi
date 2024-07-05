@@ -167,3 +167,4 @@ cython_debug/
 .idea/*
 .pytest_cache
 __pycache__/*
+/bundle/
