@@ -1,12 +1,13 @@
 import os
 import json
 import requests
+import hashlib
 from pprint import pformat
 from typing import ClassVar
 from uuid import uuid4
 from contextlib import contextmanager
 from datetime import datetime
-from requests.exceptions import ConnectionError
+from requests.exceptions import ConnectionError, HTTPError
 from requests.utils import default_user_agent
 
 from easypy.bunch import Bunch
@@ -14,7 +15,7 @@ from easypy.caching import cached_property
 from easypy.collections import shuffled
 from easypy.misc import at_least
 from easypy.semver import SemVer
-from easypy.caching import timecache
+from easypy.caching import timecache, locking_cache
 from easypy.units import HOUR
 from easypy.resilience import retrying, resilient
 from easypy.tokens import (
@@ -29,6 +30,7 @@ from plumbum import cmd
 from plumbum import local, ProcessExecutionError
 
 from .logging import logger
+from .configuration import Config
 from .exceptions import ApiError, MountFailed, OperationNotSupported
 from .utils import parse_load_balancing_strategy, generate_ip_range
 from . import csi_types as types
@@ -69,6 +71,13 @@ class CannotUseTrashAPI(OperationNotSupported):
     template = "Cannot delete folder via VMS: {reason}"
 
 
+@locking_cache
+def get_vms_session(username=None, password=None, endpoint=None, ssl_cert=None):
+    config = Config()
+    session_cls = TestVmsSession if config.mock_vast else VmsSession
+    return session_cls.create(config=config, username=username, password=password, endpoint=endpoint, ssl_cert=ssl_cert)
+
+
 class RESTSession(requests.Session):
     def __init__(self, config):
         super().__init__()
@@ -76,37 +85,7 @@ class RESTSession(requests.Session):
         self.headers["Accept"] = "application/json"
         self.headers["Content-Type"] = "application/json"
         self.headers["User-Agent"] = f"VastCSI/{config.plugin_version}.{config.ci_pipe}.{config.git_commit[:10]} ({config._mode.capitalize()}) {default_user_agent()}"
-        self.base_url = f"https://{self.config.vms_host}/api/v1"
-        # Modify the SSL verification CA bundle path established
-        # by the underlying Certifi library's defaults if ssl_verify==True.
-        # This way requests library can use mounted CA bundle or default system CA bundle under the same path.
-        self.ssl_verify = (False, "/etc/ssl/certs/ca-certificates.crt")[self.config.ssl_verify]
-
-    def refresh_auth_token(self):
-        try:
-            resp = super().request(
-                "POST", f"{self.base_url}/token/", verify=self.ssl_verify, timeout=5,
-                json={"username": self.config.vms_user, "password": self.config.vms_password}
-            )
-            resp.raise_for_status()
-            token = resp.json()["access"]
-            self.headers['authorization'] = f"Bearer {token}"
-        except ConnectionError as e:
-            raise ApiError(
-                response=Bunch(
-                    status_code=None,
-                    text=f"The vms on the designated host {self.config.vms_host!r} "
-                         f"cannot be accessed. Please verify the specified endpoint. "
-                         f"origin error: {e}"
-                ))
-        self.usage_report()
-
-    @resilient.error(msg="failed to report usage to VMS")
-    def usage_report(self):
-        self.post("plugins/usage/", data={
-            "vendor": "vastdata", "name": "vast-csi",
-            "version": self.config.plugin_version, "build": self.config.git_commit[:10]
-        })
+        self.headers['authorization'] = f"Bearer #"  # will be updated on first request
 
     @retrying.debug(times=3, acceptable=retrying.Retry)
     def request(self, verb, api_method, *args, params=None, log_result=True, **kwargs):
@@ -175,6 +154,52 @@ class VmsSession(RESTSession):
     """
     _vip_round_robin_idx: ClassVar[int] = -1
 
+    def __init__(self, config: Config, username: str, password: str, base_url: str, ssl_verify: bool):
+        super().__init__(config)
+        self.username = username
+        self.password = password
+        self.base_url = base_url
+        self.ssl_verify = ssl_verify
+
+    @classmethod
+    def create(cls, config, username, password, endpoint, ssl_cert):
+        """
+        Create instance of session.
+        username, password endpoint are optional and in context of csi driver comes from secret if passed as argument.
+        Otherwise, username, password and endpoint are taken from locally mounted secret (COSI case).
+        """
+        if config.vms_credentials_store.exists():
+            # values from secret take precedence over values from credentials store even if global secret is specified
+            username = username or config.vms_user
+            password = password or config.vms_password
+            endpoint = endpoint or config.vms_host
+            assert endpoint, "endpoint is required. Make sure it is specified in secret or globally in values.yaml."
+        else:
+            assert username, "username is required. Make sure it is specified in secret."
+            assert password, "password is required. Make sure it is specified in secret."
+            assert endpoint, "endpoint is required. Make sure it is specified in secret."
+
+        base_url = f"https://{endpoint}/api/v1"
+        # Modify the SSL verification CA bundle path established
+        # by the underlying Certifi library's defaults if ssl_verify==True.
+        certs_base_dir = "/etc/ssl/certs"
+        if ssl_cert:
+            # Store the certificate specified in StorageClass secret (unique for each StorageClass)
+            hash_obj = hashlib.sha256("".join([username, password, endpoint]).encode())
+            unique_hash = hash_obj.hexdigest()
+            cert_path = f"{certs_base_dir}/{endpoint}-{unique_hash}.crt"
+            with open(cert_path, "w") as f:
+                f.write(ssl_cert)
+            logger.info(f"Generated new ssl certificate: {cert_path!r}")
+        else:
+            # Use certificate provided from global `sslCertsSecretName` secret (common for all StorageClasses)
+            # This way requests library can use mounted CA bundle or default system CA bundle under the same path.
+            cert_path = f"{certs_base_dir}/ca-certificates.crt"
+        ssl_verify = (False, cert_path)[config.ssl_verify]
+        session = cls(config, username, password, base_url, ssl_verify)
+        logger.info("VMS ssl verification {}.".format("enabled" if ssl_verify else "disabled"))
+        return session
+
     @property
     @timecache(HOUR)
     def sw_version(self) -> SemVer:
@@ -199,6 +224,32 @@ class VmsSession(RESTSession):
             else:
                 # unpredictable error
                 raise
+
+    def refresh_auth_token(self):
+        try:
+            resp = super(RESTSession, self).request(
+                "POST", f"{self.base_url}/token/", verify=self.ssl_verify, timeout=5,
+                json={"username": self.username, "password": self.password}
+            )
+            resp.raise_for_status()
+            token = resp.json()["access"]
+            self.headers['authorization'] = f"Bearer {token}"
+        except ConnectionError as e:
+            raise ApiError(
+                response=Bunch(
+                    status_code=None,
+                    text=f"The vms on the designated host {self.config.vms_host!r} "
+                         f"cannot be accessed. Please verify the specified endpoint. "
+                         f"origin error: {e}"
+                ))
+        self.usage_report()
+
+    @resilient.error(msg="failed to report usage to VMS")
+    def usage_report(self):
+        self.post("plugins/usage/", data={
+            "vendor": "vastdata", "name": "vast-csi",
+            "version": self.config.plugin_version, "build": self.config.git_commit[:10]
+        })
 
     # ----------------------------
     # View policies
@@ -310,6 +361,10 @@ class VmsSession(RESTSession):
         load_balancing = parse_load_balancing_strategy(load_balancing or self.config.load_balancing)
         if not (vippools := self.vippools(name=vip_pool_name)):
             raise Exception(f"No VIP Pool named '{vip_pool_name}'")
+
+        if isinstance(tenant_id, str):
+            # for tenant_id passed as volume context.
+            tenant_id = int(tenant_id)
 
         vippool = vippools[0]
         if tenant_id and vippool.tenant_id != tenant_id:
@@ -472,9 +527,27 @@ class VmsSession(RESTSession):
     def delete_access_key(self, user_id, access_key):
         return self.delete(f"users/{user_id}/access_keys/", data={"access_key": access_key}, log_result=False)
 
+    # ----------------------------
+    # DNS
+    @timecache(HOUR)
+    def get_default_dns(self):
+        try:
+            return self.get("dns/1")
+        except HTTPError as e:
+            if e.response.status_code == 404:
+                raise Exception("Must configure DNS on the system if 'getVipFromDNS' is 'true'")
+            raise
+
 
 class TestVmsSession(RESTSession):
     """RestSession simulation for sanity tests"""
+
+    def __init__(self, config):
+        super().__init__(config)
+
+    @classmethod
+    def create(cls, config: Config, *_, **__):
+        return cls(config)
 
     def create_fake_quota(self, volume_id):
         class FakeQuota:
