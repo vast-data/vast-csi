@@ -86,6 +86,11 @@ storageClassDefaults:
   qosPolicy: ""
   # Reclaim policy to use with the storage class.
   reclaimPolicy: "Delete"
+  # Boolean flag signaling whether the driver should use a DNS to create the mount point, instead of an explicit IP. This saves time by skipping the API call
+  # to the VMS for obtaining a random VIP from the vipPool.
+  # NOTE: The driver will prepend the DNS with a random prefix which helps spread the load over the entire VIP pool range.
+  # The random prefix works around an NFS client behavior where it reuses existing connections.
+  getVipFromDNS: ""
 
 # Default storage class to use with CSI DRIVER.
 # The only required value is 'vipPool' name where user should provide name of existing vip pool on
