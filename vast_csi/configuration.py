@@ -60,10 +60,14 @@ class Config(TypedEnv):
 
     @cached_property
     def vms_user(self):
+        if not self.vms_credentials_store['username'].exists():
+            raise FileNotFoundError(f"username cannot be found in VMS credentials store")
         return self.vms_credentials_store['username'].read().strip()
 
     @cached_property
     def vms_password(self):
+        if not self.vms_credentials_store['password'].exists():
+            raise FileNotFoundError(f"password cannot be found in VMS credentials store")
         return self.vms_credentials_store['password'].read().strip()
 
     @property

@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## Version 2.5.0
+* Support for multiple Vast Clusters via using StorageClass secrets (VCSI-140) 
+* Allow using VIPPool DNS name instead of the CSI choosing IPs (VCSI-167)
+
 ## Version 2.4.0
 * added Container Object Storage Interface (COSI) support (VCSI-159)
 * added formal support for multitenancy via StorageClasses (VCSI-147)

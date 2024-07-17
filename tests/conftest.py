@@ -4,7 +4,7 @@ from pathlib import Path
 from tempfile import gettempdir
 from contextlib import contextmanager
 from typing import List, Optional, Any
-from unittest.mock import patch, MagicMock
+from unittest.mock import  MagicMock, patch
 
 import pytest
 from plumbum import local
@@ -112,6 +112,16 @@ class FakeSession:
 # Fixtures
 # ----------------------------------------------------------------------------------------------------------------------
 
+@pytest.fixture
+def vms_session(monkeypatch, tmpdir):
+    from vast_csi.server import get_vms_session
+    from vast_csi.configuration import Config
+    tmpdir.join("username").write("test")
+    tmpdir.join("password").write("test")
+    monkeypatch.setattr(Config, "vms_credentials_store", local.path(tmpdir))
+    with patch("vast_csi.vms_session.VmsSession.refresh_auth_token", MagicMock()):
+        yield get_vms_session()
+
 
 @pytest.fixture
 def volume_capabilities():
@@ -144,7 +154,6 @@ def fake_session():
             view: Optional[str] = Bunch(path="/test/view", id=1, tenant_id=1)
     ):
         session_mock = FakeSession(view=view, quota_id=quota_id, quota_hard_limit=quota_hard_limit)
-        with patch("vast_csi.server.CsiController.vms_session", session_mock):
-            yield session_mock
+        yield session_mock
 
     yield __wrapped

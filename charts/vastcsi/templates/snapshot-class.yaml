@@ -1,17 +1,48 @@
-{{/* Vast CSI snapshot class */}}
+{{/* Generate one or more snapshot classes from 'snapshotClasses' section.  */}}
 
-{{- with .Values.snapshotClass }}
+{{/* Check if .Values.secretName is not empty */}}
+{{- if not (empty .Values.secretName) }}
+
+{{/* If .Values.snapshotClasses is empty, set a default value */}}
+{{- if empty .Values.snapshotClasses }}
+{{- $_ := set .Values "snapshotClasses" (dict "vastdata-snapshot" (dict)) }}
+{{- end -}}
+{{- end -}}
+
+{{/* Iterate over SnapshotClasses from manifest */}}
+{{- range $name, $options := .Values.snapshotClasses }}
+
+{{/* Validate  setDefaultSnapshotClass option. Options should be either true or false */}}
+{{-
+    $is_default_class := pluck "setDefaultSnapshotClass" $options $.Values.snapshotClassDefaults | first | quote
+-}}
+{{- if not (or (kindIs "bool" $is_default_class ) ( $is_default_class | mustRegexMatch "true|false" )) -}}
+  {{- fail "setDefaultSnapshotClass should be either 'true' or 'false'" -}}
+{{- end }}
+
+{{- $snapshot_name_fmt := pluck "snapshotNameFormat" $options $.Values.snapshotClassDefaults | first | quote -}}
+{{- $deletion_policy := pluck "deletionPolicy" $options $.Values.snapshotClassDefaults | first | quote -}}
+
+{{- $snapshot_class_secret := pluck "secretName" $options $.Values.snapshotClassDefaults | first | quote -}}
+{{/* Get secretNamespace parameter. If not provided .Release.Namespace is used. */}}
+{{- $snapshot_class_secret_namespace := pluck "secretNamespace" $options $.Values.snapshotClassDefaults | first | default $.Release.Namespace | quote -}}
+
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotClass
 metadata:
-  name: {{ required "snapshotClassName must be non empty string" .snapshotClassName | quote }}
+  name: {{ required "snapshotClassName must be non empty string" $name }}
   namespace: {{ include "vastcsi.namespace" $ }}
   annotations:
-    snapshot.storage.kubernetes.io/is-default-class: {{ .setDefaultStorageClass | quote }}
+    snapshot.storage.kubernetes.io/is-default-class: {{ $is_default_class }}
   labels:
     {{- include "vastcsi.labels" $ | nindent 4 }}
 driver: csi.vastdata.com
-deletionPolicy: {{ .deletionPolicy | quote }}
+deletionPolicy: {{ $deletion_policy }}
 parameters:
-  snapshot_name_fmt: {{ .snapshotNameFormat | quote }}
+  snapshot_name_fmt: {{ $snapshot_name_fmt }}
+{{- if ne $snapshot_class_secret ( quote "" ) }}
+  csi.storage.k8s.io/snapshotter-secret-name: {{ $snapshot_class_secret }}
+  csi.storage.k8s.io/snapshotter-secret-namespace: {{ $snapshot_class_secret_namespace }}
+{{- end }}
+---
 {{- end }}
