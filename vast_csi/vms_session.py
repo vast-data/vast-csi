@@ -108,7 +108,6 @@ class RESTSession(requests.Session):
             "version": self.config.plugin_version, "build": self.config.git_commit[:10]
         })
 
-
     @retrying.debug(times=3, acceptable=retrying.Retry)
     def request(self, verb, api_method, *args, params=None, log_result=True, **kwargs):
         verb = verb.upper()
@@ -128,6 +127,8 @@ class RESTSession(requests.Session):
                     logger.info(f"    {line}")
             else:
                 logger.info("*** request payload is hidden ***")
+
+        kwargs.setdefault("timeout", self.config.timeout)
 
         ret = super().request(
             verb, url, verify=self.ssl_verify, params=params, **kwargs

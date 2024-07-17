@@ -27,6 +27,8 @@
   value: {{ $.Values.useLocalIpForMount | quote }}
 - name: X_CSI_ATTACH_REQUIRED
   value: {{ $.Values.attachRequired | quote }}
+- name: X_CSI_VMS_TIMEOUT
+  value: {{ $.Values.operationTimeout | quote }}
 {{ if $.Values.truncateVolumeName -}}
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}
