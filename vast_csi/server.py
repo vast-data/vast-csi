@@ -35,13 +35,13 @@ from easypy.misc import kwargs_resilient
 from easypy.caching import cached_property
 from easypy.bunch import Bunch
 from easypy.exceptions import TException
+from easypy.humanize import yesno_to_bool
 
 from .logging import logger, init_logging
 from .utils import (
     patch_traceback_format,
     get_mount,
     normalize_mount_options,
-    parse_load_balancing_strategy,
     string_to_proto_timestamp,
     is_valid_ip,
 )
@@ -58,7 +58,7 @@ from .exceptions import (
     SourceNotFound,
     OperationNotSupported
 )
-from .vms_session import VmsSession, TestVmsSession
+from .vms_session import get_vms_session
 from .configuration import Config
 
 
@@ -120,18 +120,6 @@ def _validate_capabilities(capabilities):
                 f"Unsupported file system type: {capability.mount.fs_type}",
             )
 
-
-class SessionMixin:
-
-    @cached_property
-    def vms_session(self):
-        session_class = TestVmsSession if CONF.mock_vast else VmsSession
-        session = session_class(config=CONF)
-        logger.info("VMS ssl verification {}.".format("enabled" if CONF.ssl_verify else "disabled"))
-        session.refresh_auth_token()
-        return session
-
-
 class Instrumented:
 
     SILENCED = ["Probe", "NodeGetCapabilities"]
@@ -143,6 +131,7 @@ class Instrumented:
         log = logger.debug if (method in cls.SILENCED) else logger.info
 
         parameters = inspect.signature(func).parameters
+        vms_session_args = inspect.signature(get_vms_session).parameters.keys()
         required_params = {
             name for name, p in parameters.items() if p.default is p.empty
         }
@@ -154,17 +143,24 @@ class Instrumented:
         def wrapper(self, request, context):
             peer = context.peer()
             params = {fld.name: value for fld, value in request.ListFields()}
-            missing = required_params - {"request", "context"} - set(params)
+            # secrets are not logged and not the part of function signature.
+            secrets = params.pop("secrets", {})
+            missing_params = required_params - {"request", "context", "vms_session"} - set(params)
 
             log(f"{peer} >>> {method}:")
 
             if params:
                 for line in pformat(params).splitlines():
-                    log(f"    {line}")
+                    log(f"({method})    {line}")
+
+            if "vms_session" in required_params:
+                # If secret exist and method signature requires `vms_session`
+                # then `vms_session` with secret will be injected into function parameters
+                params["vms_session"] = get_vms_session(**{k: secrets.get(k) for k in vms_session_args})
 
             try:
-                if missing:
-                    msg = f'Missing required fields: {", ".join(sorted(missing))}'
+                if missing_params:
+                    msg = f'Missing required fields: {", ".join(sorted(missing_params))}'
                     logger.error(f"{peer} <<< {method}: {msg}")
                     raise Abort(INVALID_ARGUMENT, msg)
 
@@ -240,18 +236,8 @@ class CsiIdentity(csi_grpc.IdentityServicer, Instrumented):
         )
 
     def Probe(self, request, context):
-        if self.node:
-            return types.ProbeRespOK
-        elif CONF.mock_vast:
-            return types.ProbeRespOK
-        elif self.controller:
-            try:
-                self.controller.vms_session.versions(status="success", log_result=False)
-            except ApiError as exc:
-                raise Abort(FAILED_PRECONDITION, str(exc))
-            return types.ProbeRespOK
-        else:
-            return types.ProbeRespNotReady
+        return types.ProbeRespOK
+
 
 
 ################################################################
@@ -261,7 +247,7 @@ class CsiIdentity(csi_grpc.IdentityServicer, Instrumented):
 ################################################################
 
 
-class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
+class CsiController(csi_grpc.ControllerServicer, Instrumented):
 
     CAPABILITIES = [
         types.CtrlCapabilityType.CREATE_DELETE_VOLUME,
@@ -285,13 +271,14 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
 
     def ValidateVolumeCapabilities(
         self,
+        vms_session,
         context,
         volume_id,
         volume_capabilities,
         volume_context=None,
         parameters=None,
     ):
-        if not self.vms_session.get_quota(volume_id):
+        if not vms_session.get_quota(volume_id):
             raise Abort(NOT_FOUND, f"Volume {volume_id} does not exist")
         try:
             _validate_capabilities(volume_capabilities)
@@ -308,6 +295,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
 
     def CreateVolume(
         self,
+        vms_session,
         name,
         volume_capabilities,
         capacity_range=None,
@@ -333,7 +321,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
         )
         # Take appropriate builder for volume, snapshot or test builder
         if CONF.mock_vast:
-            root_export = volume_name_fmt = lb_strategy = view_policy = vip_pool_name = mount_options = qos_policy = ""
+            root_export = volume_name_fmt = view_policy = vip_pool_name = get_vip_from_dns = mount_options = qos_policy = ""
             builder = TestVolumeBuilder
 
         else:
@@ -346,8 +334,8 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
                     raise Abort(INVALID_ARGUMENT, "vip_pool_name or use_local_ip_for_mount must be provided")
                 elif not is_valid_ip(CONF.use_local_ip_for_mount):
                     raise Abort(INVALID_ARGUMENT, f"Local IP address: {CONF.use_local_ip_for_mount} is invalid")
+            get_vip_from_dns = yesno_to_bool(parameters.get("get_vip_from_dns") or "no")
             volume_name_fmt = parameters.get("volume_name_fmt", CONF.name_fmt)
-            lb_strategy = parameters.get("lb_strategy", CONF.load_balancing)
             qos_policy = parameters.get("qos_policy")
 
             if not volume_content_source:
@@ -368,7 +356,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
         # Create volume, volume from snapshot or mount local path (for testing purposes)
         # depends on chosen builder.
         builder = builder(
-            controller=self,
+            vms_session=vms_session,
             configuration=CONF,
             name=name,
             rw_access_mode=rw_access_mode,
@@ -381,8 +369,8 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
             volume_name_fmt=volume_name_fmt,
             view_policy=view_policy,
             vip_pool_name=vip_pool_name,
+            get_vip_from_dns=get_vip_from_dns,
             mount_options=mount_options,
-            lb_strategy=lb_strategy,
             qos_policy=qos_policy,
         )
         try:
@@ -393,11 +381,11 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
             raise Abort(ALREADY_EXISTS, exc.message)
         return types.CreateResp(volume=volume)
 
-    def _delete_data_from_storage(self, path, tenant_id):
+    def _delete_data_from_storage(self, vms_session, path, tenant_id):
         if CONF.avoid_trash_api.expired:
             try:
                 logger.info(f"Attempting trash API to delete {path}")
-                self.vms_session.delete_folder(path, tenant_id)
+                vms_session.delete_folder(path, tenant_id)
                 return  # Successfully deleted. Prevent using local mounting
             except OperationNotSupported as exc:
                 logger.debug(f"Trash API not available {exc}")
@@ -410,7 +398,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
             "Ensure that deletionViewPolicy is properly "
             "configured in your Helm configuration to perform local volume deletion."
         )
-        view_policy = self.vms_session.get_view_policy(policy_name=CONF.deletion_view_policy)
+        view_policy = vms_session.get_view_policy(policy_name=CONF.deletion_view_policy)
         assert tenant_id == view_policy.tenant_id, (
             f"Volume and deletionViewPolicy must be in the same tenant. "
             f"Make sure deletionViewPolicy belongs to tenant {tenant_id} or use Trash API for deletion."
@@ -422,10 +410,10 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
                 "Ensure that deletionVipPool is properly "
                 "configured in your Helm configuration to perform local volume deletion."
             )
-            nfs_server_ip = self.vms_session.get_vip(CONF.deletion_vip_pool, view_policy.tenant_id)
+            nfs_server_ip = vms_session.get_vip(CONF.deletion_vip_pool, view_policy.tenant_id)
 
         logger.info(f"Creating temporary base view.")
-        with self.vms_session.temp_view(path.dirname, view_policy.id, view_policy.tenant_id) as base_view:
+        with vms_session.temp_view(path.dirname, view_policy.id, view_policy.tenant_id) as base_view:
             mount_spec = f"{nfs_server_ip}:{base_view.alias}"
             mounted = False
             tmpdir = local.path(mkdtemp())  # convert string to local.path
@@ -470,36 +458,36 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
                 os.remove(tmpdir['.csi-unmounted'])  # will fail if still mounted somehow
                 os.rmdir(tmpdir)  # will fail if not empty directory
 
-    def DeleteVolume(self, volume_id):
-        self.vms_session.ensure_snapshot_stream_deleted(f"strm-{volume_id}")
-        if quota := self.vms_session.get_quota(volume_id):
+    def DeleteVolume(self, vms_session, volume_id):
+        vms_session.ensure_snapshot_stream_deleted(f"strm-{volume_id}")
+        if quota := vms_session.get_quota(volume_id):
             # this is a check we have to do until Vast provides access to orphaned snapshots (ORION-135599)
             might_use_trash_folder = not CONF.dont_use_trash_api
-            if might_use_trash_folder and self.vms_session.has_snapshots(quota.path):
+            if might_use_trash_folder and vms_session.has_snapshots(quota.path):
                 raise Exception(f"Unable to delete {volume_id} as it holds snapshots")
             try:
-                self._delete_data_from_storage(quota.path, quota.tenant_id)
+                self._delete_data_from_storage(vms_session, quota.path, quota.tenant_id)
             except OSError as exc:
                 if 'not empty' not in str(exc):
                     raise
-                if snaps := self.vms_session.has_snapshots(quota.path):
+                if snaps := vms_session.has_snapshots(quota.path):
                     # this is expected when the volume has snapshots
                     logger.info(f"{quota.path} will remain due to remaining {len(snaps)} snapshots")
                 else:
                     raise
             logger.info(f"Data removed: {quota.path}")
 
-            self.vms_session.delete_view_by_path(quota.path)
+            vms_session.delete_view_by_path(quota.path)
             logger.info(f"View removed: {quota.path}")
 
-            self.vms_session.delete_quota(quota.id)
+            vms_session.delete_quota(quota.id)
             logger.info(f"Quota removed: {quota.id}")
 
         logger.info(f"Removed volume: {volume_id}")
         return types.DeleteResp()
 
     def ControllerPublishVolume(
-        self, node_id, volume_id, volume_capability, volume_context=None
+        self, vms_session, node_id, volume_id, volume_capability, volume_context=None
     ):
         volume_context = volume_context or dict()
         _validate_capabilities([volume_capability])
@@ -508,9 +496,6 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
             root_export = CONF.sanity_test_nfs_export
         else:
             root_export = local.path(volume_context["root_export"])
-
-        load_balancing = parse_load_balancing_strategy(volume_context.get("load_balancing", CONF.load_balancing))
-
         # Build export path for snapshot or volume
         if snapshot_base_path := volume_context.get("snapshot_base_path"):
             # Snapshot
@@ -527,15 +512,17 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
 
         vip_pool_name = volume_context.get("vip_pool_name")
         if vip_pool_name or CONF.mock_vast:
-            if not (quota := self.vms_session.get_quota(quota_path_fragment)):
-                raise Abort(NOT_FOUND, f"Unknown volume: {quota_path_fragment}")
-            nfs_server_ip = self.vms_session.get_vip(
-                vip_pool_name=vip_pool_name,
-                load_balancing=load_balancing,
-                tenant_id=quota.tenant_id,
-            )
+            if dns_name := volume_context.get("dns_name"):
+                nfs_server_ip = dns_name
+            else:
+                if not (tenant_id := volume_context.get("tenant_id")):
+                    if not (quota := vms_session.get_quota(quota_path_fragment)):
+                        raise Abort(NOT_FOUND, f"Unknown volume: {quota_path_fragment}")
+                    tenant_id = quota.tenant_id
+                nfs_server_ip = vms_session.get_vip(vip_pool_name=vip_pool_name, tenant_id=tenant_id)
         else:
             nfs_server_ip = CONF.use_local_ip_for_mount
+            assert nfs_server_ip, f"{nfs_server_ip=}"
             logger.info(f"Using local IP for mount: {nfs_server_ip}")
 
         return types.CtrlPublishResp(
@@ -548,10 +535,10 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
     def ControllerUnpublishVolume(self, node_id, volume_id):
         return types.CtrlUnpublishResp()
 
-    def ControllerExpandVolume(self, volume_id, capacity_range):
+    def ControllerExpandVolume(self, vms_session, volume_id, capacity_range):
         requested_capacity = capacity_range.required_bytes
 
-        if not (quota := self.vms_session.get_quota(volume_id)):
+        if not (quota := vms_session.get_quota(volume_id)):
             raise Abort(NOT_FOUND, f"Not found quota with id: {volume_id}")
 
         existing_capacity = quota.hard_limit
@@ -559,7 +546,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
             capacity_bytes = existing_capacity
         else:
             try:
-                self.vms_session.update_quota(
+                vms_session.update_quota(
                     quota_id=quota.id, data=dict(hard_limit=requested_capacity)
                 )
             except ApiError as exc:
@@ -571,11 +558,11 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
             node_expansion_required=False,
         )
 
-    def CreateSnapshot(self, source_volume_id, name, parameters=None):
+    def CreateSnapshot(self, vms_session, source_volume_id, name, parameters=None):
 
         parameters = parameters or dict()
         volume_id = source_volume_id
-        if not (quota := self.vms_session.get_quota(volume_id)):
+        if not (quota := vms_session.get_quota(volume_id)):
             raise Abort(NOT_FOUND, f"Unknown volume: {volume_id}")
 
         if CONF.mock_vast:
@@ -614,7 +601,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
             )
             snapshot_name = snapshot_name.replace(":", "-").replace("/", "-")
             try:
-                snap = self.vms_session.ensure_snapshot(snapshot_name=snapshot_name, path=path, tenant_id=tenant_id)
+                snap = vms_session.ensure_snapshot(snapshot_name=snapshot_name, path=path, tenant_id=tenant_id)
             except ApiError as exc:
                 handled = False
                 if exc.response.status_code == 400:
@@ -624,7 +611,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
                         pass
                     else:
                         if (k, v) == ("name", "This field must be unique."):
-                            snap = self.vms_session.get_snapshot(snapshot_name=snapshot_name)
+                            snap = vms_session.get_snapshot(snapshot_name=snapshot_name)
                             if snap.path.strip("/") != path.strip("/"):
                                 raise Abort(
                                     ALREADY_EXISTS,
@@ -645,19 +632,19 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented, SessionMixin):
 
         return types.CreateSnapResp(snapshot=snp)
 
-    def DeleteSnapshot(self, snapshot_id):
+    def DeleteSnapshot(self, vms_session, snapshot_id):
         if CONF.mock_vast:
             CONF.fake_snapshot_store[snapshot_id].delete()
         else:
-            snapshot = self.vms_session.get_snapshot(snapshot_id=snapshot_id)
-            self.vms_session.delete_snapshot(snapshot_id)
-            if self.vms_session.get_quotas_by_path(snapshot.path):
+            snapshot = vms_session.get_snapshot(snapshot_id=snapshot_id)
+            vms_session.delete_snapshot(snapshot_id)
+            if vms_session.get_quotas_by_path(snapshot.path):
                 pass  # quotas still exist
-            elif self.vms_session.has_snapshots(snapshot.path):
+            elif vms_session.has_snapshots(snapshot.path):
                 pass  # other snapshots still exist
             else:
                 logger.info(f"last snapshot for {snapshot.path}, and no more quotas - let's delete this directory")
-                self._delete_data_from_storage(snapshot.path, snapshot.tenant_id)
+                self._delete_data_from_storage(vms_session, snapshot.path, snapshot.tenant_id)
 
         return types.DeleteSnapResp()
 
@@ -695,6 +682,7 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
 
     def NodePublishVolume(
         self,
+        vms_session,
         volume_id,
         target_path,
         volume_capability=None,
@@ -723,6 +711,7 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
             )
             self.controller.CreateVolume.__wrapped__(
                 self.controller,
+                vms_session=vms_session,
                 name=volume_id,
                 volume_capabilities=[],
                 ephemeral_volume_name=eph_volume_name,
@@ -731,6 +720,7 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
             )
             resp = self.controller.ControllerPublishVolume.__wrapped__(
                 self.controller,
+                vms_session=vms_session,
                 node_id=CONF.node_id,
                 volume_id=volume_id,
                 volume_capability=volume_capability,
@@ -745,6 +735,7 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
             logger.info("attach_required is disabled, obtaining publish context")
             resp = self.controller.ControllerPublishVolume.__wrapped__(
                 self.controller,
+                vms_session=vms_session,
                 node_id=CONF.node_id,
                 volume_id=volume_id,
                 volume_capability=volume_capability,
@@ -832,8 +823,7 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
                 with target_path[".vast-csi-meta"].open("r") as f:
                     meta = json.load(f)
                 if meta.get("is_ephemeral"):
-                    controller = CsiController()
-                    controller.DeleteVolume.__wrapped__(controller, meta["volume_id"])
+                    self.controller.DeleteVolume.__wrapped__(self.controller, meta["volume_id"])
 
             if target_path[".vast-csi-meta"].exists():
                 os.remove(target_path[".vast-csi-meta"])
@@ -873,9 +863,9 @@ class CosiIdentity(cosi_grpc.IdentityServicer, Instrumented):
         return types.DriverGetInfoResp(name=CONF.plugin_name)
 
 
-class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented, SessionMixin):
+class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented):
 
-    def DriverCreateBucket(self, name, parameters):
+    def DriverCreateBucket(self, vms_session, name, parameters):
         if (root_export := parameters.pop("root_export", None)) is None:
             raise MissingParameter(param="root_export")
         if not (vip_pool_name := parameters.pop("vip_pool_name", None)):
@@ -886,10 +876,10 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented, SessionMixin)
             name = name[:CONF.truncate_volume_name]  # crop to Vast's max-length
 
         uid = randint(50000, 60000)
-        self.vms_session.ensure_user(uid=uid, name=name, allow_create_bucket=True)
-        view = self.vms_session.ensure_s3view(bucket_name=name, root_export=root_export, **parameters)
+        vms_session.ensure_user(uid=uid, name=name, allow_create_bucket=True)
+        view = vms_session.ensure_s3view(bucket_name=name, root_export=root_export, **parameters)
         port = 443 if scheme == "https" else 80
-        vip = self.vms_session.get_vip(vip_pool_name=vip_pool_name, tenant_id=view.tenant_id)
+        vip = vms_session.get_vip(vip_pool_name=vip_pool_name, tenant_id=view.tenant_id)
         # bucket_id contains bucket name and endpoint
         # should be smth like test-bucket-caf9e0d0-0b9a-4b5e-8b0a-9b0brb0b4c0c@1@https://172.0.0.1:443
         return types.DriverCreateBucketResp(
@@ -902,19 +892,19 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented, SessionMixin)
             )
         )
 
-    def DriverDeleteBucket(self, bucket_id, delete_context):
+    def DriverDeleteBucket(self, vms_session, bucket_id, delete_context):
         bucket_id, _, _ = bucket_id.split('@')
-        if view := self.vms_session.get_view(bucket=bucket_id):
-            self.vms_session.delete_folder(view.path, view.tenant_id)
-            self.vms_session.delete_view_by_id(view.id)
-        if user := self.vms_session.get_user(bucket_id):
-            self.vms_session.delete_user(user.id)
+        if view := vms_session.get_view(bucket=bucket_id):
+            vms_session.delete_folder(view.path, view.tenant_id)
+            vms_session.delete_view_by_id(view.id)
+        if user := vms_session.get_user(bucket_id):
+            vms_session.delete_user(user.id)
         return types.DriverDeleteBucketResp()
 
-    def DriverGrantBucketAccess(self, bucket_id, name):
+    def DriverGrantBucketAccess(self, vms_session, bucket_id, name):
         bucket_id, _, endpoint = bucket_id.split('@')
-        user = self.vms_session.get_user(bucket_id)
-        creds = self.vms_session.generate_access_key(user.id)
+        user = vms_session.get_user(bucket_id)
+        creds = vms_session.generate_access_key(user.id)
         credentials = dict(
             s3=types.CredentialDetails(
                 secrets={"accessKeyID": creds.access_key, "accessSecretKey": creds.secret_key, "endpoint": endpoint}
@@ -925,10 +915,10 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented, SessionMixin)
             credentials=credentials
         )
 
-    def DriverRevokeBucketAccess(self, bucket_id, account_id):
+    def DriverRevokeBucketAccess(self, vms_session, bucket_id, account_id):
         bucket_id, _, _ = bucket_id.split('@')
-        if user := self.vms_session.get_user(bucket_id):
-            self.vms_session.delete_access_key(user.id, account_id)
+        if user := vms_session.get_user(bucket_id):
+            vms_session.delete_access_key(user.id, account_id)
         return types.DriverRevokeBucketAccessResp()
 
 
