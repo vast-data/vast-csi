@@ -244,6 +244,7 @@ class VmsSession(RESTSession):
                 ))
         self.usage_report()
 
+    @requisite(semver="5.2.0", ignore=True)
     @resilient.error(msg="failed to report usage to VMS")
     def usage_report(self):
         self.post("plugins/usage/", data={
