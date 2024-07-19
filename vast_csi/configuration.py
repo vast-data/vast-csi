@@ -56,6 +56,8 @@ class Config(TypedEnv):
     fake_quota_store = local.path("/tmp/volumes")
     fake_snapshot_store = local.path("/tmp/snapshots")
 
+    timeout = TypedEnv.Int("X_CSI_VMS_TIMEOUT", default=30)
+
     @cached_property
     def vms_user(self):
         return self.vms_credentials_store['username'].read().strip()

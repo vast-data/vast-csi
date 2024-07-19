@@ -56,7 +56,6 @@ metadata:
   {{- include "vastcsi.labels" $ | nindent 4 }}
 reclaimPolicy: {{ $reclaim_policy }}
 parameters:
-  vip_pool_name: {{ $vip_pool_name }}
   root_export: {{ $storage_path }}
   view_policy: {{ $view_policy }}
   lb_strategy: {{ $lb_strategy }}
