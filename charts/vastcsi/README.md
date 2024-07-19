@@ -6,7 +6,7 @@
 
 ### install production version of the driver:
 ```console
-helm repo add vast https://vast-data.github.io/vastcsi
+helm repo add vast https://vast-data.github.io/vast-csi
 helm install csi-driver vast/vastcsi -f values.yaml -n vast-csi --create-namespace
 ```
 
