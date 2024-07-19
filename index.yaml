@@ -1,43 +1,6 @@
 apiVersion: v1
 entries:
-  vastcosi:
-  - apiVersion: v2
-    created: "2024-05-24T13:58:12.958068136Z"
-    description: Helm chart for Deployment of VAST Container Object Storage Interface
-      (COSI)
-    digest: ad87811eadfb7b0f2047ce06638c117b2fe145d227b0cc946c37fae4ef66d272
-    home: https://support.vastdata.com/hc/en-us/articles/8022914098716
-    icon: https://uploads.vastdata.com/2020/04/vast-white-1.svg
-    keywords:
-    - vast
-    - csi
-    - driver
-    - vastdata
-    - cosi
-    - cosi-driver
-    name: vastcosi
-    type: application
-    urls:
-    - https://github.com/vast-data/vast-csi/releases/download/helm-vastcosi-2.4.0/vastcosi-2.4.0.tgz
-    version: 2.4.0
   vastcsi:
-  - apiVersion: v2
-    created: "2024-05-24T13:58:13.062841371Z"
-    description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
-    digest: 1d1579b439afe64afb460f8fb690ae9f35e4031a29e789dbf86ab24bcb598fae
-    home: https://support.vastdata.com/hc/en-us/articles/8022914098716
-    icon: https://uploads.vastdata.com/2020/04/vast-white-1.svg
-    keywords:
-    - vast
-    - csi
-    - driver
-    - vastdata
-    - csi-driver
-    name: vastcsi
-    type: application
-    urls:
-    - https://github.com/vast-data/vast-csi/releases/download/helm-vastcsi-2.4.0/vastcsi-2.4.0.tgz
-    version: 2.4.0
   - apiVersion: v2
     created: "2024-04-09T19:14:17.725190194Z"
     description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
