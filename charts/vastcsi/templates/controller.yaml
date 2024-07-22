@@ -44,9 +44,6 @@ spec:
             - "--worker-threads={{ .Values.numWorkers }}"
             - "--retry-interval-start={{ .Values.operationRetryIntervalStart }}s"
             - "--retry-interval-max={{ .Values.operationRetryIntervalMax }}s"
-            {{- range .Values.controller.extraArgs.csiProvisioner }}
-            - "--{{ . }}"
-            {{- end }}
           env:
             - name: ADDRESS
               value: {{ $plugin_proxy_sock }}
@@ -62,9 +59,6 @@ spec:
             - "--worker-threads={{ .Values.numWorkers }}"
             - "--retry-interval-start={{ .Values.operationRetryIntervalStart }}s"
             - "--retry-interval-max={{ .Values.operationRetryIntervalMax }}s"
-            {{- range .Values.controller.extraArgs.csiAttacher }}
-            - "--{{ . }}"
-            {{- end }}
           env:
             - name: ADDRESS
               value: {{ $plugin_proxy_sock }}
@@ -82,9 +76,6 @@ spec:
             - "--worker-threads={{ .Values.numWorkers }}"
             - "--retry-interval-start={{ .Values.operationRetryIntervalStart }}s"
             - "--retry-interval-max={{ .Values.operationRetryIntervalMax }}s"
-            {{- range .Values.controller.extraArgs.csiSnapshotter }}
-            - "--{{ . }}"
-            {{- end }}
           env:
             - name: ADDRESS
               value: {{ $plugin_proxy_sock }}
@@ -100,9 +91,6 @@ spec:
             - "--workers={{ .Values.numWorkers }}"
             - "--retry-interval-start={{ .Values.operationRetryIntervalStart }}s"
             - "--retry-interval-max={{ .Values.operationRetryIntervalMax }}s"
-            {{- range .Values.controller.extraArgs.csiResizer }}
-            - "--{{ . }}"
-            {{- end }}
           env:
             - name: ADDRESS
               value: {{ $plugin_proxy_sock }}
