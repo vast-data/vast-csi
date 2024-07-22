@@ -35,7 +35,6 @@ from easypy.misc import kwargs_resilient
 from easypy.caching import cached_property
 from easypy.bunch import Bunch
 from easypy.exceptions import TException
-from easypy.humanize import yesno_to_bool
 
 from .logging import logger, init_logging
 from .utils import (
@@ -321,7 +320,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
         )
         # Take appropriate builder for volume, snapshot or test builder
         if CONF.mock_vast:
-            root_export = volume_name_fmt = view_policy = vip_pool_name = get_vip_from_dns = mount_options = qos_policy = ""
+            root_export = volume_name_fmt = view_policy = vip_pool_name = mount_options = qos_policy = ""
             builder = TestVolumeBuilder
 
         else:
@@ -334,7 +333,6 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
                     raise Abort(INVALID_ARGUMENT, "vip_pool_name or use_local_ip_for_mount must be provided")
                 elif not is_valid_ip(CONF.use_local_ip_for_mount):
                     raise Abort(INVALID_ARGUMENT, f"Local IP address: {CONF.use_local_ip_for_mount} is invalid")
-            get_vip_from_dns = yesno_to_bool(parameters.get("get_vip_from_dns") or "no")
             volume_name_fmt = parameters.get("volume_name_fmt", CONF.name_fmt)
             qos_policy = parameters.get("qos_policy")
 
@@ -369,7 +367,6 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
             volume_name_fmt=volume_name_fmt,
             view_policy=view_policy,
             vip_pool_name=vip_pool_name,
-            get_vip_from_dns=get_vip_from_dns,
             mount_options=mount_options,
             qos_policy=qos_policy,
         )
@@ -512,14 +509,11 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
 
         vip_pool_name = volume_context.get("vip_pool_name")
         if vip_pool_name or CONF.mock_vast:
-            if dns_name := volume_context.get("dns_name"):
-                nfs_server_ip = dns_name
-            else:
-                if not (tenant_id := volume_context.get("tenant_id")):
-                    if not (quota := vms_session.get_quota(quota_path_fragment)):
-                        raise Abort(NOT_FOUND, f"Unknown volume: {quota_path_fragment}")
-                    tenant_id = quota.tenant_id
-                nfs_server_ip = vms_session.get_vip(vip_pool_name=vip_pool_name, tenant_id=tenant_id)
+            if not (tenant_id := volume_context.get("tenant_id")):
+                if not (quota := vms_session.get_quota(quota_path_fragment)):
+                    raise Abort(NOT_FOUND, f"Unknown volume: {quota_path_fragment}")
+                tenant_id = quota.tenant_id
+            nfs_server_ip = vms_session.get_vip(vip_pool_name=vip_pool_name, tenant_id=tenant_id)
         else:
             nfs_server_ip = CONF.use_local_ip_for_mount
             assert nfs_server_ip, f"{nfs_server_ip=}"
