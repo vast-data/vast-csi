@@ -57,7 +57,6 @@ class BaseBuilder(VolumeBuilderI):
     volume_name_fmt: str
     view_policy: str
     vip_pool_name: str
-    get_vip_from_dns: bool
     mount_options: str
     qos_policy: Optional[str]
 
@@ -105,8 +104,6 @@ class EmptyVolumeBuilder(BaseBuilder):
             "view_policy": self.view_policy,
             "protocol": self.mount_protocol,
         }
-        if self.get_vip_from_dns:
-            context.update(dns_name=self.dns_name)
         return context
 
     @property
@@ -116,12 +113,6 @@ class EmptyVolumeBuilder(BaseBuilder):
     @property
     def root_export_abs(self):
         return os.path.join("/", self.root_export)
-
-    @property
-    def dns_name(self):
-        dns_suffix = self.vms_session.get_default_dns().domain_suffix
-        prefix = b32encode(getrandbits(16).to_bytes(2, "big")).decode("ascii").rstrip("=")
-        return f"{prefix}.{self.vip_pool_name}.{dns_suffix}"
 
     def build_volume(self) -> types.Volume:
         """
