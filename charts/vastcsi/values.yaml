@@ -129,24 +129,24 @@ image:
     tag: v2.3.1  # the version of the Vast CSI driver
     imagePullPolicy: IfNotPresent
   csiAttacher:
-    repository: registry.k8s.io/sig-storage/csi-attacher
-    tag: v4.5.0
+    repository: k8s.gcr.io/sig-storage/csi-attacher
+    tag: v3.1.0
     imagePullPolicy: IfNotPresent
   csiNodeDriverRegistrar:
-    repository: registry.k8s.io/sig-storage/csi-node-driver-registrar
-    tag: v2.10.0
+    repository: k8s.gcr.io/sig-storage/csi-node-driver-registrar
+    tag: v2.0.1
     imagePullPolicy: IfNotPresent
   csiProvisioner:
-    repository: registry.k8s.io/sig-storage/csi-provisioner
-    tag: v4.0.0
+    repository: k8s.gcr.io/sig-storage/csi-provisioner
+    tag: v3.2.1
     imagePullPolicy: IfNotPresent
   csiResizer:
-    repository: registry.k8s.io/sig-storage/csi-resizer
-    tag: v1.10.0
+    repository: k8s.gcr.io/sig-storage/csi-resizer
+    tag: v1.1.0
     imagePullPolicy: IfNotPresent
   csiSnapshotter:
-    repository: registry.k8s.io/sig-storage/csi-snapshotter
-    tag: v7.0.1
+    repository: k8s.gcr.io/sig-storage/csi-snapshotter
+    tag: v6.0.1
     imagePullPolicy: IfNotPresent
 
 ####################
@@ -208,25 +208,6 @@ controller:
       requests:
         cpu: 100m
         memory: 50Mi
-  extraArgs:
-    # For further options, check
-    # https://github.com/kubernetes-csi/external-provisioner#command-line-options
-    # Example:
-    # controller:
-    #   extraArgs:
-    #     csiProvisioner:
-    #       - kube-api-qps=500
-    #       - kube-api-burst=1000
-    csiProvisioner: []
-    # For further options, check
-    # https://github.com/kubernetes-csi/external-snapshotter#csi-external-snapshotter-sidecar-command-line-options
-    csiSnapshotter: []
-    # For further options, check
-    # https://github.com/kubernetes-csi/external-attacher#command-line-options
-    csiAttacher: []
-    # For further options, check
-    # https://github.com/kubernetes-csi/external-resizer#recommended-optional-arguments
-    csiResizer: []
   # priorityClassName is the name of priority class to be used for the pod.
   priorityClassName: system-cluster-critical
 
