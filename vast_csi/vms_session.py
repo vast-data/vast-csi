@@ -528,17 +528,6 @@ class VmsSession(RESTSession):
     def delete_access_key(self, user_id, access_key):
         return self.delete(f"users/{user_id}/access_keys/", data={"access_key": access_key}, log_result=False)
 
-    # ----------------------------
-    # DNS
-    @timecache(HOUR)
-    def get_default_dns(self):
-        try:
-            return self.get("dns/1")
-        except HTTPError as e:
-            if e.response.status_code == 404:
-                raise Exception("Must configure DNS on the system if 'getVipFromDNS' is 'true'")
-            raise
-
 
 class TestVmsSession(RESTSession):
     """RestSession simulation for sanity tests"""
