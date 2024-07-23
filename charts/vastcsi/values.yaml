@@ -69,10 +69,6 @@ storageClassDefaults:
   viewPolicy: ""
   # Allows resizing existing volumes
   allowVolumeExpansion: true
-  # Load-balancing strategy
-  # Options:
-  #   roundrobin, random
-  lbStrategy: roundrobin
   # If true, sets Vast CSI as the cluster-wide storage class default
   setDefaultStorageClass: false
   # String template for CSI-provisioned volume names, within VAST
