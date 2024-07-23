@@ -13,18 +13,10 @@ from requests.utils import default_user_agent
 from easypy.bunch import Bunch
 from easypy.caching import cached_property
 from easypy.collections import shuffled
-from easypy.misc import at_least
 from easypy.semver import SemVer
 from easypy.caching import timecache, locking_cache
-from easypy.units import HOUR
+from easypy.units import HOUR, MINUTE
 from easypy.resilience import retrying, resilient
-from easypy.tokens import (
-    ROUNDROBIN,
-    RANDOM,
-    CONTROLLER_AND_NODE,
-    CONTROLLER,
-    NODE,
-)
 from easypy.humanize import yesno_to_bool
 from plumbum import cmd
 from plumbum import local, ProcessExecutionError
@@ -32,7 +24,7 @@ from plumbum import local, ProcessExecutionError
 from .logging import logger
 from .configuration import Config
 from .exceptions import ApiError, MountFailed, OperationNotSupported
-from .utils import parse_load_balancing_strategy, generate_ip_range
+from .utils import generate_ip_range
 from . import csi_types as types
 
 
@@ -152,8 +144,6 @@ class VmsSession(RESTSession):
     Communication with vms cluster.
     Operations over vip pools, quotas, snapshots etc.
     """
-    _vip_round_robin_idx: ClassVar[int] = -1
-
     def __init__(self, config: Config, username: str, password: str, base_url: str, ssl_verify: bool):
         super().__init__(config)
         self.username = username
@@ -352,41 +342,35 @@ class VmsSession(RESTSession):
             self.delete_view_by_id(view.id)
 
     # ----------------------------
-    # Vip pools
-    def get_vip(self, vip_pool_name: str, tenant_id: int = None, load_balancing: str = None):
-        """
-        Get vip pool by provided vip_pool_name.
-        Returns:
-            One of ips from provided vip pool according to provided load balancing strategy.
-        """
-        load_balancing = parse_load_balancing_strategy(load_balancing or self.config.load_balancing)
+    @timecache(5 * MINUTE)
+    def get_vip_pool(self, vip_pool_name: str) -> Bunch:
         if not (vippools := self.vippools(name=vip_pool_name)):
             raise Exception(f"No VIP Pool named '{vip_pool_name}'")
+        return vippools[0]
 
+    # Vip pools
+    def get_vip(self, vip_pool_name: str, tenant_id: int = None):
+        """
+        Get vip by provided vip_pool_name.
+        tenant_id is optional argument for validation. tenant_id usually
+        make sense only during volume deletion where deletionVipPool and deletionViewPolicy
+        is used. For such case additional validation might help to troubleshoot
+        tenant misconfiguration.
+        Returns:
+            Random vip ip from provided vip pool.
+        """
+        vippool = self.get_vip_pool(vip_pool_name)
         if isinstance(tenant_id, str):
             # for tenant_id passed as volume context.
             tenant_id = int(tenant_id)
-
-        vippool = vippools[0]
         if tenant_id and vippool.tenant_id != tenant_id:
             raise Exception(
                 f"Pool {vip_pool_name} belongs to tenant with id {vippool.tenant_id} but {tenant_id=} was requested"
             )
         vips = generate_ip_range(vippool.ip_ranges)
         assert vips, f"Pool {vip_pool_name} has no available vips"
-        if load_balancing == ROUNDROBIN:
-            self._vip_round_robin_idx = (self._vip_round_robin_idx + 1) % len(vips)
-            vip = vips[self._vip_round_robin_idx]
-        elif load_balancing == RANDOM:
-            vip = shuffled(vips)[0]
-        else:
-            raise Exception(
-                f"Invalid load_balancing mode: '{load_balancing}'"
-            )
-
-        logger.info(
-            f"Using {load_balancing} - chose {vip}"
-        )
+        vip = shuffled(vips)[0]
+        logger.info(f"Using - {vip}")
         return vip
 
     # ----------------------------
