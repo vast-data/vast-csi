@@ -41,7 +41,6 @@ class Config(TypedEnv):
 
     vms_host = TypedEnv.Str("X_CSI_VMS_HOST", default="vast")
     ssl_verify = TypedEnv.Bool("X_CSI_ENABLE_VMS_SSL_VERIFICATION", default=False)
-    load_balancing = TypedEnv.Str("X_CSI_LB_STRATEGY", default="roundrobin")
     truncate_volume_name = TypedEnv.Int("X_CSI_TRUNCATE_VOLUME_NAME", default=None)
     worker_threads = TypedEnv.Int("X_CSI_WORKER_THREADS", default=10)
     dont_use_trash_api = TypedEnv.Bool("X_CSI_DONT_USE_TRASH_API", default=False)

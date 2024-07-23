@@ -496,11 +496,9 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
         # Build export path for snapshot or volume
         if snapshot_base_path := volume_context.get("snapshot_base_path"):
             # Snapshot
-            quota_path_fragment = snapshot_base_path.split("/")[0]
             export_path = str(root_export[snapshot_base_path])
         else:
             # Volume
-            quota_path_fragment = volume_id
             export_path = str(root_export[volume_id])
 
         if CONF.csi_sanity_test and CONF.node_id != node_id:
@@ -509,11 +507,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
 
         vip_pool_name = volume_context.get("vip_pool_name")
         if vip_pool_name or CONF.mock_vast:
-            if not (tenant_id := volume_context.get("tenant_id")):
-                if not (quota := vms_session.get_quota(quota_path_fragment)):
-                    raise Abort(NOT_FOUND, f"Unknown volume: {quota_path_fragment}")
-                tenant_id = quota.tenant_id
-            nfs_server_ip = vms_session.get_vip(vip_pool_name=vip_pool_name, tenant_id=tenant_id)
+            nfs_server_ip = vms_session.get_vip(vip_pool_name=vip_pool_name)
         else:
             nfs_server_ip = CONF.use_local_ip_for_mount
             assert nfs_server_ip, f"{nfs_server_ip=}"
