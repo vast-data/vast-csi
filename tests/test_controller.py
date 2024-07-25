@@ -71,7 +71,7 @@ class TestControllerSuite:
 
         # Assertion
         err = ex_context.value
-        assert "vip_pool_name or use_local_ip_for_mount must be provided" in err.message
+        assert "either vip_pool_name, vip_pool_dns or use_local_ip_for_mount" in err.message
         assert err.code == grpc.StatusCode.INVALID_ARGUMENT
 
     def test_quota_hard_limit_not_match(self, volume_capabilities, fake_session: "FakeSession"):

@@ -320,7 +320,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
         )
         # Take appropriate builder for volume, snapshot or test builder
         if CONF.mock_vast:
-            root_export = volume_name_fmt = view_policy = vip_pool_name = mount_options = qos_policy = ""
+            root_export = volume_name_fmt = view_policy = vip_pool_name = vip_pool_dns = mount_options = qos_policy = ""
             builder = TestVolumeBuilder
 
         else:
@@ -328,9 +328,20 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
                 raise MissingParameter(param="root_export")
             if not (view_policy := parameters.get("view_policy")):
                 raise MissingParameter(param="view_policy")
-            if not (vip_pool_name := parameters.get("vip_pool_name", "")):
+
+            vip_pool_dns = parameters.get("vip_pool_dns")
+            vip_pool_name = parameters.get("vip_pool_name")
+            if vip_pool_name and vip_pool_dns:
+                raise Abort(
+                    INVALID_ARGUMENT,
+                    "vip_pool_name and vip_pool_dns are mutually exclusive. Provide one of them."
+                )
+            elif not (vip_pool_name or vip_pool_dns):
                 if not CONF.use_local_ip_for_mount:
-                    raise Abort(INVALID_ARGUMENT, "vip_pool_name or use_local_ip_for_mount must be provided")
+                    raise Abort(
+                        INVALID_ARGUMENT,
+                        "either vip_pool_name, vip_pool_dns or use_local_ip_for_mount must be provided."
+                    )
                 elif not is_valid_ip(CONF.use_local_ip_for_mount):
                     raise Abort(INVALID_ARGUMENT, f"Local IP address: {CONF.use_local_ip_for_mount} is invalid")
             volume_name_fmt = parameters.get("volume_name_fmt", CONF.name_fmt)
@@ -367,6 +378,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
             volume_name_fmt=volume_name_fmt,
             view_policy=view_policy,
             vip_pool_name=vip_pool_name,
+            vip_pool_dns=vip_pool_dns,
             mount_options=mount_options,
             qos_policy=qos_policy,
         )
@@ -506,7 +518,10 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
             raise Abort(NOT_FOUND, f"Unknown volume: {node_id}")
 
         vip_pool_name = volume_context.get("vip_pool_name")
-        if vip_pool_name or CONF.mock_vast:
+        vip_pool_dns = volume_context.get("vip_pool_dns")
+        if vip_pool_dns:
+            nfs_server_ip = vip_pool_dns
+        elif vip_pool_name or CONF.mock_vast:
             nfs_server_ip = vms_session.get_vip(vip_pool_name=vip_pool_name)
         else:
             nfs_server_ip = CONF.use_local_ip_for_mount
