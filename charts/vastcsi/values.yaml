@@ -63,13 +63,13 @@ storageClassDefaults:
   secretNamespace: ""
   # Where volumes will be located on VAST - must be provided by user
   storagePath: ""
-  # Name of VAST VIP pool to use. Must specify either vipPool or vipPoolDNS.
+  # Name of VAST VIP pool to use. Must specify either vipPool or vipPoolFQDN.
   vipPool: ""
-  # The FQDN of the VIP pool to use. Must specify either vipPool or vipPoolDNS.
+  # The FQDN of the VIP pool to use. Must specify either vipPool or vipPoolFQDN.
   # Using a DNS skips an API call to the VMS for obtaining a random VIP from the vipPool, leading to faster volume mounting.
   # NOTE: The driver will prepend the FQDN with a random prefix, which forces the NFS client to resolve into a different VIP,
   # thereby distributing the load across the entire range of the VIP pool.
-  vipPoolDNS: ""
+  vipPoolFQDN: ""
   # VAST policy name to create views - must be provided by user
   viewPolicy: ""
   # Allows resizing existing volumes

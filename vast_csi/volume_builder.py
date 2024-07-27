@@ -57,7 +57,7 @@ class BaseBuilder(VolumeBuilderI):
     volume_name_fmt: str
     view_policy: str
     vip_pool_name: Optional[str]
-    vip_pool_dns: Optional[str]
+    vip_pool_fqdn: Optional[str]
     mount_options: str
     qos_policy: Optional[str]
 
@@ -106,8 +106,8 @@ class EmptyVolumeBuilder(BaseBuilder):
         }
         if self.vip_pool_name:
             context["vip_pool_name"] = self.vip_pool_name
-        elif self.vip_pool_dns:
-            context["vip_pool_dns"] = self.vip_pool_dns_with_prefix
+        elif self.vip_pool_fqdn:
+            context["vip_pool_fqdn"] = self.vip_pool_fqdn_with_prefix
         return context
 
     @property
@@ -119,9 +119,9 @@ class EmptyVolumeBuilder(BaseBuilder):
         return os.path.join("/", self.root_export)
 
     @property
-    def vip_pool_dns_with_prefix(self):
+    def vip_pool_fqdn_with_prefix(self):
         prefix = b32encode(getrandbits(16).to_bytes(2, "big")).decode("ascii").rstrip("=")
-        return f"{prefix}.{self.vip_pool_dns}"
+        return f"{prefix}.{self.vip_pool_fqdn}"
 
     def build_volume(self) -> types.Volume:
         """
