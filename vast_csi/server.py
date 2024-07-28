@@ -797,7 +797,7 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
 
         return types.NodePublishResp()
 
-    def NodeUnpublishVolume(self, target_path):
+    def NodeUnpublishVolume(self, vms_session, target_path):
         target_path = local.path(target_path)
 
         if not target_path.exists():
@@ -826,7 +826,9 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
                 with target_path[".vast-csi-meta"].open("r") as f:
                     meta = json.load(f)
                 if meta.get("is_ephemeral"):
-                    self.controller.DeleteVolume.__wrapped__(self.controller, meta["volume_id"])
+                    self.controller.DeleteVolume.__wrapped__(
+                        self.controller, vms_session=vms_session, volume_id=meta["volume_id"]
+                    )
 
             if target_path[".vast-csi-meta"].exists():
                 os.remove(target_path[".vast-csi-meta"])
