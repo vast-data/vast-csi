@@ -20,6 +20,10 @@ class OperationNotSupported(TException):
     template = "Cluster does not support this operation - {op!r} (needs {required_version}, got {current_version})"
 
 
+class LookupFieldError(TException):
+    template = "Could not find {field}."
+
+
 class MissingParameter(Abort):
     def __init__(self, param: str):
         self.param = param
