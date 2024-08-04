@@ -2,13 +2,17 @@ import os
 import json
 import requests
 import hashlib
+import pickle
+import base64
 from pprint import pformat
-from typing import ClassVar
 from uuid import uuid4
 from contextlib import contextmanager
 from datetime import datetime
-from requests.exceptions import ConnectionError, HTTPError
+from requests.exceptions import ConnectionError
 from requests.utils import default_user_agent
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.backends import default_backend
 
 from easypy.bunch import Bunch
 from easypy.caching import cached_property
@@ -23,7 +27,7 @@ from plumbum import local, ProcessExecutionError
 
 from .logging import logger
 from .configuration import Config
-from .exceptions import ApiError, MountFailed, OperationNotSupported
+from .exceptions import ApiError, MountFailed, OperationNotSupported, LookupFieldError
 from .utils import generate_ip_range
 from . import csi_types as types
 
@@ -61,6 +65,13 @@ def requisite(semver: str, operation: str = None, ignore: bool = False):
 
 class CannotUseTrashAPI(OperationNotSupported):
     template = "Cannot delete folder via VMS: {reason}"
+
+
+def _derive_key(salt):
+    # Derive a key from the salt
+    kdf = hashes.Hash(hashes.SHA256(), backend=default_backend())
+    kdf.update(salt)
+    return kdf.finalize()
 
 
 @locking_cache
@@ -138,38 +149,18 @@ class RESTSession(requests.Session):
         setattr(self, attr, func)
         return func
 
-
 class VmsSession(RESTSession):
     """
     Communication with vms cluster.
     Operations over vip pools, quotas, snapshots etc.
     """
-    def __init__(self, config: Config, username: str, password: str, base_url: str, ssl_verify: bool):
+    def __init__(self, config, username, password, endpoint, ssl_cert):
         super().__init__(config)
         self.username = username
         self.password = password
-        self.base_url = base_url
-        self.ssl_verify = ssl_verify
-
-    @classmethod
-    def create(cls, config, username, password, endpoint, ssl_cert):
-        """
-        Create instance of session.
-        username, password endpoint are optional and in context of csi driver comes from secret if passed as argument.
-        Otherwise, username, password and endpoint are taken from locally mounted secret (COSI case).
-        """
-        if config.vms_credentials_store.exists():
-            # values from secret take precedence over values from credentials store even if global secret is specified
-            username = username or config.vms_user
-            password = password or config.vms_password
-            endpoint = endpoint or config.vms_host
-            assert endpoint, "endpoint is required. Make sure it is specified in secret or globally in values.yaml."
-        else:
-            assert username, "username is required. Make sure it is specified in secret."
-            assert password, "password is required. Make sure it is specified in secret."
-            assert endpoint, "endpoint is required. Make sure it is specified in secret."
-
-        base_url = f"https://{endpoint}/api/v1"
+        self.endpoint = endpoint
+        self.ssl_cert = ssl_cert
+        self.base_url = f"https://{endpoint}/api/v1"
         # Modify the SSL verification CA bundle path established
         # by the underlying Certifi library's defaults if ssl_verify==True.
         certs_base_dir = "/etc/ssl/certs"
@@ -185,9 +176,60 @@ class VmsSession(RESTSession):
             # Use certificate provided from global `sslCertsSecretName` secret (common for all StorageClasses)
             # This way requests library can use mounted CA bundle or default system CA bundle under the same path.
             cert_path = f"{certs_base_dir}/ca-certificates.crt"
-        ssl_verify = (False, cert_path)[config.ssl_verify]
-        session = cls(config, username, password, base_url, ssl_verify)
-        logger.info("VMS ssl verification {}.".format("enabled" if ssl_verify else "disabled"))
+        self.ssl_verify = (False, cert_path)[config.ssl_verify]
+
+    def serialize(self, salt: str):
+        session_data = pickle.dumps((self.username, self.password, self.endpoint, self.ssl_cert))
+        iv = os.urandom(16)
+        key = _derive_key(salt)
+        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
+        encryptor = cipher.encryptor()
+        ciphertext = encryptor.update(session_data) + encryptor.finalize()
+        # Return IV and ciphertext (both base64 encoded for storage)
+        return base64.b64encode(iv + ciphertext).decode()
+
+    @classmethod
+    def deserialize(cls, salt: str, encrypted_data: str):
+        encrypted_data = base64.b64decode(encrypted_data)
+        # Extract IV and ciphertext
+        iv = encrypted_data[:16]
+        ciphertext = encrypted_data[16:]
+        # Create cipher object
+        key = _derive_key(salt)
+        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
+        decryptor = cipher.decryptor()
+        # Decrypt the data
+        plainbytes = decryptor.update(ciphertext) + decryptor.finalize()
+        username, password, endpoint, ssl_cert = pickle.loads(plainbytes)
+        return get_vms_session(username=username, password=password, endpoint=endpoint, ssl_cert=ssl_cert)
+
+    @classmethod
+    def create(cls, config, username, password, endpoint, ssl_cert):
+        """
+        Create instance of session.
+        username, password endpoint are optional and in context of csi driver comes from secret if passed as argument.
+        Otherwise, username, password and endpoint are taken from locally mounted secret (COSI case).
+        """
+        # The presence of the name in the arguments already indicates
+        # that we have a StorageClass scope secret at this point.
+        # In other words, it's not a globally mounted secret. Other secret fields will be validated below.
+        is_global = not bool(username)
+        if config.vms_credentials_store.exists() and is_global:
+            username = config.vms_user
+            password = config.vms_password
+            endpoint = config.vms_host
+            if not endpoint:
+                raise LookupFieldError(field="endpoint", tip="Make sure endpoint is specified in values.yaml.")
+        if not username:
+            raise LookupFieldError(field="username", tip="Make sure username is present in secret.")
+        if not password:
+            raise LookupFieldError(field="password",  tip="Make sure password is present in secret.")
+        if not endpoint:
+            raise LookupFieldError(field="endpoint",  tip="Make sure endpoint is present in secret.")
+        session = cls(config, username, password, endpoint, ssl_cert)
+        config_source = "mounted configuration" if is_global else "secret"
+        ssl_verification = "enabled" if session.ssl_verify else "disabled"
+        logger.info(f"VMS session has been instantiated from {config_source}. SSL verification {ssl_verification}.")
         return session
 
     @property
