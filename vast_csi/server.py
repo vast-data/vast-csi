@@ -35,6 +35,7 @@ from easypy.misc import kwargs_resilient
 from easypy.caching import cached_property
 from easypy.bunch import Bunch
 from easypy.exceptions import TException
+from easypy.collections import separate
 
 from .logging import logger, init_logging
 from .utils import (
@@ -55,9 +56,10 @@ from .exceptions import (
     MountFailed,
     VolumeAlreadyExists,
     SourceNotFound,
-    OperationNotSupported
+    OperationNotSupported,
+    LookupFieldError,
 )
-from .vms_session import get_vms_session
+from .vms_session import get_vms_session, VmsSession
 from .configuration import Config
 
 
@@ -130,10 +132,10 @@ class Instrumented:
         log = logger.debug if (method in cls.SILENCED) else logger.info
 
         parameters = inspect.signature(func).parameters
+        required_params, non_required_params = map(
+            set, separate(parameters, key=lambda k: parameters[k].default is inspect._empty)
+        )
         vms_session_args = inspect.signature(get_vms_session).parameters.keys()
-        required_params = {
-            name for name, p in parameters.items() if p.default is p.empty
-        }
         required_params.discard("self")
 
         func = kwargs_resilient(func)
@@ -156,6 +158,12 @@ class Instrumented:
                 # If secret exist and method signature requires `vms_session`
                 # then `vms_session` with secret will be injected into function parameters
                 params["vms_session"] = get_vms_session(**{k: secrets.get(k) for k in vms_session_args})
+            elif "vms_session" in non_required_params:
+                # Try to take vms_session from secret. Set None on error.
+                try:
+                    params["vms_session"] = get_vms_session(**{k: secrets.get(k) for k in vms_session_args})
+                except LookupFieldError:
+                    params["vms_session"] = None
 
             try:
                 if missing_params:
@@ -779,8 +787,12 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
 
         target_path.mkdir()
         meta_file = target_path[".vast-csi-meta"]
+        payload = dict(volume_id=volume_id, is_ephemeral=is_ephemeral)
+        if is_ephemeral:
+            payload["vms_session"] = vms_session.serialize(salt=volume_id.encode())
         with meta_file.open("w") as f:
-            json.dump(dict(volume_id=volume_id, is_ephemeral=is_ephemeral), f)
+            json.dump(payload, f)
+        os.chmod(meta_file, 0o600)
         logger.info(f"created: {target_path}")
 
         flags = ["ro"] if readonly else []
@@ -797,7 +809,7 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
 
         return types.NodePublishResp()
 
-    def NodeUnpublishVolume(self, vms_session, target_path):
+    def NodeUnpublishVolume(self, volume_id, target_path, vms_session=None):
         target_path = local.path(target_path)
 
         if not target_path.exists():
@@ -826,6 +838,16 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
                 with target_path[".vast-csi-meta"].open("r") as f:
                     meta = json.load(f)
                 if meta.get("is_ephemeral"):
+                    if vms_session_data := meta.get("vms_session"):
+                        vms_session = VmsSession.deserialize(
+                            salt=volume_id.encode(), encrypted_data=vms_session_data
+                        )
+                    elif not vms_session:
+                        raise Abort(
+                            FAILED_PRECONDITION,
+                            "Ephemeral Volume provisioning requires "
+                            "configuring a global VMS credentials secret or nodePublishSecretRef secret reference."
+                        )
                     self.controller.DeleteVolume.__wrapped__(
                         self.controller, vms_session=vms_session, volume_id=meta["volume_id"]
                     )
