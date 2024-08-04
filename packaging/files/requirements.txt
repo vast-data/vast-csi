@@ -6,6 +6,7 @@ plumbum
 real-easypy
 requests
 psutil
+cryptography
 prompt_toolkit
 pytest
 

@@ -10,6 +10,7 @@ from easypy.tokens import (
     NODE,
     COSI_PLUGIN
 )
+from .exceptions import LookupFieldError
 
 from easypy.caching import cached_property
 from easypy.timing import Timer
@@ -60,13 +61,19 @@ class Config(TypedEnv):
     @cached_property
     def vms_user(self):
         if not self.vms_credentials_store['username'].exists():
-            raise FileNotFoundError(f"username cannot be found in VMS credentials store")
+            raise LookupFieldError(
+                field="username",
+                tip="Make sure username is present in global VMS credentials secret"
+            )
         return self.vms_credentials_store['username'].read().strip()
 
     @cached_property
     def vms_password(self):
         if not self.vms_credentials_store['password'].exists():
-            raise FileNotFoundError(f"password cannot be found in VMS credentials store")
+            raise LookupFieldError(
+                field="password",
+                tip="Make sure password is present in global VMS credentials secret"
+            )
         return self.vms_credentials_store['password'].read().strip()
 
     @property
