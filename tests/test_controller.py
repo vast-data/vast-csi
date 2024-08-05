@@ -22,7 +22,7 @@ class TestControllerSuite:
 
         # Execution
         with pytest.raises(Abort) as ex_context:
-            cont.CreateVolume("test_volume", capabilities)
+            cont.CreateVolume(None,"test_volume", capabilities)
 
         # Assertion
         err = ex_context.value
@@ -41,26 +41,23 @@ class TestControllerSuite:
 
         # Execution
         with pytest.raises(MissingParameter) as ex_context:
-            cont.CreateVolume(name="test_volume", volume_capabilities=capabilities, parameters=parameters)
+            cont.CreateVolume(None, name="test_volume", volume_capabilities=capabilities, parameters=parameters)
 
         # Assertion
         err = ex_context.value
         assert err_message in err.message
         assert err.code == grpc.StatusCode.INVALID_ARGUMENT
 
-    @patch("vast_csi.configuration.Config.vms_user", PropertyMock("test"))
-    @patch("vast_csi.configuration.Config.vms_password", PropertyMock("test"))
-    @patch("vast_csi.vms_session.VmsSession.refresh_auth_token", MagicMock())
-    def test_local_ip_for_mount(self, volume_capabilities, monkeypatch):
+    def test_local_ip_for_mount(self, volume_capabilities, vms_session, monkeypatch):
         # Preparation
         cont = CsiController()
-        monkeypatch.setattr(cont.vms_session.config, "use_local_ip_for_mount", "test.com")
+        monkeypatch.setattr(vms_session.config, "use_local_ip_for_mount", "test.com")
         data = dict(root_export="/k8s", view_policy="default")
         capabilities = volume_capabilities(fs_type="ext4", mount_flags="", mode=types.AccessModeType.SINGLE_NODE_WRITER)
 
         # Execution
         with pytest.raises(Abort) as ex_context:
-            cont.CreateVolume(name="test_volume", volume_capabilities=capabilities, parameters=data)
+            cont.CreateVolume(vms_session=vms_session, name="test_volume", volume_capabilities=capabilities, parameters=data)
 
         # Assertion
         err = ex_context.value
@@ -68,13 +65,13 @@ class TestControllerSuite:
         assert err.code == grpc.StatusCode.INVALID_ARGUMENT
 
         # Execution
-        monkeypatch.setattr( cont.vms_session.config, "use_local_ip_for_mount", "")
+        monkeypatch.setattr(vms_session.config, "use_local_ip_for_mount", "")
         with pytest.raises(Abort) as ex_context:
-            cont.CreateVolume(name="test_volume", volume_capabilities=capabilities, parameters=data)
+            cont.CreateVolume(vms_session=vms_session, name="test_volume", volume_capabilities=capabilities, parameters=data)
 
         # Assertion
         err = ex_context.value
-        assert "vip_pool_name or use_local_ip_for_mount must be provided" in err.message
+        assert "either vip_pool_name, vip_pool_fqdn or use_local_ip_for_mount" in err.message
         assert err.code == grpc.StatusCode.INVALID_ARGUMENT
 
     def test_quota_hard_limit_not_match(self, volume_capabilities, fake_session: "FakeSession"):
@@ -87,7 +84,7 @@ class TestControllerSuite:
         # Execution
         with pytest.raises(Abort) as ex_context:
             with fake_session(quota_hard_limit=999) as session:
-                cont.CreateVolume(name="test_volume", volume_capabilities=capabilities, parameters=parameters)
+                cont.CreateVolume(vms_session=session, name="test_volume", volume_capabilities=capabilities, parameters=parameters)
 
         # Assertion
         err = ex_context.value
@@ -110,20 +107,17 @@ class TestControllerSuite:
         mount_options = ",".join(re.sub(r"[\[\]]", "", raw_mount_options).replace(",", " ").split())
         assert mount_options == "vers=4,nolock,proto=tcp,nconnect=4"
 
-    @patch("vast_csi.configuration.Config.vms_user", PropertyMock("test"))
-    @patch("vast_csi.configuration.Config.vms_password", PropertyMock("test"))
-    @patch("vast_csi.vms_session.VmsSession.refresh_auth_token", MagicMock())
     @patch("vast_csi.vms_session.VmsSession.get_quota", MagicMock(return_value=Bunch(tenant_id=1)))
     @patch("vast_csi.vms_session.VmsSession.get_vip", MagicMock(return_value="2.2.2.2"))
     @pytest.mark.parametrize("local_ip", ["1.1.1.1", "::1", "2001:0db8:85a3:0000:0000:8a2e:0370:7334"])
     @pytest.mark.parametrize("vip_pool_name", ["", "test-vip"])
-    def test_publish_volume_with_local_ip(self, volume_capabilities, monkeypatch, local_ip, vip_pool_name):
+    def test_publish_volume_with_local_ip(self, vms_session, volume_capabilities, monkeypatch, local_ip, vip_pool_name):
         """
         Test if use_local_ip_for_mount is set, it will use local IP for mount (even when vip_pool_name is provided)
         """
         # Preparation
         cont = CsiController()
-        conf = cont.vms_session.config
+        conf = vms_session.config
         node_id = "test-node"
         volume_id = "test-volume"
         monkeypatch.setattr(conf, "use_local_ip_for_mount", local_ip),
@@ -132,7 +126,7 @@ class TestControllerSuite:
 
         # Execution
         resp = cont.ControllerPublishVolume(
-            node_id=node_id, volume_id=volume_id, volume_capability=capabilities[0], volume_context=volume_context
+            vms_session=vms_session, node_id=node_id, volume_id=volume_id, volume_capability=capabilities[0], volume_context=volume_context
         )
         publish_context = resp.publish_context
 

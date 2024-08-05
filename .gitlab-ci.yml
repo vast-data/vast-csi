@@ -41,7 +41,9 @@ build_csi:
     set -x
     VERSION=$(cat version.txt)
     TAGGED=$(grep 'the version of the Vast CSI driver' charts/vastcsi/values.yaml | awk '{print $2}')
-    if [[ "$TAGGED" != "$VERSION" ]]; then
+    if [[ "$TAGGED" == *"beta"* ]]; then
+        echo "skip version verification. Version is beta"
+    elif [[ "$TAGGED" != "$VERSION" ]]; then
       echo "version.txt has $VERSION, while our helm chart has $TAGGED (check charts/vastcsi/values.yaml)"
       exit 5
     fi

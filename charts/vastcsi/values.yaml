@@ -1,12 +1,12 @@
 ####################
 # VAST REST SESSION ATTRIBUTES
 ####################
-# Secret name, which corresponds to a secret containing credentials to login - must be provided by user
+# Secret name, which corresponds to a secret containing credentials to login - should be provided by user if secretName is not provided in StorageClass attributes
 # Secret must contain username and password fields
 # Example: kubectl create secret generic vast-mgmt --from-literal=username='< VAST username >' --from-literal=password='< VAST password >'
 secretName: ""
 
-# API endpoint of VAST appliance - must be provided by user
+# API endpoint of VAST appliance - should be provided by user if secretName is not provided in StorageClass attributes
 endpoint: ""
 
 # Set true to enable certificate validity test
@@ -44,18 +44,36 @@ useLocalIpForMount: ""
 # storageClassDefaults is set of options that will be using by default if option is not provided
 # for particular storageClass in 'storageClasses' section
 storageClassDefaults:
+  # Any of the following options can be specified within the StorageClasses section on a per-storage class basis,
+  # or can be set here as default values for all storage classes.
+
+  # Secret name, which corresponds to a secret containing credentials to login - must be provided by user
+  # Secret must contain username, password and endpoint fields. Other fields are ignored.
+  # Example: kubectl create secret generic vast-mgmt --from-literal=username='< VAST username >' --from-literal=password='< VAST password >' --from-literal=endpoint='< VAST endpoint >'
+  # Optionally you can include CA ssl certificate. Along with verifySsl option enabled it will establish trusted connection per StorageClass
+  # if you have different certificates per cluster (Otherwise use `sslCertsSecretName` to specify global secret with ssl certificate to be used across all storage classes):
+  # Example:
+  #     kubectl create secret generic vast-mgmt \
+  #    --from-literal=username='<VAST username>' \
+  #    --from-literal=password='<VAST password>' \
+  #    --from-literal=endpoint='<VAST endpoint>' \
+  #    --from-file=ssl_cert='<path to sslCert.crt>'
+  secretName: ""
+  # Secret namespace. If not specified then secret will be searched in the same namespace as StorageClass is created.
+  secretNamespace: ""
   # Where volumes will be located on VAST - must be provided by user
   storagePath: ""
-  # Name of VAST VIP pool to use - must be provided by user
+  # Name of VAST VIP pool to use. Must specify either vipPool or vipPoolFQDN.
   vipPool: ""
+  # The FQDN of the VIP pool to use. Must specify either vipPool or vipPoolFQDN.
+  # Using a DNS skips an API call to the VMS for obtaining a random VIP from the vipPool, leading to faster volume mounting.
+  # NOTE: The driver will prepend the FQDN with a random prefix, which forces the NFS client to resolve into a different VIP,
+  # thereby distributing the load across the entire range of the VIP pool.
+  vipPoolFQDN: ""
   # VAST policy name to create views - must be provided by user
   viewPolicy: ""
   # Allows resizing existing volumes
   allowVolumeExpansion: true
-  # Load-balancing strategy
-  # Options:
-  #   roundrobin, random
-  lbStrategy: roundrobin
   # If true, sets Vast CSI as the cluster-wide storage class default
   setDefaultStorageClass: false
   # String template for CSI-provisioned volume names, within VAST
@@ -83,10 +101,12 @@ storageClasses: {}
 # User can add more storage classes to this section eg:
 #  vastdata-filesystem2:
 #    vipPool: "vippool-2"
+#    secretName: "secret2"
 #    .... other options
 #
 #  vastdata-filesystem3:
 #    vipPool: "vippool-3"
+#    secretName: "secret3"
 #    ....  other options
 
 ####################
@@ -118,14 +138,39 @@ attachRequired: true
 ####################
 # VAST CSI SNAPSHOTS CLASS OPTIONS
 ####################
-snapshotClass:
-  snapshotClassName: "vastdata-snapshot"
-  # On snapshot delete behavior. By default, Vast Cluster snapshot will be removed as well.
-  deletionPolicy: "Delete"
-  # If true, sets Vast CSI as the cluster-wide snapshot class default
-  setDefaultStorageClass: true
+# snapshotClassDefaults is set of options that will be using by default if option is not provided
+# for particular snapshotClass in 'snapshotClasses' section
+snapshotClassDefaults:
+  # Any of the following options can be specified within the snapshotClasses section on a per-snapshot class basis,
+  # or can be set here as default values for all snapshot classes.
+
+  # Secret name, which corresponds to a secret containing credentials to login - must be provided by user
+  # Secret must contain username, password and endpoint fields. Other fields are ignored.
+  # Example: kubectl create secret generic vast-mgmt --from-literal=username='< VAST username >' --from-literal=password='< VAST password >' --from-literal=endpoint='< VAST endpoint >'
+  # Optionally you can include CA ssl certificate. Along with verifySsl option enabled it will establish trusted connection per SnapshotClass
+  # if you have different certificates per cluster (Otherwise use `sslCertsSecretName` to specify global secret with ssl certificate to be used across all snapshot classes):
+  # Example:
+  #     kubectl create secret generic vast-mgmt \
+  #    --from-literal=username='<VAST username>' \
+  #    --from-literal=password='<VAST password>' \
+  #    --from-literal=endpoint='<VAST endpoint>' \
+  #    --from-file=ssl_cert='<path to sslCert.crt>'
+  secretName: ""
+  # Secret namespace. If not specified then secret will be searched in the same namespace as SnapshotClass is created.
+  secretNamespace: ""
+  # If true, sets SnapshotClass as the cluster-wide snapshot class default
+  setDefaultSnapshotClass: true
   # String template for CSI-provisioned snapshot names, within VAST
   snapshotNameFormat: "csi:{namespace}:{name}:{id}"
+  # On snapshot delete behavior. By default, Vast Cluster snapshot will be removed as well.
+  deletionPolicy: "Delete"
+
+snapshotClasses: {}
+#  vastdata-snapshot:
+#    secretName: "secret"
+#    deletionPolicy: "Delete"
+#    setDefaultSnapshotClass: false
+#    snapshotNameFormat: "snapshot:{name}:{id}"
 
 
 ####################
@@ -135,7 +180,7 @@ snapshotClass:
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.4.0  # the version of the Vast CSI driver
+    tag: v2.4.1-beta-1426549  # the version of the Vast CSI driver
     imagePullPolicy: IfNotPresent
   csiAttacher:
     repository: registry.k8s.io/sig-storage/csi-attacher

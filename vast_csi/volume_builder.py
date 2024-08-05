@@ -1,6 +1,8 @@
 import os
 from dataclasses import dataclass
 from abc import ABC
+from base64 import b32encode
+from random import getrandbits
 from datetime import timedelta
 from typing import Optional, final, TypeVar
 
@@ -46,7 +48,7 @@ class VolumeBuilderI(ABC):
 class BaseBuilder(VolumeBuilderI):
     """Common builder with shared methods/attributes"""
 
-    controller: "ControllerServicer"
+    vms_session: "RESTSession"
     configuration: "CONF"
 
     name: str  # Name of volume or snapshot
@@ -54,9 +56,9 @@ class BaseBuilder(VolumeBuilderI):
     root_export: str
     volume_name_fmt: str
     view_policy: str
-    vip_pool_name: str
+    vip_pool_name: Optional[str]
+    vip_pool_fqdn: Optional[str]
     mount_options: str
-    lb_strategy: str
     qos_policy: Optional[str]
 
     capacity_range: Optional[int]  # Optional desired volume capacity
@@ -96,14 +98,17 @@ class EmptyVolumeBuilder(BaseBuilder):
 
     @property
     def volume_context(self):
-        return {
+        context = {
             "root_export": self.root_export_abs,
-            "vip_pool_name": self.vip_pool_name,
-            "lb_strategy": self.lb_strategy,
             "mount_options": self.mount_options,
             "view_policy": self.view_policy,
             "protocol": self.mount_protocol,
         }
+        if self.vip_pool_name:
+            context["vip_pool_name"] = self.vip_pool_name
+        elif self.vip_pool_fqdn:
+            context["vip_pool_fqdn"] = self.vip_pool_fqdn_with_prefix
+        return context
 
     @property
     def view_path(self):
@@ -112,6 +117,11 @@ class EmptyVolumeBuilder(BaseBuilder):
     @property
     def root_export_abs(self):
         return os.path.join("/", self.root_export)
+
+    @property
+    def vip_pool_fqdn_with_prefix(self):
+        prefix = b32encode(getrandbits(16).to_bytes(2, "big")).decode("ascii").rstrip("=")
+        return f"{prefix}.{self.vip_pool_fqdn}"
 
     def build_volume(self) -> types.Volume:
         """
@@ -124,7 +134,7 @@ class EmptyVolumeBuilder(BaseBuilder):
         volume_context["volume_name"] = volume_name
 
         # Check if view with expected system path already exists.
-        view = self.controller.vms_session.ensure_view(
+        view = self.vms_session.ensure_view(
             path=self.view_path, protocols=[self.mount_protocol], view_policy=self.view_policy, qos_policy=self.qos_policy
         )
         quota = self._ensure_quota(requested_capacity, volume_name, self.view_path, view.tenant_id)
@@ -137,7 +147,7 @@ class EmptyVolumeBuilder(BaseBuilder):
         )
 
     def _ensure_quota(self, requested_capacity, volume_name, view_path, tenant_id):
-        if quota := self.controller.vms_session.get_quota(self.name):
+        if quota := self.vms_session.get_quota(self.name):
             # Check if volume with provided name but another capacity already exists.
             if quota.hard_limit != requested_capacity:
                 raise VolumeAlreadyExists(
@@ -156,7 +166,7 @@ class EmptyVolumeBuilder(BaseBuilder):
             )
             if requested_capacity:
                 data.update(hard_limit=requested_capacity)
-            quota = self.controller.vms_session.create_quota(data=data)
+            quota = self.vms_session.create_quota(data=data)
         return quota
 
 
@@ -171,7 +181,7 @@ class VolumeFromVolumeBuilder(EmptyVolumeBuilder):
         volume_context["volume_name"] = volume_name
 
         source_volume_id = self.volume_content_source.volume.volume_id
-        if not (source_quota := self.controller.vms_session.get_quota(source_volume_id)):
+        if not (source_quota := self.vms_session.get_quota(source_volume_id)):
             raise SourceNotFound(f"Unknown volume: {source_volume_id}")
 
         source_path = source_quota.path
@@ -179,17 +189,17 @@ class VolumeFromVolumeBuilder(EmptyVolumeBuilder):
         snapshot_name = f"snp-{self.name}"
         snapshot_stream_name = f"strm-{self.name}"
 
-        snapshot = self.controller.vms_session.ensure_snapshot(
+        snapshot = self.vms_session.ensure_snapshot(
             snapshot_name=snapshot_name, path=source_path,
             tenant_id=tenant_id, expiration_delta=timedelta(minutes=5)
         )
-        snapshot_stream = self.controller.vms_session.ensure_snapshot_stream(
+        snapshot_stream = self.vms_session.ensure_snapshot_stream(
             snapshot_id=snapshot.id, destination_path=self.view_path, tenant_id=tenant_id,
             snapshot_stream_name=snapshot_stream_name,
         )
         # View should go after snapshot stream.
         # Otherwise, snapshot stream action will detect folder already exist and will be rejected
-        view = self.controller.vms_session.ensure_view(
+        view = self.vms_session.ensure_view(
             path=self.view_path, protocols=[self.mount_protocol],
             view_policy=self.view_policy, qos_policy=self.qos_policy
         )
@@ -219,7 +229,7 @@ class VolumeFromSnapshotBuilder(EmptyVolumeBuilder):
         Create snapshot representation.
         """
         source_snapshot_id = self.volume_content_source.snapshot.snapshot_id
-        if not (snapshot := self.controller.vms_session.get_snapshot(snapshot_id=source_snapshot_id)):
+        if not (snapshot := self.vms_session.get_snapshot(snapshot_id=source_snapshot_id)):
             raise SourceNotFound(f"Unknown snapshot: {source_snapshot_id}")
         volume_context = self.volume_context
 
@@ -234,11 +244,11 @@ class VolumeFromSnapshotBuilder(EmptyVolumeBuilder):
             volume_context["volume_name"] = volume_name
 
             snapshot_stream_name = f"strm-{self.name}"
-            snapshot_stream = self.controller.vms_session.ensure_snapshot_stream(
+            snapshot_stream = self.vms_session.ensure_snapshot_stream(
                 snapshot_id=snapshot.id, destination_path=self.view_path, tenant_id=tenant_id,
                 snapshot_stream_name=snapshot_stream_name,
             )
-            view = self.controller.vms_session.ensure_view(
+            view = self.vms_session.ensure_view(
                 path=self.view_path, protocols=[self.mount_protocol],
                 view_policy=self.view_policy, qos_policy=self.qos_policy
             )
@@ -279,7 +289,7 @@ class TestVolumeBuilder(BaseBuilder):
         pass
 
     def get_existing_capacity(self) -> Optional[int]:
-        volume = self.controller.vms_session.get_quota(self.name)
+        volume = self.vms_session.get_quota(self.name)
         if volume:
             return volume.capacity_bytes
 
@@ -301,7 +311,7 @@ class TestVolumeBuilder(BaseBuilder):
                     f"({existing_capacity})",
                 )
 
-        vol_dir = self.controller.vms_session._mock_mount[self.name]
+        vol_dir = self.vms_session._mock_mount[self.name]
         vol_dir.mkdir()
 
         volume = types.Volume(

@@ -30,7 +30,7 @@ if __name__ == '__main__':
 
     release_name_template = "helm-{{ .Name }}-{{ .Version }}"
     pages_branch = "gh-pages-beta" if is_beta else "gh-pages"
-    version = f"{VERSION}-beta.{SHA}" if is_beta else VERSION
+    version = f"{VERSION}-beta" if is_beta else VERSION
 
     # Create unique release name based on version and commit sha
     for chart in CHARTS:

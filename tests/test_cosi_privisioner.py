@@ -1,8 +1,8 @@
 import pytest
 import grpc
 from easypy.bunch import Bunch
-from unittest.mock import patch, PropertyMock, MagicMock
-from vast_csi.server import CosiProvisioner, Abort, MissingParameter
+from unittest.mock import patch, MagicMock
+from vast_csi.server import CosiProvisioner, MissingParameter
 
 
 COMMON_PARAMS = dict(
@@ -22,9 +22,6 @@ COMMON_PARAMS = dict(
 )
 
 
-@patch("vast_csi.configuration.Config.vms_user", PropertyMock("test"))
-@patch("vast_csi.configuration.Config.vms_password", PropertyMock("test"))
-@patch("vast_csi.vms_session.VmsSession.refresh_auth_token", MagicMock())
 @patch("vast_csi.vms_session.VmsSession.get_vip", MagicMock(return_value="172.0.0.1"))
 @patch("vast_csi.vms_session.VmsSession.get_view", MagicMock(return_value=None))
 @patch(
@@ -36,13 +33,13 @@ COMMON_PARAMS = dict(
     MagicMock(return_value=Bunch(id=1, tenant_id=1)),
 )
 class TestCosiProvisionerSuite:
-    def _create_bucket(self, name, parameters):
+    def _create_bucket(self, name, parameters, vms_session):
         cosi = CosiProvisioner()
-        return cosi.DriverCreateBucket(name=name, parameters=parameters)
+        return cosi.DriverCreateBucket(name=name, parameters=parameters, vms_session=vms_session)
 
     @patch("vast_csi.vms_session.VmsSession.ensure_user")
     @patch("vast_csi.vms_session.VmsSession.create_view")
-    def test_create_bucket(self, m_create_view, m_ensure_user):
+    def test_create_bucket(self, m_create_view, m_ensure_user, vms_session):
         """Test successful bucket creation"""
         # Preparation
         cosi = CosiProvisioner()
@@ -51,7 +48,7 @@ class TestCosiProvisionerSuite:
 
         # Execution
         params = COMMON_PARAMS.copy()
-        res = self._create_bucket(name=bucket_name, parameters=params)
+        res = self._create_bucket(name=bucket_name, parameters=params, vms_session=vms_session)
 
         # Assertion
         assert res.bucket_id == "test-bucket@1@http://172.0.0.1:80"
@@ -86,7 +83,7 @@ class TestCosiProvisionerSuite:
     @pytest.mark.parametrize("root_export", ["", "/"])
     @patch("vast_csi.vms_session.VmsSession.ensure_user", MagicMock())
     @patch("vast_csi.vms_session.VmsSession.create_view")
-    def test_create_bucket_with_root_storage_path(self, m_create_view, root_export):
+    def test_create_bucket_with_root_storage_path(self, m_create_view, root_export, vms_session):
         """Test successful bucket creation with root storage path"""
         # Preparation
         common_params = COMMON_PARAMS.copy()
@@ -94,7 +91,7 @@ class TestCosiProvisionerSuite:
         bucket_name = "test-bucket"
 
         # Execution
-        res = self._create_bucket(name=bucket_name, parameters=common_params)
+        res = self._create_bucket(name=bucket_name, parameters=common_params, vms_session=vms_session)
 
         # Assertion
         create_view_kwargs = m_create_view.call_args.kwargs
@@ -102,12 +99,12 @@ class TestCosiProvisionerSuite:
 
     @patch("vast_csi.vms_session.VmsSession.ensure_user", MagicMock())
     @patch("vast_csi.vms_session.VmsSession.create_view")
-    def test_create_bucket_only_required_params(self, m_create_view):
+    def test_create_bucket_only_required_params(self, m_create_view, vms_session):
         params = dict(root_export="/buckets", vip_pool_name="vippool-1")
         bucket_name = "test-bucket"
 
         # Execution
-        self._create_bucket(name=bucket_name, parameters=params)
+        self._create_bucket(name=bucket_name, parameters=params, vms_session=vms_session)
 
         # Assertion
         assert m_create_view.call_args.kwargs == {
@@ -120,7 +117,7 @@ class TestCosiProvisionerSuite:
         }
 
     @pytest.mark.parametrize("missing_param", ["root_export", "vip_pool_name"])
-    def test_create_bucket_missing_required_params(self, missing_param):
+    def test_create_bucket_missing_required_params(self, missing_param, vms_session):
         """Test missing required parameters"""
         # Preparation
         params = COMMON_PARAMS.copy()
@@ -129,7 +126,7 @@ class TestCosiProvisionerSuite:
 
         # Execution
         with pytest.raises(MissingParameter) as ex_context:
-            self._create_bucket(name=bucket_name, parameters=params)
+            self._create_bucket(name=bucket_name, parameters=params, vms_session=vms_session)
 
         # Assertion
         err = ex_context.value
