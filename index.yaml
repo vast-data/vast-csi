@@ -2,6 +2,25 @@ apiVersion: v1
 entries:
   vastcosi:
   - apiVersion: v2
+    created: "2024-08-05T11:52:34.9173562Z"
+    description: Helm chart for Deployment of VAST Container Object Storage Interface
+      (COSI)
+    digest: b11476764ca9328fca5fd97a5a84feb0aa21f58a473a7ae18d91c085b8ffb0c0
+    home: https://support.vastdata.com/hc/en-us/articles/8022914098716
+    icon: https://uploads.vastdata.com/2020/04/vast-white-1.svg
+    keywords:
+    - vast
+    - csi
+    - driver
+    - vastdata
+    - cosi
+    - cosi-driver
+    name: vastcosi
+    type: application
+    urls:
+    - https://github.com/vast-data/vast-csi/releases/download/helm-vastcosi-2.4.1/vastcosi-2.4.1.tgz
+    version: 2.4.1
+  - apiVersion: v2
     created: "2024-07-19T19:42:20.054695607Z"
     description: Helm chart for Deployment of VAST Container Object Storage Interface
       (COSI)
@@ -21,6 +40,23 @@ entries:
     - https://github.com/vast-data/vast-csi/releases/download/helm-vastcosi-2.4.0/vastcosi-2.4.0.tgz
     version: 2.4.0
   vastcsi:
+  - apiVersion: v2
+    created: "2024-08-05T11:52:35.044275255Z"
+    description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
+    digest: 00a59fcf9c2358200f4ea136a11c7e1ecc8ffbd10081ae021b6d251d7bdf8535
+    home: https://support.vastdata.com/hc/en-us/articles/8022914098716
+    icon: https://uploads.vastdata.com/2020/04/vast-white-1.svg
+    keywords:
+    - vast
+    - csi
+    - driver
+    - vastdata
+    - csi-driver
+    name: vastcsi
+    type: application
+    urls:
+    - https://github.com/vast-data/vast-csi/releases/download/helm-vastcsi-2.4.1/vastcsi-2.4.1.tgz
+    version: 2.4.1
   - apiVersion: v2
     created: "2024-07-19T19:42:20.178873446Z"
     description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
@@ -179,4 +215,4 @@ entries:
     urls:
     - https://github.com/vast-data/vast-csi/releases/download/vastcsi-0.1.0/vastcsi-0.1.0.tgz
     version: 0.1.0
-generated: "2024-07-19T19:42:20.178951121Z"
+generated: "2024-08-05T11:52:35.044329737Z"
