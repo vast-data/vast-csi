@@ -19,7 +19,7 @@ entries:
     type: application
     urls:
     - https://github.com/vast-data/vast-csi/releases/download/helm-vastcosi-2.4.1-beta/vastcosi-2.4.1-beta.tgz
-    version: 2.4.1-beta
+    version: 2.4.1
   vastcsi:
   - apiVersion: v2
     created: "2024-08-05T11:52:34.013975379Z"
@@ -37,7 +37,7 @@ entries:
     type: application
     urls:
     - https://github.com/vast-data/vast-csi/releases/download/helm-vastcsi-2.4.1-beta/vastcsi-2.4.1-beta.tgz
-    version: 2.4.1-beta
+    version: 2.4.1
   - apiVersion: v2
     created: "2024-02-13T10:26:48.236930246Z"
     description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
