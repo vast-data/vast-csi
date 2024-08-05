@@ -2,6 +2,25 @@ apiVersion: v1
 entries:
   vastcosi:
   - apiVersion: v2
+    created: "2024-08-05T11:52:33.834884239Z"
+    description: Helm chart for Deployment of VAST Container Object Storage Interface
+      (COSI)
+    digest: afd93951a89717b9cf4e3e68509a72a06ec3f54bb602c2a7e7aac7d94a10d2f8
+    home: https://support.vastdata.com/hc/en-us/articles/8022914098716
+    icon: https://uploads.vastdata.com/2020/04/vast-white-1.svg
+    keywords:
+    - vast
+    - csi
+    - driver
+    - vastdata
+    - cosi
+    - cosi-driver
+    name: vastcosi
+    type: application
+    urls:
+    - https://github.com/vast-data/vast-csi/releases/download/helm-vastcosi-2.4.1-beta/vastcosi-2.4.1-beta.tgz
+    version: 2.4.1-beta
+  - apiVersion: v2
     created: "2024-08-05T11:52:08.340800045Z"
     description: Helm chart for Deployment of VAST Container Object Storage Interface
       (COSI)
@@ -21,6 +40,23 @@ entries:
     - https://github.com/vast-data/vast-csi/releases/download/helm-vastcosi-2.4.0-beta.cc42866/vastcosi-2.4.0-beta.cc42866.tgz
     version: 2.4.0-beta.cc42866
   vastcsi:
+  - apiVersion: v2
+    created: "2024-08-05T11:52:34.013975379Z"
+    description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
+    digest: 79e683b2120cc34f2bdf4e1052864e54c65974ed5f48aa311ec203bc598bbaa1
+    home: https://support.vastdata.com/hc/en-us/articles/8022914098716
+    icon: https://uploads.vastdata.com/2020/04/vast-white-1.svg
+    keywords:
+    - vast
+    - csi
+    - driver
+    - vastdata
+    - csi-driver
+    name: vastcsi
+    type: application
+    urls:
+    - https://github.com/vast-data/vast-csi/releases/download/helm-vastcsi-2.4.1-beta/vastcsi-2.4.1-beta.tgz
+    version: 2.4.1-beta
   - apiVersion: v2
     created: "2024-08-05T11:52:08.459836655Z"
     description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
@@ -55,4 +91,4 @@ entries:
     urls:
     - https://github.com/vast-data/vast-csi/releases/download/helm-2.3.0-beta.b191d36/vastcsi-2.3.0-beta.b191d36.tgz
     version: 2.3.0
-generated: "2024-08-05T11:52:08.459865078Z"
+generated: "2024-08-05T11:52:34.014003311Z"
