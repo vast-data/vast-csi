@@ -405,7 +405,7 @@ class VmsSession(RESTSession):
         if isinstance(tenant_id, str):
             # for tenant_id passed as volume context.
             tenant_id = int(tenant_id)
-        if tenant_id and vippool.tenant_id != tenant_id:
+        if tenant_id and vippool.tenant_id and vippool.tenant_id != tenant_id:
             raise Exception(
                 f"Pool {vip_pool_name} belongs to tenant with id {vippool.tenant_id} but {tenant_id=} was requested"
             )
