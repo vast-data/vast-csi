@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## Version 2.4.1
+* Support for multiple Vast Clusters via using StorageClass secrets (VCSI-140) 
+* Set a timeout on requests to VMS, to prevent worker threads hanging (VCSI-183)
+* Improve mounting performance by support the use of VIPPool DNS, skipping an API call to the VMS (VCSI-167)
+* Bug fix - allow using "tenant-less" VIP pools when running in client-based tenancy (VCSI-188)
+
 ## Version 2.4.0
 * added Container Object Storage Interface (COSI) support (VCSI-159)
 * added formal support for multitenancy via StorageClasses (VCSI-147)

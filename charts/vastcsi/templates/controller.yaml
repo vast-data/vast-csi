@@ -141,11 +141,13 @@ spec:
       nodeSelector:
 {{- if .Values.controller.runOnMaster}}
         node-role.kubernetes.io/master: ""
-        {{- end}}
-        {{- if .Values.controller.runOnControlPlane}}
+        {{- end }}
+{{- if .Values.controller.runOnControlPlane}}
         node-role.kubernetes.io/control-plane: ""
-        {{- end}}
+        {{- end }}
+{{- if .Values.controller.nodeSelector }}
 {{ toYaml .Values.controller.nodeSelector | indent 8 }}
+      {{- end }}
       priorityClassName: {{ .Values.controller.priorityClassName }}
       serviceAccount: {{ .Release.Name }}-vast-controller-sa
       tolerations:
