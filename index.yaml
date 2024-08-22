@@ -2,6 +2,25 @@ apiVersion: v1
 entries:
   vastcosi:
   - apiVersion: v2
+    created: "2024-08-22T15:51:40.223014609Z"
+    description: Helm chart for Deployment of VAST Container Object Storage Interface
+      (COSI)
+    digest: 3877a1b641ba2173daecc203685f5c56d27fa7cab5354429104ac19c8fdab70c
+    home: https://support.vastdata.com/s/topic/0TOV400000018pxOAA/vast-csi-driver-24-administrators-guide
+    icon: https://uploads.vastdata.com/2020/04/vast-white-1.svg
+    keywords:
+    - vast
+    - csi
+    - driver
+    - vastdata
+    - cosi
+    - cosi-driver
+    name: vastcosi
+    type: application
+    urls:
+    - https://github.com/vast-data/vast-csi/releases/download/helm-vastcosi-2.4.1/vastcosi-2.4.1.tgz
+    version: 2.4.1
+  - apiVersion: v2
     created: "2024-07-19T19:42:20.054695607Z"
     description: Helm chart for Deployment of VAST Container Object Storage Interface
       (COSI)
@@ -21,6 +40,23 @@ entries:
     - https://github.com/vast-data/vast-csi/releases/download/helm-vastcosi-2.4.0/vastcosi-2.4.0.tgz
     version: 2.4.0
   vastcsi:
+  - apiVersion: v2
+    created: "2024-08-22T15:51:40.333726526Z"
+    description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
+    digest: 594257719a028b8fb1009d4324cfbef6e09ddbf18fdbc658f41d3e9aa16b49b0
+    home: https://support.vastdata.com/s/topic/0TOV400000018pxOAA/vast-csi-driver-24-administrators-guide
+    icon: https://uploads.vastdata.com/2020/04/vast-white-1.svg
+    keywords:
+    - vast
+    - csi
+    - driver
+    - vastdata
+    - csi-driver
+    name: vastcsi
+    type: application
+    urls:
+    - https://github.com/vast-data/vast-csi/releases/download/helm-vastcsi-2.4.1/vastcsi-2.4.1.tgz
+    version: 2.4.1
   - apiVersion: v2
     created: "2024-07-19T19:42:20.178873446Z"
     description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
@@ -179,4 +215,4 @@ entries:
     urls:
     - https://github.com/vast-data/vast-csi/releases/download/vastcsi-0.1.0/vastcsi-0.1.0.tgz
     version: 0.1.0
-generated: "2024-08-05T11:52:35.044329737Z"
+generated: "2024-08-22T15:51:40.333784073Z"
