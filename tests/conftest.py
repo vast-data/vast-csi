@@ -51,6 +51,7 @@ class FakeQuota:
         self._hard_limit = hard_limit
         self._id = quota_id
         self.tenant_id = tenant_id
+        self.tenant_name = "test"
 
     @property
     def id(self):
@@ -104,8 +105,13 @@ class FakeSession:
         self.get_quota = FakeSessionMethod(
             return_value=FakeQuota(self.quota_hard_limit, self.quota_id, tenant_id=1),
             return_condition=self.quota_hard_limit is not None)
+        self.ensure_quota = FakeSessionMethod(
+            return_value=FakeQuota(self.quota_hard_limit, self.quota_id, tenant_id=1),
+            return_condition=self.quota_hard_limit is not None)
         self.get_view_by_path = FakeSessionMethod(return_value=self.view)
         self.ensure_view = FakeSessionMethod(return_value=self.view)
+        self.get_view = FakeSessionMethod(return_value=self.view)
+        self.get_vip = FakeSessionMethod(return_value="127.0.0.1")
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -120,6 +126,7 @@ def vms_session(monkeypatch, tmpdir):
     tmpdir.join("password").write("test")
     monkeypatch.setattr(Config, "vms_credentials_store", local.path(tmpdir))
     with patch("vast_csi.vms_session.VmsSession.refresh_auth_token", MagicMock()):
+        get_vms_session.cache_clear()
         yield get_vms_session()
 
 

@@ -1,6 +1,7 @@
 import re
+import uuid
 import pytest
-from unittest.mock import patch, PropertyMock, MagicMock
+from unittest.mock import patch, MagicMock
 from vast_csi.server import CsiController, Abort, MissingParameter
 
 import grpc
@@ -74,26 +75,29 @@ class TestControllerSuite:
         assert "either vip_pool_name, vip_pool_fqdn or use_local_ip_for_mount" in err.message
         assert err.code == grpc.StatusCode.INVALID_ARGUMENT
 
-    def test_quota_hard_limit_not_match(self, volume_capabilities, fake_session: "FakeSession"):
+    def test_quota_hard_limit_not_match(self, volume_capabilities, vms_session):
         """Test quota exists but provided capacity doesnt match"""
         # Preparation
         cont = CsiController()
         parameters = dict(root_export="/foo/bar", view_policy="default", vip_pool_name="vippool-1")
         capabilities = volume_capabilities(fs_type="ext4", mount_flags="", mode=types.AccessModeType.SINGLE_NODE_WRITER)
+        vms_session.ensure_view = MagicMock()
+        vms_session.get_quota = MagicMock(return_value=Bunch(tenant_id=1, hard_limit=999))
+
 
         # Execution
-        with pytest.raises(Abort) as ex_context:
-            with fake_session(quota_hard_limit=999) as session:
-                cont.CreateVolume(vms_session=session, name="test_volume", volume_capabilities=capabilities, parameters=parameters)
-
+        with pytest.raises(Exception) as ex_context:
+            cont.CreateVolume(
+                vms_session=vms_session, name="test_volume",
+                volume_capabilities=capabilities, parameters=parameters, capacity_range=Bunch(required_bytes=1000)
+            )
         # Assertion
         err = ex_context.value
-        assert err.message == "Volume already exists with different capacity than requested (999)"
-        assert err.code == grpc.StatusCode.ALREADY_EXISTS
-        assert session.ensure_view.call_count == 1
-        assert session.get_quota.call_count == 1
-        assert session.ensure_view.call_args.args == ()
-        assert session.get_quota.call_args.args == ("test_volume",)
+        assert str(err) == "Volume already exists with different capacity than requested (999)"
+        assert vms_session.ensure_view.call_count == 1
+        assert vms_session.get_quota.call_count == 1
+        assert vms_session.ensure_view.call_args.args == ()
+        assert vms_session.get_quota.call_args.args == ("/foo/bar/test_volume",)
 
     @pytest.mark.parametrize("raw_mount_options", [
         "[vers=4 ,  nolock,   proto=tcp,   nconnect=4]",
@@ -136,3 +140,85 @@ class TestControllerSuite:
             assert publish_context["nfs_server_ip"] == "2.2.2.2"
         else:
             assert publish_context["nfs_server_ip"] == local_ip
+
+    def test_static_volume_no_vip_pool(self, vms_session, volume_capabilities):
+        # Prepare test data
+        volume_id = "/static/volume/path"
+        node_id = "node1"
+        capabilities = volume_capabilities(fs_type="ext4", mount_flags="", mode=types.AccessModeType.SINGLE_NODE_WRITER)
+        cont = CsiController()
+
+        with pytest.raises(Abort) as ex_context:
+            cont.ControllerPublishVolume(vms_session, node_id, volume_id, capabilities[0], {})
+
+        err = ex_context.value
+        assert "either vip_pool_name, vip_pool_fqdn or use_local_ip_for_mount must be provided." in err.message
+
+    def test_static_volume_no_vip_policy(self, vms_session, volume_capabilities):
+        # Prepare test data
+        volume_id = "/static/volume/path"
+        node_id = "node1"
+        volume_context = dict(vip_pool_name="vippool-1", static_pv_create_views="yes")
+        capabilities = volume_capabilities(fs_type="ext4", mount_flags="", mode=types.AccessModeType.SINGLE_NODE_WRITER)
+        cont = CsiController()
+
+        with pytest.raises(Abort) as ex_context:
+            cont.ControllerPublishVolume(vms_session, node_id, volume_id, capabilities[0], volume_context)
+
+        err = ex_context.value
+        assert "Parameter 'view_policy' cannot be empty string or None" in err.message
+
+    @pytest.mark.parametrize("kwargs", [
+        dict(static_pv_create_views="yes"),
+        dict(static_pv_create_quotas="yes"),
+        dict(static_pv_create_view="yes", static_pv_create_quotas="yes"),
+    ])
+    def test_static_volume_create_create_view_and_quota(self, fake_session, volume_capabilities, kwargs):
+        # Prepare test data
+        volume_id = "/static/volume/path/"
+        node_id = "node1"
+        volume_context = dict(vip_pool_name="vippool-1", view_policy="default", **kwargs)
+        capabilities = volume_capabilities(
+            fs_type="ext4", mount_flags=["test"], mode=types.AccessModeType.SINGLE_NODE_WRITER
+        )
+        cont = CsiController()
+
+        with fake_session(view=Bunch(path=volume_id, id=1, tenant_id=1, tenant_name="default")) as session:
+            resp = cont.ControllerPublishVolume(session, node_id, volume_id, capabilities[0], volume_context)
+
+        publish_context = dict(resp.publish_context)
+        assert publish_context["nfs_server_ip"] == "127.0.0.1"
+        assert publish_context["export_path"] == volume_id.rstrip("/")
+        assert publish_context["mount_options"] == "test"
+
+        if kwargs.get("static_pv_create_views"):
+            session.ensure_view.mock.assert_called_once_with(
+                path=volume_id.rstrip("/"), protocols=['NFS'], view_policy='default', qos_policy=None
+            )
+        else:
+            session.ensure_view.mock.assert_not_called()
+        if kwargs.get("static_pv_create_quotas"):
+            session.ensure_quota.mock.assert_called_once_with(
+                volume_id="csi-" + str(uuid.uuid5(uuid.NAMESPACE_DNS, volume_id.rstrip("/"))),
+                view_path=volume_id.rstrip("/"), tenant_id=1,  requested_capacity=0,
+            )
+        else:
+            session.ensure_quota.mock.assert_not_called()
+
+    def test_static_volume_wrong_tenant(self, vms_session, volume_capabilities):
+        # Prepare test data
+        volume_id = "/static/volume/path/"
+        node_id = "node1"
+        volume_context = dict(vip_pool_name="vippool-1", view_policy="default", static_pv_create_quotas="yes")
+        capabilities = volume_capabilities(
+            fs_type="ext4", mount_flags=["test"], mode=types.AccessModeType.SINGLE_NODE_WRITER
+        )
+        vms_session.get_view = MagicMock(return_value=Bunch(path=volume_id, id=1, tenant_id=5, tenant_name="default"))
+        vms_session.get_quota = MagicMock(return_value=Bunch(tenant_id=1, hard_limit=999, tenant_name="test"))
+        cont = CsiController()
+
+        with pytest.raises(Exception) as ex_context:
+            cont.ControllerPublishVolume(vms_session, node_id, volume_id, capabilities[0], volume_context)
+
+        err = ex_context.value
+        assert "Volume already exists with different tenancy ownership (test)" in str(err)

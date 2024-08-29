@@ -1,4 +1,5 @@
 import os
+import re
 from dataclasses import dataclass
 from abc import ABC
 from base64 import b32encode
@@ -6,11 +7,16 @@ from random import getrandbits
 from datetime import timedelta
 from typing import Optional, final, TypeVar
 
+from easypy.bunch import Bunch
+
 from . import csi_types as types
+from .csi_types import INVALID_ARGUMENT
 from .utils import is_ver_nfs4_present
 from plumbum import local
 
-from .exceptions import VolumeAlreadyExists, SourceNotFound
+from .exceptions import VolumeAlreadyExists, SourceNotFound, Abort, MissingParameter
+from .utils import is_valid_ip
+from .quantity import parse_quantity
 
 CreatedVolumeT = TypeVar("CreatedVolumeT")
 
@@ -40,64 +46,42 @@ class VolumeBuilderI(ABC):
         """
         ...
 
+    @classmethod
+    def from_parameters(cls, *args, **kwargs):
+        """Parse context and return builder instance."""
+        ...
 
-# ----------------------------------------------------------------------------------------------------------------------
-# Final builders
-# ----------------------------------------------------------------------------------------------------------------------
+
 @dataclass
 class BaseBuilder(VolumeBuilderI):
     """Common builder with shared methods/attributes"""
 
+    # Required
     vms_session: "RESTSession"
     configuration: "CONF"
-
     name: str  # Name of volume or snapshot
     rw_access_mode: bool
     root_export: str
     volume_name_fmt: str
     view_policy: str
-    vip_pool_name: Optional[str]
-    vip_pool_fqdn: Optional[str]
     mount_options: str
-    qos_policy: Optional[str]
 
-    capacity_range: Optional[int]  # Optional desired volume capacity
-    pvc_name: Optional[str]
-    pvc_namespace: Optional[str]
-    volume_content_source: Optional[str]  # Either volume or snapshot
+    # Optional
+    volume_content_source: Optional[str] = None  # Either volume or snapshot
     ephemeral_volume_name: Optional[str] = None
-
-    def get_requested_capacity(self) -> int:
-        """Return desired allocated capacity if provided else return 0"""
-        return self.capacity_range.required_bytes if self.capacity_range else 0
-
-
-class EmptyVolumeBuilder(BaseBuilder):
-    """Builder for k8s PersistentVolumeClaim, PersistentVolume etc."""
-
-    def build_volume_name(self) -> str:
-        """Build volume name using format csi:{namespace}:{name}:{id}"""
-        volume_id = self.name
-        if self.ephemeral_volume_name:
-            volume_name = self.ephemeral_volume_name
-        elif self.pvc_name and self.pvc_namespace:
-            volume_name = self.volume_name_fmt.format(
-                namespace=self.pvc_namespace, name=self.pvc_name, id=volume_id
-            )
-        else:
-            volume_name = f"csi-{volume_id}"
-
-        if self.configuration.truncate_volume_name:
-            volume_name = volume_name[:self.configuration.truncate_volume_name]  # crop to Vast's max-length
-
-        return volume_name
+    vip_pool_name: Optional[str] = None
+    vip_pool_fqdn: Optional[str] = None
+    qos_policy: Optional[str] = None
+    capacity_range: Optional[int] = None # Optional desired volume capacity
+    pvc_name: Optional[str] = None
+    pvc_namespace: Optional[str] = None
 
     @property
-    def mount_protocol(self):
+    def mount_protocol(self) -> str:
         return "NFS4" if is_ver_nfs4_present(self.mount_options) else "NFS"
 
     @property
-    def volume_context(self):
+    def volume_context(self) -> dict:
         context = {
             "root_export": self.root_export_abs,
             "mount_options": self.mount_options,
@@ -111,34 +95,161 @@ class EmptyVolumeBuilder(BaseBuilder):
         return context
 
     @property
-    def view_path(self):
+    def view_path(self) -> str:
         return os.path.join(self.root_export_abs, self.name)
 
     @property
-    def root_export_abs(self):
+    def root_export_abs(self) -> str:
         return os.path.join("/", self.root_export)
 
     @property
-    def vip_pool_fqdn_with_prefix(self):
+    def vip_pool_fqdn_with_prefix(self) -> str:
         prefix = b32encode(getrandbits(16).to_bytes(2, "big")).decode("ascii").rstrip("=")
         return f"{prefix}.{self.vip_pool_fqdn}"
 
+
+    @classmethod
+    def from_parameters(
+            cls,
+            conf,
+            vms_session,
+            name,
+            volume_capabilities,
+            capacity_range,
+            parameters,
+            volume_content_source,
+            ephemeral_volume_name,
+    ) -> "BaseBuilder":
+        """Parse context and return builder instance."""
+        mount_options = cls._parse_mount_options(volume_capabilities)
+        rw_access_mode = cls._parse_access_mode(volume_capabilities)
+        root_export = cls._get_required_param(parameters, "root_export")
+        view_policy = cls._get_required_param(parameters, "view_policy")
+
+        vip_pool_fqdn = parameters.get("vip_pool_fqdn")
+        vip_pool_name = parameters.get("vip_pool_name")
+        cls._validate_mount_src(vip_pool_name, vip_pool_fqdn, conf.use_local_ip_for_mount)
+
+        volume_name_fmt = parameters.get("volume_name_fmt", conf.name_fmt)
+        qos_policy = parameters.get("qos_policy")
+
+        return cls(
+            vms_session=vms_session,
+            configuration=conf,
+            name=name,
+            rw_access_mode=rw_access_mode,
+            capacity_range=capacity_range,
+            pvc_name=parameters.get("csi.storage.k8s.io/pvc/name"),
+            pvc_namespace=parameters.get("csi.storage.k8s.io/pvc/namespace"),
+            volume_content_source=volume_content_source,
+            ephemeral_volume_name=ephemeral_volume_name,
+            root_export=root_export,
+            volume_name_fmt=volume_name_fmt,
+            view_policy=view_policy,
+            vip_pool_name=vip_pool_name,
+            vip_pool_fqdn=vip_pool_fqdn,
+            mount_options=mount_options,
+            qos_policy=qos_policy,
+        )
+
+    @classmethod
+    def _get_required_param(cls, parameters, param_name):
+        """Get required parameter or raise MissingParameter exception."""
+        value = parameters.get(param_name)
+        if value is None:
+            raise MissingParameter(param=param_name)
+        return value
+
+    @classmethod
+    def _parse_mount_options(cls, volume_capabilities):
+        """Get mount options from volume capabilities."""
+        try:
+            mount_capability = next(cap for cap in volume_capabilities if cap.HasField("mount"))
+            mount_flags = mount_capability.mount.mount_flags
+            mount_options = ",".join(mount_flags)
+            return ",".join(re.sub(r"[\[\]]", "", mount_options).replace(",", " ").split())
+        except StopIteration:
+            return ""
+
+    @classmethod
+    def _parse_access_mode(cls, volume_capabilities):
+        """Check if list of provided access modes contains read-write mode."""
+        rw_access_modes = {
+            types.AccessModeType.SINGLE_NODE_WRITER,
+            types.AccessModeType.MULTI_NODE_MULTI_WRITER
+        }
+        return any(
+            cap.access_mode.mode in rw_access_modes
+            for cap in volume_capabilities if cap.HasField("access_mode")
+        )
+
+    @classmethod
+    def _validate_mount_src(cls, vip_pool_name, vip_pool_fqdn, local_ip_for_mount):
+        """Validate that only one of vip_pool_name, vip_pool_fqdn or local_ip_for_mount is provided."""
+        if vip_pool_name and vip_pool_fqdn:
+            raise Abort(
+                INVALID_ARGUMENT,
+                "vip_pool_name and vip_pool_fqdn are mutually exclusive. Provide one of them."
+            )
+        if not (vip_pool_name or vip_pool_fqdn) and not local_ip_for_mount:
+            raise Abort(
+                INVALID_ARGUMENT,
+                "either vip_pool_name, vip_pool_fqdn or use_local_ip_for_mount must be provided."
+            )
+        if local_ip_for_mount and not is_valid_ip(local_ip_for_mount):
+            raise Abort(INVALID_ARGUMENT, f"Local IP address: {local_ip_for_mount} is invalid")
+
+    def get_requested_capacity(self) -> int:
+        """Return desired allocated capacity if provided, else return 0."""
+        return self.capacity_range.required_bytes if self.capacity_range else 0
+
+    def build_volume_name(self) -> str:
+        """Build volume name using format csi:{namespace}:{name}:{id}"""
+        volume_id = self.name
+        if self.ephemeral_volume_name:
+            return self.ephemeral_volume_name
+
+        if self.pvc_name and self.pvc_namespace:
+            volume_name = self.volume_name_fmt.format(
+                namespace=self.pvc_namespace, name=self.pvc_name, id=volume_id
+            )
+        else:
+            volume_name = f"csi-{volume_id}"
+
+        if self.configuration.truncate_volume_name:
+            volume_name = volume_name[:self.configuration.truncate_volume_name]
+
+        return volume_name
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Final builders
+# ----------------------------------------------------------------------------------------------------------------------
+
+@final
+class EmptyVolumeBuilder(BaseBuilder):
+    """Builder for k8s PersistentVolumeClaim, PersistentVolume etc."""
+
     def build_volume(self) -> types.Volume:
-        """
-        Main build entrypoint for volumes.
-        Create volume from pvc, pv etc.
-        """
+        """Main build entrypoint for volumes."""
         volume_name = self.build_volume_name()
         requested_capacity = self.get_requested_capacity()
         volume_context = self.volume_context
         volume_context["volume_name"] = volume_name
 
-        # Check if view with expected system path already exists.
         view = self.vms_session.ensure_view(
-            path=self.view_path, protocols=[self.mount_protocol], view_policy=self.view_policy, qos_policy=self.qos_policy
+            path=self.view_path, protocols=[self.mount_protocol], view_policy=self.view_policy,
+            qos_policy=self.qos_policy
         )
-        quota = self._ensure_quota(requested_capacity, volume_name, self.view_path, view.tenant_id)
-        volume_context.update(quota_id=str(quota.id), view_id=str(view.id), tenant_id=str(view.tenant_id))
+        quota = self.vms_session.ensure_quota(
+            volume_id=volume_name, view_path=self.view_path,
+            tenant_id=view.tenant_id, requested_capacity=requested_capacity
+        )
+        volume_context.update(
+            quota_id=str(quota.id),
+            view_id=str(view.id),
+            tenant_id=str(view.tenant_id)
+        )
 
         return types.Volume(
             capacity_bytes=requested_capacity,
@@ -146,32 +257,9 @@ class EmptyVolumeBuilder(BaseBuilder):
             volume_context=volume_context,
         )
 
-    def _ensure_quota(self, requested_capacity, volume_name, view_path, tenant_id):
-        if quota := self.vms_session.get_quota(self.name):
-            # Check if volume with provided name but another capacity already exists.
-            if quota.hard_limit != requested_capacity:
-                raise VolumeAlreadyExists(
-                    "Volume already exists with different capacity than requested "
-                    f"({quota.hard_limit})")
-            if quota.tenant_id != tenant_id:
-                raise VolumeAlreadyExists(
-                    "Volume already exists with different tenancy ownership "
-                    f"({quota.tenant_name})")
-
-        else:
-            data = dict(
-                name=volume_name,
-                path=view_path,
-                tenant_id=tenant_id
-            )
-            if requested_capacity:
-                data.update(hard_limit=requested_capacity)
-            quota = self.vms_session.create_quota(data=data)
-        return quota
-
 
 @final
-class VolumeFromVolumeBuilder(EmptyVolumeBuilder):
+class VolumeFromVolumeBuilder(BaseBuilder):
     """Cloning volumes from existing."""
 
     def build_volume(self) -> types.Volume:
@@ -203,7 +291,10 @@ class VolumeFromVolumeBuilder(EmptyVolumeBuilder):
             path=self.view_path, protocols=[self.mount_protocol],
             view_policy=self.view_policy, qos_policy=self.qos_policy
         )
-        quota = self._ensure_quota(requested_capacity, volume_name, self.view_path, view.tenant_id)
+        quota = self.vms_session.ensure_quota(
+            volume_id=volume_name, view_path=self.view_path,
+            tenant_id=view.tenant_id, requested_capacity=requested_capacity
+        )
         volume_context.update(
             quota_id=str(quota.id), view_id=str(view.id),
             tenant_id=str(tenant_id), snapshot_stream_name=snapshot_stream.name
@@ -220,7 +311,7 @@ class VolumeFromVolumeBuilder(EmptyVolumeBuilder):
 
 
 @final
-class VolumeFromSnapshotBuilder(EmptyVolumeBuilder):
+class VolumeFromSnapshotBuilder(BaseBuilder):
     """Builder for k8s Snapshots."""
 
     def build_volume(self) -> types.Volume:
@@ -252,7 +343,10 @@ class VolumeFromSnapshotBuilder(EmptyVolumeBuilder):
                 path=self.view_path, protocols=[self.mount_protocol],
                 view_policy=self.view_policy, qos_policy=self.qos_policy
             )
-            quota = self._ensure_quota(requested_capacity, volume_name, self.view_path, tenant_id)
+            quota = self.vms_session.ensure_quota(
+                volume_id=volume_name, view_path=self.view_path,
+                tenant_id=view.tenant_id, requested_capacity=requested_capacity
+            )
             volume_context.update(
                 quota_id=str(quota.id), view_id=str(view.id),
                 tenant_id=str(tenant_id), snapshot_stream_name=snapshot_stream.name
@@ -282,8 +376,122 @@ class VolumeFromSnapshotBuilder(EmptyVolumeBuilder):
 
 
 @final
+@dataclass
+class StaticVolumeBuilder(BaseBuilder):
+    create_view: bool = True
+    create_quota: bool = True
+
+    @classmethod
+    def from_parameters(
+            cls,
+            conf,
+            vms_session,
+            name,
+            volume_capabilities,
+            parameters,
+            create_view,
+            create_quota,
+    ):
+        """Parse context and return builder instance"""
+        mount_options = cls._parse_mount_options(volume_capabilities)
+        rw_access_mode = cls._parse_access_mode(volume_capabilities)
+        root_export = parameters["root_export"]
+        # View policy is required only when view is about to be created.
+        if not (view_policy := parameters.get("view_policy")) and create_view:
+            raise MissingParameter(param="view_policy")
+        vip_pool_fqdn = parameters.get("vip_pool_fqdn")
+        vip_pool_name = parameters.get("vip_pool_name")
+        cls._validate_mount_src(vip_pool_name, vip_pool_fqdn, conf.use_local_ip_for_mount)
+        volume_name_fmt = parameters.get("volume_name_fmt", conf.name_fmt)
+        qos_policy = parameters.get("qos_policy")
+        if "size" in parameters:
+            required_bytes = int(parse_quantity(parameters["size"]))
+            capacity_range = Bunch(required_bytes=required_bytes)
+        else:
+            capacity_range = None
+        return cls(
+            vms_session=vms_session,
+            configuration=conf,
+            name=name,
+            capacity_range=capacity_range,
+            rw_access_mode=rw_access_mode,
+            pvc_name=parameters.get("csi.storage.k8s.io/pvc/name"),
+            pvc_namespace=parameters.get("csi.storage.k8s.io/pvc/namespace"),
+            root_export=root_export,
+            volume_name_fmt=volume_name_fmt,
+            view_policy=view_policy,
+            vip_pool_name=vip_pool_name,
+            vip_pool_fqdn=vip_pool_fqdn,
+            mount_options=mount_options,
+            qos_policy=qos_policy,
+            create_view=create_view,
+            create_quota=create_quota
+        )
+
+    @property
+    def view_path(self):
+        return self.root_export_abs
+
+    def build_volume(self) -> dict:
+        """
+        Main build entrypoint for static volumes.
+        Create volume from pvc, pv etc.
+        """
+        volume_name = self.build_volume_name()
+        volume_context = self.volume_context
+        volume_context["volume_name"] = volume_name
+
+        if self.create_view:
+            # Check if view with expected system path already exists.
+            view = self.vms_session.ensure_view(
+                path=self.view_path, protocols=[self.mount_protocol],
+                view_policy=self.view_policy, qos_policy=self.qos_policy
+            )
+        else:
+            if not (view := self.vms_session.get_view(path=self.view_path)):
+                raise SourceNotFound(f"View {self.view_path} does not exist but claimed as existing.")
+
+        volume_context.update(view_id=str(view.id), tenant_id=str(view.tenant_id))
+
+        if self.create_quota:
+            quota = self.vms_session.ensure_quota(
+                volume_id=volume_name, view_path=self.view_path,
+                tenant_id=view.tenant_id, requested_capacity=self.get_requested_capacity()
+            )
+            volume_context.update(quota_id=str(quota.id))
+        return volume_context
+
+
+@final
 class TestVolumeBuilder(BaseBuilder):
     """Test volumes builder for sanity checks"""
+
+    @classmethod
+    def from_parameters(
+            cls,
+            conf,
+            vms_session,
+            name,
+            volume_capabilities,
+            capacity_range,
+            parameters,
+            volume_content_source,
+            **kwargs,
+    ):
+        rw_access_mode = cls._parse_access_mode(volume_capabilities)
+        root_export = volume_name_fmt = view_policy = mount_options = ""
+        return cls(
+            vms_session=vms_session,
+            configuration=conf,
+            name=name,
+            capacity_range=capacity_range,
+            rw_access_mode=rw_access_mode,
+            volume_content_source=volume_content_source,
+            root_export=root_export,
+            volume_name_fmt=volume_name_fmt,
+            view_policy=view_policy,
+            mount_options=mount_options,
+        )
 
     def build_volume_name(self) -> str:
         pass

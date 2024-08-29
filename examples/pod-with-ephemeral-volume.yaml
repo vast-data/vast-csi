@@ -21,4 +21,6 @@ spec:
         size: 1G
         view_policy: default
         vip_pool_name: vippool-1
+      nodePublishSecretRef:
+        name: vast-mgmt
     name: my-eph-vol
