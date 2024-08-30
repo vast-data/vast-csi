@@ -73,7 +73,15 @@ test_csi [latest]: &test_csi
   variables:
     INSTALL_IMAGE: "prev_version"
     VAST_upgrade_to: $INSTALL_IMAGE
-    VAST_COMET_KWARG: csi_plugin_version=${CI_PIPELINE_ID}
+    VAST_COMET__KWARG: csi_plugin_version=${CI_PIPELINE_ID}
+    TRIGGER_SOURCE: "vastcsi"
+
+
+test_csi_multicluster [latest]:
+  <<: *test_csi
+  when: manual
+  variables:
+    NUM_SYSTEMS: 2
 
 
 test_csi:
