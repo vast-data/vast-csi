@@ -60,6 +60,13 @@ build_csi:
     - vast-dev-builder
 
 
+.common_vars: &common_vars
+  INSTALL_IMAGE: "prev_version"
+  VAST_upgrade_to: $INSTALL_IMAGE
+  VAST_COMET__KWARG: csi_plugin_version=${CI_PIPELINE_ID}
+  TRIGGER_SOURCE: "vastcsi"
+
+
 test_csi [latest]: &test_csi
   stage: test
   when: always
@@ -70,17 +77,14 @@ test_csi [latest]: &test_csi
     branch: $ORION_BRANCH
     strategy: depend
   allow_failure: true
-  variables:
-    INSTALL_IMAGE: "prev_version"
-    VAST_upgrade_to: $INSTALL_IMAGE
-    VAST_COMET__KWARG: csi_plugin_version=${CI_PIPELINE_ID}
-    TRIGGER_SOURCE: "vastcsi"
+  variables: *common_vars
 
 
 test_csi_multicluster [latest]:
   <<: *test_csi
   when: manual
   variables:
+    <<: *common_vars
     NUM_SYSTEMS: 2
 
 
