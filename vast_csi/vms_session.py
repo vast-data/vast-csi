@@ -436,6 +436,28 @@ class VmsSession(RESTSession):
         path = path.rstrip("/")
         return self.quotas(path=path)
 
+    def ensure_quota(self, volume_id, view_path, tenant_id, requested_capacity=None):
+        if quota := self.get_quota(view_path):
+            # Check if volume with provided name but another capacity already exists.
+            if requested_capacity and quota.hard_limit != requested_capacity:
+                raise Exception(
+                    "Volume already exists with different capacity than requested "
+                    f"({quota.hard_limit})")
+            if quota.tenant_id != tenant_id:
+                raise Exception(
+                    "Volume already exists with different tenancy ownership "
+                    f"({quota.tenant_name})")
+        else:
+            data = dict(
+                name=volume_id,
+                path=view_path,
+                tenant_id=tenant_id
+            )
+            if requested_capacity:
+                data.update(hard_limit=requested_capacity)
+            quota = self.create_quota(data=data)
+        return quota
+
     def update_quota(self, quota_id, data):
         """Update existing quota."""
         self.patch(f"quotas/{quota_id}", data=data)

@@ -14,7 +14,7 @@
 """The Python implementation of the GRPC helloworld.Greeter server."""
 
 import os
-import re
+import uuid
 from random import randint
 from concurrent import futures
 from functools import wraps
@@ -36,6 +36,7 @@ from easypy.caching import cached_property
 from easypy.bunch import Bunch
 from easypy.exceptions import TException
 from easypy.collections import separate
+from easypy.humanize import yesno_to_bool
 
 from .logging import logger, init_logging
 from .utils import (
@@ -43,12 +44,26 @@ from .utils import (
     get_mount,
     normalize_mount_options,
     string_to_proto_timestamp,
-    is_valid_ip,
 )
 from .proto import csi_pb2_grpc as csi_grpc
 from .proto import cosi_pb2_grpc as cosi_grpc
 from . import csi_types as types
-from .volume_builder import EmptyVolumeBuilder, VolumeFromSnapshotBuilder, VolumeFromVolumeBuilder, TestVolumeBuilder
+from .csi_types import (
+    FAILED_PRECONDITION,
+    INVALID_ARGUMENT,
+    ALREADY_EXISTS,
+    NOT_FOUND,
+    ABORTED,
+    UNKNOWN,
+    OUT_OF_RANGE,
+)
+from .volume_builder import (
+    EmptyVolumeBuilder,
+    VolumeFromSnapshotBuilder,
+    VolumeFromVolumeBuilder,
+    TestVolumeBuilder,
+    StaticVolumeBuilder,
+)
 from .exceptions import (
     Abort,
     ApiError,
@@ -71,14 +86,6 @@ CONF = None
 #
 ################################################################
 
-
-FAILED_PRECONDITION = grpc.StatusCode.FAILED_PRECONDITION
-INVALID_ARGUMENT = grpc.StatusCode.INVALID_ARGUMENT
-ALREADY_EXISTS = grpc.StatusCode.ALREADY_EXISTS
-NOT_FOUND = grpc.StatusCode.NOT_FOUND
-ABORTED = grpc.StatusCode.ABORTED
-UNKNOWN = grpc.StatusCode.UNKNOWN
-OUT_OF_RANGE = grpc.StatusCode.OUT_OF_RANGE
 
 SUPPORTED_ACCESS = [
     types.AccessModeType.SINGLE_NODE_WRITER,
@@ -313,83 +320,35 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
         _validate_capabilities(volume_capabilities)
         parameters = parameters or dict()
 
-        try:
-            mount_capability = next(cap for cap in volume_capabilities if cap.HasField("mount"))
-            mount_flags = mount_capability.mount.mount_flags
-            mount_options = ",".join(mount_flags)
-            # normalize mount options (remove spaces, brackets etc)
-            mount_options = ",".join(re.sub(r"[\[\]]", "", mount_options).replace(",", " ").split())
-        except StopIteration:
-            mount_options = ""
-        # check if list of provided access modes contains read-write mode
-        rw_access_modes = [types.AccessModeType.SINGLE_NODE_WRITER, types.AccessModeType.MULTI_NODE_MULTI_WRITER]
-        rw_access_mode = any(
-            cap.access_mode.mode in rw_access_modes for cap in volume_capabilities if cap.HasField("access_mode")
-        )
         # Take appropriate builder for volume, snapshot or test builder
         if CONF.mock_vast:
-            root_export = volume_name_fmt = view_policy = vip_pool_name = vip_pool_fqdn = mount_options = qos_policy = ""
-            builder = TestVolumeBuilder
-
+            builder_cls = TestVolumeBuilder
         else:
-            if not (root_export := parameters.get("root_export")):
-                raise MissingParameter(param="root_export")
-            if not (view_policy := parameters.get("view_policy")):
-                raise MissingParameter(param="view_policy")
-
-            vip_pool_fqdn = parameters.get("vip_pool_fqdn")
-            vip_pool_name = parameters.get("vip_pool_name")
-            if vip_pool_name and vip_pool_fqdn:
-                raise Abort(
-                    INVALID_ARGUMENT,
-                    "vip_pool_name and vip_pool_fqdn are mutually exclusive. Provide one of them."
-                )
-            elif not (vip_pool_name or vip_pool_fqdn):
-                if not CONF.use_local_ip_for_mount:
-                    raise Abort(
-                        INVALID_ARGUMENT,
-                        "either vip_pool_name, vip_pool_fqdn or use_local_ip_for_mount must be provided."
-                    )
-                elif not is_valid_ip(CONF.use_local_ip_for_mount):
-                    raise Abort(INVALID_ARGUMENT, f"Local IP address: {CONF.use_local_ip_for_mount} is invalid")
-            volume_name_fmt = parameters.get("volume_name_fmt", CONF.name_fmt)
-            qos_policy = parameters.get("qos_policy")
-
             if not volume_content_source:
-                builder = EmptyVolumeBuilder
+                builder_cls = EmptyVolumeBuilder
 
             elif volume_content_source.snapshot.snapshot_id:
-                builder = VolumeFromSnapshotBuilder
+                builder_cls = VolumeFromSnapshotBuilder
 
             elif volume_content_source.volume.volume_id:
-                builder = VolumeFromVolumeBuilder
+                builder_cls = VolumeFromVolumeBuilder
 
             else:
                 raise ValueError(
                     "Invalid condition. Either volume_content_source"
                     " or test environment variable should be provided"
                 )
-
-        # Create volume, volume from snapshot or mount local path (for testing purposes)
-        # depends on chosen builder.
-        builder = builder(
+        builder = builder_cls.from_parameters(
+            conf=CONF,
             vms_session=vms_session,
-            configuration=CONF,
             name=name,
-            rw_access_mode=rw_access_mode,
+            volume_capabilities=volume_capabilities,
             capacity_range=capacity_range,
-            pvc_name=parameters.get("csi.storage.k8s.io/pvc/name"),
-            pvc_namespace=parameters.get("csi.storage.k8s.io/pvc/namespace"),
+            parameters=parameters,
             volume_content_source=volume_content_source,
-            ephemeral_volume_name=ephemeral_volume_name,
-            root_export=root_export,
-            volume_name_fmt=volume_name_fmt,
-            view_policy=view_policy,
-            vip_pool_name=vip_pool_name,
-            vip_pool_fqdn=vip_pool_fqdn,
-            mount_options=mount_options,
-            qos_policy=qos_policy,
+            ephemeral_volume_name=ephemeral_volume_name
         )
+        # Create volume, volume from snapshot or mount local path (for testing purposes)
         try:
             volume = builder.build_volume()
         except SourceNotFound as exc:
@@ -506,20 +465,44 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
     def ControllerPublishVolume(
         self, vms_session, node_id, volume_id, volume_capability, volume_context=None
     ):
-        volume_context = volume_context or dict()
+        volume_context = dict(volume_context or dict())
         _validate_capabilities([volume_capability])
 
-        if CONF.mock_vast:
-            root_export = CONF.sanity_test_nfs_export
+        if volume_id.startswith("/"):
+            # Assumed consuming existing volume where user specified full path to view in volumeHandle attribute.
+            if volume_id != "/":
+                # keep path consistent.
+                volume_id = volume_id.rstrip("/")
+            logger.info(f"Binding static volume: {volume_id}")
+            export_path = volume_context["root_export"] = volume_id
+            name = str(uuid.uuid5(uuid.NAMESPACE_DNS, volume_id))
+            create_view = yesno_to_bool(volume_context.get("static_pv_create_views", "no"))
+            create_quota = yesno_to_bool(volume_context.get("static_pv_create_quotas", "no"))
+            builder = StaticVolumeBuilder.from_parameters(
+                conf=CONF,
+                vms_session=vms_session,
+                name=name,
+                volume_capabilities=[volume_capability],
+                parameters=volume_context,
+                create_view=create_view,
+                create_quota=create_quota,
+            )
+            try:
+                volume_context = builder.build_volume()
+            except SourceNotFound as exc:
+                raise Abort(NOT_FOUND, exc.message)
+            except VolumeAlreadyExists as exc:
+                raise Abort(ALREADY_EXISTS, exc.message)
+
         else:
-            root_export = local.path(volume_context["root_export"])
-        # Build export path for snapshot or volume
-        if snapshot_base_path := volume_context.get("snapshot_base_path"):
-            # Snapshot
-            export_path = str(root_export[snapshot_base_path])
-        else:
-            # Volume
-            export_path = str(root_export[volume_id])
+            root_export = CONF.sanity_test_nfs_export if CONF.mock_vast else local.path(volume_context["root_export"])
+            # Build export path for snapshot or volume
+            if snapshot_base_path := volume_context.get("snapshot_base_path"):
+                # Snapshot
+                export_path = str(root_export[snapshot_base_path])
+            else:
+                # Volume
+                export_path = str(root_export[volume_id])
 
         if CONF.csi_sanity_test and CONF.node_id != node_id:
             # for a test that tries to fake a non-existent node
@@ -540,6 +523,8 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
             publish_context=dict(
                 export_path=export_path,
                 nfs_server_ip=nfs_server_ip,
+                # volume_context is not accessible for static volumes. Pass mount_options through publish_context.
+                mount_options=volume_context.get("mount_options", ""),
             )
         )
 
@@ -693,9 +678,9 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
 
     def NodePublishVolume(
         self,
-        vms_session,
         volume_id,
         target_path,
+        vms_session=None,
         volume_capability=None,
         publish_context=None,
         readonly=False,
@@ -708,6 +693,12 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
         ):
             from .quantity import parse_quantity
 
+            if not vms_session:
+                raise Abort(
+                    FAILED_PRECONDITION,
+                    "Ephemeral Volume provisioning requires "
+                    "configuring a global VMS credentials secret or nodePublishSecretRef secret reference."
+                )
             eph_volume_name_fmt = volume_context.get("eph_volume_name_fmt", CONF.name_fmt)
             if "size" in volume_context:
                 required_bytes = int(parse_quantity(volume_context["size"]))
@@ -799,7 +790,9 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
         if volume_capability.mount.mount_flags:
             flags += volume_capability.mount.mount_flags
         else:
-            flags += normalize_mount_options(volume_context.get("mount_options", ""))
+            flags += normalize_mount_options(
+                volume_context.get("mount_options", publish_context.get("mount_options", ""))
+            )
         try:
             mount(mount_spec, target_path, flags=",".join(flags))
             logger.info(f"mounted: {target_path} flags: {flags}")
