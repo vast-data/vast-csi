@@ -2,6 +2,7 @@
 
 ## Version 2.5.0
 * Allow using VIPPool DNS name instead of the CSI choosing IPs (VCSI-167)
+* Expose existing data via Static PV (VCSI-150)
 
 ## Version 2.4.1
 * Support for multiple Vast Clusters via using StorageClass secrets (VCSI-140) 

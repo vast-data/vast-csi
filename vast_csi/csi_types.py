@@ -1,5 +1,6 @@
 from __future__ import absolute_import
 
+import grpc
 from google.protobuf.timestamp_pb2 import Timestamp
 from google.protobuf import wrappers_pb2 as wrappers
 
@@ -87,3 +88,12 @@ Protocol = cosi_pb2.Protocol
 S3 = cosi_pb2.S3
 S3SignatureVersion = cosi_pb2.S3SignatureVersion
 CredentialDetails = cosi_pb2.CredentialDetails
+
+# gRPC statuses
+FAILED_PRECONDITION = grpc.StatusCode.FAILED_PRECONDITION
+INVALID_ARGUMENT = grpc.StatusCode.INVALID_ARGUMENT
+ALREADY_EXISTS = grpc.StatusCode.ALREADY_EXISTS
+NOT_FOUND = grpc.StatusCode.NOT_FOUND
+ABORTED = grpc.StatusCode.ABORTED
+UNKNOWN = grpc.StatusCode.UNKNOWN
+OUT_OF_RANGE = grpc.StatusCode.OUT_OF_RANGE
