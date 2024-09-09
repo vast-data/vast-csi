@@ -67,7 +67,7 @@ parameters:
   eph_volume_name_fmt: {{ $eph_volume_name_fmt }}
 {{- range $key, $value := dict "vip_pool_name" $vip_pool_name "vip_pool_fqdn" $vip_pool_fqdn "qos_policy" $qos_policy }}
   {{- if and $value (ne $value ( quote "" )) }}
-  {{ $key }}: {{ $value }}
+  {{ $key }}: {{ if (kindIs "int" $value) }}{{ $value | quote }}{{ else }}{{ $value }}{{ end }}
   {{- end }}
 {{- end }}
 {{-  if ne $storage_class_secret ( quote "" ) }}
