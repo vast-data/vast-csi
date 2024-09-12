@@ -34,8 +34,13 @@ annotations:
   operators.operatorframework.io.metrics.builder: operator-sdk-v1.3.0-ocp
   operators.operatorframework.io.metrics.mediatype.v1: metrics+v1
   operators.operatorframework.io.metrics.project_layout: helm.sdk.operatorframework.io/v1
-  operators.operatorframework.io.test.config.v1: tests/scorecard/
+
+  # Annotations for testing.
   operators.operatorframework.io.test.mediatype.v1: scorecard+v1
+  operators.operatorframework.io.test.config.v1: tests/scorecard/
+
+  # Annotations to specify supported OCP versions.
+  com.redhat.openshift.versions: v4.14-v4.15
 EOF
 
 echo "Generate scorecard testing template"

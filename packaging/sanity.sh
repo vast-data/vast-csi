@@ -16,6 +16,7 @@ NETWORK=csi-test-net
 docker kill test-subject 2> /dev/null || true
 docker rm test-subject 2> /dev/null || true
 docker volume rm -f csi-tests
+docker network rm $NETWORK 2> /dev/null || true
 
 docker network create $NETWORK 2> /dev/null || true
 
