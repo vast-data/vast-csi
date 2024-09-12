@@ -131,10 +131,10 @@ example:
     name: vastdata-filesystem
   spec:
     clusterName: ""
-    storagePath: {{ .Values.storagePath }}
-    viewPolicy: {{ .Values.viewPolicy }}
-    vipPool: {{ .Values.vipPool }}
-    qosPolicy: {{ .Values.qosPolicy }}
+    storagePath: ""
+    viewPolicy: ""
+    vipPool: ""
+    qosPolicy: ""
     allowVolumeExpansion: {{ .Values.allowVolumeExpansion }}
     ephemeralVolumeNameFormat: {{ .Values.ephemeralVolumeNameFormat }}
     vipPoolFQDN: {{ .Values.vipPoolFQDN }}

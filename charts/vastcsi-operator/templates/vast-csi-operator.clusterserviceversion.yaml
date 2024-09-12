@@ -28,6 +28,13 @@ metadata:
     operators.operatorframework.io/builder: operator-sdk-v1.3.0-ocp
     operators.operatorframework.io/project_layout: helm.sdk.operatorframework.io/v1
     operatorframework.io/suggested-namespace: {{ .Values.suggestedNamespace }}
+    features.operators.openshift.io/disconnected: "true"
+    features.operators.openshift.io/fips-compliant: "false"
+    features.operators.openshift.io/proxy-aware: "false"
+    features.operators.openshift.io/tls-profiles: "false"
+    features.operators.openshift.io/token-auth-aws: "false"
+    features.operators.openshift.io/token-auth-azure: "false"
+    features.operators.openshift.io/token-auth-gcp: "false"
   name: vast-csi-operator.v{{ .Chart.Version }}{{- if .Values.ciPipe }}-{{ .Values.ciPipe }}{{- end }}
   namespace: placeholder
 spec:
@@ -130,4 +137,21 @@ spec:
     url: https://github.com/vast-data/vast-csi
   version: {{ .Chart.Version }}{{- if .Values.ciPipe }}-{{ .Values.ciPipe }}{{- end }}
   minKubeVersion: 1.18.0
+  relatedImages:
+  - image: {{ .Values.overrides.csiVastPlugin.repository }}
+    name: csi-vast-plugin
+  - image: {{ .Values.overrides.csiResizer.repository }}
+    name: csi-resizer
+  - image: {{ .Values.overrides.csiSnapshotter.repository }}
+    name: csi-snapshotter
+  - image: {{ .Values.overrides.csiAttacher.repository }}
+    name: csi-attacher
+  - image: {{ .Values.overrides.csiProvisioner.repository }}
+    name: csi-provisioner
+  - image: {{ .Values.overrides.csiNodeDriverRegistrar.repository }}
+    name: csi-node-driver-registrar
+  - image: {{ .Values.managerImage }}
+    name: csi-vast-operator
+  - image: {{ .Values.proxyImage }}
+    name: kube-rbac-proxy
 {{- end }}

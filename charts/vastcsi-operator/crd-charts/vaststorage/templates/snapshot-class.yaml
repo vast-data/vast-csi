@@ -1,4 +1,4 @@
-{{- if eq (toString .Values.createStorageClass) "true" }}
+{{- if eq (toString .Values.createSnapshotClass) "true" }}
 
 {{- $is_default_class := .Values.snapshotClass.setDefaultSnapshotClass | default true | quote -}}
 {{- $snapshot_name_fmt := .Values.snapshotClass.snapshotNameFormat -}}

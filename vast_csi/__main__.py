@@ -1,3 +1,4 @@
+import os
 import sys
 import argparse
 from easypy.bunch import Bunch
@@ -16,6 +17,9 @@ def main():
     info_parse = subparsers.add_parser("info", help='Print versioning information for this CSI plugin')
     info_parse.add_argument("--output", default="json", choices=['json', 'yaml'], help="Output format")
     info_parse.set_defaults(func=_info)
+
+    info_parse = subparsers.add_parser("system_info", help='Print system information')
+    info_parse.set_defaults(func=_system_info)
 
     test_parse = subparsers.add_parser("test", help='Start unit tests')
     test_parse.set_defaults(func=_test)
@@ -39,6 +43,9 @@ def _info(args):
         json.dump(info, sys.stdout)
     else:
         assert False, f"invalid output format: {args.output}"
+
+def _system_info(*_):
+    os.system("cat /etc/os-release")
 
 
 def _test(args):
