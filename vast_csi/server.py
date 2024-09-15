@@ -693,9 +693,9 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
 
     def NodePublishVolume(
         self,
-        vms_session,
         volume_id,
         target_path,
+        vms_session=None,
         volume_capability=None,
         publish_context=None,
         readonly=False,
@@ -708,6 +708,12 @@ class CsiNode(csi_grpc.NodeServicer, Instrumented):
         ):
             from .quantity import parse_quantity
 
+            if not vms_session:
+                raise Abort(
+                    FAILED_PRECONDITION,
+                    "Ephemeral Volume provisioning requires "
+                    "configuring a global VMS credentials secret or nodePublishSecretRef secret reference."
+                )
             eph_volume_name_fmt = volume_context.get("eph_volume_name_fmt", CONF.name_fmt)
             if "size" in volume_context:
                 required_bytes = int(parse_quantity(volume_context["size"]))
