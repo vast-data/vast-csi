@@ -34,14 +34,9 @@ endif
 # OPERATOR_BUNDLE_TAG=xxxxxx-operator-bundle
 # In more complex scenarios, you can specify all tags
 # separately eg export CSI_TAG=vvvvvv OPERATOR_TAG=yyyyy-operator etc.
-
-# Remove ubi_ prefix from CSI_TAG if it exists
-PIPE := $(if $(PIPE),$(PIPE),$(if $(CSI_TAG),$(patsubst ubi-%,%,$(CSI_TAG)),))
-
 CSI_TAG := $(if $(CSI_TAG),$(CSI_TAG),$(PIPE))
-OPERATOR_TAG := $(if $(OPERATOR_TAG),$(OPERATOR_TAG),$(PIPE)-operator)
-OPERATOR_BUNDLE_TAG := $(if $(OPERATOR_BUNDLE_TAG),$(OPERATOR_BUNDLE_TAG),$(PIPE)-operator-bundle)
-
+OPERATOR_TAG := $(if $(OPERATOR_TAG),$(OPERATOR_TAG),$(if $(PIPE),$(PIPE)-operator))
+OPERATOR_BUNDLE_TAG := $(if $(OPERATOR_BUNDLE_TAG),$(OPERATOR_BUNDLE_TAG),$(if $(PIPE),$(PIPE)-operator-bundle))
 # Define the script for checking required environment variables
 define check_required_env =
     printf "\033[32m[%s]\033[0m\n" $$CURRENT_TARGET
@@ -142,6 +137,17 @@ operator-bundle-clean: ## Cleanup bundle from the configured Kubernetes cluster 
 docker-login-ecr: ## Login to AWS ECR
 	aws ecr get-login-password --region eu-west-1 | docker login --username AWS --password-stdin $(DOCKER_REGISTRY)
 
+push_base_image: ## Push base image (multi ARCH) to the configured Docker registry
+	@$(call check_required_env,DOCKER_REGISTRY)
+	# IMG variable with date tag
+	IMG=${DOCKER_REGISTRY}/dev/vast-csi-base:$(shell date +"%Y-%m-%d") && \
+	echo "Building and pushing base image $$IMG to the registry" && \
+	docker buildx create --use && \
+	docker buildx build --platform linux/amd64,linux/arm64 -t "$$IMG" -f $(CURDIR)/packaging/base.Dockerfile --push . && \
+	echo "Image $$IMG has been built and pushed to the registry. You can now specify it as base image in .gitlab-ci.yml"
+
+publish_image_redhat:
+	@$(CURDIR)/packaging/publish_to_redhat.sh
 
 help: ## Show help
 	@echo "Please specify a build target. The choices are:"
