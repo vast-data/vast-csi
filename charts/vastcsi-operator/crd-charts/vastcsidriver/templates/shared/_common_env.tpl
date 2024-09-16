@@ -9,7 +9,7 @@
 - name: X_CSI_PLUGIN_NAME
   value: "csi.vastdata.com"
 - name: X_CSI_VMS_HOST
-  value: {{ $.Values.endpoint | default "" |  quote }}
+  value: {{ $.Values.endpoint | default "" | quote }}
 - name: X_CSI_ENABLE_VMS_SSL_VERIFICATION
   value: {{ $.Values.verifySsl | quote }}
 - name: X_CSI_DELETION_VIP_POOL_NAME
@@ -24,8 +24,9 @@
   value: {{ $.Values.useLocalIpForMount | quote }}
 - name: X_CSI_ATTACH_REQUIRED
   value: {{ $.Values.attachRequired | quote }}
-{{ if $.Values.truncateVolumeName -}}
+{{- if $.Values.truncateVolumeName }}
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}
 {{- end }}
+
 {{- end }}

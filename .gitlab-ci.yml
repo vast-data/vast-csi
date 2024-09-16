@@ -3,11 +3,13 @@ stages:
   - build
   - test
   - deploy
+  - redhat
 
 # source: packaging/ci.Dockerfile
-image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:CI-2024-09-15
+image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:CI-2024-09-18
 
 variables:
+  RH_REGISTRY: registry.connect.redhat.com/vastdataorg
   DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
   IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:${CI_PIPELINE_ID}
   # source: packaging/base.Dockerfile
@@ -144,17 +146,16 @@ update_github [prod]:  &update_github
   stage: deploy
   only:
     - /^v[\d]\.[\d]+/
-  script: |
-    set -x
-    VERSION=$(cat version.txt)
-
+  before_script: &setup_github_access |
     mkdir ~/.ssh/
     cp $GITHUB_KEY ~/.ssh/id_rsa
     chmod 0600 ~/.ssh/id_rsa
     ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
-    git config --global user.email "ofer.koren@vastdata.com"
-    git config --global user.name "Ofer Koren"
-
+    git config --global user.email "$GITLAB_USER_EMAIL"
+    git config --global user.name "$GITLAB_USER_NAME"
+  script: |
+    set -x
+    VERSION=$(cat version.txt)
     git remote -v
     git remote add github git@github.com:vast-data/vast-csi.git || true
     git fetch github $CI_COMMIT_REF_NAME
@@ -188,12 +189,11 @@ mark_stable:
     - vast-dev-builder
   when: manual
 
-
 # Publish CSI Driver image and CSI Operator image for RedHat certification
 # Note: Images are published to catalog automatically only if "Auto-publish" is enabled in the catalog listing.
 # Otherwise, you need to confirm the publication manually after images scanning.
 publish_image_redhat:
-  stage: deploy
+  stage: redhat
   script: |
     set -x
     export TAG=$(cat version.txt)
@@ -210,6 +210,53 @@ publish_image_redhat:
     export REGISTRY_KEY=${CSI_OPERATOR_REGISTRY_KEY}
     docker pull $SOURCE_IMAGE_ID
     make publish_image_redhat
+  when: manual
+  tags:
+    - vast-dev-builder
+
+
+update_certified_operators:
+  stage: redhat
+  before_script: *setup_github_access
+  script: |
+    set -x  
+    VERSION=$(cat version.txt)
+    
+    export IMG_PULL_SECRET=null
+    export PIPE=null
+    export IMG=${RH_REGISTRY}/csi-operator@sha256
+    export OPERATOR_TAG=$(./scripts/img_to_digest.sh ${IMG}:${VERSION})
+    
+    export CSI_PLUGIN_IMG=${RH_REGISTRY}/csi@sha256
+    export CSI_TAG=$(./scripts/img_to_digest.sh ${CSI_PLUGIN_IMG}:${VERSION})
+    if [ -z "$OPERATOR_TAG" ]; then
+        echo "Error: OPERATOR_TAG is empty."
+        exit 1
+    fi    
+    if [ -z "$CSI_TAG" ]; then
+        echo "Error: CSI_TAG is empty."
+        exit 1
+    fi
+    make operator-bundle-gen
+    
+    git clone git@github.com:vast-data/certified-operators.git
+    DEST=certified-operators/operators/vast-csi-operator/${VERSION}
+    # Check if DEST directory exists
+    if [ -d "$DEST" ]; then
+        FORCE_FLAG="--force"
+    else
+        FORCE_FLAG=""
+    fi    
+    rm -rf $DEST && mkdir -p $DEST    
+    cp -r bundle/manifests $DEST
+    cp -r bundle/metadata $DEST
+    
+    cd certified-operators    
+    git add .
+    git commit -am "VAST CSI Operator - $VERSION
+
+      (from $CI_COMMIT_SHA)"    
+    git push origin main $FORCE_FLAG
   when: manual
   tags:
     - vast-dev-builder
