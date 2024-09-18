@@ -250,7 +250,7 @@ class VmsSession(RESTSession):
             self.delete("/folders/delete_folder/", data={"path": path, "tenant_id": tenant_id})
         except ApiError as e:
             if "no such directory" in e.render():
-                logger.debug(f"Remote directory might have been removed earlier. ({e})")
+                logger.info(f"Remote directory might have been removed earlier. ({e})")
             elif "trash folder disabled" in e.render():
                 raise CannotUseTrashAPI(reason="Trash Folder Access is disabled (see Settings/Cluster/Features in VMS)")
             else:
