@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## Version 2.4.2
+* Support for ARM architecture (VCSI-191)
+* Bug Fix - do not expect VMS credentials in a non-ephemeral mounting flow (VCSI-196)
+
 ## Version 2.4.1
 * Support for multiple Vast Clusters via using StorageClass secrets (VCSI-140) 
 * Set a timeout on requests to VMS, to prevent worker threads hanging (VCSI-183)
