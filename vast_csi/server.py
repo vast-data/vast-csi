@@ -405,7 +405,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
                 vms_session.delete_folder(path, tenant_id)
                 return  # Successfully deleted. Prevent using local mounting
             except OperationNotSupported as exc:
-                logger.debug(f"Trash API not available {exc}")
+                logger.info(f"Trash API not available {exc}")
                 CONF.avoid_trash_api.reset()
 
         logger.info(f"Use local mounting to delete {path}")
