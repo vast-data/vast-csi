@@ -55,22 +55,28 @@ attachRequired: true
 
 image:
   csiVastPlugin:
-    repository: vastdataorg/csi@sha256:a18cf994383111b76b56a60aa2d6b4d40d963e6b02ef5746e806fe8c91e4a0c1
+    repository: null  # User-defined repository; if not provided, falls back to defaultRepository
+    defaultRepository: null  # Overrides repository globally from charts/vastcsi-operator/values.yaml (overrides.csiVastPlugin.repository)
     imagePullPolicy: IfNotPresent
   csiAttacher:
-    repository: registry.k8s.io/sig-storage/csi-attacher@sha256:b4d611100ece2f9bc980d1cb19c2285b8868da261e3b1ee8f45448ab5512ab94
+    repository: null  # User-defined repository; if not provided, falls back to defaultRepository
+    defaultRepository: null  # Overrides repository globally from charts/vastcsi-operator/values.yaml (overrides.csiAttacher.repository)
     imagePullPolicy: IfNotPresent
   csiNodeDriverRegistrar:
-    repository: registry.k8s.io/sig-storage/csi-node-driver-registrar@sha256:f25af73ee708ff9c82595ae99493cdef9295bd96953366cddf36305f82555dac
+    repository: null  # User-defined repository; if not provided, falls back to defaultRepository
+    defaultRepository: null  # Overrides repository globally from charts/vastcsi-operator/values.yaml (overrides.csiNodeDriverRegistrar.repository)
     imagePullPolicy: IfNotPresent
   csiProvisioner:
-    repository: registry.k8s.io/sig-storage/csi-provisioner@sha256:405a14e1aa702f7ea133cea459e8395fe40a6125c088c55569e696d48e1bd385
+    repository: null  # User-defined repository; if not provided, falls back to defaultRepository
+    defaultRepository: null  # Overrides repository globally from charts/vastcsi-operator/values.yaml (overrides.csiProvisioner.repository)
     imagePullPolicy: IfNotPresent
   csiResizer:
-    repository: registry.k8s.io/sig-storage/csi-resizer@sha256:a541e6cc2d8b011bb21b1d4ffec6b090e85270cce6276ee302d86153eec0af43
+    repository: null  # User-defined repository; if not provided, falls back to defaultRepository
+    defaultRepository: null  # Overrides repository globally from charts/vastcsi-operator/values.yaml (overrides.csiResizer.repository)
     imagePullPolicy: IfNotPresent
   csiSnapshotter:
-    repository: registry.k8s.io/sig-storage/csi-snapshotter@sha256:2e04046334baf9be425bb0fa1d04c2d1720d770825eedbdbcdb10d430da4ad8c
+    repository: null  # User-defined repository; if not provided, falls back to defaultRepository
+    defaultRepository: null  # Overrides repository globally from charts/vastcsi-operator/values.yaml (overrides.csiSnapshotter.repository)
     imagePullPolicy: IfNotPresent
 
 ####################

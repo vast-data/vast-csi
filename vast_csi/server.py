@@ -117,7 +117,8 @@ def _validate_capabilities(capabilities):
                 INVALID_ARGUMENT,
                 f"Unsupported access mode: {capability.access_mode.mode} (use {SUPPORTED_ACCESS})",
             )
-
+        if capability.HasField("block"):
+            raise Abort(INVALID_ARGUMENT, "Block access type is not supported")
         if not capability.HasField("mount"):
             pass
         elif not capability.mount.fs_type:

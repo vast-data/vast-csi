@@ -36,7 +36,7 @@ spec:
           {{- toYaml .Values.node.nodeAffinity | nindent 10 }}
       containers:
         - name: csi-node-driver-registrar
-          image: {{ $csi_images.csiNodeDriverRegistrar.repository }}
+          image: {{ $csi_images.csiNodeDriverRegistrar.repository | default $csi_images.csiNodeDriverRegistrar.defaultRepository }}
           args:
 {{- include "vastcsi.commonArgs" . | nindent 12 }}
             - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
@@ -61,7 +61,7 @@ spec:
               mountPath: /registration/
           resources: {{- toYaml .Values.node.resources.nodeDriverRegistrar | nindent 12 }}
         - name: csi-vast-plugin
-          image: {{ $csi_images.csiVastPlugin.repository }}
+          image: {{ $csi_images.csiVastPlugin.repository | default $csi_images.csiVastPlugin.defaultRepository }}
           args:
             - "serve"
           imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default "IfNotPresent" }}
