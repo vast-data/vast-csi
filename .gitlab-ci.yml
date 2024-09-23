@@ -9,17 +9,21 @@ stages:
 image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:CI-2024-09-18
 
 variables:
+  PLATFORMS: "linux/amd64,linux/arm64" # comma-separated list of platforms to build multi-arch images
   RH_REGISTRY: registry.connect.redhat.com/vastdataorg
   DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
   IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:${CI_PIPELINE_ID}
   # source: packaging/base.Dockerfile
-  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2024-09-16
+  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2024-09-21
   ORION_BRANCH: comet/master
 
 build_csi_base:
   stage: build_base
   script: |
-    make push_base_image
+    export IMAGE_TAG=${DOCKER_REGISTRY}/dev/vast-csi-base:$(date +"%Y-%m-%d")
+    export DOCKERFILE=base.Dockerfile
+    make build_image
+    echo "Image $IMAGE_TAG has been built and pushed to the registry. You can now specify it as base image in .gitlab-ci.yml"
   when: manual
   tags:
     - vast-dev-builder
@@ -27,10 +31,6 @@ build_csi_base:
 
 build_csi:
   stage: build
-  variables:
-    IMG: $IMAGE_NAME
-    BASE_IMG: $BASE_IMAGE_NAME
-    LATEST_IMG_TAG: "latest"
   script: |
     set -x
     VERSION=$(cat version.txt)
@@ -39,18 +39,23 @@ build_csi:
       echo "version.txt has $VERSION, while our helm chart has $TAGGED (check charts/vastcsi/values.yaml)"
       exit 5
     fi
-    LATEST=${DOCKER_REGISTRY}/dev/vast-csi:${LATEST_IMG_TAG}
+    LATEST=${DOCKER_REGISTRY}/dev/vast-csi:latest
     if (docker pull $LATEST) ; then
       docker tag $LATEST vast-csi:latest  # the cache-source for our subsequent build
     fi
-    /bin/sh -x packaging/build.sh ${BASE_IMG} # --> vast-csi:dev
-    docker run vast-csi:dev test
-    docker run vast-csi:dev system_info
-    docker tag vast-csi:dev ${IMG}
-    docker tag vast-csi:dev ${LATEST}
-    docker push ${IMG}
-    docker push ${LATEST}
-    echo "pushed ${IMG}"
+    export PLATFORMS=""  # reset global variable (we don't need multi-arch for internal ERC repository)
+    export IMAGE_TAG=$IMAGE_NAME
+    export DOCKERFILE=Dockerfile
+    export CACHE_FROM=vast-csi:latest
+    make build_image
+    make run_csi_sanity
+    
+    docker run $IMAGE_TAG test
+    docker run $IMAGE_TAG system_info
+    docker tag  $IMAGE_TAG $LATEST
+    docker push $IMAGE_TAG
+    docker push $LATEST
+    echo "pushed ${IMAGE_TAG}"
   tags:
     - vast-dev-builder
 
@@ -123,10 +128,11 @@ update_dockerhub [prod]: &update_dockerhub
     if [[ "$CI_ENVIRONMENT_NAME" != "prod" ]]; then
       VERSION=$VERSION-$CI_ENVIRONMENT_NAME-$CI_PIPELINE_ID
     fi
-    RELEASE_NAME=docker.io/vastdataorg/csi:${VERSION}
     docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} $DOCKER_HUB
-    /bin/sh -x packaging/push_multi_arch.sh ${BASE_IMAGE_NAME} ${RELEASE_NAME}
-
+    export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}
+    export DOCKERFILE=Dockerfile
+    export PUSH_ON_SUCCESS=true
+    make build_image
   after_script:
   - docker logout $DOCKER_HUB
   when: manual
@@ -196,20 +202,24 @@ publish_image_redhat:
   stage: redhat
   script: |
     set -x
-    export TAG=$(cat version.txt)
+    docker login -u ${RH_DOCKER_USER} -p ${RH_DOCKER_PASSWORD} registry.redhat.io
+    export VERSION=$(cat version.txt)
+
     # Publish CSI Driver image
-    export SOURCE_IMAGE_ID=${DOCKER_REGISTRY}/dev/vast-csi:${CI_PIPELINE_ID}
     export PROJECT_ID=5f7595a16fd1fbdbe36c0b50
-    export REGISTRY_KEY=${CSI_DRIVER_REGISTRY_KEY}
-    docker pull ${SOURCE_IMAGE_ID}    
-    make publish_image_redhat
+    echo "${CSI_DRIVER_REGISTRY_KEY}" | docker login -u "redhat-isv-containers+${PROJECT_ID}-robot" --password-stdin quay.io
+    export IMAGE_TAG="quay.io/redhat-isv-containers/${PROJECT_ID}:${VERSION}"
+    export DOCKERFILE=Dockerfile
+    make build_image
+    make run_preflight
     
     # Publish CSI Operator image
-    export SOURCE_IMAGE_ID=${DOCKER_REGISTRY}/dev/vast-csi:${CI_PIPELINE_ID}-operator
     export PROJECT_ID=66e6d0dd49f52e86c9d56b1c
-    export REGISTRY_KEY=${CSI_OPERATOR_REGISTRY_KEY}
-    docker pull $SOURCE_IMAGE_ID
-    make publish_image_redhat
+    echo "${CSI_OPERATOR_REGISTRY_KEY}" | docker login -u "redhat-isv-containers+${PROJECT_ID}-robot" --password-stdin quay.io
+    export IMAGE_TAG="quay.io/redhat-isv-containers/${PROJECT_ID}:${VERSION}"
+    export DOCKERFILE=operator.Dockerfile
+    make build_image
+    make run_preflight
   when: manual
   tags:
     - vast-dev-builder

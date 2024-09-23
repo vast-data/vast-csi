@@ -43,10 +43,10 @@ define check_required_env =
 	missing_vars=0; \
 	for var in $(strip $1); do \
 		if [ -z "$${!var}" ]; then \
-			printf "\033[36m%-30s\033[0m \033[31m<missing>\033[0m\n" $$var; \
+			 printf "\033[31m!\033[36m%-30s\033[0m \033[31m<missing>\033[0m\n" $$var; \
 			missing_vars=1; \
 		else \
-		   printf "\033[36m%-30s\033[0m %s\n" $$var "$${!var}"; \
+		   printf "\033[31m!\033[36m%-30s\033[0m %s\n" $$var "$${!var}"; \
 		fi; \
 	done; \
 	if [ $$missing_vars -ne 0 ]; then \
@@ -54,7 +54,17 @@ define check_required_env =
 		exit 1; \
 	fi;
 endef
-.PHONY: check_required_env
+
+# Define the script for checking non-required environment variables (for informational purposes)
+define check_non_required_env =
+    for var in $(strip $1); do \
+        if [ ! -z "$${!var}" ]; then \
+            printf " \033[36m%-30s\033[0m %s\n" $$var "$${!var}"; \
+        fi; \
+    done
+endef
+
+.PHONY: check_required_env check_non_required_env
 
 
 ######################
@@ -73,8 +83,9 @@ operator-push: ## Push operator docker image to docker repository (specified in 
 ######################
 # CSI OPERATOR BUNDLE
 ######################
-operator-bundle-gen: ## Generate bundle manifests and metadata, then validate generated files (NOTE: for prod builds set export IMG_PULL_SECRET=null; export PIPE=null).
-	@$(call check_required_env,IMG CSI_PLUGIN_IMG OPERATOR_TAG CSI_TAG PIPE CHANNEL IMG_PULL_SECRET)
+operator-bundle-gen: ## Generate bundle manifests and metadata, then validate generated files (NOTE: for prod builds IMG_PULL_SECRET and PIPE should be null).
+	@$(call check_required_env,IMG CSI_PLUGIN_IMG OPERATOR_TAG CSI_TAG CHANNEL)
+	@$(call check_non_required_env,IMG_PULL_SECRET PIPE)
 	@$(CURDIR)/packaging/gen-operator-bundle.sh $(CURDIR) $(CHANNEL) \
           --set olmBuild=true \
           --set installSnapshotCRDS=false \
@@ -137,17 +148,18 @@ operator-bundle-clean: ## Cleanup bundle from the configured Kubernetes cluster 
 docker-login-ecr: ## Login to AWS ECR
 	aws ecr get-login-password --region eu-west-1 | docker login --username AWS --password-stdin $(DOCKER_REGISTRY)
 
-push_base_image: ## Push base image (multi ARCH) to the configured Docker registry
-	@$(call check_required_env,DOCKER_REGISTRY)
-	# IMG variable with date tag
-	IMG=${DOCKER_REGISTRY}/dev/vast-csi-base:$(shell date +"%Y-%m-%d") && \
-	echo "Building and pushing base image $$IMG to the registry" && \
-	docker buildx create --use && \
-	docker buildx build --platform linux/amd64,linux/arm64 -t "$$IMG" -f $(CURDIR)/packaging/base.Dockerfile --push . && \
-	echo "Image $$IMG has been built and pushed to the registry. You can now specify it as base image in .gitlab-ci.yml"
+build_image: ## Build (and optionally push) Docker image to the configured Docker registry
+	@$(call check_required_env,IMAGE_TAG DOCKERFILE)
+	@$(call check_non_required_env,BASE_IMAGE_NAME PLATFORMS CACHE_FROM PUSH_ON_SUCCESS)
+	@$(CURDIR)/packaging/build_image.sh
 
-publish_image_redhat:
-	@$(CURDIR)/packaging/publish_to_redhat.sh
+run_preflight: ## Run preflight checks for the operator Red Hat certification
+	@$(call check_required_env,IMAGE_TAG PROJECT_ID)
+	@$(CURDIR)/packaging/run_preflight.sh
+
+run_csi_sanity: ## Run CSI sanity tests
+	@$(call check_required_env,IMAGE_TAG)
+	@$(CURDIR)/packaging/sanity.sh $(IMAGE_TAG)
 
 help: ## Show help
 	@echo "Please specify a build target. The choices are:"
