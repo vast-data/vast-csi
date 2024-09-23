@@ -1,4 +1,4 @@
-{{/*Create chart name and version as used by the chart label.*/}}
+{{/* Create chart name and version as used by the chart label. */}}
 {{- define "vastcsi.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
@@ -12,7 +12,6 @@
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-
 {{/* Common labels */}}
 {{- define "vastcsi.labels" -}}
 helm.sh/chart: {{ include "vastcsi.chart" . }}
@@ -22,7 +21,6 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
-
 
 {{/* Common selectors */}}
 {{- define "vastcsi.selectorLabels" -}}

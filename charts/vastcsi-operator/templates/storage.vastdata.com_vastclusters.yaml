@@ -1,6 +1,6 @@
 {{/* Load and parse the values.schema.yaml file */}}
-{{- $cluster_values := dict "Values" ( .Files.Get "crd-charts/vastcluster/values.yaml"  | trim | fromYaml ) "GlobalValues" .Values -}}
-{{- $cluster_spec := tpl ( .Files.Get "crd-charts/vastcluster/values.schema.yaml" ) $cluster_values | trim | fromYaml -}}
+{{- $cluster_values := dict "Values" (.Files.Get "crd-charts/vastcluster/values.yaml" | trim | fromYaml) "GlobalValues" .Values -}}
+{{- $cluster_spec := tpl (.Files.Get "crd-charts/vastcluster/values.schema.yaml") $cluster_values | trim | fromYaml -}}
 
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -28,8 +28,7 @@ spec:
               type: string
             metadata:
               type: object
-            spec:
-              {{- $cluster_spec.spec | toYaml | nindent 14 }}
+            spec: {{- $cluster_spec.spec | toYamlPretty | nindent 14 }}
             status:
               description: Status defines the observed state of VastCluster
               type: object

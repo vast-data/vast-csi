@@ -15,4 +15,7 @@ COPY LICENSE /licenses/LICENSE
 ENV HOME=/opt/helm
 COPY charts/vastcsi-operator/watches.yaml ${HOME}/watches.yaml
 COPY charts/vastcsi-operator/crd-charts ${HOME}/helm-charts
+
+# Update chart versions
+RUN find ${HOME}/helm-charts -name "Chart.yaml" -exec sed -i.bak "s/^version: .*/version: $VERSION/" {} \;
 WORKDIR ${HOME}

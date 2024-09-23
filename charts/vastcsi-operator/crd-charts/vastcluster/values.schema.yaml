@@ -1,9 +1,9 @@
-description: >- 
-   VastCluster facilitates the creation of a Kubernetes Secret that encapsulates connection details required for accessing a VAST cluster.
-
+description: >
+  VastCluster facilitates the creation of a Kubernetes Secret that encapsulates
+  connection details required for accessing a VAST cluster.
 
 spec:
-  description: Spec defines the desired state of VastCluster
+  description: Spec defines the desired state of VastCluster.
   properties:
     endpoint:
       description: Endpoint or URL of the VAST mgmt host.
@@ -24,19 +24,17 @@ spec:
     - password
   type: object
 
-
 specDescriptors:
   - description: Password used for authentication.
-    displayName: password
+    displayName: Password
     path: password
     x-descriptors:
-      - 'urn:alm:descriptor:com.tectonic.ui:password'
+      - urn:alm:descriptor:com.tectonic.ui:password
   - description: Optional SSL certificate for secure connections.
-    displayName: ssl certificate
+    displayName: SSL Certificate
     path: sslCert
     x-descriptors:
-      - 'urn:alm:descriptor:com.tectonic.ui:password'
-
+      - urn:alm:descriptor:com.tectonic.ui:password
 
 example:
   apiVersion: storage.vastdata.com/v1

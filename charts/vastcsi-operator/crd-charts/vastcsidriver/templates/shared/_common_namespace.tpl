@@ -1,3 +1,3 @@
 {{- define "vastcsi.namespace" -}}
-{{- coalesce $.Release.Namespace "vast-csi" | quote -}}
+{{- quote (coalesce $.Release.Namespace "vast-csi") -}}
 {{- end }}
