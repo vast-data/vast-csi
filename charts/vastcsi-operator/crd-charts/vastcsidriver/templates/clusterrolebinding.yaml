@@ -1,52 +1,27 @@
----
+{{/* ClusterRoleBindings for Vast CSI */}}
 
+{{- $namespace := include "vastcsi.namespace" . }}
+{{- $labels := include "vastcsi.labels" . | nindent 4 }}
+{{- $releaseName := .Release.Name }}
+
+{{- $bindings := (list "provisioner" "attacher" "resizer") }}
+
+{{- range $index, $role := $bindings }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ .Release.Name }}-vast-provisioner-binding
+  name: {{ $releaseName }}-vast-{{ $role }}-binding
   labels:
-    {{- include "vastcsi.labels" . | nindent 4 }}
+    {{- $labels }}
 subjects:
   - kind: ServiceAccount
-    name: {{ .Release.Name }}-vast-controller-sa
-    namespace: {{ include "vastcsi.namespace" . }}
+    name: {{ $releaseName }}-vast-controller-sa
+    namespace: {{ $namespace }}
 roleRef:
   kind: ClusterRole
-  name: {{ .Release.Name }}-vast-provisioner-role
+  name: {{ $releaseName }}-vast-{{ $role }}-role
   apiGroup: rbac.authorization.k8s.io
 
 ---
+{{ end }}
 
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: {{ .Release.Name }}-vast-attacher-binding
-  labels:
-    {{- include "vastcsi.labels" . | nindent 4 }}
-subjects:
-  - kind: ServiceAccount
-    name: {{ .Release.Name }}-vast-controller-sa
-    namespace: {{ include "vastcsi.namespace" . }}
-roleRef:
-  kind: ClusterRole
-  name: {{ .Release.Name }}-vast-attacher-role
-  apiGroup: rbac.authorization.k8s.io
-
----
-
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: {{ .Release.Name }}-resizer-role
-  labels:
-    {{- include "vastcsi.labels" . | nindent 4 }}
-subjects:
-  - kind: ServiceAccount
-    name: {{ .Release.Name }}-vast-controller-sa
-    namespace: {{ include "vastcsi.namespace" . }}
-roleRef:
-  kind: ClusterRole
-  name: {{ .Release.Name }}-external-resizer-runner
-  apiGroup: rbac.authorization.k8s.io
-
----

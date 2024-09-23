@@ -1,6 +1,6 @@
 {{/* Resources description, API spec etc. */}}
-{{- $storage_values := dict "Values" ( .Files.Get "crd-charts/vaststorage/values.yaml"  | trim | fromYaml ) "GlobalValues" .Values -}}
-{{- $storage_spec := tpl ( .Files.Get "crd-charts/vaststorage/values.schema.yaml" ) $storage_values | trim | fromYaml -}}
+{{- $storage_values := dict "Values" (.Files.Get "crd-charts/vaststorage/values.yaml" | trim | fromYaml) "GlobalValues" .Values -}}
+{{- $storage_spec := tpl (.Files.Get "crd-charts/vaststorage/values.schema.yaml") $storage_values | trim | fromYaml -}}
 
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -16,18 +16,18 @@ spec:
   scope: Namespaced
   versions:
     - additionalPrinterColumns:
-      - description: Secret
-        jsonPath: .spec.secretName
-        name: Secret
-        type: string
-      - description: Storage Class
-        jsonPath: .spec.storageClass.name
-        name: StorageClass
-        type: string
-      - description: Snapshot Class
-        jsonPath: .spec.snapshotClass.name
-        name: SnapshotClass
-        type: string
+        - description: Secret
+          jsonPath: .spec.secretName
+          name: Secret
+          type: string
+        - description: Storage Class
+          jsonPath: .spec.storageClass.name
+          name: StorageClass
+          type: string
+        - description: Snapshot Class
+          jsonPath: .spec.snapshotClass.name
+          name: SnapshotClass
+          type: string
       name: v1
       schema:
         openAPIV3Schema:
@@ -41,8 +41,7 @@ spec:
               type: string
             metadata:
               type: object
-            spec:
-              {{- $storage_spec.spec | toYaml | nindent 14 }}
+            spec: {{- $storage_spec.spec | toYamlPretty | nindent 14 }}
             status:
               description: Status defines the observed state of VastStorage
               type: object

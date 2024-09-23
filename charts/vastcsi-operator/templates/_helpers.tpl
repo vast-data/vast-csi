@@ -1,220 +1,216 @@
-
 {{/*
 Create chart name and version as used by the chart label.
 */}}
 {{- define "csi-operator.rbac.proxy" -}}
 - apiGroups:
-  - authentication.k8s.io
+    - authentication.k8s.io
   resources:
-  - tokenreviews
+    - tokenreviews
   verbs:
-  - create
+    - create
 - apiGroups:
-  - authorization.k8s.io
+    - authorization.k8s.io
   resources:
-  - subjectaccessreviews
+    - subjectaccessreviews
   verbs:
-  - create
+    - create
 {{- end }}
-
 
 {{- define "csi-operator.rbac.manager" -}}
 - apiGroups:
-  - ""
+    - ""
   resources:
-  - namespaces
+    - namespaces
   verbs:
-  - get
+    - get
 - apiGroups:
-  - ""
+    - ""
   resources:
-  - secrets
+    - secrets
   verbs:
-  - '*'
+    - '*'
 - apiGroups:
-  - ""
+    - ""
   resources:
-  - events
+    - events
   verbs:
-  - create
+    - create
 - apiGroups:
-  - rbac.authorization.k8s.io
+    - rbac.authorization.k8s.io
   resources:
-  - clusterrolebindings
+    - clusterrolebindings
   verbs:
-  - create
-  - delete
-  - get
-  - list
-  - watch
+    - create
+    - delete
+    - get
+    - list
+    - watch
 - apiGroups:
-  - rbac.authorization.k8s.io
+    - rbac.authorization.k8s.io
   resources:
-  - clusterroles
+    - clusterroles
   verbs:
-  - create
-  - delete
-  - get
-  - list
-  - watch
+    - create
+    - delete
+    - get
+    - list
+    - watch
 - apiGroups:
-  - rbac.authorization.k8s.io
+    - rbac.authorization.k8s.io
   resources:
-  - rolebindings
+    - rolebindings
   verbs:
-  - create
-  - delete
-  - get
-  - list
-  - watch
+    - create
+    - delete
+    - get
+    - list
+    - watch
 - apiGroups:
-  - rbac.authorization.k8s.io
+    - rbac.authorization.k8s.io
   resources:
-  - roles
+    - roles
   verbs:
-  - create
-  - delete
-  - get
-  - list
-  - watch
+    - create
+    - delete
+    - get
+    - list
+    - watch
 - apiGroups:
-  - security.openshift.io
+    - security.openshift.io
   resourceNames:
-  - privileged
-  - hostmount-anyuid
+    - privileged
+    - hostmount-anyuid
   resources:
-  - securitycontextconstraints
+    - securitycontextconstraints
   verbs:
-  - '*'
+    - '*'
 - apiGroups:
-  - storage.vastdata.com
+    - storage.vastdata.com
   resources:
-  - vastcsidrivers
-  - vastcsidrivers/status
-  - vastcsidrivers/finalizers
+    - vastcsidrivers
+    - vastcsidrivers/status
+    - vastcsidrivers/finalizers
   verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
 - apiGroups:
-  - storage.vastdata.com
+    - storage.vastdata.com
   resources:
-  - vaststorages
-  - vaststorages/status
-  - vaststorages/finalizers
+    - vaststorages
+    - vaststorages/status
+    - vaststorages/finalizers
   verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
 - apiGroups:
-  - storage.vastdata.com
+    - storage.vastdata.com
   resources:
-  - vastclusters
-  - vastclusters/status
-  - vastclusters/finalizers
+    - vastclusters
+    - vastclusters/status
+    - vastclusters/finalizers
   verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
 - apiGroups:
-  - storage.k8s.io
+    - storage.k8s.io
   resources:
-  - csidrivers
+    - csidrivers
   verbs:
-  - '*'
+    - '*'
 - apiGroups:
-  - apiextensions.k8s.io
+    - apiextensions.k8s.io
   resources:
-  - customresourcedefinitions
+    - customresourcedefinitions
   verbs:
-  - '*'
+    - '*'
 - apiGroups:
-  - rbac.authorization.k8s.io
+    - rbac.authorization.k8s.io
   resources:
-  - clusterrolebindings
-  - clusterroles
+    - clusterrolebindings
+    - clusterroles
   verbs:
-  - '*'
+    - '*'
 - apiGroups:
-  - ""
+    - ""
   resources:
-  - serviceaccounts
+    - serviceaccounts
   verbs:
-  - '*'
+    - '*'
 - apiGroups:
-  - rbac.authorization.k8s.io
+    - rbac.authorization.k8s.io
   resources:
-  - rolebindings
-  - roles
+    - rolebindings
+    - roles
   verbs:
-  - '*'
+    - '*'
 - apiGroups:
-  - apps
+    - apps
   resources:
-  - daemonsets
-  - deployments
+    - daemonsets
+    - deployments
   verbs:
-  - '*'
+    - '*'
 - apiGroups:
-  - storage.k8s.io
+    - storage.k8s.io
   resources:
-  - storageclasses
+    - storageclasses
   verbs:
-  - '*'
+    - '*'
 - apiGroups:
-  - snapshot.storage.k8s.io
+    - snapshot.storage.k8s.io
   resources:
-  - volumesnapshotclasses
+    - volumesnapshotclasses
   verbs:
-  - '*'
+    - '*'
 - apiGroups:
-  - coordination.k8s.io
+    - coordination.k8s.io
   resources:
-  - leases
+    - leases
   verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - delete
+    - get
+    - list
+    - watch
+    - create
+    - update
+    - delete
 {{- end }}
-
 
 {{- define "csi-operator.rbac.leader-election" -}}
 - apiGroups:
-  - ""
+    - ""
   resources:
-  - configmaps
+    - configmaps
   verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
+    - get
+    - list
+    - watch
+    - create
+    - update
+    - patch
+    - delete
 - apiGroups:
-  - ""
+    - ""
   resources:
-  - events
+    - events
   verbs:
-  - create
-  - patch
+    - create
+    - patch
 {{- end }}
-
 
 {{- define "csi-operator.manager-deployment.spec" -}}
 replicas: 1
@@ -227,44 +223,75 @@ template:
       control-plane: controller-manager
   spec:
     containers:
-    - args:
-      - --secure-listen-address=0.0.0.0:8443
-      - --upstream=http://127.0.0.1:8080/
-      - --logtostderr=true
-      - --v=10
-      image: {{ .Values.proxyImage }}
-      name: kube-rbac-proxy
-      ports:
-      - containerPort: 8443
-        name: https
-    - args:
-      - --metrics-addr=127.0.0.1:8080
-      - --enable-leader-election
-      - --leader-election-id=vast-csi-operator
-      name: csi-vast-operator
-      image: {{ .Values.managerImage | required "Manager image is required" }}
-      imagePullPolicy: Always
-      env:
-        - name: WATCH_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        - name: POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-      resources:
-        limits:
-          cpu: 200m
-          memory: 300Mi
-        requests:
-          cpu: 100m
-          memory: 100Mi
+      - name: kube-rbac-proxy
+        image: {{ .Values.proxyImage }}
+        args:
+          - --secure-listen-address=0.0.0.0:8443
+          - --upstream=http://127.0.0.1:8080/
+          - --logtostderr=true
+          - --v=0
+        ports:
+          - containerPort: 8443
+            name: https
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 5m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+      - name: csi-vast-operator
+        image: {{ .Values.managerImage | required "Manager image is required" }}
+        imagePullPolicy: Always
+        args:
+          - --metrics-addr=127.0.0.1:8080
+          - --enable-leader-election
+          - --leader-election-id=vast-csi-operator
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+        env:
+          - name: WATCH_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
     {{- if .Values.imagePullSecret }}
     imagePullSecrets:
       - name: {{ .Values.imagePullSecret }}
     {{- end }}
+    securityContext:
+      runAsNonRoot: true
     serviceAccountName: vast-csi-driver-operator-controller-manager
-    priorityClassName: "system-cluster-critical"
+    priorityClassName: system-cluster-critical
     terminationGracePeriodSeconds: 10
 {{- end }}

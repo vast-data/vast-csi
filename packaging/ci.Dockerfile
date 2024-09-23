@@ -1,11 +1,14 @@
 FROM docker:latest
 
-RUN apk add --no-cache make curl bash git
+RUN apk add --no-cache make curl bash git go
 
 # Install helm
-RUN curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 \
-    && chmod 700 get_helm.sh \
-    && ./get_helm.sh
+# Need to install on-edge version to have toYamlPretty function. https://github.com/helm/helm/pull/12583
+RUN git clone https://github.com/helm/helm.git \
+    && cd helm \
+    && make install \
+    && cd .. \
+    && rm -rf helm
 
 # Install operator-sdk
 RUN curl -LO https://github.com/operator-framework/operator-sdk/releases/download/v1.11.0/operator-sdk_linux_amd64 \

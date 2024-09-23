@@ -1,21 +1,21 @@
-{{/* Validate  storagePath parameter. Parameter should be not empty string. */}}
+{{/* Validate storagePath parameter. Parameter should not be an empty string. */}}
 {{- $is_default_class := .Values.setDefaultStorageClass | default false | quote -}}
 {{- $storage_path := .Values.storagePath -}}
 {{- if not $storage_path -}}
   {{- fail "storagePath is required value. Please specify valid root export path" -}}
 {{- end }}
 
-{{/* Validate  viewPolicy parameter. Parameter should be not empty string. */}}
+{{/* Validate viewPolicy parameter. Parameter should not be an empty string. */}}
 {{- $view_policy := .Values.viewPolicy -}}
 {{- if not $view_policy -}}
-{{- fail "viewPolicy is required value. Please specify valid policy name" -}}
+  {{- fail "viewPolicy is required value. Please specify valid policy name" -}}
 {{- end }}
 
-{{/* Validate  vipPool and vipPoolFQDN parameters. Only one of them should be provided. */}}
+{{/* Validate vipPool and vipPoolFQDN parameters. Only one of them should be provided. */}}
 {{- $vip_pool_name := .Values.vipPool -}}
 {{- $vip_pool_fqdn := .Values.vipPoolFQDN -}}
 {{- if (and $vip_pool_name $vip_pool_fqdn) -}}
-{{- fail (printf "vipPool and vipPoolFQDN are mutually exclusive in the StorageClass '%s' parameters. Do not set a default value from storageDefaults for either field; choose only one to specify." .Release.Name) -}}
+  {{- fail (printf "vipPool and vipPoolFQDN are mutually exclusive in the StorageClass '%s' parameters. Do not set a default value from storageDefaults for either field; choose only one to specify." .Release.Name) -}}
 {{- end }}
 
 {{- $volume_name_fmt := .Values.volumeNameFormat -}}
@@ -25,17 +25,17 @@
 {{- $reclaim_policy := .Values.reclaimPolicy -}}
 {{- $allow_volume_expansion := .Values.allowVolumeExpansion | quote | mustRegexMatch "true" | ternary true false -}}
 
-{{/* Check secret presense in deployment namespaces and find out */}}
+{{/* Check secret presence in deployment namespaces and find out */}}
 {{- $secret := .Values.clusterName -}}
 {{- $secret_namespace := .Release.Namespace -}}
 
 {{- if not $secret -}}
-{{- fail "clusterName is required value. Please specify valid clusterName" -}}
+  {{- fail "clusterName is required value. Please specify valid clusterName" -}}
 {{- end }}
 
 {{- if .Release.IsInstall -}}
-{{- if not ( lookup "v1" "Secret" $secret_namespace $secret ) -}}
-{{- fail (printf "cluster '%s' doesn't exist in namepsace '%s' or doesn't have underlying secret." .Values.clusterName .Release.Namespace) -}}
+{{- if not (lookup "v1" "Secret" $secret_namespace $secret) -}}
+  {{- fail (printf "cluster '%s' doesn't exist in namespace '%s' or doesn't have underlying secret." .Values.clusterName .Release.Namespace) -}}
 {{- end -}}
 {{- end -}}
 
@@ -48,7 +48,7 @@ metadata:
   annotations:
     storageclass.kubernetes.io/is-default-class: {{ $is_default_class }}
   labels:
-  {{- include "vastcsi.labels" $ | nindent 4 }}
+    {{- include "vastcsi.labels" $ | nindent 4 }}
 reclaimPolicy: {{ $reclaim_policy }}
 parameters:
   root_export: {{ $storage_path }}
@@ -74,6 +74,6 @@ allowVolumeExpansion: {{ $allow_volume_expansion }}
 mountOptions:
   - {{ $mount_options | quote }}
 {{- else }}
-mountOptions: {{ toYaml $mount_options | nindent 2  }}
+mountOptions: {{ toYaml $mount_options | nindent 2 }}
 {{- end }}
 ---

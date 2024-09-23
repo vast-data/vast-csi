@@ -4,17 +4,17 @@
 {{- $snapshot_name_fmt := .Values.snapshotClass.snapshotNameFormat -}}
 {{- $deletion_policy := .Values.snapshotClass.deletionPolicy -}}
 
-{{/* Check secret presense in deployment namespaces and find out */}}
+{{/* Check secret presence in deployment namespaces and find out */}}
 {{- $secret := .Values.clusterName -}}
 {{- $secret_namespace := .Release.Namespace -}}
 
-{{- if not  $secret -}}
+{{- if not $secret -}}
 {{- fail "clusterName is required value. Please specify valid clusterName" -}}
 {{- end }}
 
 {{- if .Release.IsInstall -}}
-{{- if not ( lookup "v1" "Secret" $secret_namespace $secret ) -}}
-{{- fail (printf "cluster '%s' doesn't exist in namepsace '%s' or doesn't have underlying secret." .Values.clusterName .Release.Namespace) -}}
+{{- if not (lookup "v1" "Secret" $secret_namespace $secret) -}}
+{{- fail (printf "cluster '%s' doesn't exist in namespace '%s' or doesn't have underlying secret." .Values.clusterName .Release.Namespace) -}}
 {{- end -}}
 {{- end -}}
 

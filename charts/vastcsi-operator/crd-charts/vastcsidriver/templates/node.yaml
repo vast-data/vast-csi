@@ -9,7 +9,7 @@ metadata:
   name: csi-vast-node
   namespace: {{ include "vastcsi.namespace" . }}
   labels:
-{{- include "vastcsi.labels" . | nindent 4 }}
+{{ include "vastcsi.labels" . | indent 4 }}
     app.kubernetes.io/csi-role: "node"
 spec:
   selector:
@@ -23,7 +23,7 @@ spec:
         role: csi-vast
 {{- include "vastcsi.labels" . | nindent 8 }}
     spec:
-{{- if .Values.imagePullSecrets }}
+      {{- if .Values.imagePullSecrets }}
       imagePullSecrets:
 {{ toYaml .Values.imagePullSecrets | indent 8 }}
       {{- end }}
@@ -40,7 +40,7 @@ spec:
           args:
 {{- include "vastcsi.commonArgs" . | nindent 12 }}
             - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
-          imagePullPolicy: {{ $csi_images.csiNodeDriverRegistrar.imagePullPolicy | default  "IfNotPresent" }}
+          imagePullPolicy: {{ $csi_images.csiNodeDriverRegistrar.imagePullPolicy | default "IfNotPresent" }}
           lifecycle:
             preStop:
               exec:
@@ -64,7 +64,7 @@ spec:
           image: {{ $csi_images.csiVastPlugin.repository }}
           args:
             - "serve"
-          imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default  "IfNotPresent" }}
+          imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default "IfNotPresent" }}
           env:
 {{- include "vastcsi.commonEnv" . | indent 12 }}
             - name: CSI_ENDPOINT
@@ -118,9 +118,9 @@ spec:
         - name: device-dir
           hostPath:
             path: /dev
-       {{- if .Values.node.propagateHostMountOptions }}
-        - hostPath:
+        {{- if .Values.node.propagateHostMountOptions }}
+        - name: host-nfsmount-conf-d
+          hostPath:
             path: /etc/nfsmount.conf.d
             type: DirectoryOrCreate
-          name: host-nfsmount-conf-d
         {{- end }}

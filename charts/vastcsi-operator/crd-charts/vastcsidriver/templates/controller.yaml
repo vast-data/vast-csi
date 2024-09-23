@@ -10,24 +10,24 @@ metadata:
   name: csi-vast-controller
   namespace: {{ include "vastcsi.namespace" . }}
   labels:
-{{- include "vastcsi.labels" . | nindent 4 }}
+    {{- include "vastcsi.labels" . | nindent 4 }}
     app.kubernetes.io/csi-role: "controller"
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: csi-vast-controller
-{{- include "vastcsi.selectorLabels" . | nindent 6 }}
+      {{- include "vastcsi.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
         role: csi-vast
         app: csi-vast-controller
-{{- include "vastcsi.labels" . | nindent 8 }}
+        {{- include "vastcsi.labels" . | nindent 8 }}
     spec:
-{{- if .Values.imagePullSecrets }}
+      {{- if .Values.imagePullSecrets }}
       imagePullSecrets:
-{{ toYaml .Values.imagePullSecrets | indent 8 }}
+        {{ toYaml .Values.imagePullSecrets | indent 8 }}
       {{- end }}
       affinity:
         podAffinity:
@@ -40,7 +40,7 @@ spec:
         - name: csi-provisioner
           image: {{ $csi_images.csiProvisioner.repository }}
           args:
-{{- include "vastcsi.commonArgs" . | nindent 12 }}
+            {{- include "vastcsi.commonArgs" . | nindent 12 }}
             - "--extra-create-metadata"
             - "--timeout={{ .Values.operationTimeout }}s"
             - "--worker-threads={{ .Values.numWorkers }}"
@@ -52,15 +52,16 @@ spec:
           env:
             - name: ADDRESS
               value: {{ $plugin_proxy_sock }}
-          imagePullPolicy: {{ $csi_images.csiProvisioner.imagePullPolicy | default  "IfNotPresent" }}
+          imagePullPolicy: {{ $csi_images.csiProvisioner.imagePullPolicy | default "IfNotPresent" }}
           volumeMounts:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
           resources: {{- toYaml .Values.controller.resources.csiProvisioner | nindent 12 }}
+
         - name: csi-attacher
           image: {{ $csi_images.csiAttacher.repository }}
           args:
-{{- include "vastcsi.commonArgs" . | nindent 12 }}
+            {{- include "vastcsi.commonArgs" . | nindent 12 }}
             - "--timeout={{ .Values.operationTimeout }}s"
             - "--worker-threads={{ .Values.numWorkers }}"
             - "--retry-interval-start={{ .Values.operationRetryIntervalStart }}s"
@@ -71,15 +72,16 @@ spec:
           env:
             - name: ADDRESS
               value: {{ $plugin_proxy_sock }}
-          imagePullPolicy: {{ $csi_images.csiAttacher.imagePullPolicy | default  "IfNotPresent" }}
+          imagePullPolicy: {{ $csi_images.csiAttacher.imagePullPolicy | default "IfNotPresent" }}
           volumeMounts:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
           resources: {{- toYaml .Values.controller.resources.csiAttacher | nindent 12 }}
+
         - name: csi-snapshotter
           image: {{ $csi_images.csiSnapshotter.repository }}
           args:
-{{- include "vastcsi.commonArgs" . | nindent 12 }}
+            {{- include "vastcsi.commonArgs" . | nindent 12 }}
             - "--extra-create-metadata"
             - "--leader-election=false"
             - "--timeout={{ .Values.operationTimeout }}s"
@@ -92,15 +94,16 @@ spec:
           env:
             - name: ADDRESS
               value: {{ $plugin_proxy_sock }}
-          imagePullPolicy: {{ $csi_images.csiSnapshotter.imagePullPolicy | default  "IfNotPresent" }}
+          imagePullPolicy: {{ $csi_images.csiSnapshotter.imagePullPolicy | default "IfNotPresent" }}
           volumeMounts:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
           resources: {{- toYaml .Values.controller.resources.csiSnapshotter | nindent 12 }}
+
         - name: csi-resizer
           image: {{ $csi_images.csiResizer.repository }}
           args:
-{{- include "vastcsi.commonArgs" . | nindent 12 }}
+            {{- include "vastcsi.commonArgs" . | nindent 12 }}
             - "--timeout={{ .Values.operationTimeout }}s"
             - "--workers={{ .Values.numWorkers }}"
             - "--retry-interval-start={{ .Values.operationRetryIntervalStart }}s"
@@ -112,7 +115,7 @@ spec:
           env:
             - name: ADDRESS
               value: {{ $plugin_proxy_sock }}
-          imagePullPolicy: {{ $csi_images.csiResizer.imagePullPolicy | default  "IfNotPresent" }}
+          imagePullPolicy: {{ $csi_images.csiResizer.imagePullPolicy | default "IfNotPresent" }}
           volumeMounts:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
@@ -121,14 +124,14 @@ spec:
           image: {{ $csi_images.csiVastPlugin.repository }}
           args:
             - "serve"
-          imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default  "IfNotPresent" }}
+          imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default "IfNotPresent" }}
           securityContext:
             privileged: true
             capabilities:
               add: ["SYS_ADMIN"]
             allowPrivilegeEscalation: true
           env:
-{{- include "vastcsi.commonEnv" . | indent 12 }}
+            {{- include "vastcsi.commonEnv" . | indent 12 }}
             - name: CSI_ENDPOINT
               value: unix://{{ $plugin_proxy_sock }}
             - name: X_CSI_MODE
@@ -140,19 +143,19 @@ spec:
       hostNetwork: true
       dnsPolicy: {{ .Values.controller.dnsPolicy }}
       nodeSelector:
-{{- if .Values.controller.runOnMaster }}
+        {{- if .Values.controller.runOnMaster }}
         node-role.kubernetes.io/master: ""
         {{- end }}
-{{- if .Values.controller.runOnControlPlane }}
+        {{- if .Values.controller.runOnControlPlane }}
         node-role.kubernetes.io/control-plane: ""
         {{- end }}
-{{- if .Values.controller.nodeSelector }}
-{{ toYaml .Values.controller.nodeSelector | indent 8 }}
-      {{- end }}
+        {{- if .Values.controller.nodeSelector }}
+        {{ toYaml .Values.controller.nodeSelector | indent 8 }}
+        {{- end }}
       priorityClassName: {{ .Values.controller.priorityClassName }}
       serviceAccountName: {{ .Release.Name }}-vast-controller-sa
       tolerations:
-{{ toYaml .Values.controller.tolerations | indent 8 }}
+        {{ toYaml .Values.controller.tolerations | indent 8 }}
       volumes:
         - name: socket-dir
           emptyDir: {}
