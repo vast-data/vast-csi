@@ -4,6 +4,13 @@ set -e
 
 log() { echo -e "\033[92m$(date $DATE_PARAM) >> $@\033[0m" 1>&2; }
 
+# Check if the vast-csi image is provided
+if [ -z "$1" ]; then
+    log "ERROR" "Usage: $0 <vast-csi-image>"
+    exit 1
+fi
+
+VAST_CSI_IMAGE=$1
 export VERSION=v4.3.0
 docker build -t csi-sanity:$VERSION -<<EOF
 FROM golang:latest
@@ -36,8 +43,7 @@ docker run \
     -e X_CSI_SANITY_TEST=yes \
     -e X_CSI_NFS_SERVER=nfs \
     -e X_CSI_NFS_EXPORT=/exports \
-    vast-csi:dev serve &
-
+    $VAST_CSI_IMAGE serve &
 
 # -h \
 
