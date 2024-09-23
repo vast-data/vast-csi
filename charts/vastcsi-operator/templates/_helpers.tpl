@@ -285,6 +285,18 @@ template:
             valueFrom:
               fieldRef:
                 fieldPath: metadata.name
+          - name: RELATED_IMAGE_CSI_DRIVER
+            value: {{ .Values.overrides.csiVastPlugin.repository }}
+          - name: RELATED_IMAGE_CSI_ATTACHER
+            value: {{ .Values.overrides.csiAttacher.repository }}
+          - name: RELATED_IMAGE_CSI_NODE_DRIVER_REGISTRAR
+            value: {{ .Values.overrides.csiNodeDriverRegistrar.repository }}
+          - name: RELATED_IMAGE_CSI_PROVISIONER
+            value: {{ .Values.overrides.csiProvisioner.repository }}
+          - name: RELATED_IMAGE_CSI_RESIZER
+            value: {{ .Values.overrides.csiResizer.repository }}
+          - name: RELATED_IMAGE_CSI_SNAPSHOTTER
+            value: {{ .Values.overrides.csiSnapshotter.repository }}
     {{- if .Values.imagePullSecret }}
     imagePullSecrets:
       - name: {{ .Values.imagePullSecret }}

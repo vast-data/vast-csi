@@ -38,7 +38,7 @@ spec:
           {{- toYaml .Values.controller.nodeAffinity | nindent 10 }}
       containers:
         - name: csi-provisioner
-          image: {{ $csi_images.csiProvisioner.repository }}
+          image: {{ $csi_images.csiProvisioner.repository | default $csi_images.csiProvisioner.defaultRepository }}
           args:
             {{- include "vastcsi.commonArgs" . | nindent 12 }}
             - "--extra-create-metadata"
@@ -59,7 +59,7 @@ spec:
           resources: {{- toYaml .Values.controller.resources.csiProvisioner | nindent 12 }}
 
         - name: csi-attacher
-          image: {{ $csi_images.csiAttacher.repository }}
+          image: {{ $csi_images.csiAttacher.repository | default $csi_images.csiAttacher.defaultRepository }}
           args:
             {{- include "vastcsi.commonArgs" . | nindent 12 }}
             - "--timeout={{ .Values.operationTimeout }}s"
@@ -79,7 +79,7 @@ spec:
           resources: {{- toYaml .Values.controller.resources.csiAttacher | nindent 12 }}
 
         - name: csi-snapshotter
-          image: {{ $csi_images.csiSnapshotter.repository }}
+          image: {{ $csi_images.csiSnapshotter.repository | default $csi_images.csiSnapshotter.defaultRepository }}
           args:
             {{- include "vastcsi.commonArgs" . | nindent 12 }}
             - "--extra-create-metadata"
@@ -101,7 +101,7 @@ spec:
           resources: {{- toYaml .Values.controller.resources.csiSnapshotter | nindent 12 }}
 
         - name: csi-resizer
-          image: {{ $csi_images.csiResizer.repository }}
+          image: {{ $csi_images.csiResizer.repository | default $csi_images.csiResizer.defaultRepository }}
           args:
             {{- include "vastcsi.commonArgs" . | nindent 12 }}
             - "--timeout={{ .Values.operationTimeout }}s"
@@ -121,7 +121,7 @@ spec:
               mountPath: {{ $plugin_proxy_sock_path }}
           resources: {{- toYaml .Values.controller.resources.csiResizer | nindent 12 }}
         - name: csi-vast-plugin
-          image: {{ $csi_images.csiVastPlugin.repository }}
+          image: {{ $csi_images.csiVastPlugin.repository | default $csi_images.csiVastPlugin.defaultRepository }}
           args:
             - "serve"
           imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default "IfNotPresent" }}
