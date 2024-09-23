@@ -62,7 +62,7 @@ truncateVolumeName: 64
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.4.1
+    tag: v2.4.2  # the version of the Vast COSI driver
     imagePullPolicy: IfNotPresent
   objectstorageProvisioner:
     repository: gcr.io/k8s-staging-sig-storage/objectstorage-sidecar/objectstorage-sidecar
