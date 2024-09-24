@@ -1325,6 +1325,12 @@ spec:
             the pod to be eligible to run on a node, the node must have each
             of the indicated key-value pairs as labels.
           type: object
+        tolerations:
+          default: {{ .Values.node.tolerations }}
+          type: array
+          items:
+            type: object
+            description: Tolerations for node pods
         propagateHostMountOptions:
           description: >-
             the default host /etc/nfsmount.d mount configuration directory as source for mount options
