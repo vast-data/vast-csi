@@ -714,11 +714,40 @@ spec:
           description: Whether to run on the master node
           default: {{ .Values.controller.runOnMaster }}
         tolerations:
-          default: {{ .Values.controller.tolerations }}
           type: array
+          default: {{ .Values.controller.tolerations }}
+          description: Tolerations for all the pods deployed by the VASTData CSI Controller.
+            The pod with this toleration attached will tolerate any taint that matches the
+            triple <key,value,effect> using the matching operator <operator>.
           items:
             type: object
-            description: Tolerations for controller pods
+            properties:
+              effect:
+                type: string
+                description: Effect indicates the taint effect to match. Empty means match
+                  all taint effects. When specified, allowed values are NoSchedule,
+                  PreferNoSchedule and NoExecute.
+              key:
+                type: string
+                description: Key is the taint key that the toleration applies to. Empty means
+                  match all taint keys. If the key is empty, operator must be Exists; this
+                  combination means to match all values and all keys.
+              operator:
+                type: string
+                description: Operator represents a key's relationship to the value. Valid
+                  operators are Exists and Equal. Defaults to Equal. Exists is equivalent to
+                  wildcard for value, so that a pod can tolerate all taints of a particular category.
+              value:
+                type: string
+                description: Value is the taint value the toleration matches to. If the operator
+                  is Exists, the value should be empty, otherwise just a regular string.
+              tolerationSeconds:
+                type: integer
+                description: TolerationSeconds represents the period of time the toleration
+                  (which must be of effect NoExecute, otherwise this field is ignored) tolerates
+                  the taint. By default, it is not set, which means tolerate the taint forever
+                  (do not evict). Zero and negative values will be treated as 0 (evict
+                  immediately) by the system.
     # -- Controller -- end ->
     # -- Node -- start ->
     node:
@@ -1326,11 +1355,40 @@ spec:
             of the indicated key-value pairs as labels.
           type: object
         tolerations:
-          default: {{ .Values.node.tolerations }}
           type: array
+          default: {{ .Values.node.tolerations }}
+          description: Tolerations for all the pods deployed by the VASTData CSI Node.
+            The pod with this toleration attached will tolerate any taint that matches the
+            triple <key,value,effect> using the matching operator <operator>.
           items:
             type: object
-            description: Tolerations for node pods
+            properties:
+              effect:
+                type: string
+                description: Effect indicates the taint effect to match. Empty means match
+                  all taint effects. When specified, allowed values are NoSchedule,
+                  PreferNoSchedule and NoExecute.
+              key:
+                type: string
+                description: Key is the taint key that the toleration applies to. Empty means
+                  match all taint keys. If the key is empty, operator must be Exists; this
+                  combination means to match all values and all keys.
+              operator:
+                type: string
+                description: Operator represents a key's relationship to the value. Valid
+                  operators are Exists and Equal. Defaults to Equal. Exists is equivalent to
+                  wildcard for value, so that a pod can tolerate all taints of a particular category.
+              value:
+                type: string
+                description: Value is the taint value the toleration matches to. If the operator
+                  is Exists, the value should be empty, otherwise just a regular string.
+              tolerationSeconds:
+                type: integer
+                description: TolerationSeconds represents the period of time the toleration
+                  (which must be of effect NoExecute, otherwise this field is ignored) tolerates
+                  the taint. By default, it is not set, which means tolerate the taint forever
+                  (do not evict). Zero and negative values will be treated as 0 (evict
+                  immediately) by the system.
         propagateHostMountOptions:
           description: >-
             the default host /etc/nfsmount.d mount configuration directory as source for mount options
