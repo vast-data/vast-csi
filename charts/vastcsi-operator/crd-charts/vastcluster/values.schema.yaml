@@ -1,6 +1,5 @@
 description: >
-  VastCluster facilitates the creation of a Kubernetes Secret that encapsulates
-  connection details required for accessing a VAST cluster.
+  VastCluster encapsulates the connection details required for accessing a VAST cluster. This information is ultimately stored in a Kubernetes Secret.
 
 spec:
   description: Spec defines the desired state of VastCluster.
