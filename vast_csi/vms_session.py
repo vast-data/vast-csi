@@ -314,7 +314,7 @@ class VmsSession(RESTSession):
             return views[0]
 
     def ensure_view(self, path, protocols, view_policy, qos_policy):
-        if not (view := self.get_view(path=str(path))):
+        if not (view := self.get_view(path=str(path), policy=view_policy)):
             view_policy = self.get_view_policy(policy_name=view_policy)
             if qos_policy:
                 qos_policy_id = self.get_qos_policy(qos_policy).id
@@ -421,9 +421,14 @@ class VmsSession(RESTSession):
         """Create new quota"""
         return self.post("quotas", data=data)
 
-    def get_quota(self, volume_id):
-        """Get quota by volume id."""
-        quotas = self.quotas(path__contains=volume_id)
+    def get_quota(self, volume_id=None, path=None, **kwargs):
+        """Get quota by provided query params."""
+        if volume_id:
+            kwargs.update(path__contains=volume_id)
+        elif path:
+            path = path.rstrip("/") or "/"  # for root path
+            kwargs.update(path=path)
+        quotas = self.quotas(**kwargs)
         if not quotas:
             return
         elif len(quotas) > 1:
@@ -432,12 +437,8 @@ class VmsSession(RESTSession):
         else:
             return quotas[0]
 
-    def get_quotas_by_path(self, path):
-        path = path.rstrip("/")
-        return self.quotas(path=path)
-
     def ensure_quota(self, volume_id, view_path, tenant_id, requested_capacity=None):
-        if quota := self.get_quota(view_path):
+        if quota := self.get_quota(path=view_path, tenant_id=tenant_id):
             # Check if volume with provided name but another capacity already exists.
             if requested_capacity and quota.hard_limit != requested_capacity:
                 raise Exception(
