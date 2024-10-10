@@ -635,7 +635,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
         else:
             snapshot = vms_session.get_snapshot(snapshot_id=snapshot_id)
             vms_session.delete_snapshot(snapshot_id)
-            if vms_session.get_quotas_by_path(snapshot.path):
+            if vms_session.get_quota(path=snapshot.path, tenant_id=snapshot.tenant_id):
                 pass  # quotas still exist
             elif vms_session.has_snapshots(snapshot.path):
                 pass  # other snapshots still exist

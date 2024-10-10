@@ -97,7 +97,7 @@ class TestControllerSuite:
         assert vms_session.ensure_view.call_count == 1
         assert vms_session.get_quota.call_count == 1
         assert vms_session.ensure_view.call_args.args == ()
-        assert vms_session.get_quota.call_args.args == ("/foo/bar/test_volume",)
+        assert vms_session.get_quota.call_args.kwargs["path"] == "/foo/bar/test_volume"
 
     @pytest.mark.parametrize("raw_mount_options", [
         "[vers=4 ,  nolock,   proto=tcp,   nconnect=4]",
