@@ -314,7 +314,7 @@ class VmsSession(RESTSession):
             return views[0]
 
     def ensure_view(self, path, protocols, view_policy, qos_policy):
-        if not (view := self.get_view(path=str(path), policy=view_policy)):
+        if not (view := self.get_view(path=str(path), policy__name=view_policy)):
             view_policy = self.get_view_policy(policy_name=view_policy)
             if qos_policy:
                 qos_policy_id = self.get_qos_policy(qos_policy).id
