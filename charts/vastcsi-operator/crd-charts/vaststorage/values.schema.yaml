@@ -1,7 +1,6 @@
 description: >
-  Representation of a Vast storage facilitated by the uniqueness of cluster endpoint, 
-  credentials, tenant identifiers or other attributes. Each VastStorage instance 
-  generates a corresponding StorageClass that can be employed in PVCs to create workloads.
+  Represents VAST storage. Each VastStorage instance generates a corresponding
+  storage class that can be used in PVCs to create workloads.
 
 spec:
   description: Spec defines the desired state of VastStorage.

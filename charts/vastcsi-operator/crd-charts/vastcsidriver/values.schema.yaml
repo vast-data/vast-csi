@@ -1,4 +1,4 @@
-description: VastCSIDriver comprises a common specification for Vast CSI Controller and Vast CSI Node plugins, typically intended for creation in a single instance.
+description: VastCSIDriver is a common specification for VAST CSI Controller and VAST CSI Node plugins, typically intended for creation in a single instance.
 
 
 spec:
@@ -1521,6 +1521,30 @@ spec:
       description:  Use this local IP address for mounting, when the StorageClass does not define a vipPool. This is useful for DPU-based deployments.
       type: string
       default: ""
+    secretName:
+      description: |-
+        Name of the global secret that holds VAST credentials. 
+        For improved granularity per StorageClass, it's advisable to define the secret as a VastStorage CRD.
+      type: string
+      default: {{ .Values.secretName }}
+      deprecated: true
+    endpoint:
+        description: API endpoint of VAST appliance - should be provided by user if "global" secretName is provided.
+        type: string
+        default: {{ .Values.endpoint }}
+        deprecated: true
+    sslCertsSecretName:
+      description: |-
+        Name of the secret that holds the SSL certificates for the VAST appliance.
+        For improved granularity per StorageClass, it's advisable to define the SSL certificate as a part VastStorage CRD.
+      type: string
+      default: {{ .Values.sslCertsSecretName }}
+      deprecated: true
+    sslCert:
+      description: Path (absolute or relative) to SSL certificate for verifying the VAST REST API.
+      type: string
+      default: {{ .Values.sslCert }}
+      deprecated: true
     verifySsl:
       type: boolean
       default: {{ .Values.verifySsl }}
@@ -1793,6 +1817,30 @@ specDescriptors:
   # Hidden fields. The field(s) will be hidden on the UI but can still be accessed through the YAML editor.
   # Delete "hidden" descriptor if you think field should be visible.
   - description: |-
+      Name of the global secret that holds VAST credentials. 
+      For improved granularity per StorageClass, it's advisable to define the secret as a VastStorage CRD.
+    displayName: secretName
+    path: secretName
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:hidden'
+  - description: API endpoint of VAST appliance - should be provided by user if "global" secretName is provided.
+    displayName: endpoint
+    path: endpoint
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:hidden'
+  - description: |-
+      Name of the secret that holds the SSL certificates for the VAST appliance.
+      For improved granularity per StorageClass, it's advisable to define the SSL certificate as a part VastStorage CRD.
+    displayName: sslCertsSecretName
+    path: sslCertsSecretName
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:hidden'
+  - description: Path (absolute or relative) to SSL certificate for verifying the VAST REST API.
+    displayName: sslCert
+    path: sslCert
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:hidden'
+  - description: |-
       Indicates this CSI driver requires an attachment operation as it implements the ControllerPublishVolume
       if set to false, the driver will perform ControllerPublishVolume as a part of NodePublishVolume op
       which might speed up the volume attach operation significantly but not appropriate for workload nodes where
@@ -1944,5 +1992,8 @@ example:
     truncateVolumeName: {{ .Values.truncateVolumeName }}
     useLocalIpForMount: {{ .Values.useLocalIpForMount }}
     verifySsl: {{ .Values.verifySsl }}
+    secretName: {{ .Values.secretName }}
+    endpoint: {{ .Values.endpoint }}
+    sslCertsSecretName: {{ .Values.sslCertsSecretName }}
     attachRequired: {{ .Values.attachRequired }}
     applySecurityContextConstraints: {{ .Values.applySecurityContextConstraints }}
