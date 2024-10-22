@@ -3,6 +3,8 @@
 {{- $csi_images := .Values.image -}}
 {{- $plugin_proxy_sock := "/var/lib/csi/sockets/pluginproxy/csi.sock" -}}
 {{- $plugin_proxy_sock_path := "/var/lib/csi/sockets/pluginproxy/" -}}
+{{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
+
 
 apiVersion: apps/v1
 kind: Deployment
@@ -139,6 +141,7 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
+          {{- include "vastcsi.vmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 12 }}
           resources: {{- toYaml .Values.controller.resources.csiVastPlugin | nindent 12 }}
       hostNetwork: true
       dnsPolicy: {{ .Values.controller.dnsPolicy }}
@@ -159,3 +162,4 @@ spec:
       volumes:
         - name: socket-dir
           emptyDir: {}
+        {{- include "vastcsi.vmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}
