@@ -1,0 +1,130 @@
+{{/* Vast CSI Node */}}
+
+{{- $csi_images := .Values.image -}}
+{{- $kubelet_path := .Values.kubeletPath | default "/var/lib/kubelet" | trimSuffix "/" }}
+{{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
+
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: csi-vast-node
+  namespace: {{ include "vastcsi.namespace" . }}
+  labels:
+{{ include "vastcsi.labels" . | indent 4 }}
+    app.kubernetes.io/csi-role: "node"
+spec:
+  selector:
+    matchLabels:
+      app: "csi-vast-node"
+{{- include "vastcsi.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: csi-vast-node
+        role: csi-vast
+{{- include "vastcsi.labels" . | nindent 8 }}
+    spec:
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
+      {{- end }}
+      affinity:
+        podAffinity:
+          {{- toYaml .Values.node.podAffinity | nindent 10 }}
+        podAntiAffinity:
+          {{- toYaml .Values.node.podAntiAffinity | nindent 10 }}
+        nodeAffinity:
+          {{- toYaml .Values.node.nodeAffinity | nindent 10 }}
+      containers:
+        - name: csi-node-driver-registrar
+          image: {{ $csi_images.csiNodeDriverRegistrar.repository | default $csi_images.csiNodeDriverRegistrar.defaultRepository }}
+          args:
+{{- include "vastcsi.commonArgs" . | nindent 12 }}
+            - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
+          imagePullPolicy: {{ $csi_images.csiNodeDriverRegistrar.imagePullPolicy | default "IfNotPresent" }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm -rf /registration/csi.vastdata.com /registration/csi.vastdata.com-reg.sock"]
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+            - name: DRIVER_REG_SOCK_PATH
+              value: {{ $kubelet_path }}/plugins/csi.vastdata.com/csi.sock
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi/
+            - name: registration-dir
+              mountPath: /registration/
+          resources: {{- toYaml .Values.node.resources.nodeDriverRegistrar | nindent 12 }}
+        - name: csi-vast-plugin
+          image: {{ $csi_images.csiVastPlugin.repository | default $csi_images.csiVastPlugin.defaultRepository }}
+          args:
+            - "serve"
+          imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default "IfNotPresent" }}
+          env:
+{{- include "vastcsi.commonEnv" . | indent 12 }}
+            - name: CSI_ENDPOINT
+              value: unix:///csi/csi.sock
+            - name: X_CSI_MODE
+              value: node
+            - name: X_CSI_NODE_ID
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+          securityContext:
+            privileged: true
+            capabilities:
+              add: ["SYS_ADMIN"]
+            allowPrivilegeEscalation: true
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: pods-mount-dir
+              mountPath: {{ $kubelet_path }}
+              mountPropagation: "Bidirectional"
+            - name: device-dir
+              mountPath: /dev
+          {{- if .Values.node.propagateHostMountOptions }}
+            - name: host-nfsmount-conf-d
+              mountPath: /etc/nfsmount.conf.d
+          {{- end }}
+          {{- include "vastcsi.vmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 12 }}
+          resources: {{- toYaml .Values.node.resources.csiVastPlugin | nindent 12 }}
+      hostNetwork: true
+      dnsPolicy: {{ .Values.node.dnsPolicy }}
+      nodeSelector:
+{{ toYaml .Values.node.nodeSelector | indent 8 }}
+      priorityClassName: {{ .Values.node.priorityClassName }}
+      serviceAccountName: {{ .Release.Name }}-vast-node-sa
+      tolerations:
+{{ toYaml .Values.node.tolerations | indent 8 }}
+      volumes:
+        - name: registration-dir
+          hostPath:
+            path: {{ $kubelet_path }}/plugins_registry/
+            type: DirectoryOrCreate
+        - name: plugin-dir
+          hostPath:
+            path: {{ $kubelet_path }}/plugins/csi.vastdata.com
+            type: DirectoryOrCreate
+        - name: pods-mount-dir
+          hostPath:
+            path: {{ $kubelet_path }}
+            type: Directory
+        - name: device-dir
+          hostPath:
+            path: /dev
+        {{- include "vastcsi.vmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}
+        {{- if .Values.node.propagateHostMountOptions }}
+        - name: host-nfsmount-conf-d
+          hostPath:
+            path: /etc/nfsmount.conf.d
+            type: DirectoryOrCreate
+        {{- end }}

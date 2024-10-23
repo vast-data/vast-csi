@@ -1,75 +1,11 @@
-from collections import defaultdict
-import threading
 import re
-import requests
-import json
+from datetime import datetime
+from ipaddress import summarize_address_range, ip_address
+from requests.exceptions import HTTPError  # noqa
 
-from pprint import pformat
 from plumbum import local
 from easypy.caching import locking_cache
-from easypy.bunch import Bunch
-
-from . logging import logger
-
-LOCKS = defaultdict(lambda: threading.Lock())
-
-
-class ApiError(Exception):
-    pass
-
-
-class RESTSession(requests.Session):
-
-    def __init__(self, *args, auth, base_url, ssl_verify, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.base_url = base_url.rstrip("/")
-        self.ssl_verify = ssl_verify
-        self.auth = auth
-        self.headers["Accept"] = "application/json"
-        self.headers["Content-Type"] = "application/json"
-
-    def request(self, verb, api_method, *, params=None, **kwargs):
-        verb = verb.upper()
-        api_method = api_method.strip("/")
-        url = f"{self.base_url}/{api_method}/"
-        logger.info(f">>> [{verb}] {url}")
-
-        if 'data' in kwargs:
-            kwargs['data'] = json.dumps(kwargs['data'])
-
-        if params or kwargs:
-            for line in pformat(dict(kwargs, params=params)).splitlines():
-                logger.info(f"    {line}")
-
-        ret = super().request(verb, url, verify=self.ssl_verify, params=params, **kwargs)
-
-        if ret.status_code == 503 and ret.text:
-            logger.error(ret.text)
-            raise ApiError(ret.text)
-
-        ret.raise_for_status()
-
-        logger.info(f"<<< [{verb}] {url}")
-        if ret.content:
-            ret = Bunch.from_dict(ret.json())
-            for line in pformat(ret).splitlines():
-                logger.info(f"    {line}")
-        else:
-            ret = None
-        logger.info(f"--- [{verb}] {url}: Done")
-        return ret
-
-    def __getattr__(self, attr):
-        if attr.startswith("_"):
-            raise AttributeError(attr)
-
-        def func(**params):
-            return self.request("get", attr, params=params)
-
-        func.__name__ = attr
-        func.__qualname__ = f"{self.__class__.__qualname__}.{attr}"
-        setattr(self, attr, func)
-        return func
+from . import csi_types as types
 
 
 PATH_ALIASES = {
@@ -161,3 +97,46 @@ def nice_format_traceback(self):
 def patch_traceback_format():
     from traceback import StackSummary
     orig_format_traceback, StackSummary.format = StackSummary.format, nice_format_traceback
+
+
+def normalize_mount_options(mount_options: str):
+    """Convert mount options to list if mount options were provided as string on StorageClass parameters level."""
+    s = mount_options.strip()
+    mount_options = list({p for p in s.split(",") if p})
+    return mount_options
+
+
+def string_to_proto_timestamp(str_ts: str):
+    """Convert string to protobuf.Timestamp"""
+    t = datetime.fromisoformat(str_ts.rstrip("Z")).timestamp()
+    return types.Timestamp(seconds=int(t), nanos=int(t % 1 * 1e9))
+
+
+def is_ver_nfs4_present(mount_options: str) -> bool:
+    """Check if vers=4 or nfsvers=4 mount option is present in `mount_options` string"""
+    for opt in mount_options.split(","):
+        name, sep, value = opt.partition("=")
+        if name in ("vers", "nfsvers") and value.startswith("4"):
+            return True
+    return False
+
+
+def generate_ip_range(ip_ranges):
+    """
+    Generate list of ips from provided ip ranges.
+    `ip_ranges` should be list of ranges where fist ip in range represents start ip and second is end ip
+    eg: [["15.0.0.1", "15.0.0.4"], ["10.0.0.27", "10.0.0.30"]]
+    """
+    return [
+        ip.compressed
+        for start_ip, end_ip in ip_ranges for net in summarize_address_range(ip_address(start_ip), ip_address(end_ip))
+        for ip in net
+    ]
+
+
+def is_valid_ip(ip_str):
+    try:
+        ip_address(ip_str)
+        return True
+    except ValueError:
+        return False

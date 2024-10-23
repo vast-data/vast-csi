@@ -1,0 +1,35 @@
+# ReadOnly mode. Volume is pointed directly to snapshot.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hpvc-restore-1
+spec:
+  storageClassName: csi-vast-sc
+  dataSource:
+    name: new-snapshot-demo
+    kind: VolumeSnapshot
+    apiGroup: snapshot.storage.k8s.io
+  accessModes:
+    - ReadOnlyMany
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+
+# ReadWrite mode. Snapshot data is fully replicated to VAST view folder via intermediate GlobalSnapshotStream.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hpvc-restore-2
+spec:
+  storageClassName: csi-vast-sc
+  dataSource:
+    name: new-snapshot-demo
+    kind: VolumeSnapshot
+    apiGroup: snapshot.storage.k8s.io
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

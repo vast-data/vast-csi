@@ -1,0 +1,4 @@
+description: |-
+    The VAST Data CSI Driver enables users to provision, manage, and scale volumes directly from VAST’s high-performance storage system. The VAST Data CSI Operator manages the driver's lifecycle, including installation, upgrade, and configuration.
+    ### Installation
+    Refer to the VASTData Operator for Kubernetes [official documentation]({{- .GlobalValues.operatorDocs -}}).

@@ -1,0 +1,40 @@
+{{/* Load and parse the values.schema.yaml file */}}
+{{- $cluster_values := dict "Values" (.Files.Get "crd-charts/vastcluster/values.yaml" | trim | fromYaml) "GlobalValues" .Values -}}
+{{- $cluster_spec := tpl (.Files.Get "crd-charts/vastcluster/values.schema.yaml") $cluster_values | trim | fromYaml -}}
+
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: vastclusters.storage.vastdata.com
+spec:
+  group: storage.vastdata.com
+  names:
+    kind: VastCluster
+    listKind: VastClusterList
+    plural: vastclusters
+    singular: vastcluster
+  scope: Namespaced
+  versions:
+    - name: v1
+      schema:
+        openAPIV3Schema:
+          description: VastCluster is the Schema for the vastclusters API
+          properties:
+            apiVersion:
+              description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+              type: string
+            kind:
+              description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+              type: string
+            metadata:
+              type: object
+            spec: {{- $cluster_spec.spec | toYamlPretty | nindent 14 }}
+            status:
+              description: Status defines the observed state of VastCluster
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+          type: object
+      served: true
+      storage: true
+      subresources:
+        status: {}

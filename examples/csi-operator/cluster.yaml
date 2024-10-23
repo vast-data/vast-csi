@@ -1,0 +1,9 @@
+apiVersion: storage.vastdata.com/v1
+kind: VastCluster
+metadata:
+  name: cluster
+  namespace: vast-csi
+spec:
+  endpoint: 10.27.113.27
+  username: admin
+  password: "123456"

@@ -1,0 +1,11 @@
+apiVersion: v2
+description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
+keywords:
+  - vast
+  - csi
+  - driver
+  - vastdata
+  - csi-driver
+name: vastcluster
+type: application
+version: 0.1.0

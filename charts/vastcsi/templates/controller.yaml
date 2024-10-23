@@ -1,0 +1,163 @@
+{{/* Vast CSI Controller */}}
+
+{{- $csi_images := .Values.image -}}
+{{- $plugin_proxy_sock := "/var/lib/csi/sockets/pluginproxy/csi.sock" -}}
+{{- $plugin_proxy_sock_path := "/var/lib/csi/sockets/pluginproxy/" -}}
+{{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: csi-vast-controller
+  namespace: {{ include "vastcsi.namespace" . }}
+  labels:
+{{- include "vastcsi.labels" . | nindent 4 }}
+    app.kubernetes.io/csi-role: "controller"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: csi-vast-controller
+{{- include "vastcsi.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+      labels:
+        role: csi-vast
+        app: csi-vast-controller
+{{- include "vastcsi.labels" . | nindent 8 }}
+    spec:
+{{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
+      {{- end }}
+      affinity:
+        podAffinity:
+          {{- toYaml .Values.controller.podAffinity | nindent 10 }}
+        podAntiAffinity:
+          {{- toYaml .Values.controller.podAntiAffinity | nindent 10 }}
+        nodeAffinity:
+          {{- toYaml .Values.controller.nodeAffinity | nindent 10 }}
+      containers:
+        - name: csi-provisioner
+          image: {{ printf "%s:%s" $csi_images.csiProvisioner.repository (toString $csi_images.csiProvisioner.tag) }}
+          args:
+{{- include "vastcsi.commonArgs" . | nindent 12 }}
+            - "--extra-create-metadata"
+            - "--timeout={{ .Values.operationTimeout }}s"
+            - "--worker-threads={{ .Values.numWorkers }}"
+            - "--retry-interval-start={{ .Values.operationRetryIntervalStart }}s"
+            - "--retry-interval-max={{ .Values.operationRetryIntervalMax }}s"
+            {{- range .Values.controller.extraArgs.csiProvisioner }}
+            - "--{{ . }}"
+            {{- end }}
+          env:
+            - name: ADDRESS
+              value: {{ $plugin_proxy_sock }}
+          imagePullPolicy: {{ $csi_images.csiProvisioner.imagePullPolicy | default  "IfNotPresent" }}
+          volumeMounts:
+            - name: socket-dir
+              mountPath: {{ $plugin_proxy_sock_path }}
+          resources: {{- toYaml .Values.controller.resources.csiProvisioner | nindent 12 }}
+        - name: csi-attacher
+          image: {{ printf "%s:%s" $csi_images.csiAttacher.repository (toString $csi_images.csiAttacher.tag) }}
+          args:
+{{- include "vastcsi.commonArgs" . | nindent 12 }}
+            - "--timeout={{ .Values.operationTimeout }}s"
+            - "--worker-threads={{ .Values.numWorkers }}"
+            - "--retry-interval-start={{ .Values.operationRetryIntervalStart }}s"
+            - "--retry-interval-max={{ .Values.operationRetryIntervalMax }}s"
+            {{- range .Values.controller.extraArgs.csiAttacher }}
+            - "--{{ . }}"
+            {{- end }}
+          env:
+            - name: ADDRESS
+              value: {{ $plugin_proxy_sock }}
+          imagePullPolicy: {{ $csi_images.csiAttacher.imagePullPolicy | default  "IfNotPresent" }}
+          volumeMounts:
+            - name: socket-dir
+              mountPath: {{ $plugin_proxy_sock_path }}
+          resources: {{- toYaml .Values.controller.resources.csiAttacher | nindent 12 }}
+        - name: csi-snapshotter
+          image: {{ printf "%s:%s" $csi_images.csiSnapshotter.repository (toString $csi_images.csiSnapshotter.tag) }}
+          args:
+{{- include "vastcsi.commonArgs" . | nindent 12 }}
+            - "--extra-create-metadata"
+            - "--leader-election=false"
+            - "--timeout={{ .Values.operationTimeout }}s"
+            - "--worker-threads={{ .Values.numWorkers }}"
+            - "--retry-interval-start={{ .Values.operationRetryIntervalStart }}s"
+            - "--retry-interval-max={{ .Values.operationRetryIntervalMax }}s"
+            {{- range .Values.controller.extraArgs.csiSnapshotter }}
+            - "--{{ . }}"
+            {{- end }}
+          env:
+            - name: ADDRESS
+              value: {{ $plugin_proxy_sock }}
+          imagePullPolicy: {{ $csi_images.csiSnapshotter.imagePullPolicy | default  "IfNotPresent" }}
+          volumeMounts:
+            - name: socket-dir
+              mountPath: {{ $plugin_proxy_sock_path }}
+          resources: {{- toYaml .Values.controller.resources.csiSnapshotter | nindent 12 }}
+        - name: csi-resizer
+          image: {{ printf "%s:%s" $csi_images.csiResizer.repository (toString $csi_images.csiResizer.tag) }}
+          args:
+{{- include "vastcsi.commonArgs" . | nindent 12 }}
+            - "--timeout={{ .Values.operationTimeout }}s"
+            - "--workers={{ .Values.numWorkers }}"
+            - "--retry-interval-start={{ .Values.operationRetryIntervalStart }}s"
+            - "--retry-interval-max={{ .Values.operationRetryIntervalMax }}s"
+            - "--handle-volume-inuse-error=false"
+            {{- range .Values.controller.extraArgs.csiResizer }}
+            - "--{{ . }}"
+            {{- end }}
+          env:
+            - name: ADDRESS
+              value: {{ $plugin_proxy_sock }}
+          imagePullPolicy: {{ $csi_images.csiResizer.imagePullPolicy | default  "IfNotPresent" }}
+          volumeMounts:
+            - name: socket-dir
+              mountPath: {{ $plugin_proxy_sock_path }}
+          resources: {{- toYaml .Values.controller.resources.csiResizer | nindent 12 }}
+        - name: csi-vast-plugin
+          image: {{ printf "%s:%s" $csi_images.csiVastPlugin.repository (toString $csi_images.csiVastPlugin.tag) }}
+          args:
+            - "serve"
+          imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default  "IfNotPresent" }}
+          securityContext:
+            privileged: true
+            capabilities:
+              add: ["SYS_ADMIN"]
+            allowPrivilegeEscalation: true
+          env:
+{{- include "vastcsi.commonEnv" . | indent 12 }}
+            - name: CSI_ENDPOINT
+              value: unix://{{ $plugin_proxy_sock }}
+            - name: X_CSI_MODE
+              value: controller
+          volumeMounts:
+            - name: socket-dir
+              mountPath: {{ $plugin_proxy_sock_path }}
+{{- include "vastcsi.vmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 12 }}
+          resources: {{- toYaml .Values.controller.resources.csiVastPlugin | nindent 12 }}
+      hostNetwork: true
+      dnsPolicy: {{ .Values.controller.dnsPolicy }}
+      nodeSelector:
+{{- if .Values.controller.runOnMaster}}
+        node-role.kubernetes.io/master: ""
+        {{- end }}
+{{- if .Values.controller.runOnControlPlane }}
+        node-role.kubernetes.io/control-plane: ""
+        {{- end }}
+{{- if .Values.controller.nodeSelector }}
+{{ toYaml .Values.controller.nodeSelector | indent 8 }}
+      {{- end }}
+      priorityClassName: {{ .Values.controller.priorityClassName }}
+      serviceAccountName: {{ .Release.Name }}-vast-controller-sa
+      tolerations:
+{{ toYaml .Values.controller.tolerations | indent 8 }}
+      volumes:
+        - name: socket-dir
+          emptyDir: {}
+{{- include "vastcsi.vmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}

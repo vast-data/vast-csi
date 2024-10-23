@@ -1,0 +1,16 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: csi-vast-sc
+provisioner: csi.vastdata.com
+parameters:
+  vip_pool_name: vippool-1
+  root_export: /k8s
+  view_policy: default
+  volume_name_fmt: csi:{namespace}:{name}:{id}
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+mountOptions:
+  - nolock
+  - vers=4

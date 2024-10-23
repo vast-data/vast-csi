@@ -1,0 +1,13 @@
+{{- if ne (toString .Values.olmBuild) "true" }}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    control-plane: controller-manager
+  name: vast-csi-operator-controller-manager
+  namespace: {{ .Values.namespace | default .Release.Namespace | quote }}
+spec:
+{{- include "csi-operator.manager-deployment.spec" . | nindent 2 }}
+
+{{- end -}}

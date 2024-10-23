@@ -1,0 +1,92 @@
+{{/* Generate one or more storage classes from 'storageClasses' section. */}}
+
+{{- if not .Values.storageClasses -}}
+  {{- fail "`storageClasses` cannot be empty section. Specify at least one StorageClass with required parameters (vipPolicy, storagePath etc)" -}}
+{{- end -}}
+
+{{/* Iterate over StorageClasses from manifest */}}
+{{- range $name, $options := .Values.storageClasses }}
+
+{{/* Validate  setDefaultStorageClass option. Options should be either true or false */}}
+{{-
+    $is_default_class := pluck "setDefaultStorageClass" $options $.Values.storageClassDefaults | first | quote
+-}}
+{{- if not (or (kindIs "bool" $is_default_class ) ( $is_default_class | mustRegexMatch "true|false" )) -}}
+  {{- fail "setDefaultStorageClass should be either 'true' or 'false'" -}}
+{{- end }}
+
+{{/* Validate  storagePath parameter. Parameter should be not empty string. */}}
+{{- $storage_path := pluck "storagePath" $options $.Values.storageClassDefaults | first | quote -}}
+{{- if eq $storage_path ( quote "" ) -}}
+  {{- fail "storagePath is required value. Please specify valid root export path" -}}
+{{- end }}
+
+{{/* Validate  viewPolicy parameter. Parameter should be not empty string. */}}
+{{- $view_policy := pluck "viewPolicy" $options $.Values.storageClassDefaults | first | quote -}}
+{{- if eq $view_policy ( quote "" ) -}}
+{{- fail "viewPolicy is required value. Please specify valid policy name" -}}
+{{- end }}
+
+{{- $vip_pool_name := pluck "vipPool" $options $.Values.storageClassDefaults | first | quote -}}
+{{- $vip_pool_fqdn := pluck "vipPoolFQDN" $options $.Values.storageClassDefaults | first | quote -}}
+
+{{- if and (ne $vip_pool_name ( quote "" )) (ne $vip_pool_fqdn ( quote "" )) -}}
+{{- fail (printf "vipPool and vipPoolFQDN are mutually exclusive in the StorageClass '%s' parameters. Do not set a default value from storageDefaults for either field; choose only one to specify." $name) -}}
+{{- end }}
+
+{{- $volume_name_fmt := pluck "volumeNameFormat" $options $.Values.storageClassDefaults | first | quote -}}
+{{- $eph_volume_name_fmt := pluck "ephemeralVolumeNameFormat" $options $.Values.storageClassDefaults | first | quote -}}
+{{- $qos_policy :=  pluck "qosPolicy" $options $.Values.storageClassDefaults | first | quote -}}
+{{- $mount_options :=  pluck "mountOptions" $options $.Values.storageClassDefaults | first -}}
+{{- $reclaim_policy :=  pluck "reclaimPolicy" $options $.Values.storageClassDefaults | first | quote -}}
+{{-
+   $allow_volume_expansion := pluck "allowVolumeExpansion" $options $.Values.storageClassDefaults |
+   first | quote | mustRegexMatch "true" | ternary true false
+-}}
+
+{{- $storage_class_secret := pluck "secretName" $options $.Values.storageClassDefaults | first | quote -}}
+{{/* Get secretNamespace parameter. If not provided .Release.Namespace is used. */}}
+{{- $storage_class_secret_namespace := pluck "secretNamespace" $options $.Values.storageClassDefaults | first | default $.Release.Namespace | quote -}}
+
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+provisioner: csi.vastdata.com
+metadata:
+  name: {{ required "A StorageClass name must be not empty" $name }}
+  namespace: {{ include "vastcsi.namespace" $ }}
+  annotations:
+    storageclass.kubernetes.io/is-default-class: {{ $is_default_class }}
+  labels:
+  {{- include "vastcsi.labels" $ | nindent 4 }}
+reclaimPolicy: {{ $reclaim_policy }}
+parameters:
+  root_export: {{ $storage_path }}
+  view_policy: {{ $view_policy }}
+  lb_strategy: "roundrobin" # deprecated; this is here for backwards compatibility, so users don't have to delete their helm deployment and reinstall (since StorageClass is immutable)
+  volume_name_fmt: {{ $volume_name_fmt }}
+  eph_volume_name_fmt: {{ $eph_volume_name_fmt }}
+{{- range $key, $value := dict "vip_pool_name" $vip_pool_name "vip_pool_fqdn" $vip_pool_fqdn "qos_policy" $qos_policy }}
+  {{- if and $value (ne $value ( quote "" )) }}
+  {{ $key }}: {{ if (kindIs "int" $value) }}{{ $value | quote }}{{ else }}{{ $value }}{{ end }}
+  {{- end }}
+{{- end }}
+{{-  if ne $storage_class_secret ( quote "" ) }}
+  csi.storage.k8s.io/provisioner-secret-name: {{ $storage_class_secret }}
+  csi.storage.k8s.io/provisioner-secret-namespace: {{ $storage_class_secret_namespace }}
+  csi.storage.k8s.io/controller-publish-secret-name: {{ $storage_class_secret }}
+  csi.storage.k8s.io/controller-publish-secret-namespace: {{ $storage_class_secret_namespace }}
+  csi.storage.k8s.io/node-publish-secret-name: {{ $storage_class_secret }}
+  csi.storage.k8s.io/node-publish-secret-namespace: {{ $storage_class_secret_namespace }}
+  csi.storage.k8s.io/controller-expand-secret-name: {{ $storage_class_secret }}
+  csi.storage.k8s.io/controller-expand-secret-namespace: {{ $storage_class_secret_namespace }}
+{{- end }}
+allowVolumeExpansion: {{ $allow_volume_expansion }}
+{{- if kindIs "string" $mount_options -}}
+{{/* Keep option to specify mountOptions as string for backward compatibility */}}
+mountOptions:
+  - {{ $mount_options | quote }}
+{{- else }}
+mountOptions: {{ toYaml $mount_options | nindent 2  }}
+{{- end }}
+---
+{{- end }}

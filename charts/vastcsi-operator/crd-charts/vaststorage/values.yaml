@@ -1,0 +1,51 @@
+####################
+# COMMON
+####################
+
+# Reference to installed VastCluster CRD
+clusterName: ""
+
+####################
+# VAST CSI STORAGE CLASS OPTIONS
+####################
+
+# Where volumes will be located on VAST - must be provided by user
+storagePath: ""
+# Name of VAST VIP pool to use - must be provided by user
+vipPool: ""
+# The FQDN of the VIP pool to use. Must specify either vipPool or vipPoolFQDN.
+# Using a DNS skips an API call to the VMS for obtaining a random VIP from the vipPool, leading to faster volume mounting.
+# NOTE: The driver will prepend the FQDN with a random prefix, which forces the NFS client to resolve into a different VIP,
+# thereby distributing the load across the entire range of the VIP pool.
+vipPoolFQDN: ""
+# VAST policy name to create views - must be provided by user
+viewPolicy: ""
+# Allows resizing existing volumes
+allowVolumeExpansion: true
+# If true, sets Vast CSI as the cluster-wide storage class default
+setDefaultStorageClass: false
+# String template for CSI-provisioned volume names, within VAST
+volumeNameFormat: "csi:{namespace}:{name}:{id}"
+# String template for CSI-provisioned ephemeral volumes, within VAST
+ephemeralVolumeNameFormat: "csi:{namespace}:{name}:{id}"
+# Add any extra NFS options desired here
+mountOptions: []
+# Name of QoS policy associates with the view.
+qosPolicy: ""
+# Reclaim policy to use with the storage class.
+reclaimPolicy: "Delete"
+
+
+####################
+# VAST CSI SNAPSHOT CLASS OPTIONS
+####################
+
+createSnapshotClass: true
+
+snapshotClass:
+  # If true, sets SnapshotClass as the cluster-wide snapshot class default
+  setDefaultSnapshotClass: false
+  # String template for CSI-provisioned snapshot names, within VAST
+  snapshotNameFormat: "csi:{namespace}:{name}:{id}"
+  # On snapshot delete behavior. By default, Vast Cluster snapshot will be removed as well.
+  deletionPolicy: "Delete"

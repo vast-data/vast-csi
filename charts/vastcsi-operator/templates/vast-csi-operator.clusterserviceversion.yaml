@@ -1,0 +1,158 @@
+{{- if eq (toString .Values.olmBuild) "true" }}
+
+{{- $operator_values := dict "GlobalValues" .Values -}}
+{{- $operator_spec := tpl (.Files.Get "values.schema.yaml") $operator_values | trim | fromYaml }}
+
+{{- $csidriver_values := dict "Values" (.Files.Get "crd-charts/vastcsidriver/values.yaml" | trim | fromYaml) "GlobalValues" .Values -}}
+{{- $csidriver_spec := tpl (.Files.Get "crd-charts/vastcsidriver/values.schema.yaml") $csidriver_values | trim | fromYaml -}}
+
+{{- $storage_values := dict "Values" (.Files.Get "crd-charts/vaststorage/values.yaml" | trim | fromYaml) "GlobalValues" .Values -}}
+{{- $storage_spec := tpl (.Files.Get "crd-charts/vaststorage/values.schema.yaml") $storage_values | trim | fromYaml -}}
+
+{{- $cluster_values := dict "Values" (.Files.Get "crd-charts/vastcluster/values.yaml" | trim | fromYaml) "GlobalValues" .Values -}}
+{{- $cluster_spec := tpl (.Files.Get "crd-charts/vastcluster/values.schema.yaml") $cluster_values | trim | fromYaml -}}
+
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: |-
+      {{ list $csidriver_spec.example $storage_spec.example $cluster_spec.example | toJson }}
+    capabilities: Seamless Upgrades
+    categories: Storage
+    description: |-
+      {{- $operator_spec.description | nindent 6 }}
+    containerImage: {{ .Values.managerImage }}
+    createdAt: "2024-07-01T11:59:59Z"
+    support: VastData Infra Team
+    repository: https://github.com/vast-data/vast-csi
+    operators.operatorframework.io/builder: operator-sdk-v1.3.0-ocp
+    operators.operatorframework.io/project_layout: helm.sdk.operatorframework.io/v1
+    operatorframework.io/suggested-namespace: {{ .Values.suggestedNamespace }}
+    features.operators.openshift.io/disconnected: "true"
+    features.operators.openshift.io/fips-compliant: "false"
+    features.operators.openshift.io/proxy-aware: "false"
+    features.operators.openshift.io/tls-profiles: "false"
+    features.operators.openshift.io/token-auth-aws: "false"
+    features.operators.openshift.io/token-auth-azure: "false"
+    features.operators.openshift.io/token-auth-gcp: "false"
+  name: vast-csi-operator.v{{ .Chart.Version }}{{- if .Values.ciPipe }}-{{ .Values.ciPipe }}{{- end }}
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+      - kind: VastCSIDriver
+        name: vastcsidrivers.storage.vastdata.com
+        displayName: VastCSIDriver
+        description: {{ $csidriver_spec.description | trim | quote }}
+        version: v1
+        resources:
+          - kind: Deployment
+            name: ''
+            version: v1
+          - kind: DaemonSet
+            name: ''
+            version: v1
+          - kind: Pod
+            name: ''
+            version: v1
+        specDescriptors: {{- $csidriver_spec.specDescriptors | toYamlPretty | nindent 10 }}
+      - kind: VastCluster
+        name: vastclusters.storage.vastdata.com
+        displayName: VastCluster
+        description: {{ $cluster_spec.description | trim | quote }}
+        version: v1
+        resources:
+          - kind: Secret
+            name: ''
+            version: v1
+        specDescriptors: {{- $cluster_spec.specDescriptors | toYamlPretty | nindent 10 }}
+      - kind: VastStorage
+        name: vaststorages.storage.vastdata.com
+        displayName: VastStorage
+        description: {{ $storage_spec.description | trim | quote }}
+        version: v1
+        resources:
+          - kind: StorageClass
+            name: ''
+            version: v1
+          - kind: VolumeSnapshotClass
+            name: ''
+            version: v1
+        specDescriptors: {{- $storage_spec.specDescriptors | toYamlPretty | nindent 10 }}
+  description: |-
+    {{- $operator_spec.description | nindent 4 }}
+  displayName: VAST CSI driver operator
+  icon:
+    - base64data: "iVBORw0KGgoAAAANSUhEUgAAAD4AAAA+CAMAAABEH1h2AAAAeFBMVEX///8AAAAAtP/i8/rx8fEet//n5+d8zvnY2NjMzMy3t7cTExPh4eFOTk6Ojo6JiYnExMReXl6en59sbGxUVFQhISF+fn69vb0/Pz9ISEhycnJ4eHirq6vw+vw0ufgAr/zO6/qo2/ed2fhTwPm/5fiR1PcwMDAoKCgtkLcJAAABsklEQVR4nOyV75aaMBDF72WBEoIIiICittvt6vu/YU/+SOL20BPox3I/GczvZjLJTLBp0yYgzrTUzzenayCd0mgP3CKn7z/C8MziI66Jp+g9cPmWfHTngwB+frP6SJJbIK2jj18/3ZLoVyiOPdm+fPhMko9gGjiSuTe8RknytgCvSPrj9+hzAQ3U+ty89RfRiEkWk1e+DAbQkDv7syT7xfyd0hxe4QcSrKyzR78jy8W0ljLovxxCsNKBGSDX7Bwme6c/L2C4jmRJMl2JV7puV+bNJH1l3rRU5VbrcZSs/4EGll+3TQtU3E1jqrziGAb3f1rr6yf1oLSPiLuNuW3rA8fnp95rtfET0JMOykiSPEz2D21VedUxSHl37nehlBkzIXKyF5V7SC76Zp+coVAL9BP+eC269OsjRDbqZcye45bnjoMX/DDmf8EbHlG7viDIIiXFM7WD2vlpHo8l9266cTpMnRpI81HyMourniSn2YV28jcDoGM3j8eUrrLPJtDWpjJv67quJZt5HCMfzso4CTtrZ059mN87EI8uUmFfx9LEkzVKfre+XLBp0/+p3wEAAP//kCAQXEWcSkUAAAAASUVORK5CYII="
+      mediatype: "image/png"
+  install:
+    spec:
+      clusterPermissions:
+        - rules:
+          {{- include "csi-operator.rbac.manager" . | nindent 12 }}
+          {{- include "csi-operator.rbac.proxy" . | nindent 12 }}
+          serviceAccountName: vast-csi-driver-operator-controller-manager
+      deployments:
+        - label:
+            app.kubernetes.io/component: manager
+            app.kubernetes.io/created-by: vast-csi-operator
+            app.kubernetes.io/instance: controller-manager
+            app.kubernetes.io/name: deployment
+            app.kubernetes.io/part-of: vast-csi-operator
+            control-plane: controller-manager
+          name: vast-csi-operator-controller-manager
+          spec:
+            {{- include "csi-operator.manager-deployment.spec" . | nindent 12 }}
+      permissions:
+        - rules:
+          {{- include "csi-operator.rbac.leader-election" . | nindent 12 }}
+          serviceAccountName: vast-csi-driver-operator-controller-manager
+    strategy: deployment
+  installModes:
+    - supported: true
+      type: OwnNamespace
+    - supported: true
+      type: SingleNamespace
+    - supported: false
+      type: MultiNamespace
+    - supported: false
+      type: AllNamespaces
+  keywords:
+    - VAST
+    - VASTData
+    - CSI
+    - Multi Cluster
+    - AI
+    - High-Performance Computing
+  links:
+    - name: VAST CSI Plugin
+      url: https://github.com/vast-data/vast-csi
+  maintainers:
+    - email: volodymyr.boiko@vastdata.com
+      name: VAST Infrastructure Team
+  maturity: {{ .Values.maturity | quote }}
+  provider:
+    name: VASTData
+    url: https://www.vastdata.com
+  version: {{ .Chart.Version }}{{- if .Values.ciPipe }}-{{ .Values.ciPipe }}{{- end }}
+  minKubeVersion: 1.18.0
+  relatedImages:
+    - image: {{ .Values.overrides.csiVastPlugin.repository }}
+      name: csi-vast-plugin
+    - image: {{ .Values.overrides.csiResizer.repository }}
+      name: csi-resizer
+    - image: {{ .Values.overrides.csiSnapshotter.repository }}
+      name: csi-snapshotter
+    - image: {{ .Values.overrides.csiAttacher.repository }}
+      name: csi-attacher
+    - image: {{ .Values.overrides.csiProvisioner.repository }}
+      name: csi-provisioner
+    - image: {{ .Values.overrides.csiNodeDriverRegistrar.repository }}
+      name: csi-node-driver-registrar
+    - image: {{ .Values.managerImage | required "Operator image is required." }}
+      name: csi-vast-operator
+    - image: {{ .Values.proxyImage }}
+      name: kube-rbac-proxy
+{{- end }}

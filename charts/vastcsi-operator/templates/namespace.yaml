@@ -1,0 +1,15 @@
+{{- if and (ne (toString .Values.olmBuild) "true") .Values.namespace }}
+
+{{- $namespace := .Values.namespace -}}
+{{- $existingNamespace := (lookup "v1" "Namespace" "" $namespace) -}}
+
+{{- if not $existingNamespace -}}
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    control-plane: controller-manager
+  name: {{ $namespace }}
+{{- end -}}
+
+{{- end -}}

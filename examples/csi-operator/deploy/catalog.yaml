@@ -1,0 +1,13 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  annotations:
+    operators.operatorframework.io/index-image: quay.io/operator-framework/opm:latest
+    operators.operatorframework.io/injected-bundles: '[{"imageTag":"110450271409.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:1467916-operator-bundle","mode":"semver"},{"imageTag":"110450271409.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:1467917-operator-bundle","mode":"semver"}]'
+  name: vast-csi-operator-catalog
+  namespace: vast-csi
+spec:
+  image: quay.io/operatorhubio/catalog:latest
+  secrets:
+  - regcred
+  sourceType: grpc

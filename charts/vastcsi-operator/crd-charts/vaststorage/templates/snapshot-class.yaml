@@ -1,0 +1,38 @@
+{{- if eq (toString .Values.createSnapshotClass) "true" }}
+
+{{- $is_default_class := .Values.snapshotClass.setDefaultSnapshotClass | default true | quote -}}
+{{- $snapshot_name_fmt := .Values.snapshotClass.snapshotNameFormat -}}
+{{- $deletion_policy := .Values.snapshotClass.deletionPolicy -}}
+
+{{/* Check secret presence in deployment namespaces and find out */}}
+{{- $secret := .Values.clusterName -}}
+{{- $secret_namespace := .Release.Namespace -}}
+
+{{- if not $secret -}}
+{{- fail "clusterName is required value. Please specify valid clusterName" -}}
+{{- end }}
+
+{{- if .Release.IsInstall -}}
+{{- if not (lookup "v1" "Secret" $secret_namespace $secret) -}}
+{{- fail (printf "cluster '%s' doesn't exist in namespace '%s' or doesn't have underlying secret." .Values.clusterName .Release.Namespace) -}}
+{{- end -}}
+{{- end -}}
+
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ include "vastcsi.namespace" $ }}
+  annotations:
+    snapshot.storage.kubernetes.io/is-default-class: {{ $is_default_class }}
+  labels:
+    {{- include "vastcsi.labels" $ | nindent 4 }}
+driver: csi.vastdata.com
+deletionPolicy: {{ $deletion_policy }}
+parameters:
+  snapshot_name_fmt: {{ $snapshot_name_fmt }}
+  csi.storage.k8s.io/snapshotter-secret-name: {{ $secret }}
+  csi.storage.k8s.io/snapshotter-secret-namespace: {{ $secret_namespace }}
+---
+
+{{- end }}

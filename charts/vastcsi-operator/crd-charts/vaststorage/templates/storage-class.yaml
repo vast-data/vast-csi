@@ -1,0 +1,79 @@
+{{/* Validate storagePath parameter. Parameter should not be an empty string. */}}
+{{- $is_default_class := .Values.setDefaultStorageClass | default false | quote -}}
+{{- $storage_path := .Values.storagePath -}}
+{{- if not $storage_path -}}
+  {{- fail "storagePath is required value. Please specify valid root export path" -}}
+{{- end }}
+
+{{/* Validate viewPolicy parameter. Parameter should not be an empty string. */}}
+{{- $view_policy := .Values.viewPolicy -}}
+{{- if not $view_policy -}}
+  {{- fail "viewPolicy is required value. Please specify valid policy name" -}}
+{{- end }}
+
+{{/* Validate vipPool and vipPoolFQDN parameters. Only one of them should be provided. */}}
+{{- $vip_pool_name := .Values.vipPool -}}
+{{- $vip_pool_fqdn := .Values.vipPoolFQDN -}}
+{{- if (and $vip_pool_name $vip_pool_fqdn) -}}
+  {{- fail (printf "vipPool and vipPoolFQDN are mutually exclusive in the StorageClass '%s' parameters. Do not set a default value from storageDefaults for either field; choose only one to specify." .Release.Name) -}}
+{{- end }}
+
+{{- $volume_name_fmt := .Values.volumeNameFormat -}}
+{{- $eph_volume_name_fmt := .Values.ephemeralVolumeNameFormat -}}
+{{- $qos_policy := .Values.qosPolicy -}}
+{{- $mount_options := .Values.mountOptions -}}
+{{- $reclaim_policy := .Values.reclaimPolicy -}}
+{{- $allow_volume_expansion := .Values.allowVolumeExpansion | quote | mustRegexMatch "true" | ternary true false -}}
+
+{{/* Check secret presence in deployment namespaces and find out */}}
+{{- $secret := .Values.clusterName -}}
+{{- $secret_namespace := .Release.Namespace -}}
+
+{{- if not $secret -}}
+  {{- fail "clusterName is required value. Please specify valid clusterName" -}}
+{{- end }}
+
+{{- if .Release.IsInstall -}}
+{{- if not (lookup "v1" "Secret" $secret_namespace $secret) -}}
+  {{- fail (printf "cluster '%s' doesn't exist in namespace '%s' or doesn't have underlying secret." .Values.clusterName .Release.Namespace) -}}
+{{- end -}}
+{{- end -}}
+
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+provisioner: csi.vastdata.com
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ include "vastcsi.namespace" $ }}
+  annotations:
+    storageclass.kubernetes.io/is-default-class: {{ $is_default_class }}
+  labels:
+    {{- include "vastcsi.labels" $ | nindent 4 }}
+reclaimPolicy: {{ $reclaim_policy }}
+parameters:
+  root_export: {{ $storage_path }}
+  view_policy: {{ $view_policy }}
+  volume_name_fmt: {{ $volume_name_fmt }}
+  eph_volume_name_fmt: {{ $eph_volume_name_fmt }}
+{{- range $key, $value := dict "vip_pool_name" $vip_pool_name "vip_pool_fqdn" $vip_pool_fqdn "qos_policy" $qos_policy }}
+  {{- if and $value (ne $value "") }}
+  {{ $key }}: {{ if (kindIs "int" $value) }}{{ $value | quote }}{{ else }}{{ $value }}{{ end }}
+  {{- end }}
+{{- end }}
+  csi.storage.k8s.io/provisioner-secret-name: {{ $secret }}
+  csi.storage.k8s.io/provisioner-secret-namespace: {{ $secret_namespace }}
+  csi.storage.k8s.io/controller-publish-secret-name: {{ $secret }}
+  csi.storage.k8s.io/controller-publish-secret-namespace: {{ $secret_namespace }}
+  csi.storage.k8s.io/node-publish-secret-name: {{ $secret }}
+  csi.storage.k8s.io/node-publish-secret-namespace: {{ $secret_namespace }}
+  csi.storage.k8s.io/controller-expand-secret-name: {{ $secret }}
+  csi.storage.k8s.io/controller-expand-secret-namespace: {{ $secret_namespace }}
+allowVolumeExpansion: {{ $allow_volume_expansion }}
+{{- if kindIs "string" $mount_options -}}
+{{/* Keep option to specify mountOptions as string for backward compatibility */}}
+mountOptions:
+  - {{ $mount_options | quote }}
+{{- else }}
+mountOptions: {{ toYaml $mount_options | nindent 2 }}
+{{- end }}
+---

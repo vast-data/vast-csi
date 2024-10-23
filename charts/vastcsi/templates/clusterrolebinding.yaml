@@ -1,0 +1,48 @@
+{{- if .Values.rbac }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-vast-provisioner-binding
+  labels:
+    {{- include "vastcsi.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-vast-controller-sa
+    namespace: {{ include "vastcsi.namespace" . }}
+roleRef:
+  kind: ClusterRole
+  name: {{ .Release.Name }}-vast-provisioner-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-vast-attacher-binding
+  labels:
+    {{- include "vastcsi.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-vast-controller-sa
+    namespace: {{ include "vastcsi.namespace" . }}
+roleRef:
+  kind: ClusterRole
+  name: {{ .Release.Name }}-vast-attacher-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-resizer-role
+  labels:
+    {{- include "vastcsi.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-vast-controller-sa
+    namespace: {{ include "vastcsi.namespace" . }}
+roleRef:
+  kind: ClusterRole
+  name: {{ .Release.Name }}-external-resizer-runner
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- end -}}

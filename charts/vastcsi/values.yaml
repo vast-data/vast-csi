@@ -1,0 +1,337 @@
+####################
+# VAST REST SESSION ATTRIBUTES
+####################
+# Secret name, which corresponds to a secret containing credentials to login - should be provided by user if secretName is not provided in StorageClass attributes
+# Secret must contain username and password fields
+# Example: kubectl create secret generic vast-mgmt --from-literal=username='< VAST username >' --from-literal=password='< VAST password >'
+secretName: ""
+
+# API endpoint of VAST appliance - should be provided by user if secretName is not provided in StorageClass attributes
+endpoint: ""
+
+# Set true to enable certificate validity test
+verifySsl: false
+
+# Path (absolute or relative) to SSL certificate for verifying the VAST REST API.
+# Must be set using `set-file` option eg `--set-file sslCert=< path to sslCert.crt >`
+# sslCertsSecretName secret and sslCert option in values.yaml are mutually exclusive. Make sure to use only one of them.
+sslCert: ""
+# Secret name, which corresponds to a secret containing an SSL certificate for verifying the VAST REST API
+# Example: kubectl create secret generic vast-tls --from-file=ca-bundle.crt=< path to sslCert.crt >
+# sslCertsSecretName secret and sslCert option in values.yaml are mutually exclusive. Make sure to use only one of them.
+sslCertsSecretName: ""
+
+####################
+# DELETE VOLUMES
+####################
+# Dedicated vip pool to delete volumes. Can have the same value as regular StorageClass option `vipPool`
+# - value is not required when VAST cluster version is 4.6.0 onwards and `DontUseTrashApi` flag is set to false
+deletionVipPool: ""
+# Dedicated view policy to delete volumes. Can have the same value as regular StorageClass option `viewPolicy`
+# - value is not required when VAST cluster version is 4.6.0 onwards and `DontUseTrashApi` flag is set to false
+deletionViewPolicy: ""
+# When the flag is set to 'true', the controller will opt to using a local mount for deleting data from discarded volumes,
+# as opposed to sending the request to the VMS over REST.
+# Please contact VAST Support before modifying this setting.
+dontUseTrashApi: false
+# Use this local IP address for mounting, when the StorageClass does not define a vipPool.
+# This is useful for DPU-based deployments.
+useLocalIpForMount: ""
+
+####################
+# VAST CSI STORAGE CLASS OPTIONS
+####################
+# storageClassDefaults is set of options that will be using by default if option is not provided
+# for particular storageClass in 'storageClasses' section
+storageClassDefaults:
+  # Any of the following options can be specified within the StorageClasses section on a per-storage class basis,
+  # or can be set here as default values for all storage classes.
+
+  # Secret name, which corresponds to a secret containing credentials to login - must be provided by user
+  # Secret must contain username, password and endpoint fields. Other fields are ignored.
+  # Example: kubectl create secret generic vast-mgmt --from-literal=username='< VAST username >' --from-literal=password='< VAST password >' --from-literal=endpoint='< VAST endpoint >'
+  # Optionally you can include CA ssl certificate. Along with verifySsl option enabled it will establish trusted connection per StorageClass
+  # if you have different certificates per cluster (Otherwise use `sslCertsSecretName` to specify global secret with ssl certificate to be used across all storage classes):
+  # Example:
+  #     kubectl create secret generic vast-mgmt \
+  #    --from-literal=username='<VAST username>' \
+  #    --from-literal=password='<VAST password>' \
+  #    --from-literal=endpoint='<VAST endpoint>' \
+  #    --from-file=ssl_cert='<path to sslCert.crt>'
+  secretName: ""
+  # Secret namespace. If not specified then secret will be searched in the same namespace as StorageClass is created.
+  secretNamespace: ""
+  # Where volumes will be located on VAST - must be provided by user
+  storagePath: ""
+  # Name of VAST VIP pool to use. Must specify either vipPool or vipPoolFQDN.
+  vipPool: ""
+  # The FQDN of the VIP pool to use. Must specify either vipPool or vipPoolFQDN.
+  # Using a DNS skips an API call to the VMS for obtaining a random VIP from the vipPool, leading to faster volume mounting.
+  # NOTE: The driver will prepend the FQDN with a random prefix, which forces the NFS client to resolve into a different VIP,
+  # thereby distributing the load across the entire range of the VIP pool.
+  vipPoolFQDN: ""
+  # VAST policy name to create views - must be provided by user
+  viewPolicy: ""
+  # Allows resizing existing volumes
+  allowVolumeExpansion: true
+  # If true, sets Vast CSI as the cluster-wide storage class default
+  setDefaultStorageClass: false
+  # String template for CSI-provisioned volume names, within VAST
+  volumeNameFormat: "csi:{namespace}:{name}:{id}"
+  # String template for CSI-provisioned ephemeral volumes, within VAST
+  ephemeralVolumeNameFormat: "csi:{namespace}:{name}:{id}"
+  # Add any extra mount NFS options here
+  mountOptions: []
+  # Name of QoS policy associates with the view.
+  qosPolicy: ""
+  # Reclaim policy to use with the storage class.
+  reclaimPolicy: "Delete"
+
+# Default storage class to use with CSI DRIVER.
+# The only required value is 'vipPool' name where user should provide name of existing vip pool on
+# VAST cluster.
+# User can extend this section using more storage classes with different storage class parameters and options.
+storageClasses: {}
+  # StorageClass name. This field must be unique across all storage classes.
+  # vastdata-filesystem:
+    # Name of VAST VIP pool to use - must be provided by user
+    # vipPool: ""
+    # ... Any other options from 'storageClassDefaults' section. If not provided then default value
+    # will be used.
+# User can add more storage classes to this section eg:
+#  vastdata-filesystem2:
+#    vipPool: "vippool-2"
+#    secretName: "secret2"
+#    .... other options
+#
+#  vastdata-filesystem3:
+#    vipPool: "vippool-3"
+#    secretName: "secret3"
+#    ....  other options
+
+####################
+# VAST PROVISIONER RUNTIME PARAMETERS
+####################
+
+# The number of worker threads the CSI plugin use to serve requests simultaneously.
+numWorkers: 10
+# Timeout of all calls to CSI driver.
+operationTimeout: 15
+# Each time a failure occurs, sidecar containers initiate retries
+# but only after waiting for 'operationRetryIntervalStart' seconds
+# which then doubles with each subsequent failure  until it reaches `operationRetryIntervalMax`
+operationRetryIntervalStart: 10
+
+# Maximum interval between attempts.
+operationRetryIntervalMax: 60
+
+# Truncate VAST quota name if name length is greater than this number.
+# set `truncateVolumeName: null` to disable truncation.
+truncateVolumeName: 64
+
+# indicates this CSI driver requires an attach operation as it implements the `ControllerPublishVolume`
+# if set to false, the driver will perform `ControllerPublishVolume` as a part of NodePublishVolume op
+# which might speed up the volume attach operation significantly but not appropriate for workload nodes where
+# http/https ports are not open.
+attachRequired: true
+
+####################
+# VAST CSI SNAPSHOTS CLASS OPTIONS
+####################
+# snapshotClassDefaults is set of options that will be using by default if option is not provided
+# for particular snapshotClass in 'snapshotClasses' section
+snapshotClassDefaults:
+  # Any of the following options can be specified within the snapshotClasses section on a per-snapshot class basis,
+  # or can be set here as default values for all snapshot classes.
+
+  # Secret name, which corresponds to a secret containing credentials to login - must be provided by user
+  # Secret must contain username, password and endpoint fields. Other fields are ignored.
+  # Example: kubectl create secret generic vast-mgmt --from-literal=username='< VAST username >' --from-literal=password='< VAST password >' --from-literal=endpoint='< VAST endpoint >'
+  # Optionally you can include CA ssl certificate. Along with verifySsl option enabled it will establish trusted connection per SnapshotClass
+  # if you have different certificates per cluster (Otherwise use `sslCertsSecretName` to specify global secret with ssl certificate to be used across all snapshot classes):
+  # Example:
+  #     kubectl create secret generic vast-mgmt \
+  #    --from-literal=username='<VAST username>' \
+  #    --from-literal=password='<VAST password>' \
+  #    --from-literal=endpoint='<VAST endpoint>' \
+  #    --from-file=ssl_cert='<path to sslCert.crt>'
+  secretName: ""
+  # Secret namespace. If not specified then secret will be searched in the same namespace as SnapshotClass is created.
+  secretNamespace: ""
+  # If true, sets SnapshotClass as the cluster-wide snapshot class default
+  setDefaultSnapshotClass: true
+  # String template for CSI-provisioned snapshot names, within VAST
+  snapshotNameFormat: "csi:{namespace}:{name}:{id}"
+  # On snapshot delete behavior. By default, Vast Cluster snapshot will be removed as well.
+  deletionPolicy: "Delete"
+
+snapshotClasses: {}
+#  vastdata-snapshot:
+#    secretName: "secret"
+#    deletionPolicy: "Delete"
+#    setDefaultSnapshotClass: false
+#    snapshotNameFormat: "snapshot:{name}:{id}"
+
+
+####################
+# VAST CONTROLLER AND NODE IMAGE SPECIFICATION
+####################
+
+image:
+  csiVastPlugin:
+    repository: vastdataorg/csi
+    tag: v2.5.0  # the version of the Vast CSI driver
+    imagePullPolicy: IfNotPresent
+  csiAttacher:
+    repository: registry.k8s.io/sig-storage/csi-attacher
+    tag: v4.5.0
+    imagePullPolicy: IfNotPresent
+  csiNodeDriverRegistrar:
+    repository: registry.k8s.io/sig-storage/csi-node-driver-registrar
+    tag: v2.10.0
+    imagePullPolicy: IfNotPresent
+  csiProvisioner:
+    repository: registry.k8s.io/sig-storage/csi-provisioner
+    tag: v4.0.0
+    imagePullPolicy: IfNotPresent
+  csiResizer:
+    repository: registry.k8s.io/sig-storage/csi-resizer
+    tag: v1.10.0
+    imagePullPolicy: IfNotPresent
+  csiSnapshotter:
+    repository: registry.k8s.io/sig-storage/csi-snapshotter
+    tag: v7.0.1
+    imagePullPolicy: IfNotPresent
+
+####################
+# VAST CONTROLLER AND NODE BEHAVIOR
+#
+# WARNING - these parameters are for advanced users.
+# Setting these incorrectly may prevent the VAST CSI Driver from running correctly.
+#  We recommend to consult with VAST Support before changing any of the following parameters
+####################
+
+controller:
+  # runOnMaster flag indicated if CSI Controller should be run on master.
+  runOnMaster: false
+  # runOnControlPlane flag indicated if CSI Controller should be run on control plane node.
+  runOnControlPlane: false
+  # determine how DNS (Domain Name System) resolution should be handled within Pod.
+  # available values: Default, ClusterFirstWithHostNet, ClusterFirst
+  dnsPolicy: Default
+  # nodeSelector is the way to restrict pod to be assigned on certain node/nodes.
+  # Specify node selector if you want node and controller containers to be assigned only to specific node/nodes of
+  # your cluster.
+  #  https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector.
+  nodeSelector: {}
+  # If specified, the pod's tolerations
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
+  tolerations: []
+  # Allows to specify which nodes your pod is eligible to be scheduled based on labels on pods that are already running on the node.
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  podAffinity: {}
+  # Allows to specify conditions for preventing pods from being scheduled on nodes where certain labels are already present on other pods.
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  podAntiAffinity: {}
+  # Allows to specify which nodes your pod is eligible to be scheduled on based on labels on the node
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  nodeAffinity: {}
+  # Resources describes the compute resource requirements.
+  resources:
+    csiProvisioner:
+      limits:
+        memory: 400Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiSnapshotter:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiAttacher:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiResizer:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiVastPlugin:
+      limits:
+        memory: 400Mi
+      requests:
+        cpu: 100m
+        memory: 50Mi
+  extraArgs:
+    # For further options, check
+    # https://github.com/kubernetes-csi/external-provisioner#command-line-options
+    # Example:
+    # controller:
+    #   extraArgs:
+    #     csiProvisioner:
+    #       - kube-api-qps=500
+    #       - kube-api-burst=1000
+    csiProvisioner: []
+    # For further options, check
+    # https://github.com/kubernetes-csi/external-snapshotter#csi-external-snapshotter-sidecar-command-line-options
+    csiSnapshotter: []
+    # For further options, check
+    # https://github.com/kubernetes-csi/external-attacher#command-line-options
+    csiAttacher: []
+    # For further options, check
+    # https://github.com/kubernetes-csi/external-resizer#recommended-optional-arguments
+    csiResizer: []
+  # priorityClassName is the name of priority class to be used for the pod.
+  priorityClassName: system-cluster-critical
+
+node:
+  # See controller.dnsPolicy section for details
+  dnsPolicy: Default
+  # See controller.nodeSelector section for details
+  nodeSelector: {}
+  # See controller.tolerations section for details
+  tolerations: []
+  # See controller.podAffinity section for details
+  podAffinity: {}
+  # See controller.podAntiAffinity section for details
+  podAntiAffinity: {}
+  # See controller.nodeAffinity section for details
+  nodeAffinity: {}
+  # the default host `/etc/nfsmount.d` mount configuration directory as source for mount options
+  # https://man7.org/linux/man-pages/man5/nfsmount.conf.5.html
+  propagateHostMountOptions: true
+  # see controller.resources section for details
+  resources:
+    nodeDriverRegistrar:
+      limits:
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiVastPlugin:
+      limits:
+        memory: 400Mi
+      requests:
+        cpu: 100m
+        memory: 50Mi
+  # See controller.priorityClassName section for details
+  priorityClassName: system-cluster-critical
+
+# The path to the kubelet root dir. must be provided when Kubernetes is not installed in its default directory.
+kubeletPath: "/var/lib/kubelet"
+# rbac flag indicated it Role-based access control from this chart should be used to create apropriate
+# permissions for CSI Controller and CSI Node. Use default value unless you understand necessary permissions
+# and can provide it other way.
+rbac: true
+# Reference to one or more secrets to be used when pulling images
+# ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+# - name: "image-pull-secret"
+imagePullSecrets: []
+# Log level of CSI plugin
+logLevel: 5

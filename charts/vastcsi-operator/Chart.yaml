@@ -1,0 +1,12 @@
+apiVersion: v2
+name: vastcsi-operator
+description: Helm chart for Vast CSI Operator deployment
+type: application
+version: "2.5.0"
+keywords:
+  - vast
+  - csi
+  - driver
+  - vastdata
+  - csi-driver
+  - operator

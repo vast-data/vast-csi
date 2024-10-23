@@ -1,0 +1,11 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: vast-csi-operator-0-0-1-sub
+  namespace: vast-csi
+spec:
+  channel: alpha
+  installPlanApproval: Manual
+  name: vast-csi-operator
+  source: vast-csi-operator-catalog
+  sourceNamespace: vast-csi

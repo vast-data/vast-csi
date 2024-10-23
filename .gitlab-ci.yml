@@ -1,71 +1,138 @@
-image: docker:latest
+stages:
+  - build_base
+  - build
+  - test
+  - deploy
+  - redhat
+
+# source: packaging/ci.Dockerfile
+image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:CI-2024-09-18
 
 variables:
+  PLATFORMS: "linux/amd64,linux/arm64" # comma-separated list of platforms to build multi-arch images
+  RH_REGISTRY: registry.connect.redhat.com/vastdataorg
   DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
   IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:${CI_PIPELINE_ID}
+  # source: packaging/base.Dockerfile
+  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2024-09-21
+  ORION_BRANCH: comet/master
+
+build_csi_base:
+  stage: build_base
+  script: |
+    export IMAGE_TAG=${DOCKER_REGISTRY}/dev/vast-csi-base:$(date +"%Y-%m-%d")
+    export DOCKERFILE=base.Dockerfile
+    make build_image
+    echo "Image $IMAGE_TAG has been built and pushed to the registry. You can now specify it as base image in .gitlab-ci.yml"
+  when: manual
+  tags:
+    - vast-dev-builder
+
 
 build_csi:
   stage: build
   script: |
     set -x
     VERSION=$(cat version.txt)
+    TAGGED=$(grep 'the version of the Vast CSI driver' charts/vastcsi/values.yaml | awk '{print $2}')
+    if [[ "$TAGGED" != "$VERSION" ]]; then
+      echo "version.txt has $VERSION, while our helm chart has $TAGGED (check charts/vastcsi/values.yaml)"
+      exit 5
+    fi
     LATEST=${DOCKER_REGISTRY}/dev/vast-csi:latest
     if (docker pull $LATEST) ; then
       docker tag $LATEST vast-csi:latest  # the cache-source for our subsequent build
     fi
-    /bin/sh -x packaging/build.sh  # --> vast-csi:dev
-    docker tag vast-csi:dev ${IMAGE_NAME}
-    docker tag vast-csi:dev ${LATEST}
-    docker push ${IMAGE_NAME}
-    docker push ${LATEST}
-    echo "pushed ${IMAGE_NAME}"
+    export PLATFORMS=""  # reset global variable (we don't need multi-arch for internal ERC repository)
+    export IMAGE_TAG=$IMAGE_NAME
+    export DOCKERFILE=Dockerfile
+    export CACHE_FROM=vast-csi:latest
+    make build_image
+    make run_csi_sanity
+    
+    docker run $IMAGE_TAG test
+    docker run $IMAGE_TAG system_info
+    docker tag  $IMAGE_TAG $LATEST
+    docker push $IMAGE_TAG
+    docker push $LATEST
+    echo "pushed ${IMAGE_TAG}"
   tags:
     - vast-dev-builder
 
 
-.test_csi: &test_csi
+build_csi_operator:
+  stage: build
+  script: |
+    set -x
+    docker login -u ${RH_DOCKER_USER} -p ${RH_DOCKER_PASSWORD} registry.redhat.io
+    export PIPE=${CI_PIPELINE_ID}
+    make operator-build
+    make operator-push
+    make operator-bundle-build
+    make operator-bundle-push
+  tags:
+    - vast-dev-builder
+
+.common_vars: &common_vars
+  INSTALL_IMAGE: "prev_version"
+  VAST_upgrade_to: $INSTALL_IMAGE
+  VAST_COMET__KWARG: csi_plugin_version=${CI_PIPELINE_ID}
+  TRIGGER_SOURCE: "vastcsi"
+
+
+test_csi [latest]: &test_csi
   stage: test
-  when: manual
-  variables:
-    VAST_COMET_KWARG: csi_plugin_version=${CI_PIPELINE_ID}
+  when: always
+  except:
+    - /v[\d]\.[\d]+/
   trigger:
     project: dev/orion
-    branch: comet/master
+    branch: $ORION_BRANCH
     strategy: depend
   allow_failure: true
+  variables: *common_vars
+
+
+test_csi_multicluster [latest]:
+  <<: *test_csi
+  when: manual
+  variables:
+    <<: *common_vars
+    NUM_SYSTEMS: 2
 
 
 test_csi:
   <<: *test_csi
+  when: manual
+  allow_failure: true
+  except: null
   parallel:
     matrix:
-      - INSTALL_IMAGE:
-        - latest-3.6.0
-        - latest-4.0.0
-        - latest-4.2.0
-        - latest-4.3.0
+      - INSTALL_IMAGE: "4.5"
+      - INSTALL_IMAGE: "4.6"
+      - INSTALL_IMAGE: "4.7"
+      - INSTALL_IMAGE: "5.0"
+      - INSTALL_IMAGE: "5.1"
+      - INSTALL_IMAGE: "prev_version"
+      - INSTALL_IMAGE: "latest"
 
 
 update_dockerhub [prod]: &update_dockerhub
   stage: deploy
   environment: prod
+  only:
+    - /v[\d]\.[\d]+/
   script: |
     set -x
-    if [[ "$CI_ENVIRONMENT_NAME" == "prod" ]]; then
-      VERSION=$(cat version.txt)
-    else
-      VERSION=$CI_ENVIRONMENT_NAME-$CI_PIPELINE_ID
+    VERSION=$(cat version.txt)
+    if [[ "$CI_ENVIRONMENT_NAME" != "prod" ]]; then
+      VERSION=$VERSION-$CI_ENVIRONMENT_NAME-$CI_PIPELINE_ID
     fi
-    RELEASE_NAME=docker.io/vastdataorg/csi:${VERSION}
-
-    docker pull ${IMAGE_NAME}
-    docker tag ${IMAGE_NAME} ${RELEASE_NAME}
-
-    echo "Pushing:  ${IMAGE_NAME}  -->  ${RELEASE_NAME}"
     docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} $DOCKER_HUB
-    docker push ${RELEASE_NAME}
-    echo "pushed ${RELEASE_NAME}"
-
+    export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}
+    export DOCKERFILE=Dockerfile
+    export PUSH_ON_SUCCESS=true
+    make build_image
   after_script:
   - docker logout $DOCKER_HUB
   when: manual
@@ -78,41 +145,44 @@ update_dockerhub [beta]:
   environment: beta
 
 
-update_github:
-  needs: []
+update_github [prod]:  &update_github
   image:
     name: alpine/git
     entrypoint: [""]
   stage: deploy
-  script: |
-    set -x
-    VERSION=$(cat version.txt)
-    VERSION_BRANCH=$CI_COMMIT_REF_NAME
-
+  only:
+    - /^v[\d]\.[\d]+/
+  before_script: &setup_github_access |
     mkdir ~/.ssh/
     cp $GITHUB_KEY ~/.ssh/id_rsa
     chmod 0600 ~/.ssh/id_rsa
     ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
-    git config --global user.email "ofer.koren@vastdata.com"
-    git config --global user.name "Ofer Koren"
-
+    git config --global user.email "$GITLAB_USER_EMAIL"
+    git config --global user.name "$GITLAB_USER_NAME"
+  script: |
+    set -x
+    VERSION=$(cat version.txt)
     git remote -v
     git remote add github git@github.com:vast-data/vast-csi.git || true
-    git fetch github $VERSION_BRANCH
-    git checkout -B $VERSION_BRANCH FETCH_HEAD
+    git fetch github $CI_COMMIT_REF_NAME
+    git checkout -B $CI_COMMIT_REF_NAME FETCH_HEAD
     git checkout $CI_COMMIT_SHA -- .
     git commit -am "VAST Data CSI Plugin - $VERSION
 
       (from $CI_COMMIT_SHA)"
 
     git tag -f $VERSION
-    git push -f --tags github HEAD:$VERSION_BRANCH
+    git push -f --tags github HEAD:$CI_COMMIT_REF_NAME
 
-  only:
-  - /^v\d.*/
   when: manual
   tags:
     - vast-dev-builder
+
+
+update_github [beta]:
+  <<: *update_github
+  only:
+    - /v[\d]\.[\d]+-beta.*/
 
 
 mark_stable:
@@ -124,3 +194,79 @@ mark_stable:
   tags:
     - vast-dev-builder
   when: manual
+
+# Publish CSI Driver image and CSI Operator image for RedHat certification
+# Note: Images are published to catalog automatically only if "Auto-publish" is enabled in the catalog listing.
+# Otherwise, you need to confirm the publication manually after images scanning.
+publish_image_redhat:
+  stage: redhat
+  script: |
+    set -x
+    docker login -u ${RH_DOCKER_USER} -p ${RH_DOCKER_PASSWORD} registry.redhat.io
+    export VERSION=$(cat version.txt)
+
+    # Publish CSI Driver image
+    export PROJECT_ID=5f7595a16fd1fbdbe36c0b50
+    echo "${CSI_DRIVER_REGISTRY_KEY}" | docker login -u "redhat-isv-containers+${PROJECT_ID}-robot" --password-stdin quay.io
+    export IMAGE_TAG="quay.io/redhat-isv-containers/${PROJECT_ID}:${VERSION}"
+    export DOCKERFILE=Dockerfile
+    make build_image
+    make run_preflight
+    
+    # Publish CSI Operator image
+    export PROJECT_ID=66e6d0dd49f52e86c9d56b1c
+    echo "${CSI_OPERATOR_REGISTRY_KEY}" | docker login -u "redhat-isv-containers+${PROJECT_ID}-robot" --password-stdin quay.io
+    export IMAGE_TAG="quay.io/redhat-isv-containers/${PROJECT_ID}:${VERSION}"
+    export DOCKERFILE=operator.Dockerfile
+    make build_image
+    make run_preflight
+  when: manual
+  tags:
+    - vast-dev-builder
+
+
+update_certified_operators:
+  stage: redhat
+  before_script: *setup_github_access
+  script: |
+    set -x  
+    VERSION=$(cat version.txt)
+    
+    export IMG_PULL_SECRET=null
+    export PIPE=null
+    export IMG=${RH_REGISTRY}/csi-operator@sha256
+    export OPERATOR_TAG=$(./scripts/img_to_digest.sh ${IMG}:${VERSION})
+    
+    export CSI_PLUGIN_IMG=${RH_REGISTRY}/csi@sha256
+    export CSI_TAG=$(./scripts/img_to_digest.sh ${CSI_PLUGIN_IMG}:${VERSION})
+    if [ -z "$OPERATOR_TAG" ]; then
+        echo "Error: OPERATOR_TAG is empty."
+        exit 1
+    fi    
+    if [ -z "$CSI_TAG" ]; then
+        echo "Error: CSI_TAG is empty."
+        exit 1
+    fi
+    make operator-bundle-gen
+    
+    git clone git@github.com:vast-data/certified-operators.git
+    DEST=certified-operators/operators/vast-csi-operator/${VERSION}
+    # Check if DEST directory exists
+    if [ -d "$DEST" ]; then
+        FORCE_FLAG="--force"
+    else
+        FORCE_FLAG=""
+    fi    
+    rm -rf $DEST && mkdir -p $DEST    
+    cp -r bundle/manifests $DEST
+    cp -r bundle/metadata $DEST
+    
+    cd certified-operators    
+    git add .
+    git commit -am "VAST CSI Operator - $VERSION
+
+      (from $CI_COMMIT_SHA)"    
+    git push origin main $FORCE_FLAG
+  when: manual
+  tags:
+    - vast-dev-builder
