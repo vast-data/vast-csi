@@ -1,5 +1,4 @@
 examples/
 .*/
-tests/
 tmp/
 Dockerfile*

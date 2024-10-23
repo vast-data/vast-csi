@@ -1,0 +1,41 @@
+kind: BucketClass
+apiVersion: objectstorage.k8s.io/v1alpha1
+driverName: csi.vastdata.com
+metadata:
+  name: vastdata-bucket
+parameters:
+  view_policy: s3-policy
+  vip_pool: vippool-1
+
+---
+
+kind: BucketClaim
+apiVersion: objectstorage.k8s.io/v1alpha1
+metadata:
+  name: sample-bucket
+spec:
+  bucketClassName: vastdata-bucket
+  protocols:
+  - s3
+
+---
+
+kind: BucketAccessClass
+apiVersion: objectstorage.k8s.io/v1alpha1
+metadata:
+  name: sample-bac
+driverName: csi.vastdata.com
+authenticationType: KEY
+
+---
+
+kind: BucketAccess
+apiVersion: objectstorage.k8s.io/v1alpha1
+metadata:
+  name: sample-access
+spec:
+  bucketClaimName: sample-bucket
+  bucketAccessClassName: sample-bac
+  credentialsSecretName: sample-access-secret
+
+---

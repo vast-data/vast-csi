@@ -1,0 +1,21 @@
+# Use the 'create api' subcommand to add watches to this file.
+- group: storage.vastdata.com
+  version: v1
+  kind: VastCSIDriver
+  chart: helm-charts/vastcsidriver
+  overrideValues:
+    image.csiVastPlugin.defaultRepository: $RELATED_IMAGE_CSI_DRIVER
+    image.csiAttacher.defaultRepository: $RELATED_IMAGE_CSI_ATTACHER
+    image.csiNodeDriverRegistrar.defaultRepository: $RELATED_IMAGE_CSI_NODE_DRIVER_REGISTRAR
+    image.csiProvisioner.defaultRepository: $RELATED_IMAGE_CSI_PROVISIONER
+    image.csiResizer.defaultRepository: $RELATED_IMAGE_CSI_RESIZER
+    image.csiSnapshotter.defaultRepository: $RELATED_IMAGE_CSI_SNAPSHOTTER
+- group: storage.vastdata.com
+  version: v1
+  kind: VastStorage
+  chart: helm-charts/vaststorage
+- group: storage.vastdata.com
+  version: v1
+  kind: VastCluster
+  chart: helm-charts/vastcluster
+# +kubebuilder:scaffold:watch

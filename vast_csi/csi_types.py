@@ -1,8 +1,11 @@
 from __future__ import absolute_import
 
+import grpc
+from google.protobuf.timestamp_pb2 import Timestamp
 from google.protobuf import wrappers_pb2 as wrappers
 
-from . import csi_pb2
+from .proto import csi_pb2
+from .proto import cosi_pb2
 
 
 class EnumWrapper(object):
@@ -42,7 +45,11 @@ CtrlUnpublishResp = csi_pb2.ControllerUnpublishVolumeResponse
 CtrlExpandResp = csi_pb2.ControllerExpandVolumeResponse
 
 CapabilitiesResp = csi_pb2.GetPluginCapabilitiesResponse
-AccessModeType = EnumWrapper(csi_pb2.VolumeCapability.AccessMode.Mode)
+
+VolumeCapability = csi_pb2.VolumeCapability
+MountVolume = VolumeCapability.MountVolume
+AccessMode = VolumeCapability.AccessMode
+AccessModeType = EnumWrapper(AccessMode.Mode)
 
 StageResp = csi_pb2.NodeStageVolumeResponse
 UnstageResp = csi_pb2.NodeUnstageVolumeResponse
@@ -70,3 +77,23 @@ VolumeUsage = csi_pb2.VolumeUsage
 UsageUnit = EnumWrapper(VolumeUsage.Unit)
 
 Topology = csi_pb2.Topology
+
+# COSI types
+DriverGetInfoResp = cosi_pb2.DriverGetInfoResponse
+DriverCreateBucketResp = cosi_pb2.DriverCreateBucketResponse
+DriverGrantBucketAccessResp = cosi_pb2.DriverGrantBucketAccessResponse
+DriverRevokeBucketAccessResp = cosi_pb2.DriverRevokeBucketAccessResponse
+DriverDeleteBucketResp = cosi_pb2.DriverDeleteBucketResponse
+Protocol = cosi_pb2.Protocol
+S3 = cosi_pb2.S3
+S3SignatureVersion = cosi_pb2.S3SignatureVersion
+CredentialDetails = cosi_pb2.CredentialDetails
+
+# gRPC statuses
+FAILED_PRECONDITION = grpc.StatusCode.FAILED_PRECONDITION
+INVALID_ARGUMENT = grpc.StatusCode.INVALID_ARGUMENT
+ALREADY_EXISTS = grpc.StatusCode.ALREADY_EXISTS
+NOT_FOUND = grpc.StatusCode.NOT_FOUND
+ABORTED = grpc.StatusCode.ABORTED
+UNKNOWN = grpc.StatusCode.UNKNOWN
+OUT_OF_RANGE = grpc.StatusCode.OUT_OF_RANGE

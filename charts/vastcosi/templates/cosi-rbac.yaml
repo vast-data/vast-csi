@@ -1,0 +1,48 @@
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ .Release.Name }}-objectstorage-provisioner-role
+  namespace: {{ include "vastcosinamespace" . }}
+  labels:
+    {{- include "vastcosilabels" . | nindent 4 }}
+rules:
+- apiGroups: ["objectstorage.k8s.io"]
+  resources: ["buckets", "bucketaccesses", "bucketclaims", "bucketaccessclasses", "buckets/status", "bucketaccesses/status", "bucketclaims/status", "bucketaccessclasses/status"]
+  verbs: ["get", "list", "watch", "update", "create", "delete"]
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["get", "watch", "list", "delete", "update", "create"]
+- apiGroups: [""]
+  resources: ["secrets", "events"]
+  verbs: ["get", "delete", "update", "create"]
+
+---
+
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ .Release.Name }}-objectstorage-provisioner-role-binding
+  namespace: {{ include "vastcosinamespace" . }}
+  labels:
+    {{- include "vastcosilabels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-objectstorage-provisioner-sa
+    namespace: {{ include "vastcosinamespace" . }}
+roleRef:
+  kind: ClusterRole
+  name: {{ .Release.Name }}-objectstorage-provisioner-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-objectstorage-provisioner-sa
+  namespace: {{ include "vastcosinamespace" . }}
+  labels:
+    {{- include "vastcosilabels" . | nindent 4 }}
+
+---

@@ -1,0 +1,12 @@
+apiVersion: storage.vastdata.com/v1
+kind: VastStorage
+metadata:
+  name: vastdata-filesystem
+  namespace: vast-csi
+spec:
+  clusterName: cluster
+  storagePath: "/k8s"
+  viewPolicy: "default"
+  vipPool: "vippool-1"
+  allowVolumeExpansion: true
+  createSnapshotClass: true
