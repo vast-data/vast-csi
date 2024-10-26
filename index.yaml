@@ -287,21 +287,4 @@ entries:
     urls:
     - https://github.com/vast-data/vast-csi/releases/download/vastcsi-0.1.0/vastcsi-0.1.0.tgz
     version: 0.1.0
-  vastcsi-operator:
-  - apiVersion: v2
-    created: "2024-10-26T20:04:21.103379014Z"
-    description: Helm chart for Vast CSI Operator deployment
-    digest: 48b0916357a777ee8c5c31e458f5565ef870212c94bd0c6f4fc68191f44bb2a9
-    keywords:
-    - vast
-    - csi
-    - driver
-    - vastdata
-    - csi-driver
-    - operator
-    name: vastcsi-operator
-    type: application
-    urls:
-    - https://github.com/vast-data/vast-csi/releases/download/helm-vastcsi-operator-2.5.0/vastcsi-operator-2.5.0.tgz
-    version: 2.5.0
 generated: "2024-10-26T20:04:21.103428917Z"
