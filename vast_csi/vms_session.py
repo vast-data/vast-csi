@@ -75,10 +75,13 @@ def _derive_key(salt):
 
 
 @locking_cache
-def get_vms_session(username=None, password=None, endpoint=None, ssl_cert=None):
+def get_vms_session(username=None, password=None, endpoint=None, ssl_cert=None, cluster_name=None):
     config = Config()
     session_cls = TestVmsSession if config.mock_vast else VmsSession
-    return session_cls.create(config=config, username=username, password=password, endpoint=endpoint, ssl_cert=ssl_cert)
+    return session_cls.create(
+        config=config, username=username, password=password,
+        endpoint=endpoint, ssl_cert=ssl_cert, cluster_name=cluster_name,
+    )
 
 
 class RESTSession(requests.Session):
@@ -204,30 +207,74 @@ class VmsSession(RESTSession):
         return get_vms_session(username=username, password=password, endpoint=endpoint, ssl_cert=ssl_cert)
 
     @classmethod
-    def create(cls, config, username, password, endpoint, ssl_cert):
+    def create(cls, config, username, password, endpoint, ssl_cert, cluster_name):
         """
-        Create instance of session.
-        username, password endpoint are optional and in context of csi driver comes from secret if passed as argument.
-        Otherwise, username, password and endpoint are taken from locally mounted secret (COSI case).
+        Creates an instance of the session, initializing credentials based on provided arguments or configuration context.
+
+        :param config: The configuration object containing credentials and settings.
+        :param username: Optional; the username for authentication. If not provided, it will be sourced from the secret.
+        :param password: Optional; the password for authentication. If not provided, it will be sourced from the secret.
+        :param endpoint: Optional; the endpoint URL. If not provided, it will be sourced from the secret or environment.
+        :param ssl_cert: SSL certificate for secure connections.
+        :param cluster_name: Optional; specifies the cluster name for multi-cluster authentication.
+
+        The following behaviors apply:
+        1. StorageClass Secret (Recommended): If `cluster_name` is not provided
+           but username, password, and endpoint are passed as arguments,
+           these are used as StorageClass-level credentials.
+
+        2. Multi-Cluster Secret: If `cluster_name` is specified,
+           credentials are pulled from a multi-cluster YAML configuration in the secret,
+            where each top-level key represents a cluster.
+            This secret should be mounted at `/opt/vms-auth/clusters`
+            Example:
+                ```
+                cluster1:
+                  username: user1
+                  password: 111111
+                  endpoint: clstr1.example.com
+                cluster2:
+                  username: user2
+                  password: 222222
+                  endpoint: clstr2.example.com
+                ```
+
+        3. Global Secret (Deprecated): If neither `cluster_name` nor username/password arguments are provided,
+         credentials are sourced from a global secret mounted at `/opt/vms-auth`.
+          This global secret should contain `username` and `password` fields,
+           with the `endpoint` provided via environment variables.
+           Note: Using a global secret is deprecated; it is recommended to use StorageClass secrets.
+
+        Returns:
+            An initialized session object with SSL verification status logged.
         """
-        # The presence of the name in the arguments already indicates
-        # that we have a StorageClass scope secret at this point.
-        # In other words, it's not a globally mounted secret. Other secret fields will be validated below.
-        is_global = not bool(username)
-        if config.vms_credentials_store.exists() and is_global:
-            username = config.vms_user
-            password = config.vms_password
-            endpoint = config.vms_host
+        if cluster_name:
+            if not (cluster_auth_config := config.cluster_credentials.get(cluster_name)):
+                raise LookupFieldError(field="cluster_name", tip="Make sure cluster name is present in secret.")
+            username = cluster_auth_config.username
+            password = cluster_auth_config.password
+            endpoint = cluster_auth_config.endpoint
+            config_source = f"multi-cluster auth configuration ({cluster_name=})"
+        else:
+            # The presence of the name in the arguments already indicates
+            # that we have a StorageClass scope secret at this point.
+            # In other words, it's not a globally mounted secret. Other secret fields will be validated below.
+            is_global = not bool(username)
+            if config.vms_credentials_store.exists() and is_global:
+                username = config.vms_user
+                password = config.vms_password
+                endpoint = config.vms_host
+                if not endpoint:
+                    raise LookupFieldError(field="endpoint", tip="Make sure endpoint is specified in values.yaml.")
+            if not username:
+                raise LookupFieldError(field="username", tip="Make sure username is present in secret.")
+            if not password:
+                raise LookupFieldError(field="password",  tip="Make sure password is present in secret.")
             if not endpoint:
-                raise LookupFieldError(field="endpoint", tip="Make sure endpoint is specified in values.yaml.")
-        if not username:
-            raise LookupFieldError(field="username", tip="Make sure username is present in secret.")
-        if not password:
-            raise LookupFieldError(field="password",  tip="Make sure password is present in secret.")
-        if not endpoint:
-            raise LookupFieldError(field="endpoint",  tip="Make sure endpoint is present in secret.")
+                raise LookupFieldError(field="endpoint",  tip="Make sure endpoint is present in secret.")
+            config_source = "mounted credentials (global secret)" if is_global else "StorageClass secret"
+
         session = cls(config, username, password, endpoint, ssl_cert)
-        config_source = "mounted configuration" if is_global else "secret"
         ssl_verification = "enabled" if session.ssl_verify else "disabled"
         logger.info(f"VMS session has been instantiated from {config_source}. SSL verification {ssl_verification}.")
         return session
