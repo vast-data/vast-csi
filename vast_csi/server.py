@@ -48,7 +48,14 @@ from .utils import (
 from .proto import csi_pb2_grpc as csi_grpc
 from .proto import cosi_pb2_grpc as cosi_grpc
 from . import csi_types as types
-from .volume_builder import EmptyVolumeBuilder, VolumeFromSnapshotBuilder, VolumeFromVolumeBuilder, TestVolumeBuilder
+from .volume_builder import (
+    EmptyVolumeBuilder,
+    VolumeFromSnapshotBuilder,
+    VolumeFromVolumeBuilder,
+    TestVolumeBuilder,
+    parse_volume_id,
+    to_volume_id_with_metadata,
+)
 from .exceptions import (
     Abort,
     ApiError,
@@ -147,6 +154,23 @@ class Instrumented:
             # secrets are not logged and not the part of function signature.
             secrets = params.pop("secrets", {})
             missing_params = required_params - {"request", "context", "vms_session"} - set(params)
+
+            # Get cluster_name from volume_id, snapshot_id or source_volume_id in case of id identifier with metadata
+            cluster_names = set()
+            for fld in ("volume_id", "snapshot_id", "source_volume_id"):
+                if fld in params:
+                    id_value = params[fld]
+                    orig_value, cluster_name = parse_volume_id(id_value)
+                    cluster_names.add(cluster_name)
+                    params[fld] = orig_value
+            cluster_names.add(params.get("parameters", {}).get("cluster_name"))
+            cluster_names.discard(None)
+            if not cluster_names:
+                pass
+            elif len(cluster_names) == 1:
+                secrets["cluster_name"] = cluster_names.pop()
+            else:
+                raise Exception(f"too many cluster names specified: {', '.join(cluster_names)}")
 
             log(f"{peer} >>> {method}:")
 
@@ -328,7 +352,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
         )
         # Take appropriate builder for volume, snapshot or test builder
         if CONF.mock_vast:
-            root_export = volume_name_fmt = view_policy = vip_pool_name = vip_pool_fqdn = mount_options = qos_policy = ""
+            root_export = volume_name_fmt = view_policy = vip_pool_name = vip_pool_fqdn = mount_options = qos_policy = cluster_name = ""
             builder = TestVolumeBuilder
 
         else:
@@ -354,6 +378,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
                     raise Abort(INVALID_ARGUMENT, f"Local IP address: {CONF.use_local_ip_for_mount} is invalid")
             volume_name_fmt = parameters.get("volume_name_fmt", CONF.name_fmt)
             qos_policy = parameters.get("qos_policy")
+            cluster_name = parameters.get("cluster_name")
 
             if not volume_content_source:
                 builder = EmptyVolumeBuilder
@@ -389,6 +414,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
             vip_pool_fqdn=vip_pool_fqdn,
             mount_options=mount_options,
             qos_policy=qos_policy,
+            cluster_name=cluster_name,
         )
         try:
             volume = builder.build_volume()
@@ -572,6 +598,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
     def CreateSnapshot(self, vms_session, source_volume_id, name, parameters=None):
 
         parameters = parameters or dict()
+        cluster_name = parameters.get("cluster_name")
         volume_id = source_volume_id
         if not (quota := vms_session.get_quota(volume_id)):
             raise Abort(NOT_FOUND, f"Unknown volume: {volume_id}")
@@ -635,8 +662,8 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
 
             snp = types.Snapshot(
                 size_bytes=0,  # indicates 'unspecified'
-                snapshot_id=str(snap.id),
-                source_volume_id=volume_id,
+                snapshot_id=to_volume_id_with_metadata(snap.id, cluster_name),
+                source_volume_id=to_volume_id_with_metadata(source_volume_id, cluster_name),
                 creation_time=string_to_proto_timestamp(snap.created),
                 ready_to_use=True,
             )
