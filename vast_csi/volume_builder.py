@@ -5,7 +5,7 @@ from abc import ABC
 from base64 import b32encode
 from random import getrandbits
 from datetime import timedelta
-from typing import Optional, final, TypeVar
+from typing import Optional, final, TypeVar, Tuple
 
 from easypy.bunch import Bunch
 
@@ -19,6 +19,23 @@ from .utils import is_valid_ip
 from .quantity import parse_quantity
 
 CreatedVolumeT = TypeVar("CreatedVolumeT")
+VOLUME_ID_SEPARATOR = "@"
+
+
+def parse_volume_id(volume_id: str) -> Tuple[str, Optional[str]]:
+    """
+    Parse volume_id into name and cluster_name.
+    If cluster_name is not present, return None.
+    """
+    parts = volume_id.split(VOLUME_ID_SEPARATOR)
+    if len(parts) == 1:
+        return parts[0], None
+    return parts[0], parts[1]
+
+
+def to_volume_id_with_metadata(volume_id: str, cluster_name: Optional[str]) -> str:
+    """Append cluster_name to volume_id if it is present."""
+    return f"{volume_id}{VOLUME_ID_SEPARATOR}{cluster_name}" if cluster_name else str(volume_id)
 
 
 class VolumeBuilderI(ABC):
@@ -69,10 +86,11 @@ class BaseBuilder(VolumeBuilderI):
     # Optional
     volume_content_source: Optional[str] = None  # Either volume or snapshot
     ephemeral_volume_name: Optional[str] = None
+    cluster_name: Optional[str] = None
     vip_pool_name: Optional[str] = None
     vip_pool_fqdn: Optional[str] = None
     qos_policy: Optional[str] = None
-    capacity_range: Optional[int] = None # Optional desired volume capacity
+    capacity_range: Optional[int] = None  # Optional desired volume capacity
     pvc_name: Optional[str] = None
     pvc_namespace: Optional[str] = None
 
@@ -107,6 +125,9 @@ class BaseBuilder(VolumeBuilderI):
         prefix = b32encode(getrandbits(16).to_bytes(2, "big")).decode("ascii").rstrip("=")
         return f"{prefix}.{self.vip_pool_fqdn}"
 
+    @property
+    def volume_id_with_metadata(self):
+        return to_volume_id_with_metadata(self.name, self.cluster_name)
 
     @classmethod
     def from_parameters(
@@ -132,6 +153,7 @@ class BaseBuilder(VolumeBuilderI):
 
         volume_name_fmt = parameters.get("volume_name_fmt", conf.name_fmt)
         qos_policy = parameters.get("qos_policy")
+        cluster_name = parameters.get("cluster_name")
 
         return cls(
             vms_session=vms_session,
@@ -150,6 +172,7 @@ class BaseBuilder(VolumeBuilderI):
             vip_pool_fqdn=vip_pool_fqdn,
             mount_options=mount_options,
             qos_policy=qos_policy,
+            cluster_name=cluster_name,
         )
 
     @classmethod
@@ -253,7 +276,7 @@ class EmptyVolumeBuilder(BaseBuilder):
 
         return types.Volume(
             capacity_bytes=requested_capacity,
-            volume_id=self.name,
+            volume_id=self.volume_id_with_metadata,
             volume_context=volume_context,
         )
 
@@ -269,8 +292,11 @@ class VolumeFromVolumeBuilder(BaseBuilder):
         volume_context["volume_name"] = volume_name
 
         source_volume_id = self.volume_content_source.volume.volume_id
-        if not (source_quota := self.vms_session.get_quota(source_volume_id)):
-            raise SourceNotFound(f"Unknown volume: {source_volume_id}")
+        # Source volume id without metadata
+        orig_source_volume_id, _ = parse_volume_id(source_volume_id)
+
+        if not (source_quota := self.vms_session.get_quota(orig_source_volume_id)):
+            raise SourceNotFound(f"Unknown volume: {orig_source_volume_id}")
 
         source_path = source_quota.path
         tenant_id = source_quota.tenant_id
@@ -302,7 +328,7 @@ class VolumeFromVolumeBuilder(BaseBuilder):
 
         return types.Volume(
             capacity_bytes=requested_capacity,
-            volume_id=self.name,
+            volume_id=self.volume_id_with_metadata,
             content_source=types.VolumeContentSource(
                 volume=types.VolumeSource(volume_id=source_volume_id)
             ),
@@ -320,8 +346,10 @@ class VolumeFromSnapshotBuilder(BaseBuilder):
         Create snapshot representation.
         """
         source_snapshot_id = self.volume_content_source.snapshot.snapshot_id
-        if not (snapshot := self.vms_session.get_snapshot(snapshot_id=source_snapshot_id)):
-            raise SourceNotFound(f"Unknown snapshot: {source_snapshot_id}")
+        # source snapshot id without metadata
+        orig_source_snapshot_id, _ = parse_volume_id(source_snapshot_id)
+        if not (snapshot := self.vms_session.get_snapshot(snapshot_id=orig_source_snapshot_id)):
+            raise SourceNotFound(f"Unknown snapshot: {orig_source_snapshot_id}")
         volume_context = self.volume_context
 
         if self.rw_access_mode:
@@ -367,7 +395,7 @@ class VolumeFromSnapshotBuilder(BaseBuilder):
 
         return types.Volume(
             capacity_bytes=requested_capacity,
-            volume_id=self.name,
+            volume_id=self.volume_id_with_metadata,
             content_source=types.VolumeContentSource(
                 snapshot=types.SnapshotSource(snapshot_id=source_snapshot_id)
             ),
