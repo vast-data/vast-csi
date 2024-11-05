@@ -5,6 +5,9 @@
 * Allow using VIPPool DNS name instead of the CSI choosing IPs (VCSI-167)
 * Expose existing data via Static PV (VCSI-150)
 
+## Version 2.4.3
+* Support for multiple clusters via a single global secret
+
 ## Version 2.4.2
 * Support for ARM architecture (VCSI-191)
 * Bug Fix - do not expect VMS credentials in a non-ephemeral mounting flow (VCSI-196)
