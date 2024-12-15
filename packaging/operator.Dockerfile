@@ -1,4 +1,4 @@
-FROM registry.redhat.io/openshift4/ose-helm-operator@sha256:4882ede68eeb45fc62b3ac25f0a46ff9485f3f2ddf133b6d349560ef65f9012a
+FROM registry.redhat.io/openshift4/ose-helm-operator
 
 ARG VERSION
 # Required OpenShift Labels
