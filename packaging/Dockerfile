@@ -13,11 +13,11 @@ COPY tests tests
 COPY k8s_supported.txt .
 
 LABEL \
-    name="VASTData CSI Driver" \
-    vendor="VASTData" \
+    name="VAST CSI Driver" \
+    vendor="VAST Data" \
     version=$VERSION \
     release="1" \
-    summary="VASTData CSI Driver" \
-    description="This container image deploys the VASTData Container Storage Interface (CSI) driver. The CSI driver provides storage management and provisioning capabilities for containerized applications, allowing seamless integration with VASTData's storage solutions. It supports dynamic volume provisioning, snapshot management, and volume attachment operations for Kubernetes clusters."
+    summary="VAST CSI Driver" \
+    description="VAST CSI Driver allows container orchestration frameworks such as Kubernetes to dynamically provision storage volumes on the VAST Data Platform. VAST provides scalable, reliable, and fast persistent storage that can be accessed remotely by any Kubernetes application container."
 
 ENTRYPOINT ["poetry", "run", "python", "-m", "vast_csi"]
