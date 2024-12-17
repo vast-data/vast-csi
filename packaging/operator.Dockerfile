@@ -2,12 +2,12 @@ FROM registry.redhat.io/openshift4/ose-helm-operator
 
 ARG VERSION
 # Required OpenShift Labels
-LABEL name="VASTData CSI Driver Operator"
-LABEL vendor="VASTData"
-LABEL version="v${VERSION}"
+LABEL name="VAST CSI Operator"
+LABEL vendor="VAST Data"
+LABEL version="${VERSION}"
 LABEL release="1"
-LABEL summary="VASTData CSI Driver Operator"
-LABEL description="This operator will deploy VASTData CSI driver to the cluster."
+LABEL summary="VAST CSI Operator"
+LABEL description="VAST Data’s CSI Operator manages installation, upgrades, and configuration of the VAST CSI driver, enabling container orchestrators such as OpenShift Container Platform to easily integrate with the VAST Data Platform."
 
 # Required Licenses
 COPY LICENSE /licenses/LICENSE
