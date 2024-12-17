@@ -6,7 +6,7 @@ stages:
   - redhat
 
 # source: packaging/ci.Dockerfile
-image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:CI-2024-09-18
+image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:CI-2024-11-20
 
 variables:
   PLATFORMS: "linux/amd64,linux/arm64" # comma-separated list of platforms to build multi-arch images
@@ -14,7 +14,7 @@ variables:
   DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
   IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:${CI_PIPELINE_ID}
   # source: packaging/base.Dockerfile
-  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2024-11-03
+  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2024-12-15
   ORION_BRANCH: comet/master
 
 build_csi_base:
@@ -204,6 +204,7 @@ publish_image_redhat:
     set -x
     docker login -u ${RH_DOCKER_USER} -p ${RH_DOCKER_PASSWORD} registry.redhat.io
     export VERSION=$(cat version.txt)
+    export VERSION=${VERSION#v}  # Remove the 'v' prefix
 
     # Publish CSI Driver image
     export PROJECT_ID=5f7595a16fd1fbdbe36c0b50
