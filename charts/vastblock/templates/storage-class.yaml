@@ -1,0 +1,89 @@
+{{/* Generate one or more storage classes from 'storageClasses' section. */}}
+
+{{- if not .Values.storageClasses -}}
+  {{- fail "`storageClasses` cannot be empty section. Specify at least one StorageClass with required parameters (vipPool, subsystem etc)" -}}
+{{- end -}}
+
+{{/* Iterate over StorageClasses from manifest */}}
+{{- range $name, $options := .Values.storageClasses }}
+
+{{/* Validate  setDefaultStorageClass option. Options should be either true or false */}}
+{{-
+    $is_default_class := pluck "setDefaultStorageClass" $options $.Values.storageClassDefaults | first | quote
+-}}
+{{- if not (or (kindIs "bool" $is_default_class ) ( $is_default_class | mustRegexMatch "true|false" )) -}}
+  {{- fail "setDefaultStorageClass should be either 'true' or 'false'" -}}
+{{- end }}
+
+{{/* Validate  subsystem parameter. Parameter should be not empty string. */}}
+{{- $subsystem := pluck "subsystem" $options $.Values.storageClassDefaults | first | quote -}}
+{{- if eq $subsystem ( quote "" ) -}}
+  {{- fail "subsystem is required value. Please specify valid subsystem" -}}
+{{- end }}
+
+{{- $vip_pool_name := pluck "vipPool" $options $.Values.storageClassDefaults | first | quote -}}
+{{- $vip_pool_fqdn := pluck "vipPoolFQDN" $options $.Values.storageClassDefaults | first | quote -}}
+
+{{- if and (ne $vip_pool_name ( quote "" )) (ne $vip_pool_fqdn ( quote "" )) -}}
+{{- fail (printf "vipPool and vipPoolFQDN are mutually exclusive in the StorageClass '%s' parameters. Do not set a default value from storageDefaults for either field; choose only one to specify." $name) -}}
+{{- end }}
+
+{{- $volume_group := pluck "volumeGroup" $options $.Values.storageClassDefaults | first | quote -}}
+{{- $mount_options :=  pluck "mountOptions" $options $.Values.storageClassDefaults | first -}}
+{{- $reclaim_policy :=  pluck "reclaimPolicy" $options $.Values.storageClassDefaults | first | quote -}}
+{{-
+   $allow_volume_expansion := pluck "allowVolumeExpansion" $options $.Values.storageClassDefaults |
+   first | quote | mustRegexMatch "true" | ternary true false
+-}}
+
+{{- $storage_class_secret := pluck "secretName" $options $.Values.storageClassDefaults | first | quote -}}
+{{/* Get secretNamespace parameter. If not provided .Release.Namespace is used. */}}
+{{- $storage_class_secret_namespace := pluck "secretNamespace" $options $.Values.storageClassDefaults | first | default $.Release.Namespace | quote -}}
+{{- $volume_tags := pluck "volumeTags" $options $.Values.storageClassDefaults | first -}}
+{{- $fstype := pluck "fsType" $options $.Values.storageClassDefaults | first -}}
+{{- $transport_type := pluck "transportType" $options $.Values.storageClassDefaults | first -}}
+
+
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+provisioner: block.csi.vastdata.com
+metadata:
+  name: {{ required "A StorageClass name must be not empty" $name }}
+  namespace: {{ include "vastcsi.namespace" $ }}
+  annotations:
+    storageclass.kubernetes.io/is-default-class: {{ $is_default_class }}
+  labels:
+  {{- include "vastcsi.labels" $ | nindent 4 }}
+reclaimPolicy: {{ $reclaim_policy }}
+parameters:
+  subsystem: {{ $subsystem }}
+{{- range $key, $value := dict "vip_pool_name" $vip_pool_name "vip_pool_fqdn" $vip_pool_fqdn "volume_group" $volume_group "transport_type" $transport_type "fsType" $fstype }}
+  {{- if and $value (ne $value ( quote "" )) }}
+  {{ $key }}: {{ if (kindIs "int" $value) }}{{ $value | quote }}{{ else }}{{ $value }}{{ end }}
+  {{- end }}
+{{- end }}
+{{- if $volume_tags }}
+  volume_tags: {{- include "vastcsi.volumeTags" $volume_tags | indent 1 }}
+{{- end }}
+{{-  if ne $storage_class_secret ( quote "" ) }}
+  csi.storage.k8s.io/provisioner-secret-name: {{ $storage_class_secret }}
+  csi.storage.k8s.io/provisioner-secret-namespace: {{ $storage_class_secret_namespace }}
+  csi.storage.k8s.io/controller-publish-secret-name: {{ $storage_class_secret }}
+  csi.storage.k8s.io/controller-publish-secret-namespace: {{ $storage_class_secret_namespace }}
+  csi.storage.k8s.io/node-publish-secret-name: {{ $storage_class_secret }}
+  csi.storage.k8s.io/node-publish-secret-namespace: {{ $storage_class_secret_namespace }}
+  csi.storage.k8s.io/node-stage-secret-name: {{ $storage_class_secret }}
+  csi.storage.k8s.io/node-stage-secret-namespace: {{ $storage_class_secret_namespace }}
+  csi.storage.k8s.io/controller-expand-secret-name: {{ $storage_class_secret }}
+  csi.storage.k8s.io/controller-expand-secret-namespace: {{ $storage_class_secret_namespace }}
+{{- end }}
+allowVolumeExpansion: {{ $allow_volume_expansion }}
+{{- if kindIs "string" $mount_options -}}
+{{/* Keep option to specify mountOptions as string for backward compatibility */}}
+mountOptions:
+  - {{ $mount_options | quote }}
+{{- else }}
+mountOptions: {{ toYaml $mount_options | nindent 2  }}
+{{- end }}
+---
+{{- end }}

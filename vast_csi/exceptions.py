@@ -1,5 +1,6 @@
 import grpc
 from easypy.exceptions import TException
+from easypy.sync import PredicateNotSatisfied
 
 
 class Abort(Exception):
@@ -58,3 +59,15 @@ class SourceNotFound(BuilderFailed):
 
 class VolumeAlreadyExists(BuilderFailed):
     pass
+
+
+class CapValidationError(TException):
+    template = "Capability {cap} didn't pass validation. Reason: {reason}."
+
+
+class TaskFailed(PredicateNotSatisfied, TException):
+    template = "Task {task} named {name} with id {id} has failed. Reason: {reason}."
+
+
+class NVMEConnectionFailed(TException):
+    template = "NVME connection to {host} failed"
