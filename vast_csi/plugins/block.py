@@ -33,6 +33,7 @@ from vast_csi.builders import (
     BlockVolumeFromVolumeBuilder,
     BlockVolumeFromSnapshotBuilder,
     StaticBlockVolumeBuilder,
+    to_volume_id_with_metadata,
 )
 from vast_csi.exceptions import (
     Abort,
@@ -49,7 +50,10 @@ from vast_csi.block_utils import (
     try_nvme_probes,
     change_io_policy,
 )
-from vast_csi.utils import stringify_dict
+from vast_csi.utils import (
+    stringify_dict,
+    string_to_proto_timestamp,
+)
 from vast_csi.filesystem_utils import (
     get_filesystem_type,
     FsFormatter,
@@ -161,6 +165,7 @@ class BlockController(ControllerBase, Instrumented):
     CAPABILITIES = [
         types.CtrlCapabilityType.CREATE_DELETE_VOLUME,
         types.CtrlCapabilityType.PUBLISH_UNPUBLISH_VOLUME,
+        types.CtrlCapabilityType.CREATE_DELETE_SNAPSHOT,
         types.CtrlCapabilityType.CLONE_VOLUME,
     ]
 
@@ -306,6 +311,42 @@ class BlockController(ControllerBase, Instrumented):
                     blockhost_id=blockhost.id, ids_to_remove=volume.id
                 )
         return types.CtrlUnpublishResp()
+
+    def CreateSnapshot(self, vms_session, source_volume_id, name, parameters=None):
+        parameters = parameters or dict()
+        cluster_name = parameters.get("cluster_name")
+        volume_id = source_volume_id
+        if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
+            raise Abort(NOT_FOUND, f"Unknown volume: {volume_id}")
+        if not (view := vms_session.views.get_subsystem(_id=volume.view_id)):
+            raise Abort(NOT_FOUND, f"Unknown subsystem: {volume.view_id}")
+
+        # Full path is concatenation of view path and volume name.
+        path = os.path.join(view.path, volume.name.lstrip("/"))
+        tenant_id = view.tenant_id
+        snapshot_name = parameters["csi.storage.k8s.io/volumesnapshot/name"]
+        snapshot_namespace = parameters[
+            "csi.storage.k8s.io/volumesnapshot/namespace"
+        ]
+        snapshot_name_fmt = parameters.get("snapshot_name_fmt", CONF.name_fmt)
+        snapshot_name = snapshot_name_fmt.format(
+            namespace=snapshot_namespace, name=snapshot_name, id=name
+        )
+        snapshot_name = snapshot_name.replace(":", "-").replace("/", "-")
+        snap = vms_session.snapshots.ensure(name=snapshot_name, path=path, tenant_id=tenant_id)
+        snp = types.Snapshot(
+            size_bytes=0,  # indicates 'unspecified'
+            snapshot_id=to_volume_id_with_metadata(snap.id, cluster_name),
+            source_volume_id=to_volume_id_with_metadata(source_volume_id, cluster_name),
+            creation_time=string_to_proto_timestamp(snap.created),
+            ready_to_use=True,
+        )
+        return types.CreateSnapResp(snapshot=snp)
+
+    def DeleteSnapshot(self, vms_session, snapshot_id):
+        if vms_session.snapshots.get(snapshot_id):
+            vms_session.snapshots.delete_by_id(snapshot_id)
+        return types.DeleteSnapResp()
 
 
 ################################################################
