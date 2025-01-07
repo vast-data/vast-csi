@@ -13,7 +13,7 @@ RUN echo "[centos-stream]" > /etc/yum.repos.d/centos-stream.repo \
     && echo "baseurl=https://mirror.stream.centos.org/9-stream/BaseOS/\$basearch/os/" >> /etc/yum.repos.d/centos-stream.repo \
     && echo "enabled=1" >> /etc/yum.repos.d/centos-stream.repo \
     && echo "gpgcheck=0" >> /etc/yum.repos.d/centos-stream.repo \
-    && microdnf install -y nfs-utils \
+    && microdnf install -y nfs-utils e2fsprogs xfsprogs \
     && microdnf clean all
 
 COPY pyproject.toml poetry.lock* ./

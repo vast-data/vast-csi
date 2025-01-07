@@ -30,15 +30,12 @@ spec:
       containers:
       - name: cosi-vast-plugin
         image: {{ printf "%s:%s" $csi_images.csiVastPlugin.repository $csi_images.csiVastPlugin.tag }}
-        args:
-          - "serve"
+        args: ["serve", "--plugin", "cosi"]
         imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default  "IfNotPresent" }}
         env:
 {{- include "vastcosicommonEnv" . | indent 10 }}
           - name: CSI_ENDPOINT
             value: unix:///var/lib/cosi/cosi.sock
-          - name: X_CSI_MODE
-            value: cosi_plugin
         volumeMounts:
 {{- include "vastcosivmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 10 }}
           - mountPath: /var/lib/cosi

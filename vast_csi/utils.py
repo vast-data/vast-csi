@@ -1,10 +1,14 @@
 import re
+from pprint import pformat
 from datetime import datetime
 from ipaddress import summarize_address_range, ip_address
+from base64 import b32encode
+from random import getrandbits
 from requests.exceptions import HTTPError  # noqa
 
 from plumbum import local
 from easypy.caching import locking_cache
+from easypy.collections import listify
 from . import csi_types as types
 
 
@@ -12,6 +16,11 @@ PATH_ALIASES = {
     re.compile('.*/site-packages'): '*',
     re.compile("%s/" % local.cwd): ''
 }
+
+
+def stringify_dict(d):
+    """Convert dictionary to string representation for line-by-line logging."""
+    yield from pformat(d).splitlines()
 
 
 @locking_cache
@@ -114,7 +123,7 @@ def string_to_proto_timestamp(str_ts: str):
 
 def is_ver_nfs4_present(mount_options: str) -> bool:
     """Check if vers=4 or nfsvers=4 mount option is present in `mount_options` string"""
-    for opt in mount_options.split(","):
+    for opt in listify(mount_options):
         name, sep, value = opt.partition("=")
         if name in ("vers", "nfsvers") and value.startswith("4"):
             return True
@@ -132,6 +141,10 @@ def generate_ip_range(ip_ranges):
         for start_ip, end_ip in ip_ranges for net in summarize_address_range(ip_address(start_ip), ip_address(end_ip))
         for ip in net
     ]
+
+
+def get_random_fqdn_prefix():
+    return b32encode(getrandbits(16).to_bytes(2, "big")).decode("ascii").rstrip("=")
 
 
 def is_valid_ip(ip_str):

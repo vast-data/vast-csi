@@ -8,7 +8,6 @@ from easypy.tokens import (
     CONTROLLER_AND_NODE,
     CONTROLLER,
     NODE,
-    COSI_PLUGIN
 )
 from .exceptions import LookupFieldError
 
@@ -41,7 +40,6 @@ class Config(TypedEnv):
     csi_sanity_test = TypedEnv.Bool("X_CSI_SANITY_TEST", default=False)
     node_id = TypedEnv.Str("X_CSI_NODE_ID", default=socket.getfqdn())
 
-    vms_host = TypedEnv.Str("X_CSI_VMS_HOST", default="vast")
     ssl_verify = TypedEnv.Bool("X_CSI_ENABLE_VMS_SSL_VERIFICATION", default=False)
     truncate_volume_name = TypedEnv.Int("X_CSI_TRUNCATE_VOLUME_NAME", default=None)
     worker_threads = TypedEnv.Int("X_CSI_WORKER_THREADS", default=10)
@@ -52,6 +50,7 @@ class Config(TypedEnv):
     _mode = TypedEnv.Str("X_CSI_MODE", default="controller_and_node")
     _endpoint = TypedEnv.Str("CSI_ENDPOINT", default="unix:///var/run/csi.sock")
     _mount_options = TypedEnv.Str("X_CSI_MOUNT_OPTIONS", default="")  # For example: "port=2049,nolock,vers=3"
+    _vms_host = TypedEnv.Str("X_CSI_VMS_HOST", default="vast")
     name_fmt = "csi:{namespace}:{name}:{id}"
 
     fake_quota_store = local.path("/tmp/volumes")
@@ -78,6 +77,12 @@ class Config(TypedEnv):
         return self.vms_credentials_store['password'].read().strip()
 
     @cached_property
+    def vms_host(self):
+        if self.vms_credentials_store['endpoint'].exists():
+            return self.vms_credentials_store['endpoint'].read().strip()
+        return self._vms_host
+
+    @cached_property
     def cluster_credentials(self):
         """Read multi-cluster auth configuration from the secret"""
         import yaml
@@ -101,7 +106,7 @@ class Config(TypedEnv):
     @property
     def mode(self):
         mode = Token(self._mode.upper())
-        assert mode in {CONTROLLER_AND_NODE, CONTROLLER, NODE, COSI_PLUGIN}, f"invalid mode: {mode}"
+        assert mode in {CONTROLLER_AND_NODE, CONTROLLER, NODE}, f"invalid mode: {mode}"
         return mode
 
     @property

@@ -48,6 +48,7 @@ CapabilitiesResp = csi_pb2.GetPluginCapabilitiesResponse
 
 VolumeCapability = csi_pb2.VolumeCapability
 MountVolume = VolumeCapability.MountVolume
+BlockVolume = VolumeCapability.BlockVolume
 AccessMode = VolumeCapability.AccessMode
 AccessModeType = EnumWrapper(AccessMode.Mode)
 
