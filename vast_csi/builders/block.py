@@ -14,6 +14,7 @@ __all__ = [
     "EmptyBlockVolumeBuilder",
     "BlockVolumeFromVolumeBuilder",
     "BlockVolumeFromSnapshotBuilder",
+    "StaticBlockVolumeBuilder",
 ]
 
 
@@ -267,3 +268,76 @@ class BlockVolumeFromSnapshotBuilder(BlockProvisionBase):
             ),
             volume_context=volume_context
         )
+
+
+@final
+@dataclass
+class StaticBlockVolumeBuilder(BaseVolumeBuilder):
+    # Required parameters
+    vms_session: "RESTSession"
+    configuration: "CONF"
+    name: str
+    volume_capabilities: Capabilities
+    subsystem: str
+
+    # Optional parameters
+    cluster_name: Optional[str] = None
+    vip_pool_name: Optional[str] = None
+    vip_pool_fqdn: Optional[str] = None
+    transport_type: Optional[str] = "TCP"
+
+    @classmethod
+    def from_parameters(
+            cls,
+            conf,
+            vms_session,
+            name,
+            volume_capabilities,
+            parameters,
+    ):
+        """Parse context and return builder instance"""
+        subsystem = cls._get_required_param(parameters, "subsystem")
+        vip_pool_fqdn = parameters.get("vip_pool_fqdn")
+        vip_pool_name = parameters.get("vip_pool_name")
+        transport_type = parameters.get("transport_type", "TCP").upper()
+        cls._validate_mount_src(vip_pool_name, vip_pool_fqdn, conf.use_local_ip_for_mount)
+        cluster_name = parameters.get("cluster_name")
+        return cls(
+            vms_session=vms_session,
+            configuration=conf,
+            name=name,
+            subsystem=subsystem,
+            volume_capabilities=volume_capabilities,
+            vip_pool_name=vip_pool_name,
+            vip_pool_fqdn=vip_pool_fqdn,
+            transport_type=transport_type,
+            cluster_name=cluster_name,
+        )
+
+    @property
+    def volume_context(self) -> dict:
+        context = {
+            "subsystem": self.subsystem,
+            "transport_type": self.transport_type,
+        }
+        if self.volume_capabilities.mount_flags_str:
+            context["mount_options"] = self.volume_capabilities.mount_flags_str
+        if self.vip_pool_name:
+            context["vip_pool_name"] = self.vip_pool_name
+        elif self.vip_pool_fqdn:
+            context["vip_pool_fqdn"] = self.vip_pool_fqdn_with_prefix
+        return context
+
+    def build_volume(self) -> types.Volume:
+        volume_context = self.volume_context
+        if not (view := self.vms_session.views.get_subsystem(subsystem=self.subsystem)):
+            raise SourceNotFound(f"View {self.subsystem} does not exist but claimed as existing.")
+        if not (volume := self.vms_session.volumes.one(name=self.name)):
+            raise SourceNotFound(f"Volume {self.name} does not exist but claimed as existing.")
+        volume_context.update(
+            uuid=volume.uuid,
+            volume_id=str(volume.id),
+            tenant_id=str(view.tenant_id),
+            subsystem_nqn=view.nqn,
+        )
+        return volume_context

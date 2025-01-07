@@ -8,6 +8,7 @@ from vast_csi.builders.block import (
     EmptyBlockVolumeBuilder,
     BlockVolumeFromVolumeBuilder,
     BlockVolumeFromSnapshotBuilder,
+    StaticBlockVolumeBuilder,
 )
 from vast_csi.builders.test import TestVolumeBuilder
 
