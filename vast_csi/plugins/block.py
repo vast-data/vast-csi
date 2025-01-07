@@ -28,7 +28,11 @@ from vast_csi.csi_types import (
     ALREADY_EXISTS,
     NOT_FOUND,
 )
-from vast_csi.builders import EmptyBlockVolumeBuilder
+from vast_csi.builders import (
+    EmptyBlockVolumeBuilder,
+    BlockVolumeFromVolumeBuilder,
+    BlockVolumeFromSnapshotBuilder,
+)
 from vast_csi.exceptions import (
     Abort,
     VolumeAlreadyExists,
@@ -201,8 +205,14 @@ class BlockController(ControllerBase, Instrumented):
                 "Filesystem volumes do not support multi-node attach."
             )
         parameters = parameters or dict()
+        if not volume_content_source:
+            builder_cls = EmptyBlockVolumeBuilder
+        elif volume_content_source.snapshot.snapshot_id:
+            builder_cls = BlockVolumeFromSnapshotBuilder
+        elif volume_content_source.volume.volume_id:
+            builder_cls = BlockVolumeFromVolumeBuilder
         try:
-            volume = EmptyBlockVolumeBuilder.build(
+            volume = builder_cls.build(
                 conf=CONF,
                 vms_session=vms_session,
                 name=name,
@@ -218,6 +228,7 @@ class BlockController(ControllerBase, Instrumented):
         return types.CreateResp(volume=volume)
 
     def DeleteVolume(self, vms_session, volume_id):
+        vms_session.globalsnapstreams.ensure_snapshot_stream_deleted(f"strm-{volume_id}")
         if volume := vms_session.volumes.one(name__endswith=volume_id):
             if vms_session.volumes.get_snapshots(volume.id):
                 raise Exception(
