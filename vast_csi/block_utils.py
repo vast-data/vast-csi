@@ -73,14 +73,13 @@ def list_nvme_devices():
     return []
 
 
-def get_nvme_device_by_uuid(uuid):
-    """Get NVMe device UUID."""
-    uuid = uuid.replace("-", "")
+def get_nvme_device_by_nguid(nguid):
+    nguid = nguid.replace("-", "")
     for path in BLOCK_DEVICE_INFO_PATH.iterdir():
         dev_name = path.name
         nguid_path = path["nguid"]
         if re.match(DEVICE_NAME_RGX, dev_name) and nguid_path.exists():
-            if nguid_path.read().replace("-", "") == uuid:
+            if nguid_path.read().replace("-", "").strip() == nguid:
                 return Bunch(
                     Name=dev_name,
                     DevicePath=f"/dev/{dev_name}",
@@ -141,8 +140,6 @@ def connect_nvme_targets(discovery_server, host_nqn):
         "-t", "tcp",
         "-a", discovery_server,
         "-q", host_nqn,
-        "--dump-config",
-        "--verbose",
     ]
     hostcmd.nvme.get_executable(*args) & logger.pipe_info("nvme")
 
