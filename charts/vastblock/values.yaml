@@ -62,7 +62,7 @@ storageClassDefaults:
   # Define a set of key-value pairs where the key represents the tag name and the value
   # represents the tag value.
   # Example:
-  # tags:
+  # volumeTags:
   #   environment: "production"
   #   application: "my-app"
   #   team: "devops"

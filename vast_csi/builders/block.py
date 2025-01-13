@@ -133,7 +133,7 @@ class EmptyBlockVolumeBuilder(BlockProvisionBase):
             tags=self.volume_tags,
         )
         volume_context.update(
-            uuid=volume.uuid,
+            nguid=volume.nguid,
             volume_id=str(volume.id),
             tenant_id=str(view.tenant_id),
             subsystem_nqn=view.nqn,

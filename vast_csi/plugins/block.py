@@ -40,7 +40,7 @@ from vast_csi.exceptions import (
 from vast_csi.block_utils import (
     connect_nvme_targets,
     get_connected_session,
-    get_nvme_device_by_uuid,
+    get_nvme_device_by_nguid,
     try_nvme_probes,
     change_io_policy,
 )
@@ -61,7 +61,6 @@ from vast_csi.plugins.base import (
 
 
 CONF = None
-# NOTE: See `vast_csi.capabilities.Capability.SINGLE_ACCESS_MODES`.
 ServiceCapabilities = cap_lib.ServiceCapabilities(
     support_filesystem=True, support_block=True, can_many_rwx=True
 )
@@ -223,6 +222,9 @@ class BlockController(ControllerBase, Instrumented):
                 raise Exception(
                     f"Unable to delete {volume.name} as it holds snapshots"
                 )
+            if volume.block_hosts:
+                # Unmap volume from all blockhosts (EV volume case)
+                vms_session.volumes.discard_hosts(volume.id)
             vms_session.volumes.delete_by_id(volume.id)
         return types.DeleteResp()
 
@@ -251,11 +253,11 @@ class BlockController(ControllerBase, Instrumented):
             logger.info(f"Using local IP for block: {discovery_server}")
 
         subsystem_nqn = volume_context["subsystem_nqn"]
-        uuid = volume_context["uuid"]
+        nguid = volume_context["nguid"]
         publish_context = dict(
                 subsystem_nqn=subsystem_nqn,
                 host_nqn=blockhost.nqn,
-                uuid=uuid,
+                nguid=nguid,
                 discovery_server=discovery_server,
             )
         return types.CtrlPublishResp(publish_context=publish_context)
@@ -323,9 +325,9 @@ class BlockNode(NodeBase, Instrumented):
                 volume_capability=volume_capability,
                 volume_context=volume_context,
             )
-        subsystem_nqn = publish_context["uuid"]
+        subsystem_nqn = publish_context["subsystem_nqn"]
         host_nqn = publish_context["host_nqn"]
-        uuid = publish_context["uuid"]
+        nguid = publish_context["nguid"]
         discovery_server = publish_context["discovery_server"]  # Either vip pool ip or fqdn
 
         if nvme_session := get_connected_session(host_nqn=host_nqn, sybsystem_nqn=subsystem_nqn):
@@ -337,10 +339,10 @@ class BlockNode(NodeBase, Instrumented):
             logger.info(f"Connecting to NVMe targets for subsystem {subsystem_nqn} at {discovery_server}")
             nvme_connect(discovery_server=discovery_server, host_nqn=host_nqn)
 
-        if not (device := get_nvme_device_by_uuid(uuid=uuid)):
+        if not (device := get_nvme_device_by_nguid(nguid=nguid)):
             raise Abort(
                 NOT_FOUND,
-                f"NVMe device not found for subsystem {subsystem_nqn} and uuid {uuid}"
+                f"NVMe device not found for subsystem {subsystem_nqn} and nguid {nguid}"
             )
         logger.info(f"Found NVMe device:")
         for line in stringify_dict(device.to_dict()):

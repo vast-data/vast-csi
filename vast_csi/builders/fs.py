@@ -13,7 +13,6 @@ from vast_csi.builders.base import BaseVolumeBuilder, parse_volume_id
 
 
 __all__ = [
-    "FileSystemProvisionBase",
     "EmptyVolumeBuilder",
     "VolumeFromVolumeBuilder",
     "VolumeFromSnapshotBuilder",
