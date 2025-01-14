@@ -267,6 +267,31 @@ class NodeBase(csi_grpc.NodeServicer):
         )
 
 
+    def _get_block_stats(self, path):
+        """Return the block stats for a given path."""
+        from vast_csi.block_utils import get_nvme_device_stats
+
+        try:
+            stats = get_nvme_device_stats(path)
+        except ProcessExecutionError as exc:
+            if "No such file or directory" in str(exc):
+                raise Exception(f"Device not found at {path}")
+            raise
+        else:
+            size = stats.total_bytes
+            used = stats.used_bytes
+            available = stats.available_bytes
+            return types.VolumeStatsResp(
+                usage=[
+                    types.VolumeUsage(
+                        unit=types.UsageUnit.BYTES,
+                        available=available,
+                        total=size,
+                        used=used,
+                    ),
+                ]
+            )
+
     def _get_publish_context_for_ev_volumes(
             self, volume_context, volume_id, volume_capability, vms_session, **create_vol_kwargs
     ):

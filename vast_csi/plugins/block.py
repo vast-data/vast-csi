@@ -289,6 +289,7 @@ class BlockController(ControllerBase, Instrumented):
 class BlockNode(NodeBase, Instrumented):
     CAPABILITIES = [
         types.NodeCapabilityType.STAGE_UNSTAGE_VOLUME,
+        types.NodeCapabilityType.GET_VOLUME_STATS,
     ]
 
     @cached_property
@@ -504,6 +505,16 @@ class BlockNode(NodeBase, Instrumented):
             os.remove(meta_file)
         remove_path_if_not_mounted(target_path)
         return types.NodeUnpublishResp()
+
+    def NodeGetVolumeStats(self, volume_id, volume_path):
+        target_mount = MountInfo.get_mount_by_destination(dest_path=volume_path)
+        if not target_mount:
+            raise Abort(NOT_FOUND, f"Mount information not found for volume path: {volume_path}")
+        if target_mount.has_devtmpfs_source:
+            # Get the device path associated with the mount
+            return self._get_block_stats(target_mount.devtmpfs_device)
+        else:
+            return self._get_fs_stats(volume_path)
 
 
 def serve(server: grpc.Server, conf: Config):

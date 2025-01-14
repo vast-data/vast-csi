@@ -112,6 +112,21 @@ def get_nvme_device_info(device_path):
     return Bunch.from_json(stdout)
 
 
+def get_nvme_device_stats(device_path):
+    """Get NVMe device stats by device path."""
+    info = get_nvme_device_info(device_path)
+    # Lower 4 bits specifically represent the current LBA format index
+    flbas = info.flbas & 0xF
+    lba_size = 2 ** info.lbafs[flbas]["ds"]
+    used_bytes = info.nuse * lba_size
+    total_bytes = info.nsze * lba_size
+    return Bunch(
+        total_bytes=total_bytes,
+        used_bytes=used_bytes,
+        available_bytes=total_bytes - used_bytes,
+    )
+
+
 def get_controller_info(device_path):
     """
     Get NVMe controller information.
