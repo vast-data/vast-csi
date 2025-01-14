@@ -32,6 +32,7 @@ from vast_csi.builders import (
     EmptyBlockVolumeBuilder,
     BlockVolumeFromVolumeBuilder,
     BlockVolumeFromSnapshotBuilder,
+    StaticBlockVolumeBuilder,
 )
 from vast_csi.exceptions import (
     Abort,
@@ -242,6 +243,23 @@ class BlockController(ControllerBase, Instrumented):
     def ControllerPublishVolume(
             self, vms_session, node_id, volume_id, volume_capability, volume_context=None
     ):
+        volume_capabilities = _validate_capabilities(volume_capability, volume_context)
+        if volume_id.startswith("/"):
+            # Assumed consuming existing volume where user specified full path to view in volumeHandle attribute.
+            if volume_id != "/":
+                # keep path consistent.
+                volume_id = volume_id.rstrip("/")
+            logger.info(f"Binding static volume: {volume_id}")
+            try:
+                volume_context = StaticBlockVolumeBuilder.build(
+                    conf=CONF,
+                    vms_session=vms_session,
+                    name=volume_id,
+                    volume_capabilities=volume_capabilities,
+                    parameters=volume_context,
+                )
+            except SourceNotFound as exc:
+                raise Abort(NOT_FOUND, exc.message)
         transport_type = volume_context["transport_type"]
         vol_id = int(volume_context["volume_id"])
         blockhost = vms_session.blockhosts.ensure(node_id=node_id, transport_type=transport_type)
