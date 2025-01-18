@@ -17,6 +17,7 @@ import json
 from functools import wraps
 from pprint import pformat
 import inspect
+from contextlib import ExitStack
 
 from requests.exceptions import HTTPError
 from plumbum.commands.processes import ProcessExecutionError
@@ -67,7 +68,7 @@ class Instrumented:
             params = {fld.name: value for fld, value in request.ListFields()}
             # secrets are not logged and not the part of function signature.
             secrets = params.pop("secrets", {})
-            missing_params = required_params - {"request", "context", "vms_session"} - set(params)
+            missing_params = required_params - {"request", "context", "vms_session", "exit_stack"} - set(params)
 
             # Get cluster_name from volume_id, snapshot_id or source_volume_id in case of id identifier with metadata
             cluster_names = set()
@@ -104,13 +105,18 @@ class Instrumented:
                 except LookupFieldError:
                     params["vms_session"] = None
 
+            exit_stack = ExitStack()
+            if "exit_stack" in required_params:
+                params["exit_stack"] = exit_stack
+
             try:
                 if missing_params:
                     msg = f'Missing required fields: {", ".join(sorted(missing_params))}'
                     logger.error(f"{peer} <<< {method}: {msg}")
                     raise Abort(INVALID_ARGUMENT, msg)
 
-                ret = func(self, request=request, context=context, **params)
+                with exit_stack:
+                    ret = func(self, request=request, context=context, **params)
             except Abort as exc:
                 logger.info(
                     f'{peer} <<< {method} ABORTED with {exc.code} ("{exc.message}")'

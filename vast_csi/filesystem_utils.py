@@ -1,6 +1,9 @@
 import os
 from shlex import split
+from threading import RLock
 from collections import defaultdict
+from contextlib import contextmanager
+
 from requests.exceptions import HTTPError  # noqa
 from plumbum import local, cmd, ProcessExecutionError
 from vast_csi.logging import logger
@@ -231,28 +234,85 @@ def format_device(requested_fs: str, device: str, format_args: str = None):
     local[f"mkfs.{requested_fs}"][args] & logger.pipe_info(f"{requested_fs}: ")
 
 
+def get_device_size(device: str):
+    """Get the size of the device using the 'blockdev' command."""
+    output = cmd.blockdev("--getsize64", device).strip()
+    try:
+        return int(output)
+    except ValueError:
+        raise ValueError(f"Failed to parse size of device {device}: {output}")
 
-class FsFormatterLockError(Exception):
+
+def get_fs_size(device: str):
+    """Get the block size and filesystem size for all types filesystems."""
+    fstats = os.statvfs(device)
+    block_size = fstats.f_frsize
+    # Filesystem size in bytes
+    fs_size = fstats.f_blocks * block_size
+    return block_size, fs_size
+
+
+def ext_resize(device: str):
+    """Resize ext3/ext4 filesystem."""
+    cmd.resize2fs[device] & logger.pipe_info("resize2fs: ")
+    logger.info(f"Device {device!r} resized successfully")
+
+
+def xfs_resize(device: str):
+    """Resize XFS filesystem."""
+    cmd.xfs_growfs["-d", device] & logger.pipe_info("xfs_growfs: ")
+    logger.info(f"Device {device!r} resized successfully")
+
+
+def check_and_repair_fs(device: str):
+    """Perform a filesystem check on the given device to ensure it is in a consistent state."""
+    cmd.fsck["-a", device] & logger.pipe_info(f"fsck: ")
+
+
+def need_resize(device: str, fs_type: str):
+    """Determine if a device needs resizing."""
+    if not fs_type:
+        logger.info(f"need_resize - no filesystem type specified for device {device}")
+        return
+
+    device_size = get_device_size(device)
+    block_size, fs_size = get_fs_size(device)
+    if fs_size == 0:
+        raise Exception(f"failed to read size of filesystem on device {device!r}")
+    logger.info(
+        f"device size={device_size}, filesystem size={fs_size}, block size={block_size}"
+    )
+    # Tolerate one block difference for rounding errors
+    return device_size > fs_size + block_size
+
+
+def resize_device(device: str, target_mount: str, fs_type: str):
+    """Perform resize of the filesystem."""
+    if need_resize(device, fs_type):
+        if fs_type in ("ext3", "ext4"):
+            ext_resize(device)
+        elif fs_type == "xfs":
+            xfs_resize(target_mount)
+        else:
+            raise Exception(
+                f"Unsupported filesystem type {fs_type!r}. Supported fs types are: ext3, ext4, xfs"
+            )
+    else:
+        logger.info(f"Device {device!r} does not need resizing")
+
+
+class VolumeLockedError(Exception):
     pass
 
-class FsFormatter:
-    """
-    A class to manage the formatting of block devices with filesystem types while ensuring
-    that concurrent formatting operations on the same volume are prevented.
-    """
 
-    locks = set()
-
-    @classmethod
-    def format_device(cls, volume_id: str, requested_fs: str, device: str, format_args: str = None):
-        if cls.id_exists(volume_id):
-            raise FsFormatterLockError(f"Volume {volume_id} is already being formatted")
-        cls.locks.add(volume_id)
-        try:
-            format_device(requested_fs, device, format_args)
-        finally:
-            cls.locks.discard(volume_id)
-
-    @classmethod
-    def id_exists(cls, volume_id):
-        return volume_id in cls.locks
+@contextmanager
+def volume_locked(volume_id, _locks=set(), _global_lock=RLock()):
+    """helps ensure formatting/resizing of a volume does not happen concurrently"""
+    with _global_lock:
+        if volume_id in _locks:
+            raise VolumeLockedError(f"Volume {volume_id} is locked")
+        _locks.add(volume_id)
+    try:
+        yield
+    finally:
+        _locks.discard(volume_id)

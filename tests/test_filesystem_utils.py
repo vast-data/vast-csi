@@ -1,7 +1,13 @@
+from threading import Thread, Event
 from unittest.mock import patch
 import pytest
 from pathlib import Path
-from vast_csi.filesystem_utils import  MountInfo, hostcmd
+from vast_csi.filesystem_utils import (
+    MountInfo,
+    hostcmd,
+    volume_locked,
+    VolumeLockedError,
+)
 
 PARENT = Path(__file__).parent.resolve()
 
@@ -55,3 +61,29 @@ def test_mount_info_fs_staging_path(*_):
     assert len(target_mounts) == 2
     retrieved_targets = {target_mount.mount_point for target_mount in target_mounts}
     assert targets.issubset(retrieved_targets)
+
+
+def test_volume_locked():
+    volume_id = "vol-1234"
+    lock_acquired = Event()
+    lock_released = Event()
+
+    def lock_volume():
+        with volume_locked(volume_id):
+            lock_acquired.set()
+            lock_released.wait()
+
+    thread = Thread(target=lock_volume)
+    thread.start()
+    assert lock_acquired.wait(timeout=5), "Thread did not acquire the lock in time"
+
+    # Try to acquire the lock in the main thread, which should raise an error
+    with pytest.raises(VolumeLockedError):
+        with volume_locked(volume_id):
+            pass
+
+    lock_released.set()
+    thread.join()
+
+    with volume_locked(volume_id):
+        pass
