@@ -56,6 +56,7 @@ StageResp = csi_pb2.NodeStageVolumeResponse
 UnstageResp = csi_pb2.NodeUnstageVolumeResponse
 NodePublishResp = csi_pb2.NodePublishVolumeResponse
 NodeUnpublishResp = csi_pb2.NodeUnpublishVolumeResponse
+NodeExpandResp = csi_pb2.NodeExpandVolumeResponse
 ProbeRespOK = csi_pb2.ProbeResponse(ready=Bool(value=True))
 ProbeRespNotReady = csi_pb2.ProbeResponse(ready=Bool(value=False))
 CapacityResp = csi_pb2.GetCapacityResponse

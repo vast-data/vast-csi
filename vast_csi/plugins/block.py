@@ -54,8 +54,11 @@ from vast_csi.utils import (
 )
 from vast_csi.filesystem_utils import (
     get_filesystem_type,
-    FsFormatter,
     MountInfo,
+    format_device,
+    resize_device,
+    get_device_size,
+    volume_locked,
 )
 from vast_csi.configuration import Config
 import vast_csi.capabilities as cap_lib
@@ -164,6 +167,7 @@ class BlockController(ControllerBase, Instrumented):
         types.CtrlCapabilityType.CREATE_DELETE_VOLUME,
         types.CtrlCapabilityType.PUBLISH_UNPUBLISH_VOLUME,
         types.CtrlCapabilityType.CREATE_DELETE_SNAPSHOT,
+        types.CtrlCapabilityType.EXPAND_VOLUME,
     ]
 
 
@@ -302,6 +306,26 @@ class BlockController(ControllerBase, Instrumented):
                 )
         return types.CtrlUnpublishResp()
 
+    def ControllerExpandVolume(self, vms_session, volume_id, capacity_range):
+        requested_capacity = capacity_range.required_bytes
+        logger.debug(f"Requested capacity for volume {volume_id}: {requested_capacity} bytes")
+        if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
+            raise Abort(NOT_FOUND, f"Volume not found with ID: {volume_id}")
+        # Determine the current and new capacity
+        existing_capacity = volume.size
+        capacity_bytes = max(requested_capacity, existing_capacity)
+        # Update the volume size only if expansion is needed
+        if requested_capacity > existing_capacity:
+            node_expansion_required = True
+            logger.debug(f"Expanding volume {volume_id} from {existing_capacity} bytes to {capacity_bytes} bytes")
+            vms_session.volumes.update(volume.id, size=capacity_bytes)
+        else:
+            node_expansion_required = False
+            logger.debug(f"No expansion needed for volume {volume_id}, current size is sufficient")
+        return types.CtrlExpandResp(
+            capacity_bytes=capacity_bytes,
+            node_expansion_required=node_expansion_required,
+        )
     def CreateSnapshot(self, vms_session, source_volume_id, name, parameters=None):
         parameters = parameters or dict()
         cluster_name = parameters.get("cluster_name")
@@ -349,6 +373,7 @@ class BlockController(ControllerBase, Instrumented):
 class BlockNode(NodeBase, Instrumented):
     CAPABILITIES = [
         types.NodeCapabilityType.STAGE_UNSTAGE_VOLUME,
+        types.NodeCapabilityType.EXPAND_VOLUME,
         types.NodeCapabilityType.GET_VOLUME_STATS,
     ]
 
@@ -361,11 +386,12 @@ class BlockNode(NodeBase, Instrumented):
             volume_id,
             staging_target_path,
             volume_capability,
+            exit_stack,
             vms_session=None,
             publish_context=None,
             volume_context=None,
     ):
-
+        exit_stack.enter_context(volume_locked(volume_id))
         volume_context = volume_context or dict()
         volume_capabilities = _validate_capabilities(volume_capability, volume_context, publish_context)
 
@@ -373,8 +399,6 @@ class BlockNode(NodeBase, Instrumented):
         device_bind_path = get_device_bind_path(staging_target_path)
 
         if MountInfo.get_mount_by_destination(dest_path=device_bind_path):
-            if FsFormatter.id_exists(volume_id=volume_id):
-                raise Exception(f"Device at {device_bind_path} is being formatted.")
             logger.info(f"Volume {volume_id} already staged")
             return types.StageResp()  # idempotent
 
@@ -412,23 +436,20 @@ class BlockNode(NodeBase, Instrumented):
         device_path = device.DevicePath
         change_io_policy(device_name=device.Name, io_policy="round-robin")
 
-        # Additional check if device_bind_path mount exists to avoid concurrent execution.
-        if not MountInfo.get_mount_by_destination(dest_path=device_bind_path):
-            logger.info(f"Binding device at {device_path} to {device_bind_path}.")
-            device_bind_path.open("a").close()
-            mount(src=device_path, tgt=device_bind_path, bind=True)
-            if volume_capabilities.is_filesystem:
-                try:
-                    FsFormatter.format_device(
-                        volume_id=volume_id,
-                        requested_fs=volume_capabilities.fs_type,
-                        device=device_bind_path,
-                    )
-                except Exception as e:
-                    logger.info(f"Failed to format device {device_bind_path}: {e}")
-                    umount_safe(device_bind_path)
-                    device_bind_path.delete()
-                    raise
+        logger.info(f"Binding device at {device_path} to {device_bind_path}.")
+        device_bind_path.open("a").close()
+        mount(src=device_path, tgt=device_bind_path, bind=True)
+        if volume_capabilities.is_filesystem:
+            try:
+                format_device(
+                    requested_fs=volume_capabilities.fs_type,
+                    device=device_bind_path,
+                )
+            except Exception as e:
+                logger.info(f"Failed to format device {device_bind_path}: {e}")
+                umount_safe(device_bind_path)
+                device_bind_path.delete()
+                raise
         return types.StageResp()
 
     def NodeUnstageVolume(self, volume_id, staging_target_path):
@@ -565,6 +586,42 @@ class BlockNode(NodeBase, Instrumented):
             os.remove(meta_file)
         remove_path_if_not_mounted(target_path)
         return types.NodeUnpublishResp()
+
+    def NodeExpandVolume(
+            self,
+            volume_id,
+            volume_path,
+            capacity_range,
+            staging_target_path,
+            volume_capability,
+            exit_stack,
+    ):
+        exit_stack.enter_context(volume_locked(volume_id))
+        volume_capabilities = _validate_capabilities(volume_capability)
+        device_bind_path = get_device_bind_path(staging_target_path)
+        requested_capacity = capacity_range.required_bytes
+
+        logger.info(f"Requested capacity for volume {volume_id}: {requested_capacity} bytes")
+        staging_mount = MountInfo.get_mount_by_destination(dest_path=device_bind_path)
+        if not staging_mount:
+            raise Abort(NOT_FOUND, f"Mount information not found for staging path: {device_bind_path}")
+
+        device = staging_mount.devtmpfs_device
+        if volume_capabilities.is_filesystem:
+            fs_type = get_filesystem_type(device_bind_path)
+            resize_device(
+                device=device,
+                target_mount=volume_path,
+                fs_type=fs_type,
+            )
+        else:
+            existing_capacity = get_device_size(device)
+            if existing_capacity < requested_capacity:
+                raise Exception(
+                    f"Requested capacity {requested_capacity} exceeds the current capacity {existing_capacity}. "
+                    f"This may indicate the updated size has not yet been propagated."
+                )
+        return types.NodeExpandResp(capacity_bytes=requested_capacity)
 
     def NodeGetVolumeStats(self, volume_id, volume_path):
         target_mount = MountInfo.get_mount_by_destination(dest_path=volume_path)
