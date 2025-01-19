@@ -2,6 +2,7 @@ import re
 import json
 from plumbum import local
 from easypy.bunch import Bunch, bunchify
+from easypy.collections import listify
 from vast_csi.filesystem_utils import hostcmd
 from vast_csi.logging import logger
 
@@ -37,14 +38,17 @@ def list_nvme_sessions():
     """
     stdout = hostcmd.nvme("list-subsys", "-o", "json")
     if result := bunchify(json.loads(stdout)):
-        return result
+        # `nvme-cli` version 1.x returns a dictionary, while version 2.x returns a list.
+        # To ensure compatibility with both versions, `listify` is used to standardize the output.
+        return listify(result)
     return []
 
 
 def get_connected_session(host_nqn, sybsystem_nqn):
     """Checks if the host is connected to the subsystem."""
     for session in list_nvme_sessions():
-        if session.HostNQN == host_nqn:
+        # `nvme-cli` version 1.x does not return the `HostNQN` field.
+        if session.get("HostNQN", host_nqn) == host_nqn:
             for subsys in session.Subsystems:
                 if subsys.NQN == sybsystem_nqn:
                     return subsys
@@ -117,7 +121,7 @@ def get_nvme_device_stats(device_path):
     info = get_nvme_device_info(device_path)
     # Lower 4 bits specifically represent the current LBA format index
     flbas = info.flbas & 0xF
-    lba_size = 2 ** info.lbafs[flbas]["ds"]
+    lba_size = 1 << info.lbafs[flbas]["ds"]
     used_bytes = info.nuse * lba_size
     total_bytes = info.nsze * lba_size
     return Bunch(
