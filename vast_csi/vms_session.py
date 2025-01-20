@@ -497,7 +497,7 @@ class Version(VastResource):
     @timecache(HOUR)
     def get_sw_version(self) -> SemVer:
         """Get VMS software version."""
-        versions = self.one(status="success").sys_version
+        versions = self.list(status="success")[0].sys_version
         return SemVer.loads_fuzzy(versions)
 
 class Plugin(VastResource):

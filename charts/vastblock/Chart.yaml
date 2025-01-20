@@ -1,11 +1,12 @@
 apiVersion: v2
-name: vastcsi
+name: vastblock
 description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
 type: application
 version: "0.1.0" #  will be updated by the release ci
 keywords:
   - vast
   - csi
+  - block
   - driver
   - vastdata
   - csi-driver

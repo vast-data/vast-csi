@@ -88,7 +88,6 @@ class Instrumented:
                 raise Exception(f"too many cluster names specified: {', '.join(cluster_names)}")
 
             log(f"{peer} >>> {method} ({cluster_name or '-'}):")
-            log(f"{peer} >>> {method}:")
 
             if params:
                 for line in stringify_dict(params):
