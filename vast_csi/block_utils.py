@@ -23,6 +23,14 @@ def try_nvme_probes():
     logger.info(f"nvme version: {nvme_version}")
 
 
+def is_native_multipath_enabled():
+    try:
+        with open("/sys/module/nvme_core/parameters/multipath", "r") as f:
+            return f.read().strip() == "Y"
+    except Exception:
+        return False
+
+
 def list_nvme_sessions():
     """
     Example output:
