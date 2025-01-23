@@ -27,6 +27,7 @@ from vast_csi.csi_types import (
     INVALID_ARGUMENT,
     ALREADY_EXISTS,
     NOT_FOUND,
+    FAILED_PRECONDITION,
 )
 from vast_csi.builders import (
     EmptyBlockVolumeBuilder,
@@ -47,6 +48,7 @@ from vast_csi.block_utils import (
     get_nvme_device_by_nguid,
     try_nvme_probes,
     change_io_policy,
+    is_native_multipath_enabled,
 )
 from vast_csi.utils import (
     stringify_dict,
@@ -421,6 +423,12 @@ class BlockNode(NodeBase, Instrumented):
             for line in stringify_dict(nvme_session.to_dict()):
                 logger.info(line)
         else:
+            if not is_native_multipath_enabled():
+                raise Abort(
+                    FAILED_PRECONDITION,
+                    "NVMe native multipath is not enabled on the system. "
+                    "Please enable it to use NVMe subsystems."
+                )
             logger.info(f"Connecting to NVMe targets for subsystem {subsystem_nqn} at {discovery_server}")
             nvme_connect(discovery_server=discovery_server, host_nqn=host_nqn)
 
