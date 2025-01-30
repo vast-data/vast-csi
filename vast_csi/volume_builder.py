@@ -2,8 +2,6 @@ import os
 import re
 from dataclasses import dataclass
 from abc import ABC
-from base64 import b32encode
-from random import getrandbits
 from datetime import timedelta
 from typing import Optional, final, TypeVar, Tuple
 
@@ -89,6 +87,7 @@ class BaseBuilder(VolumeBuilderI):
     cluster_name: Optional[str] = None
     vip_pool_name: Optional[str] = None
     vip_pool_fqdn: Optional[str] = None
+    vip_pool_fqdn_random_prefix: Optional[bool] = None
     qos_policy: Optional[str] = None
     capacity_range: Optional[int] = None  # Optional desired volume capacity
     pvc_name: Optional[str] = None
@@ -109,7 +108,9 @@ class BaseBuilder(VolumeBuilderI):
         if self.vip_pool_name:
             context["vip_pool_name"] = self.vip_pool_name
         elif self.vip_pool_fqdn:
-            context["vip_pool_fqdn"] = self.vip_pool_fqdn_with_prefix
+            context["vip_pool_fqdn"] = self.vip_pool_fqdn
+            if self.vip_pool_fqdn_random_prefix:
+                context["vip_pool_fqdn_random_prefix"] = True
         return context
 
     @property
@@ -119,11 +120,6 @@ class BaseBuilder(VolumeBuilderI):
     @property
     def root_export_abs(self) -> str:
         return os.path.join("/", self.root_export)
-
-    @property
-    def vip_pool_fqdn_with_prefix(self) -> str:
-        prefix = b32encode(getrandbits(16).to_bytes(2, "big")).decode("ascii").rstrip("=")
-        return f"{prefix}.{self.vip_pool_fqdn}"
 
     @property
     def volume_id_with_metadata(self):
@@ -149,6 +145,7 @@ class BaseBuilder(VolumeBuilderI):
 
         vip_pool_fqdn = parameters.get("vip_pool_fqdn")
         vip_pool_name = parameters.get("vip_pool_name")
+        vip_pool_fqdn_random_prefix = parameters.get("vip_pool_fqdn_random_prefix")
         cls._validate_mount_src(vip_pool_name, vip_pool_fqdn, conf.use_local_ip_for_mount)
 
         volume_name_fmt = parameters.get("volume_name_fmt", conf.name_fmt)
@@ -170,6 +167,7 @@ class BaseBuilder(VolumeBuilderI):
             view_policy=view_policy,
             vip_pool_name=vip_pool_name,
             vip_pool_fqdn=vip_pool_fqdn,
+            vip_pool_fqdn_random_prefix=vip_pool_fqdn_random_prefix,
             mount_options=mount_options,
             qos_policy=qos_policy,
             cluster_name=cluster_name,

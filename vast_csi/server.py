@@ -22,6 +22,8 @@ from pprint import pformat
 from datetime import datetime
 import inspect
 from tempfile import mkdtemp
+from base64 import b32encode
+from random import getrandbits
 
 import json
 from json import JSONDecodeError
@@ -532,6 +534,10 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
         vip_pool_fqdn = volume_context.get("vip_pool_fqdn")
         if vip_pool_fqdn:
             nfs_server_ip = vip_pool_fqdn
+            if volume_context.get("vip_pool_fqdn_random_prefix"):
+                prefix = b32encode(getrandbits(16).to_bytes(2, "big")).decode("ascii").rstrip("=")
+                nfs_server_ip = f"{prefix}.{nfs_server_ip}"
+
         elif vip_pool_name or CONF.mock_vast:
             nfs_server_ip = vms_session.get_vip(vip_pool_name=vip_pool_name)
         else:
