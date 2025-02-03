@@ -31,6 +31,8 @@ from vast_csi.csi_types import (
 )
 from vast_csi.builders import (
     EmptyBlockVolumeBuilder,
+    BlockVolumeFromVolumeBuilder,
+    BlockVolumeFromSnapshotBuilder,
     StaticBlockVolumeBuilder,
     to_volume_id_with_metadata,
 )
@@ -170,6 +172,7 @@ class BlockController(ControllerBase, Instrumented):
         types.CtrlCapabilityType.PUBLISH_UNPUBLISH_VOLUME,
         types.CtrlCapabilityType.CREATE_DELETE_SNAPSHOT,
         types.CtrlCapabilityType.EXPAND_VOLUME,
+        types.CtrlCapabilityType.CLONE_VOLUME,
     ]
 
 
@@ -213,8 +216,14 @@ class BlockController(ControllerBase, Instrumented):
                 "Filesystem volumes do not support multi-node attach."
             )
         parameters = parameters or dict()
+        if not volume_content_source:
+            builder_cls = EmptyBlockVolumeBuilder
+        elif volume_content_source.snapshot.snapshot_id:
+            builder_cls = BlockVolumeFromSnapshotBuilder
+        elif volume_content_source.volume.volume_id:
+            builder_cls = BlockVolumeFromVolumeBuilder
         try:
-            volume = EmptyBlockVolumeBuilder.build(
+            volume = builder_cls.build(
                 conf=CONF,
                 vms_session=vms_session,
                 name=name,
@@ -230,11 +239,8 @@ class BlockController(ControllerBase, Instrumented):
         return types.CreateResp(volume=volume)
 
     def DeleteVolume(self, vms_session, volume_id):
+        vms_session.globalsnapstreams.ensure_snapshot_stream_deleted(name__contains=volume_id)
         if volume := vms_session.volumes.one(name__endswith=volume_id):
-            if vms_session.volumes.get_snapshots(volume.id):
-                raise Exception(
-                    f"Unable to delete {volume.name} as it holds snapshots"
-                )
             if volume.block_hosts:
                 # Unmap volume from all blockhosts (EV volume case)
                 vms_session.volumes.discard_hosts(volume.id)

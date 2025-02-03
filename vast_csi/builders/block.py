@@ -12,6 +12,8 @@ from vast_csi.builders.base import BaseVolumeBuilder, parse_volume_id
 
 __all__ = [
     "EmptyBlockVolumeBuilder",
+    "BlockVolumeFromVolumeBuilder",
+    "BlockVolumeFromSnapshotBuilder",
     "StaticBlockVolumeBuilder",
 ]
 
@@ -138,6 +140,106 @@ class EmptyBlockVolumeBuilder(BlockProvisionBase):
             capacity_bytes=requested_capacity,
             volume_id=self.volume_id_with_metadata,
             volume_context=volume_context,
+        )
+
+@final
+class BlockVolumeFromVolumeBuilder(BlockProvisionBase):
+    """Cloning volumes from existing."""
+
+    def build_volume(self) -> types.Volume:
+        source_volume_id = self.volume_content_source.volume.volume_id
+        # Source volume id without metadata
+        orig_source_volume_id, _ = parse_volume_id(source_volume_id)
+        if not (source_volume := self.vms_session.volumes.one(name__endswith=orig_source_volume_id)):
+            raise SourceNotFound(f"Unknown volume: {orig_source_volume_id}")
+        if not (source_view := self.vms_session.views.get_subsystem(_id=source_volume.view_id)):
+            raise SourceNotFound(f"Unknown subsystem: {source_volume.view_id}")
+
+        volume_context = self.volume_context
+        tenant_id = source_view.tenant_id
+        volume_name = self.build_volume_name()
+        requested_capacity = self.get_requested_capacity()
+        volume_context["volume_name"] = volume_name
+
+        # Concatenation of source subsystem path and source volume name
+        source_path = os.path.join(source_view.path, source_volume.name.lstrip("/"))
+        if source_view.name != self.subsystem:
+            # Query destination subsystem if it differs from the source subsystem
+            destination_view = self.vms_session.views.get_subsystem(subsystem=self.subsystem)
+        else:
+            # No need to perform additional VMS call if source and destination subsystems are the same
+            destination_view = source_view
+        # Create an intermediate snapshot with limited expiration time
+        snapshot_name = f"snp-{self.name}"
+        snapshot = self.vms_session.snapshots.ensure(
+            name=snapshot_name,
+            path=source_path,
+            tenant_id=tenant_id,
+            expiration_delta=timedelta(minutes=5),
+        )
+        if not (destination_volume := self.vms_session.volumes.one(name__endswith=volume_name)):
+            destination_volume = self.vms_session.snapshots.clone_volume(
+                snapshot_id=snapshot.id,
+                target_subsystem_id=destination_view.id,
+                target_volume_path=volume_name,
+            )
+        if requested_capacity > destination_volume.size:
+            self.vms_session.volumes.update(destination_volume.id, size=requested_capacity)
+
+        volume_context.update(
+            nguid=destination_volume.nguid,
+            volume_id=str(destination_volume.id),
+            tenant_id=str(tenant_id),
+            subsystem_nqn=destination_view.nqn,
+        )
+        return types.Volume(
+            capacity_bytes=requested_capacity,
+            volume_id=self.volume_id_with_metadata,
+            content_source=types.VolumeContentSource(
+                volume=types.VolumeSource(volume_id=source_volume_id)
+            ),
+            volume_context=volume_context,
+        )
+
+@final
+class BlockVolumeFromSnapshotBuilder(BlockProvisionBase):
+    """VolumeBuilder based on snapshot."""
+
+    def build_volume(self) -> types.Volume:
+        source_snapshot_id = self.volume_content_source.snapshot.snapshot_id
+        # source snapshot id without metadata
+        orig_source_snapshot_id, _ = parse_volume_id(source_snapshot_id)
+        if not (snapshot := self.vms_session.snapshots.get(orig_source_snapshot_id)):
+            raise SourceNotFound(f"Unknown snapshot: {orig_source_snapshot_id}")
+
+        volume_context = self.volume_context
+        volume_name = self.build_volume_name()
+        requested_capacity = self.get_requested_capacity()
+        volume_context["volume_name"] = volume_name
+
+        destination_view = self.vms_session.views.get_subsystem(subsystem=self.subsystem)
+        if not (destination_volume := self.vms_session.volumes.one(name__endswith=volume_name)):
+            destination_volume = self.vms_session.snapshots.clone_volume(
+                snapshot_id=snapshot.id,
+                target_subsystem_id=destination_view.id,
+                target_volume_path=volume_name,
+            )
+        if requested_capacity > destination_volume.size:
+            self.vms_session.volumes.update(destination_volume.id, size=requested_capacity)
+
+        volume_context.update(
+            nguid=destination_volume.nguid,
+            volume_id=str(destination_volume.id),
+            tenant_id=str(snapshot.tenant_id),
+            subsystem_nqn=destination_view.nqn,
+        )
+        return types.Volume(
+            capacity_bytes=requested_capacity,
+            volume_id=self.volume_id_with_metadata,
+            content_source=types.VolumeContentSource(
+                snapshot=types.SnapshotSource(snapshot_id=source_snapshot_id)
+            ),
+            volume_context=volume_context
         )
 
 

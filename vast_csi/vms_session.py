@@ -714,6 +714,15 @@ class Snapshot(VastResource):
         return snapshot
 
 
+    def clone_volume(self, snapshot_id, target_subsystem_id, target_volume_path):
+        """
+        Clone a snapshot to a target volume.
+        This method creates a new volume by cloning an existing snapshot and associates it
+        with the specified subsystem and volume path.
+        """
+        data = {"target_subsystem_id": target_subsystem_id, "target_volume_path": target_volume_path}
+        return self.session.post(f"{self.resource_name}/{snapshot_id}/clone_volume/", data=data)
+
 class GlobalSnapshotStream(VastResource):
     resource_name = "globalsnapstreams"
 
@@ -733,12 +742,12 @@ class GlobalSnapshotStream(VastResource):
         return snapshot_stream
 
     @requisite(semver="4.6.0", ignore=True)
-    def ensure_snapshot_stream_deleted(self, snapshot_stream_name):
+    def ensure_snapshot_stream_deleted(self, **params):
         """
         Stop global snapshot stream in case it is not finished.
         Snapshots with expiration time will be deleted as soon as snapshot stream is stopped.
         """
-        if snapshot_stream := self.one(name=snapshot_stream_name):
+        if snapshot_stream := self.one(**params):
             if snapshot_stream.status.state != "FINISHED":
                 # Just stop the stream. It will be deleted automatically upon stop request.
                 self.stop_snapshot_stream(snapshot_stream.id)
