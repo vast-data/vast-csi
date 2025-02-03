@@ -39,7 +39,6 @@
 {{- $storage_class_secret := pluck "secretName" $options $.Values.storageClassDefaults | first | quote -}}
 {{/* Get secretNamespace parameter. If not provided .Release.Namespace is used. */}}
 {{- $storage_class_secret_namespace := pluck "secretNamespace" $options $.Values.storageClassDefaults | first | default $.Release.Namespace | quote -}}
-{{- $volume_tags := pluck "volumeTags" $options $.Values.storageClassDefaults | first -}}
 {{- $fstype := pluck "fsType" $options $.Values.storageClassDefaults | first -}}
 {{- $transport_type := pluck "transportType" $options $.Values.storageClassDefaults | first -}}
 
@@ -61,9 +60,6 @@ parameters:
   {{- if and $value (ne $value ( quote "" )) }}
   {{ $key }}: {{ if (kindIs "int" $value) }}{{ $value | quote }}{{ else }}{{ $value }}{{ end }}
   {{- end }}
-{{- end }}
-{{- if $volume_tags }}
-  volume_tags: {{- include "vastcsi.volumeTags" $volume_tags | indent 1 }}
 {{- end }}
 {{-  if ne $storage_class_secret ( quote "" ) }}
   csi.storage.k8s.io/provisioner-secret-name: {{ $storage_class_secret }}

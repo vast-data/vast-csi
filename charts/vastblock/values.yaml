@@ -56,17 +56,6 @@ storageClassDefaults:
   # can represent nested folder structures. For example:
   #   - "folder1/folder2/block-{namespace}-{id}
   volumeGroup: ""
-  # Optional tags to apply to the volume. These tags are key-value pairs that can be used to
-  # categorize or identify volumes. Examples include environment information, application
-  # names, or team ownership.
-  # Define a set of key-value pairs where the key represents the tag name and the value
-  # represents the tag value.
-  # Example:
-  # volumeTags:
-  #   environment: "production"
-  #   application: "my-app"
-  #   team: "devops"
-  volumeTags: {}
   # Name of VAST VIP pool to use. Must specify either vipPool or vipPoolFQDN.
   vipPool: ""
   # The FQDN of the VIP pool to use. Must specify either vipPool or vipPoolFQDN.
