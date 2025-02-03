@@ -26,7 +26,6 @@ class BlockProvisionBase(BaseVolumeBuilder):
     volume_capabilities: Capabilities
     subsystem: str
     volume_group: str = None
-    volume_tags: dict = None
     transport_type: str = None
 
     # Optional parameters
@@ -55,13 +54,7 @@ class BlockProvisionBase(BaseVolumeBuilder):
         vip_pool_name = parameters.get("vip_pool_name")
         volume_group = parameters.get("volume_group", "")
         transport_type = parameters.get("transport_type", "TCP").upper()
-        volume_tags = json.loads(parameters.get("volume_tags", "{}"))
         metadata = cls._parse_metadata_from_params(parameters)
-        if metadata.pvc_name and metadata.pvc_namespace:
-            volume_tags.update({
-                "block.csi.vastdata.com/pvc_name": metadata.pvc_name,
-                "block.csi.vastdata.com/pvc_namespace": metadata.pvc_namespace,
-            })
         cls._validate_mount_src(vip_pool_name, vip_pool_fqdn, conf.use_local_ip_for_mount)
         cluster_name = parameters.get("cluster_name")
 
@@ -74,7 +67,6 @@ class BlockProvisionBase(BaseVolumeBuilder):
             subsystem=subsystem,
             transport_type=transport_type,
             volume_group=volume_group,
-            volume_tags=volume_tags,
             vip_pool_name=vip_pool_name,
             vip_pool_fqdn=vip_pool_fqdn,
             cluster_name=cluster_name,
@@ -135,7 +127,6 @@ class EmptyBlockVolumeBuilder(BlockProvisionBase):
             name=volume_name,
             view_id=view.id,
             size=requested_capacity,
-            tags=self.volume_tags,
         )
         volume_context.update(
             nguid=volume.nguid,

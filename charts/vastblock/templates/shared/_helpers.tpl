@@ -59,16 +59,3 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/name: {{ include "vastcsi.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
-
-
-{{- define "vastcsi.volumeTags" -}}
-{{- $tags := . -}}
-{{- if not (empty $tags) }}
-  {{- if not (kindIs "map" $tags) }}
-    {{- $errorMsg := printf "Invalid 'tags' format. Expected a dictionary but got:\n%s" (toYaml $tags) }}
-    {{- fail $errorMsg }}
-  {{- else -}}
-    '{{- toJson $tags -}}'
-  {{- end }}
-{{- end }}
-{{- end }}
