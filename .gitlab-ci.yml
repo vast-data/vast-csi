@@ -171,8 +171,8 @@ update_github [prod]:  &update_github
     fi
     git remote -v
     git remote add github git@github.com:vast-data/vast-csi.git || true
-    git fetch github $CI_COMMIT_REF_NAME
-    git checkout -B $CI_COMMIT_REF_NAME FETCH_HEAD
+    git fetch github $TARGET_BRANCH
+    git checkout -B $TARGET_BRANCH FETCH_HEAD
     git checkout $CI_COMMIT_SHA -- .
     git commit -am "VAST Data CSI Plugin - $VERSION
 
