@@ -150,6 +150,8 @@ update_github [prod]:  &update_github
     name: alpine/git
     entrypoint: [""]
   stage: deploy
+  variables:
+    BETA: false
   only:
     - /^v[\d]\.[\d]+/
   before_script: &setup_github_access |
@@ -162,6 +164,11 @@ update_github [prod]:  &update_github
   script: |
     set -x
     VERSION=$(cat version.txt)
+    TARGET_BRANCH=$CI_COMMIT_REF_NAME
+    if $BETA; then
+      VERSION=${VERSION}-beta
+      TARGET_BRANCH=${TARGET_BRANCH}-beta
+    fi
     git remote -v
     git remote add github git@github.com:vast-data/vast-csi.git || true
     git fetch github $CI_COMMIT_REF_NAME
@@ -172,7 +179,7 @@ update_github [prod]:  &update_github
       (from $CI_COMMIT_SHA)"
 
     git tag -f $VERSION
-    git push -f --tags github HEAD:$CI_COMMIT_REF_NAME
+    git push -f --tags github HEAD:$TARGET_BRANCH
 
   when: manual
   tags:
@@ -181,8 +188,8 @@ update_github [prod]:  &update_github
 
 update_github [beta]:
   <<: *update_github
-  only:
-    - /v[\d]\.[\d]+-beta.*/
+  variables:
+    BETA: true
 
 
 mark_stable:
