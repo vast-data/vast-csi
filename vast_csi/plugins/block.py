@@ -1,0 +1,664 @@
+# Copyright 2024 VAST Data Inc.
+# All Rights Reserved.
+#
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
+import os.path
+
+from plumbum import local, cmd, ProcessExecutionError
+import grpc
+
+from easypy.tokens import CONTROLLER_AND_NODE, CONTROLLER, NODE
+from easypy.caching import cached_property
+
+from vast_csi.logging import logger
+from vast_csi.proto import csi_pb2_grpc as csi_grpc
+from vast_csi import csi_types as types
+from vast_csi.csi_types import (
+    INVALID_ARGUMENT,
+    ALREADY_EXISTS,
+    NOT_FOUND,
+    FAILED_PRECONDITION,
+)
+from vast_csi.builders import (
+    EmptyBlockVolumeBuilder,
+    StaticBlockVolumeBuilder,
+    to_volume_id_with_metadata,
+)
+from vast_csi.exceptions import (
+    Abort,
+    VolumeAlreadyExists,
+    SourceNotFound,
+    MountFailed,
+    TaskFailed,
+    NVMEConnectionFailed,
+)
+from vast_csi.block_utils import (
+    connect_nvme_targets,
+    get_connected_session,
+    get_nvme_device_by_nguid,
+    try_nvme_probes,
+    change_io_policy,
+    is_native_multipath_enabled,
+)
+from vast_csi.utils import (
+    stringify_dict,
+    string_to_proto_timestamp,
+)
+from vast_csi.filesystem_utils import (
+    get_filesystem_type,
+    MountInfo,
+    format_device,
+    resize_device,
+    get_device_size,
+    volume_locked,
+)
+from vast_csi.configuration import Config
+import vast_csi.capabilities as cap_lib
+from vast_csi.plugins.base import (
+    IdentityBase,
+    ControllerBase,
+    NodeBase,
+    Instrumented,
+)
+
+
+CONF = None
+ServiceCapabilities = cap_lib.ServiceCapabilities(
+    support_filesystem=True, support_block=True, can_many_rwx=True
+)
+
+
+################################################################
+#
+# Helpers
+#
+################################################################
+
+def nvme_connect(host_nqn, discovery_server):
+    try:
+        connect_nvme_targets(discovery_server=discovery_server, host_nqn=host_nqn)
+    except ProcessExecutionError as exc:
+        raise NVMEConnectionFailed(detail=exc.stderr, host_nqn=host_nqn, discovery_server=discovery_server)
+
+
+def mount(src, tgt, flags=None, bind=False, fs_type=None):
+    """
+   Mounts a source path to a target path, optionally using the --bind option.
+   The `--bind` option can be used to perform a bind mount, and additional mount options can be passed as flags.
+   Args:
+       src (str): The source path to be mounted (e.g., a device or directory).
+       tgt (str): The target path where the source will be mounted.
+       flags (list, optional): Additional mount options (e.g., 'ro', 'noexec') to be passed with the -o flag.
+       bind (bool, optional): If True, the mount is performed as a bind mount using the --bind option.
+       fs_type (str, optional): The filesystem type to be used for the mount (e.g., 'ext4', 'xfs').
+    """
+    if bind:
+        executable = cmd.mount["--bind"]
+    elif fs_type:
+        executable = cmd.mount["-t", fs_type]
+    else:
+        executable = cmd.mount
+    if flags:
+        executable = executable["-o", ",".join(flags)]
+    try:
+        executable['-v', src, tgt] & logger.pipe_info("mount >>")
+    except ProcessExecutionError as exc:
+        raise MountFailed(detail=exc.stderr, src=src, tgt=tgt, mount_options=flags)
+
+
+def umount_safe(path):
+    """Unmounts a path if it is mounted."""
+    try:
+        cmd.umount(path)
+    except ProcessExecutionError as exc:
+        if "not mounted" in exc.stderr:
+            logger.info(f"umount failed - {path} is not mounted (race?)")
+        else:
+            raise
+
+def remove_path_if_not_mounted(path):
+    path = local.path(path)
+    if MountInfo.get_mount_by_destination(dest_path=path):
+        raise Exception(f"Path {path} is mounted. Cannot remove.")
+    path.delete()
+
+
+def _validate_capabilities(capabilities, volume_context=None, publish_context=None):
+    try:
+        return ServiceCapabilities.make_and_validate(capabilities, volume_context, publish_context)
+    except cap_lib.CapValidationError as exc:
+        raise Abort(INVALID_ARGUMENT, exc.render(color=False))
+
+
+def get_device_bind_path(staging_target_path):
+    """
+    Common convention for bind-mounting block devices
+    between source block device and staging path.
+    """
+    return local.path(staging_target_path)["device"]
+
+################################################################
+#
+# Identity
+#
+################################################################
+
+
+class BlockIdentity(IdentityBase, Instrumented):
+    pass
+
+
+################################################################
+#
+# Controller
+#
+################################################################
+
+class BlockController(ControllerBase, Instrumented):
+    CAPABILITIES = [
+        types.CtrlCapabilityType.CREATE_DELETE_VOLUME,
+        types.CtrlCapabilityType.PUBLISH_UNPUBLISH_VOLUME,
+        types.CtrlCapabilityType.CREATE_DELETE_SNAPSHOT,
+        types.CtrlCapabilityType.EXPAND_VOLUME,
+    ]
+
+
+    def ValidateVolumeCapabilities(
+            self,
+            vms_session,
+            context,
+            volume_id,
+            volume_capabilities,
+            volume_context=None,
+            parameters=None,
+    ):
+        if not vms_session.views.one(name=volume_id):
+            raise Abort(NOT_FOUND, f"Volume {volume_id} does not exist")
+        try:
+            _validate_capabilities(volume_capabilities, volume_context)
+        except Abort as exc:
+            return types.ValidateResp(message=exc.message)
+
+        confirmed = types.ValidateResp.Confirmed(
+            volume_context=volume_context,
+            volume_capabilities=volume_capabilities,
+            parameters=parameters,
+        )
+
+        return types.ValidateResp(confirmed=confirmed)
+
+    def CreateVolume(
+            self,
+            vms_session,
+            name,
+            volume_capabilities,
+            capacity_range=None,
+            parameters=None,
+            volume_content_source=None,
+    ):
+        volume_capabilities = _validate_capabilities(volume_capabilities)
+        if volume_capabilities.is_filesystem and volume_capabilities.multi_mode:
+            raise Abort(
+                INVALID_ARGUMENT,
+                "Filesystem volumes do not support multi-node attach."
+            )
+        parameters = parameters or dict()
+        try:
+            volume = EmptyBlockVolumeBuilder.build(
+                conf=CONF,
+                vms_session=vms_session,
+                name=name,
+                volume_capabilities=volume_capabilities,
+                capacity_range=capacity_range,
+                parameters=parameters,
+                volume_content_source=volume_content_source,
+            )
+        except SourceNotFound as exc:
+            raise Abort(NOT_FOUND, exc.message)
+        except VolumeAlreadyExists as exc:
+            raise Abort(ALREADY_EXISTS, exc.message)
+        return types.CreateResp(volume=volume)
+
+    def DeleteVolume(self, vms_session, volume_id):
+        if volume := vms_session.volumes.one(name__endswith=volume_id):
+            if vms_session.volumes.get_snapshots(volume.id):
+                raise Exception(
+                    f"Unable to delete {volume.name} as it holds snapshots"
+                )
+            if volume.block_hosts:
+                # Unmap volume from all blockhosts (EV volume case)
+                vms_session.volumes.discard_hosts(volume.id)
+            vms_session.volumes.delete_by_id(volume.id)
+        return types.DeleteResp()
+
+    def ControllerPublishVolume(
+            self, vms_session, node_id, volume_id, volume_capability, volume_context=None
+    ):
+        volume_capabilities = _validate_capabilities(volume_capability, volume_context)
+        if volume_id.startswith("/"):
+            # Assumed consuming existing volume where user specified full path to view in volumeHandle attribute.
+            if volume_id != "/":
+                # keep path consistent.
+                volume_id = volume_id.rstrip("/")
+            logger.info(f"Binding static volume: {volume_id}")
+            try:
+                volume_context = StaticBlockVolumeBuilder.build(
+                    conf=CONF,
+                    vms_session=vms_session,
+                    name=volume_id,
+                    volume_capabilities=volume_capabilities,
+                    parameters=volume_context,
+                )
+            except SourceNotFound as exc:
+                raise Abort(NOT_FOUND, exc.message)
+        transport_type = volume_context["transport_type"]
+        vol_id = int(volume_context["volume_id"])
+        blockhost = vms_session.blockhosts.ensure(node_id=node_id, transport_type=transport_type)
+        if vol_id not in blockhost.volume_ids:
+            try:
+                vms_session.blockhosts.set_volume_to_blockhost(blockhost_id=blockhost.id, ids_to_add=vol_id)
+            except TaskFailed as e:
+                raise Exception(
+                    f"Failed to map host {blockhost.name!r} to volume {vol_id}. {e}"
+                )
+        vip_pool_name = volume_context.get("vip_pool_name")
+        vip_pool_fqdn = volume_context.get("vip_pool_fqdn")
+        if vip_pool_fqdn:
+            discovery_server = vip_pool_fqdn
+        elif vip_pool_name:
+            discovery_server = vms_session.vippools.get_vip(vip_pool_name=vip_pool_name)
+        else:
+            discovery_server = CONF.use_local_ip_for_mount
+            assert discovery_server, f"{discovery_server=}"
+            logger.info(f"Using local IP for block: {discovery_server}")
+
+        subsystem_nqn = volume_context["subsystem_nqn"]
+        nguid = volume_context["nguid"]
+        publish_context = dict(
+                subsystem_nqn=subsystem_nqn,
+                host_nqn=blockhost.nqn,
+                nguid=nguid,
+                discovery_server=discovery_server,
+            )
+        return types.CtrlPublishResp(publish_context=publish_context)
+
+    def ControllerUnpublishVolume(self, vms_session, node_id, volume_id):
+        if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
+            logger.info(f"Volume not found with name: {volume_id}")
+            pass
+        elif not (blockhost := vms_session.blockhosts.one(name=node_id)):
+            # Issue might be on ControllerPublishVolume stage before ensuring blockhost.
+            # Not an error condition.
+            logger.info(f"Blockhost not found with name: {node_id}")
+            pass
+        else:
+            if volume.id in blockhost.volume_ids:
+                vms_session.blockhosts.set_volume_to_blockhost(
+                    blockhost_id=blockhost.id, ids_to_remove=volume.id
+                )
+        return types.CtrlUnpublishResp()
+
+    def ControllerExpandVolume(self, vms_session, volume_id, capacity_range):
+        requested_capacity = capacity_range.required_bytes
+        logger.debug(f"Requested capacity for volume {volume_id}: {requested_capacity} bytes")
+        if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
+            raise Abort(NOT_FOUND, f"Volume not found with ID: {volume_id}")
+        # Determine the current and new capacity
+        existing_capacity = volume.size
+        capacity_bytes = max(requested_capacity, existing_capacity)
+        # Update the volume size only if expansion is needed
+        if requested_capacity > existing_capacity:
+            node_expansion_required = True
+            logger.debug(f"Expanding volume {volume_id} from {existing_capacity} bytes to {capacity_bytes} bytes")
+            vms_session.volumes.update(volume.id, size=capacity_bytes)
+        else:
+            node_expansion_required = False
+            logger.debug(f"No expansion needed for volume {volume_id}, current size is sufficient")
+        return types.CtrlExpandResp(
+            capacity_bytes=capacity_bytes,
+            node_expansion_required=node_expansion_required,
+        )
+    def CreateSnapshot(self, vms_session, source_volume_id, name, parameters=None):
+        parameters = parameters or dict()
+        cluster_name = parameters.get("cluster_name")
+        volume_id = source_volume_id
+        if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
+            raise Abort(NOT_FOUND, f"Unknown volume: {volume_id}")
+        if not (view := vms_session.views.get_subsystem(_id=volume.view_id)):
+            raise Abort(NOT_FOUND, f"Unknown subsystem: {volume.view_id}")
+
+        # Full path is concatenation of view path and volume name.
+        path = os.path.join(view.path, volume.name.lstrip("/"))
+        tenant_id = view.tenant_id
+        snapshot_name = parameters["csi.storage.k8s.io/volumesnapshot/name"]
+        snapshot_namespace = parameters[
+            "csi.storage.k8s.io/volumesnapshot/namespace"
+        ]
+        snapshot_name_fmt = parameters.get("snapshot_name_fmt", CONF.name_fmt)
+        snapshot_name = snapshot_name_fmt.format(
+            namespace=snapshot_namespace, name=snapshot_name, id=name
+        )
+        snapshot_name = snapshot_name.replace(":", "-").replace("/", "-")
+        snap = vms_session.snapshots.ensure(name=snapshot_name, path=path, tenant_id=tenant_id)
+        snp = types.Snapshot(
+            size_bytes=0,  # indicates 'unspecified'
+            snapshot_id=to_volume_id_with_metadata(snap.id, cluster_name),
+            source_volume_id=to_volume_id_with_metadata(source_volume_id, cluster_name),
+            creation_time=string_to_proto_timestamp(snap.created),
+            ready_to_use=True,
+        )
+        return types.CreateSnapResp(snapshot=snp)
+
+    def DeleteSnapshot(self, vms_session, snapshot_id):
+        if vms_session.snapshots.get(snapshot_id):
+            vms_session.snapshots.delete_by_id(snapshot_id)
+        return types.DeleteSnapResp()
+
+
+################################################################
+#
+# Node
+#
+################################################################
+
+
+class BlockNode(NodeBase, Instrumented):
+    CAPABILITIES = [
+        types.NodeCapabilityType.STAGE_UNSTAGE_VOLUME,
+        types.NodeCapabilityType.EXPAND_VOLUME,
+        types.NodeCapabilityType.GET_VOLUME_STATS,
+    ]
+
+    @cached_property
+    def controller(self):
+        return BlockController()
+
+    def NodeStageVolume(
+            self,
+            volume_id,
+            staging_target_path,
+            volume_capability,
+            exit_stack,
+            vms_session=None,
+            publish_context=None,
+            volume_context=None,
+    ):
+        exit_stack.enter_context(volume_locked(volume_id))
+        volume_context = volume_context or dict()
+        volume_capabilities = _validate_capabilities(volume_capability, volume_context, publish_context)
+
+        staging_target_path = local.path(staging_target_path)
+        device_bind_path = get_device_bind_path(staging_target_path)
+
+        if MountInfo.get_mount_by_destination(dest_path=device_bind_path):
+            logger.info(f"Volume {volume_id} already staged")
+            return types.StageResp()  # idempotent
+
+        if not publish_context:
+            publish_context = self._get_publish_context_for_non_attach_required(
+                vms_session=vms_session,
+                node_id=CONF.node_id,
+                volume_id=volume_id,
+                volume_capability=volume_capability,
+                volume_context=volume_context,
+            )
+        subsystem_nqn = publish_context["subsystem_nqn"]
+        host_nqn = publish_context["host_nqn"]
+        nguid = publish_context["nguid"]
+        discovery_server = publish_context["discovery_server"]  # Either vip pool ip or fqdn
+
+        if nvme_session := get_connected_session(host_nqn=host_nqn, sybsystem_nqn=subsystem_nqn):
+            # Nvme subsystem controllers already connected. No need to connect again.
+            logger.info(f"{subsystem_nqn!r} already connected:")
+            for line in stringify_dict(nvme_session.to_dict()):
+                logger.info(line)
+        else:
+            if not is_native_multipath_enabled():
+                raise Abort(
+                    FAILED_PRECONDITION,
+                    "NVMe native multipath is not enabled on the system. "
+                    "Please enable it to use NVMe subsystems."
+                )
+            logger.info(f"Connecting to NVMe targets for subsystem {subsystem_nqn} at {discovery_server}")
+            nvme_connect(discovery_server=discovery_server, host_nqn=host_nqn)
+
+        if not (device := get_nvme_device_by_nguid(nguid=nguid)):
+            raise Abort(
+                NOT_FOUND,
+                f"NVMe device not found for subsystem {subsystem_nqn} and nguid {nguid}"
+            )
+        logger.info(f"Found NVMe device:")
+        for line in stringify_dict(device.to_dict()):
+            logger.info(line)
+
+        device_path = device.DevicePath
+        change_io_policy(device_name=device.Name, io_policy="round-robin")
+
+        logger.info(f"Binding device at {device_path} to {device_bind_path}.")
+        device_bind_path.open("a").close()
+        mount(src=device_path, tgt=device_bind_path, bind=True)
+        if volume_capabilities.is_filesystem:
+            try:
+                format_device(
+                    requested_fs=volume_capabilities.fs_type,
+                    device=device_bind_path,
+                )
+            except Exception as e:
+                logger.info(f"Failed to format device {device_bind_path}: {e}")
+                umount_safe(device_bind_path)
+                device_bind_path.delete()
+                raise
+        return types.StageResp()
+
+    def NodeUnstageVolume(self, volume_id, staging_target_path):
+        staging_target_path = local.path(staging_target_path)
+        device_bind_path = get_device_bind_path(staging_target_path)
+        staging_mount, target_mounts = MountInfo.get_mounts_by_source(src=device_bind_path)
+        if target_mounts:
+            targets_mount_points = ", ".join(mount.mount_point for mount in target_mounts)
+            logger.info(f"Staging path {device_bind_path} is being used by {targets_mount_points} targets.")
+        if staging_mount:
+            logger.info(f"Unmounting {staging_mount}")
+            umount_safe(device_bind_path)
+        else:
+            logger.info(f"Device not found at {device_bind_path}")
+        remove_path_if_not_mounted(device_bind_path)
+        return types.UnstageResp()
+
+    def NodePublishVolume(
+            self,
+            volume_id,
+            target_path,
+            staging_target_path=None,
+            volume_capability=None,
+            publish_context=None,
+            readonly=False,
+            vms_session=None,
+            volume_context=None,
+    ):
+        volume_context = volume_context or dict()
+        target_path = local.path(target_path)
+
+        if MountInfo.get_mount_by_destination(dest_path=target_path):
+            logger.info(f"Volume already published at {target_path}")
+            return types.NodePublishResp()  # idempotent
+
+        volume_capabilities = _validate_capabilities(volume_capability, volume_context, publish_context)
+        is_ephemeral = volume_context.get("csi.storage.k8s.io/ephemeral") == "true"
+        if is_ephemeral:
+            if not vms_session:
+                raise Exception(
+                    "Ephemeral Volume provisioning requires "
+                    "configuring a global VMS credentials secret or nodePublishSecretRef secret reference."
+                )
+            # EV volumes doesn't have staging path. Use target path as staging path.
+            # Later staging path will be converted to <target_path>/device
+            staging_target_path = target_path
+            target_path.mkdir()
+            publish_context = self._get_publish_context_for_ev_volumes(
+                volume_context=volume_context,
+                volume_id=volume_id,
+                vms_session=vms_session,
+                volume_capability=volume_capability,
+            )
+            self.NodeStageVolume.__wrapped__(
+                self,
+                volume_id=volume_id,
+                staging_target_path=staging_target_path,
+                volume_capability=volume_capability,
+                vms_session=vms_session,
+                publish_context=publish_context,
+                volume_context=volume_context
+            )
+        assert staging_target_path
+        device_bind_path = get_device_bind_path(staging_target_path)
+        mount_flags = volume_capabilities.mount_flags
+        if readonly:
+            mount_flags.append("ro")
+
+        if volume_capabilities.is_filesystem:
+            if (fs_type := volume_capabilities.fs_type) != get_filesystem_type(device_bind_path):
+                raise Exception(
+                    f"Device at {device_bind_path} is not formatted with {volume_capabilities.fs_type}."
+                )
+            if fs_type == "xfs":
+                # By default, xfs does not allow mounting of two volumes with the same filesystem uuid.
+                # Force ignore this uuid to be able to mount volume + its clone/restored snapshot on the same node.
+                mount_flags.append("nouuid")
+            logger.info(
+                f"Filesystem mode detected. "
+                f"Creating directory at {target_path} for mounting device."
+            )
+            # Filesystem volumes are mounted as directories because the operating system
+            # treats them as a hierarchical storage structure.
+            target_path.mkdir()
+            meta_file = target_path[".vast-csi-meta"]
+            self._store_meta_file(
+                meta_file=meta_file,
+                volume_id=volume_id,
+                is_ephemeral=is_ephemeral,
+                vms_session=vms_session
+            )
+            try:
+                mount(src=device_bind_path, tgt=target_path, flags=mount_flags, fs_type=fs_type)
+            except Exception:
+                meta_file.delete()
+        else:
+            logger.info(
+                f"Block device mode detected. "
+                f"Creating a placeholder file at {target_path} for binding device."
+            )
+            # Block devices are raw storage devices that are accessed as single files by the operating system.
+            target_path.open("a").close()
+            mount(src=device_bind_path, tgt=target_path, flags=mount_flags, bind=True)
+
+        if not MountInfo.get_mount_by_destination(dest_path=target_path):
+            raise Abort(
+                NOT_FOUND,
+                f"An unexpected error occurred while attempting to mount "
+                f"{device_bind_path} to {target_path}. See mount output for more details."
+            )
+        return types.NodePublishResp()
+
+    def NodeUnpublishVolume(self, volume_id, target_path, vms_session=None):
+        target_path = local.path(target_path)
+        meta_file = target_path[".vast-csi-meta"]
+        if target_mount := MountInfo.get_mount_by_destination(dest_path=target_path):
+            logger.info(f"Unmounting {target_mount}")
+            umount_safe(target_path)
+        else:
+            logger.info(f"Device not found at {target_path}")
+        if meta_file.exists():
+            meta = self._read_and_process_meta_file(
+                meta_file=meta_file,
+                volume_id=volume_id,
+                vms_session=vms_session,
+            )
+            if meta.get("is_ephemeral"):
+                # EV volumes doesn't have staging path. Use target path as staging path.
+                self.NodeUnstageVolume.__wrapped__(
+                    self,
+                    volume_id=volume_id,
+                    staging_target_path=target_path
+                )
+            os.remove(meta_file)
+        remove_path_if_not_mounted(target_path)
+        return types.NodeUnpublishResp()
+
+    def NodeExpandVolume(
+            self,
+            volume_id,
+            volume_path,
+            capacity_range,
+            staging_target_path,
+            volume_capability,
+            exit_stack,
+    ):
+        exit_stack.enter_context(volume_locked(volume_id))
+        volume_capabilities = _validate_capabilities(volume_capability)
+        device_bind_path = get_device_bind_path(staging_target_path)
+        requested_capacity = capacity_range.required_bytes
+
+        logger.info(f"Requested capacity for volume {volume_id}: {requested_capacity} bytes")
+        staging_mount = MountInfo.get_mount_by_destination(dest_path=device_bind_path)
+        if not staging_mount:
+            raise Abort(NOT_FOUND, f"Mount information not found for staging path: {device_bind_path}")
+
+        device = staging_mount.devtmpfs_device
+        if volume_capabilities.is_filesystem:
+            fs_type = get_filesystem_type(device_bind_path)
+            resize_device(
+                device=device,
+                target_mount=volume_path,
+                fs_type=fs_type,
+            )
+        else:
+            existing_capacity = get_device_size(device)
+            if existing_capacity < requested_capacity:
+                raise Exception(
+                    f"Requested capacity {requested_capacity} exceeds the current capacity {existing_capacity}. "
+                    f"This may indicate the updated size has not yet been propagated."
+                )
+        return types.NodeExpandResp(capacity_bytes=requested_capacity)
+
+    def NodeGetVolumeStats(self, volume_id, volume_path):
+        target_mount = MountInfo.get_mount_by_destination(dest_path=volume_path)
+        if not target_mount:
+            raise Abort(NOT_FOUND, f"Mount information not found for volume path: {volume_path}")
+        if target_mount.has_devtmpfs_source:
+            # Get the device path associated with the mount
+            return self._get_block_stats(target_mount.devtmpfs_device)
+        else:
+            return self._get_fs_stats(volume_path)
+
+
+def serve(server: grpc.Server, conf: Config):
+    global CONF
+    import vast_csi.plugins.base
+
+    vast_csi.plugins.base.CONF = CONF = conf
+    identity = BlockIdentity()
+    csi_grpc.add_IdentityServicer_to_server(identity, server)
+    identity.capabilities.append(types.ExpansionType.ONLINE)
+
+    if conf.mode in {CONTROLLER, CONTROLLER_AND_NODE}:
+        identity.controller = BlockController()
+        identity.capabilities.append(types.ServiceType.CONTROLLER_SERVICE)
+        csi_grpc.add_ControllerServicer_to_server(identity.controller, server)
+        conf.fake_quota_store.mkdir()
+        conf.fake_snapshot_store.mkdir()
+
+    if conf.mode in {NODE, CONTROLLER_AND_NODE}:
+        try_nvme_probes()
+        identity.node = BlockNode()
+        csi_grpc.add_NodeServicer_to_server(identity.node, server)

@@ -1,35 +1,89 @@
 import os
+import re
 import json
 import requests
 import hashlib
 import pickle
 import base64
+import inspect
+from abc import ABC
 from pprint import pformat
 from uuid import uuid4
+from types import FunctionType
 from contextlib import contextmanager
 from datetime import datetime
+from functools import wraps
 from requests.exceptions import ConnectionError
 from requests.utils import default_user_agent
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 
-from easypy.bunch import Bunch
+from easypy.bunch import Bunch, bunchify
 from easypy.caching import cached_property
-from easypy.collections import shuffled
+from easypy.collections import shuffled, listify
 from easypy.semver import SemVer
 from easypy.caching import timecache, locking_cache
 from easypy.units import HOUR, MINUTE
+from easypy.sync import wait
 from easypy.resilience import retrying, resilient
 from easypy.humanize import yesno_to_bool
 from plumbum import cmd
 from plumbum import local, ProcessExecutionError
+from urllib3.exceptions import MaxRetryError, ReadTimeoutError, TimeoutError
+from easypy.resilience import resilient as easypy_resilient
 
 from .logging import logger
 from .configuration import Config
-from .exceptions import ApiError, MountFailed, OperationNotSupported, LookupFieldError
+from .exceptions import ApiError, MountFailed, OperationNotSupported, LookupFieldError, TaskFailed
 from .utils import generate_ip_range
 from . import csi_types as types
+
+
+class ApiVersion:
+    VALID_VERSION_PATTERN = re.compile(r"^v\d+$")  # Matches "v" followed by one or more digits
+
+    def __getattr__(self, ver):
+        if not self.VALID_VERSION_PATTERN.match(ver):
+            raise ValueError(
+                f"Invalid API version: {ver}. Must match pattern '{self.VALID_VERSION_PATTERN.pattern}'"
+            )
+
+        def dec(target):
+            if isinstance(target, FunctionType):
+                return self._decorate_function(target, ver)
+            elif isinstance(target, type):
+                return self._decorate_class(target, ver)
+            else:
+                raise TypeError(f"Unsupported target type: {type(target).__name__}")
+
+        return dec
+
+    def _decorate_function(self, func, ver):
+        """Decorate a function by injecting the `api_ver` argument."""
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            sig = inspect.signature(func)
+            if "api_ver" in sig.parameters:
+                kwargs["api_ver"] = ver  # Add `api_ver` to kwargs if it exists in parameters
+            elif any(param.kind == inspect.Parameter.VAR_KEYWORD for param in sig.parameters.values()):
+                kwargs["api_ver"] = ver  # Inject `api_ver` into `**kwargs` if available
+
+            return func(*args, **kwargs)
+        return wrapper
+
+    def _decorate_class(self, cls, ver):
+        """Decorate all methods of a class, including inherited ones."""
+        for attr_name, attr_val in inspect.getmembers(cls, predicate=callable):
+            if attr_name.startswith("_"):
+                continue
+            if isinstance(attr_val, FunctionType):
+                decorated_method = self._decorate_function(attr_val, ver)
+                setattr(cls, attr_name, decorated_method)
+        return cls
+
+
+apiver = ApiVersion()
 
 
 def requisite(semver: str, operation: str = None, ignore: bool = False):
@@ -46,14 +100,14 @@ def requisite(semver: str, operation: str = None, ignore: bool = False):
 
         def _args_wrapper(self, *args, **kwargs):
 
-            sw_version = self.sw_version
+            sw_version = self.session.versions.get_sw_version()
             if sw_version < required_version:
                 if ignore:
                     return
                 raise OperationNotSupported(
                     op=operation or fn.__name__,
                     required_version=required_version.dumps(),
-                    current_version=self.sw_version.dumps(),
+                    current_version=sw_version.dumps(),
                     tip="Upgrade VAST cluster or adjust CSI driver settings to avoid unsupported operations"
                 )
             return fn(self, *args, **kwargs)
@@ -69,16 +123,22 @@ class CannotUseTrashAPI(OperationNotSupported):
 
 def _derive_key(salt):
     # Derive a key from the salt
+    if isinstance(salt, str):
+        salt = salt.encode("utf-8")
+
     kdf = hashes.Hash(hashes.SHA256(), backend=default_backend())
     kdf.update(salt)
     return kdf.finalize()
 
 
 @locking_cache
-def get_vms_session(username=None, password=None, endpoint=None, ssl_cert=None):
+def get_vms_session(username=None, password=None, endpoint=None, ssl_cert=None, cluster_name=None):
     config = Config()
     session_cls = TestVmsSession if config.mock_vast else VmsSession
-    return session_cls.create(config=config, username=username, password=password, endpoint=endpoint, ssl_cert=ssl_cert)
+    return session_cls.create(
+        config=config, username=username, password=password,
+        endpoint=endpoint, ssl_cert=ssl_cert, cluster_name=cluster_name,
+    )
 
 
 class RESTSession(requests.Session):
@@ -91,10 +151,12 @@ class RESTSession(requests.Session):
         self.headers['authorization'] = f"Bearer #"  # will be updated on first request
 
     @retrying.debug(times=3, acceptable=retrying.Retry)
-    def request(self, verb, api_method, *args, params=None, log_result=True, **kwargs):
+    def request(self, verb, api_method, *args, params=None, log_result=True, api_ver=None, **kwargs):
         verb = verb.upper()
         api_method = api_method.strip("/")
-        url = [self.base_url, api_method]
+        api_ver = api_ver or "v1"
+        base_url = f"{self.base_url}/{api_ver}"
+        url = [base_url, api_method]
         url.extend(args)
         url += [""]  # ensures a '/' at the end
         url = "/".join(str(p) for p in url)
@@ -160,7 +222,7 @@ class VmsSession(RESTSession):
         self.password = password
         self.endpoint = endpoint
         self.ssl_cert = ssl_cert
-        self.base_url = f"https://{endpoint}/api/v1"
+        self.base_url = f"https://{endpoint}/api"
         # Modify the SSL verification CA bundle path established
         # by the underlying Certifi library's defaults if ssl_verify==True.
         certs_base_dir = "/etc/ssl/certs"
@@ -177,6 +239,21 @@ class VmsSession(RESTSession):
             # This way requests library can use mounted CA bundle or default system CA bundle under the same path.
             cert_path = f"{certs_base_dir}/ca-certificates.crt"
         self.ssl_verify = (False, cert_path)[config.ssl_verify]
+
+        # Sub resources
+        self.versions = Version(self)
+        self.plugins = Plugin(self)
+        self.viewpolicies = ViewPolicy(self)
+        self.views = View(self)
+        self.quospolicies = QosPolicy(self)
+        self.folders = Folder(self)
+        self.vippools = VipPool(self)
+        self.quotas = Quota(self)
+        self.snapshots = Snapshot(self)
+        self.globalsnapstreams = GlobalSnapshotStream(self)
+        self.users = User(self)
+        self.volumes = Volume(self)
+        self.blockhosts = BlockHost(self)
 
     def serialize(self, salt: str):
         session_data = pickle.dumps((self.username, self.password, self.endpoint, self.ssl_cert))
@@ -204,63 +281,82 @@ class VmsSession(RESTSession):
         return get_vms_session(username=username, password=password, endpoint=endpoint, ssl_cert=ssl_cert)
 
     @classmethod
-    def create(cls, config, username, password, endpoint, ssl_cert):
+    def create(cls, config, username, password, endpoint, ssl_cert, cluster_name):
         """
-        Create instance of session.
-        username, password endpoint are optional and in context of csi driver comes from secret if passed as argument.
-        Otherwise, username, password and endpoint are taken from locally mounted secret (COSI case).
+        Creates an instance of the session, initializing credentials based on provided arguments or configuration context.
+
+        :param config: The configuration object containing credentials and settings.
+        :param username: Optional; the username for authentication. If not provided, it will be sourced from the secret.
+        :param password: Optional; the password for authentication. If not provided, it will be sourced from the secret.
+        :param endpoint: Optional; the endpoint URL. If not provided, it will be sourced from the secret or environment.
+        :param ssl_cert: SSL certificate for secure connections.
+        :param cluster_name: Optional; specifies the cluster name for multi-cluster authentication.
+
+        The following behaviors apply:
+        1. StorageClass Secret (Recommended): If `cluster_name` is not provided
+           but username, password, and endpoint are passed as arguments,
+           these are used as StorageClass-level credentials.
+
+        2. Multi-Cluster Secret: If `cluster_name` is specified,
+           credentials are pulled from a multi-cluster YAML configuration in the secret,
+            where each top-level key represents a cluster.
+            This secret should be mounted at `/opt/vms-auth/clusters`
+            Example:
+                ```
+                cluster1:
+                  username: user1
+                  password: 111111
+                  endpoint: clstr1.example.com
+                cluster2:
+                  username: user2
+                  password: 222222
+                  endpoint: clstr2.example.com
+                ```
+
+        3. Global Secret (Deprecated): If neither `cluster_name` nor username/password arguments are provided,
+         credentials are sourced from a global secret mounted at `/opt/vms-auth`.
+          This global secret should contain `username` and `password` fields,
+           with the `endpoint` provided via environment variables.
+           Note: Using a global secret is deprecated; it is recommended to use StorageClass secrets.
+
+        Returns:
+            An initialized session object with SSL verification status logged.
         """
-        # The presence of the name in the arguments already indicates
-        # that we have a StorageClass scope secret at this point.
-        # In other words, it's not a globally mounted secret. Other secret fields will be validated below.
-        is_global = not bool(username)
-        if config.vms_credentials_store.exists() and is_global:
-            username = config.vms_user
-            password = config.vms_password
-            endpoint = config.vms_host
+        if cluster_name:
+            if not (cluster_auth_config := config.cluster_credentials.get(cluster_name)):
+                raise LookupFieldError(field="cluster_name", tip="Make sure cluster name is present in secret.")
+            username = cluster_auth_config.username
+            password = cluster_auth_config.password
+            endpoint = cluster_auth_config.endpoint
+            config_source = f"multi-cluster auth configuration ({cluster_name=})"
+        else:
+            # The presence of the name in the arguments already indicates
+            # that we have a StorageClass scope secret at this point.
+            # In other words, it's not a globally mounted secret. Other secret fields will be validated below.
+            is_global = not bool(username)
+            if config.vms_credentials_store.exists() and is_global:
+                username = config.vms_user
+                password = config.vms_password
+                endpoint = config.vms_host
+                if not endpoint:
+                    raise LookupFieldError(field="endpoint", tip="Make sure endpoint is specified in values.yaml.")
+            if not username:
+                raise LookupFieldError(field="username", tip="Make sure username is present in secret.")
+            if not password:
+                raise LookupFieldError(field="password",  tip="Make sure password is present in secret.")
             if not endpoint:
-                raise LookupFieldError(field="endpoint", tip="Make sure endpoint is specified in values.yaml.")
-        if not username:
-            raise LookupFieldError(field="username", tip="Make sure username is present in secret.")
-        if not password:
-            raise LookupFieldError(field="password",  tip="Make sure password is present in secret.")
-        if not endpoint:
-            raise LookupFieldError(field="endpoint",  tip="Make sure endpoint is present in secret.")
+                raise LookupFieldError(field="endpoint",  tip="Make sure endpoint is present in secret.")
+            config_source = "mounted credentials (global secret)" if is_global else "StorageClass secret"
+
         session = cls(config, username, password, endpoint, ssl_cert)
-        config_source = "mounted configuration" if is_global else "secret"
         ssl_verification = "enabled" if session.ssl_verify else "disabled"
         logger.info(f"VMS session has been instantiated from {config_source}. SSL verification {ssl_verification}.")
         return session
 
-    @property
-    @timecache(HOUR)
-    def sw_version(self) -> SemVer:
-        versions = self.versions(status='success')[0].sys_version
-        return SemVer.loads_fuzzy(versions)
-
-    @requisite(semver="4.7.0")
-    def delete_folder(self, path: str, tenant_id: int):
-        """Delete remote cluster folder by provided path."""
-
-        if self.config.dont_use_trash_api:
-            # trash api usage is disabled by csi admin or trash api doesn't exist for cluster
-            raise CannotUseTrashAPI(reason="Disabled by Vast CSI settings (see 'dontUseTrashApi' in your Helm chart)")
-
-        try:
-            self.delete("/folders/delete_folder/", data={"path": path, "tenant_id": tenant_id})
-        except ApiError as e:
-            if "no such directory" in e.render():
-                logger.info(f"Remote directory might have been removed earlier. ({e})")
-            elif "trash folder disabled" in e.render():
-                raise CannotUseTrashAPI(reason="Trash Folder Access is disabled (see Settings/Cluster/Features in VMS)")
-            else:
-                # unpredictable error
-                raise
-
     def refresh_auth_token(self):
         try:
             resp = super(RESTSession, self).request(
-                "POST", f"{self.base_url}/token/", verify=self.ssl_verify, timeout=5,
+                "POST", f"{self.base_url}/v1/token/", verify=self.ssl_verify, timeout=5,
                 json={"username": self.username, "password": self.password}
             )
             resp.raise_for_status()
@@ -274,67 +370,187 @@ class VmsSession(RESTSession):
                          f"cannot be accessed. Please verify the specified endpoint. "
                          f"origin error: {e}"
                 ))
-        self.usage_report()
+        self.plugins.usage_report()
+
+    def wait_task(self, task, latest=False, start_timeout=0, verbose=True):
+        """
+        Waits for a specific task to start and complete execution, monitoring its progress
+        and handling various failure scenarios.
+        """
+        task_id = None
+        task_line = 0
+
+        def is_task_started(task):
+            if isinstance(task, int):
+                return self.vtasks(task)
+            elif isinstance(task, dict):
+                if "async_task" in task:
+                    task = task["async_task"]
+                return bunchify(task)
+            elif tasks := self.vtasks(name=task, log_result=False):
+                if len(tasks) == 1:
+                    [task] = tasks
+                    return task
+                elif latest:
+                    return max(tasks, key=lambda t: t.id)
+                else:
+                    raise Exception(f"Too many tasks with name '{task}': {[t.id for t in tasks]}")
+            return False
+
+        def is_task_complete(task_id):
+            nonlocal task_line
+            task = self.vtasks(task_id, log_result=False)
+            if verbose:
+                for line in task.messages[task_line:]:
+                    logger.info(line)
+            task_line = len(task.messages)
+            if task.state == 'COMPLETED':
+                return task
+            elif task.state != 'RUNNING':
+                raise TaskFailed(task=task, name=task.name, id=task.id, reason=task.messages[-1])
+            else:
+                raise TaskFailed(task=task, name=task.name, id=task.id, reason="timeout")
+
+        if start_timeout:
+            is_task_started = easypy_resilient.debug(
+                acceptable=(
+                    MaxRetryError,
+                    ReadTimeoutError,
+                    TimeoutError,
+                    ConnectionResetError,
+                    ConnectionError,
+                    BrokenPipeError
+                ),
+                msg="Failed to fetch VMS task", default=False)(is_task_started)
+
+        task = wait(start_timeout, lambda: is_task_started(task), sleep=1, message=f"No such task found: {task}")
+        task_id = task.id
+        timeout = task.timeout_in_seconds + 10  # add a grace period
+        return wait(timeout, lambda: is_task_complete(task_id), sleep=1, message=False)
+
+
+class VastResource(ABC):
+    resource_name = NotImplemented
+
+    def __init__(self, session: VmsSession):
+        self.session = session
+
+    def list(self, api_ver=None, **params):
+        """Get list of entries with optional filtering params"""
+        return self.session.get(self.resource_name, api_ver=api_ver, params=params)
+
+    def create(self, api_ver=None, **params):
+        """Create new entry with provided params"""
+        return self.session.post(self.resource_name, api_ver=api_ver, data=params)
+
+    def update(self, _id, api_ver=None, **params):
+        """Update entry by id with provided params"""
+        return self.session.patch(f"{self.resource_name}/{_id}", api_ver=api_ver, data=params)
+
+    def delete(self, api_ver=None, **params):
+        """Delete entry by provided params. Skip if entry not found."""
+        entry = self.one(api_ver=api_ver, **params)
+        if not entry:
+            resource = self.__class__.__name__.lower()
+            serialized_params = json.dumps(params, separators=(",", ":"))
+            logger.info(f"{resource!r} not found for params {serialized_params}, skipping delete")
+            return
+        return self.delete_by_id(entry.id, api_ver=api_ver)
+
+    def delete_by_id(self, _id, api_ver=None, **params):
+        """Delete entry by id"""
+        return self.session.delete(f"{self.resource_name}/{_id}", api_ver=api_ver, data=params)
+
+    def one(self, fail_if_missing=False, api_ver=None, **params):
+        """
+        Retrieve a single entry by provided filter parameters.
+        Raises exception If no entry is found and `fail_if_missing` is True,
+        or if multiple entries are found.
+        """
+        entries = self.list(api_ver=api_ver, **params)
+        resource = self.__class__.__name__.lower()
+        if not entries:
+            if fail_if_missing:
+                serialized_params = json.dumps(params, separators=(",", ":"))
+                raise Exception(f"No {resource!r} found for params {serialized_params}")
+            return
+        if len(entries) > 1:
+            serialized_params = json.dumps(params, separators=(",", ":"))
+            raise Exception(f"Too many '{resource}s' found for params {serialized_params}: {entries}")
+        return entries[0]
+
+    def ensure(self, name, api_ver=None, **params):
+        """Ensure entry with provided name exists. Create if not found."""
+        entry = self.one(name=name, api_ver=api_ver)
+        if not entry:
+            entry = self.create(name=name, api_ver=api_ver, **params)
+        return entry
+
+    def get(self, _id, api_ver=None):
+        """Get single entry by id"""
+        return self.session.get(f"{self.resource_name}/{_id}", api_ver=api_ver)
+
+
+class Version(VastResource):
+    resource_name = "versions"
+
+    @timecache(HOUR)
+    def get_sw_version(self) -> SemVer:
+        """Get VMS software version."""
+        versions = self.list(status="success")[0].sys_version
+        return SemVer.loads_fuzzy(versions)
+
+class Plugin(VastResource):
+    resource_name = "plugins"
 
     @requisite(semver="5.2.0", ignore=True)
     @resilient.error(msg="failed to report usage to VMS")
     def usage_report(self):
-        self.post("plugins/usage/", data={
-            "vendor": "vastdata", "name": "vast-csi",
-            "version": self.config.plugin_version, "build": self.config.git_commit[:10]
-        })
+        self.session.post(f"{self.resource_name}/usage/",
+            data={
+                "vendor": "vastdata",
+                "name": "vast-csi",
+                "version": self.session.config.plugin_version,
+                "build": self.session.config.git_commit[:10]
+            })
 
-    # ----------------------------
-    # View policies
-    def get_view_policy(self, policy_name: str):
-        """Get view policy by name. Raise exception if not found."""
-        if res := self.viewpolicies(name=policy_name):
-            return res[0]
-        else:
-            raise Exception(f"No such view policy: {policy_name}. Please create policy manually")
+class ViewPolicy(VastResource):
+    resource_name = "viewpolicies"
 
-    # ----------------------------
-    # QoS policies
-    def get_qos_policy(self, policy_name: str):
-        """Get QoS policy by name. Raise exception if not found."""
-        if res := self.qospolicies(name=policy_name):
-            return res[0]
-        else:
-            raise Exception(f"No such QoS policy: {policy_name}. Please create policy manually")
 
-    # ----------------------------
-    # Views
-    def get_view(self, **kwargs) -> Bunch:
-        """
-        Get view that contain provided search kwargs eg path, bucket_name
-        """
-        if views := self.views(**kwargs):
-            if len(views) > 1:
-                raise Exception(f"Too many views were found by condition {kwargs}: {views}")
-            return views[0]
+class QosPolicy(VastResource):
+    resource_name = "qospolicies"
 
-    def ensure_view(self, path, protocols, view_policy, qos_policy):
-        if not (view := self.get_view(path=str(path), policy__name=view_policy)):
-            view_policy = self.get_view_policy(policy_name=view_policy)
+
+class View(VastResource):
+    resource_name = "views"
+
+    def ensure(self, path, protocols, view_policy, qos_policy, create_dir=True):
+        if not (view := self.one(path=str(path), policy__name=view_policy)):
+            view_policy = self.session.viewpolicies.one(name=view_policy, fail_if_missing=True)
             if qos_policy:
-                qos_policy_id = self.get_qos_policy(qos_policy).id
+                qos_policy_id = self.session.quospolicies.one(name=qos_policy, fail_if_missing=True).id
             else:
                 qos_policy_id = None
-            view = self.create_view(
-                path=path, protocols=protocols, policy_id=view_policy.id,
-                qos_policy_id=qos_policy_id, tenant_id=view_policy.tenant_id
+            view = self.create(
+                path=str(path),
+                protocols=protocols,
+                policy_id=view_policy.id,
+                qos_policy_id=qos_policy_id,
+                tenant_id=view_policy.tenant_id,
+                create_dir=create_dir,
             )
         return view
 
     def ensure_s3view(self, bucket_name, root_export, **kwargs):
-        if not (view := self.get_view(bucket=bucket_name)):
+        if not (view := self.one(bucket=bucket_name)):
             view_policy = kwargs.pop("view_policy", "s3_default_policy")
             protocols = kwargs.pop("protocols", None) or []
             if protocols:
                 protocols = [p.upper().strip() for p in protocols.split(",")]
             if "S3" not in protocols:
                 protocols.append("S3")
-            view_policy = self.get_view_policy(policy_name=view_policy)
+            view_policy = self.session.viewpolicies.one(name=view_policy, fail_if_missing=True)
             policy_id = view_policy.id
             tenant_id = view_policy.tenant_id
             root_export = root_export.strip("/")
@@ -342,53 +558,66 @@ class VmsSession(RESTSession):
             for key in kwargs.keys():
                if kwargs[key] in ("true", "false"):
                    kwargs[key] = yesno_to_bool(kwargs[key])
-            view = self.create_view(
+            if "SMB" in protocols:
+                kwargs["share"] = os.path.basename(path)
+            view = self.create(
                 bucket=bucket_name, bucket_owner=bucket_name, path=path,
                 protocols=protocols, policy_id=policy_id, tenant_id=tenant_id,
                 **kwargs
             )
         return view
 
-    def create_view(self, path: str, create_dir=True, **kwargs):
-        """
-        Create new view on remove cluster
-        Args:
-            path: full system path to create view for.
-            **kwargs: additional view parameters.
-        Returns:
-            newly created view as dictionary.
-        """
-        data = {"path": str(path), "create_dir": create_dir, **kwargs}
-        if "SMB" in kwargs.get("protocols", []):
-            data["share"] = os.path.basename(path)
-        return Bunch.from_dict(self.post("views", data))
-
-    def delete_view_by_path(self, path: str):
-        """Delete view by provided path criteria."""
-        if view := self.get_view(path=path):
-            self.delete_view_by_id(view.id)
-
-    def delete_view_by_id(self, id_: int):
-        """Delete view by provided id"""
-        self.delete(f"views/{id_}")
-
     @contextmanager
     def temp_view(self, path, policy_id, tenant_id) -> Bunch:
         """
         Create temporary view with autogenerated alias and delite it on context manager exit.
         """
-        view = self.create_view(path=path, policy_id=policy_id, tenant_id=tenant_id, alias=f"/{uuid4()}")
+        view = self.create(path=path, policy_id=policy_id, tenant_id=tenant_id, alias=f"/{uuid4()}")
         try:
             yield view
         finally:
-            self.delete_view_by_id(view.id)
+            self.delete_by_id(view.id)
 
-    # ----------------------------
+    @requisite(semver="5.3.0")
     @timecache(5 * MINUTE)
-    def get_vip_pool(self, vip_pool_name: str) -> Bunch:
-        if not (vippools := self.vippools(name=vip_pool_name)):
-            raise Exception(f"No VIP Pool named '{vip_pool_name}'")
-        return vippools[0]
+    @apiver.v5
+    def get_subsystem(self, subsystem=None, _id=None, **params):
+        """Get BLOCK type view by provided name."""
+        if subsystem:
+            view = self.one(name=subsystem, fail_if_missing=True, **params)
+        elif _id:
+            view = self.get(_id, **params)
+        assert "BLOCK" in view.protocols, f"View {view.name} is not a block volume"
+        return view
+
+class Folder(VastResource):
+    resource_name = "folders"
+
+    @requisite(semver="4.7.0", operation="delete_folder")
+    def delete(self, path: str, tenant_id: int):
+        """Delete remote cluster folder by provided path."""
+
+        if self.session.config.dont_use_trash_api:
+            # trash api usage is disabled by csi admin or trash api doesn't exist for cluster
+            raise CannotUseTrashAPI(reason="Disabled by Vast CSI settings (see 'dontUseTrashApi' in your Helm chart)")
+        try:
+            self.session.delete(f"{self.resource_name}/delete_folder/", data={"path": path, "tenant_id": tenant_id})
+        except ApiError as e:
+            if "no such directory" in e.render():
+                logger.info(f"Remote directory might have been removed earlier. ({e})")
+            elif "trash folder disabled" in e.render():
+                raise CannotUseTrashAPI(reason="Trash Folder Access is disabled (see Settings/Cluster/Features in VMS)")
+            else:
+                # unpredictable error
+                raise
+
+
+class VipPool(VastResource):
+    resource_name = "vippools"
+
+    @timecache(5 * MINUTE)
+    def one(self, **params):
+        return super().one(**params)
 
     # Vip pools
     def get_vip(self, vip_pool_name: str, tenant_id: int = None):
@@ -401,7 +630,7 @@ class VmsSession(RESTSession):
         Returns:
             Random vip ip from provided vip pool.
         """
-        vippool = self.get_vip_pool(vip_pool_name)
+        vippool = self.one(name=vip_pool_name)
         if isinstance(tenant_id, str):
             # for tenant_id passed as volume context.
             tenant_id = int(tenant_id)
@@ -415,30 +644,21 @@ class VmsSession(RESTSession):
         logger.info(f"Using - {vip}")
         return vip
 
-    # ----------------------------
-    # Quotas
-    def create_quota(self, data):
-        """Create new quota"""
-        return self.post("quotas", data=data)
 
-    def get_quota(self, volume_id=None, path=None, **kwargs):
+class Quota(VastResource):
+    resource_name = "quotas"
+
+    def one(self, name=None, path=None, **kwargs):
         """Get quota by provided query params."""
-        if volume_id:
-            kwargs.update(path__contains=volume_id)
+        if name:
+            kwargs.update(path__contains=name)
         elif path:
             path = path.rstrip("/") or "/"  # for root path
             kwargs.update(path=path)
-        quotas = self.quotas(**kwargs)
-        if not quotas:
-            return
-        elif len(quotas) > 1:
-            names = ", ".join(sorted(q.name for q in quotas))
-            raise Exception(f"Too many quotas on {volume_id}: {names}")
-        else:
-            return quotas[0]
+        return super().one(**kwargs)
 
-    def ensure_quota(self, volume_id, view_path, tenant_id, requested_capacity=None):
-        if quota := self.get_quota(path=view_path, tenant_id=tenant_id):
+    def ensure(self, volume_id, view_path, tenant_id, requested_capacity=None):
+        if quota := self.one(path=view_path, tenant_id=tenant_id):
             # Check if volume with provided name but another capacity already exists.
             if requested_capacity and quota.hard_limit != requested_capacity:
                 raise Exception(
@@ -456,47 +676,28 @@ class VmsSession(RESTSession):
             )
             if requested_capacity:
                 data.update(hard_limit=requested_capacity)
-            quota = self.create_quota(data=data)
+            quota = self.create(**data)
         return quota
 
-    def update_quota(self, quota_id, data):
-        """Update existing quota."""
-        self.patch(f"quotas/{quota_id}", data=data)
 
-    def delete_quota(self, quota_id):
-        """Delete quota"""
-        self.delete(f"quotas/{quota_id}")
+class Snapshot(VastResource):
+    resource_name = "snapshots"
 
-    # ----------------------------
-    # Snapshots
     def has_snapshots(self, path):
         # we intentionally limit the number of results
-        ret = self.snapshots(path__startswith=path.rstrip("/"), page_size=10)
+        ret = self.list(path__startswith=path.rstrip("/"), page_size=10)
         return ret.results
 
-    def create_snapshot(self, name, path, tenant_id, expiration_delta=None):
+    def create(self, name, path, tenant_id, expiration_delta=None):
         """Create new snapshot."""
         data = dict(name=name, path=path, tenant_id=tenant_id)
         if expiration_delta:
             expiration_time = (datetime.utcnow() + expiration_delta).isoformat()
             data["expiration_time"] = expiration_time
-        return Bunch(self.post("snapshots", data=data))
+        return super().create(**data)
 
-    def get_snapshot(self, snapshot_name=None, snapshot_id=None):
-        """
-        Get snapshot by name or by id.
-        Only one argument should be provided.
-        """
-        if snapshot_name:
-            if ret := self.snapshots(name=snapshot_name):
-                if len(ret) > 1:
-                    raise Exception(f"Too many snapshots named {snapshot_name}: ({len(ret)})")
-                return ret[0]
-        else:
-            return self.snapshots(snapshot_id)
-
-    def ensure_snapshot(self, snapshot_name, path, tenant_id, expiration_delta=None):
-        if snapshot := self.get_snapshot(snapshot_name=snapshot_name):
+    def ensure(self, name, path, tenant_id, expiration_delta=None):
+        if snapshot := self.one(name=name):
             if snapshot.path.strip("/") != path.strip("/"):
                 raise Exception(
                     f"Snapshot already exists, but the specified path {path}"
@@ -504,29 +705,31 @@ class VmsSession(RESTSession):
                 )
         else:
             path = path.rstrip("/") + "/"
-            snapshot = self.create_snapshot(name=snapshot_name, path=path, tenant_id=tenant_id, expiration_delta=expiration_delta)
+            snapshot = self.create(
+                name=name,
+                path=path,
+                tenant_id=tenant_id,
+                expiration_delta=expiration_delta,
+            )
         return snapshot
 
-    def delete_snapshot(self, snapshot_id):
-        self.delete(f"snapshots/{snapshot_id}")
 
-    def get_snapshot_stream(self, name):
-        if res := self.globalsnapstreams(name=name):
-            return res[0]
+class GlobalSnapshotStream(VastResource):
+    resource_name = "globalsnapstreams"
 
     def stop_snapshot_stream(self, snapshot_stream_id):
-        self.patch(f"globalsnapstreams/{snapshot_stream_id}/stop")
+        self.session.patch(f"{self.resource_name}/{snapshot_stream_id}/stop")
 
     @requisite(semver="4.6.0", operation="create_globalsnapshotstream")
-    def ensure_snapshot_stream(self, snapshot_id, tenant_id, destination_path, snapshot_stream_name):
-        if not (snapshot_stream := self.get_snapshot_stream(name=snapshot_stream_name)):
+    def ensure(self, name, snapshot_id, tenant_id, destination_path):
+        if not (snapshot_stream := self.one(name=name)):
             data = dict(
                 loanee_root_path=destination_path,
-                name=snapshot_stream_name,
+                name=name,
                 enabled=True,
                 loanee_tenant_id=tenant_id, # target tenant_id
             )
-            snapshot_stream = self.post(f"snapshots/{snapshot_id}/clone/", data)
+            snapshot_stream = self.session.post(f"snapshots/{snapshot_id}/clone/", data)
         return snapshot_stream
 
     @requisite(semver="4.6.0", ignore=True)
@@ -535,57 +738,133 @@ class VmsSession(RESTSession):
         Stop global snapshot stream in case it is not finished.
         Snapshots with expiration time will be deleted as soon as snapshot stream is stopped.
         """
-        if snapshot_stream := self.get_snapshot_stream(snapshot_stream_name):
+        if snapshot_stream := self.one(name=snapshot_stream_name):
             if snapshot_stream.status.state != "FINISHED":
                 # Just stop the stream. It will be deleted automatically upon stop request.
                 self.stop_snapshot_stream(snapshot_stream.id)
             else:
-                self.delete(f"globalsnapstreams/{snapshot_stream.id}", data=dict(remove_dir=False))
+                self.delete_by_id(_id=snapshot_stream.id, remove_dir=True)
 
-    def get_by_token(self, token):
-        """
-        This method used to iterate over paginated resources (snapshots, quotas etc).
-        Where after first request to resource list token for next page is returned.
-        """
-        return self.get(token)
 
-    # ----------------------------
-    # Users
-    def create_user(self, name, uid, allow_create_bucket=False, allow_delete_bucket=False):
-        return self.post("users", data={
-            "name": name, "uid": uid,
-            "allow_create_bucket": allow_create_bucket, "allow_delete_bucket": allow_delete_bucket
-        })
+class User(VastResource):
+    resource_name = "users"
 
-    def get_user(self, name):
-        if users := self.users(name=name):
-            return users[0]
+    def generate_access_key(self, _id):
+        return self.session.post(f"{self.resource_name}/{_id}/access_keys/", log_result=False)
 
-    def ensure_user(self, name, uid, allow_create_bucket=False, allow_delete_bucket=False):
-        if user := self.get_user(name=name):
-            return user
-        return self.create_user(
-            name=name, uid=uid, allow_create_bucket=allow_create_bucket, allow_delete_bucket=allow_delete_bucket
+    def delete_access_key(self, _id, access_key):
+        data = dict(access_key=access_key)
+        return self.session.delete(f"{self.resource_name}/{_id}/access_keys/", data=data, log_result=False)
+
+@apiver.v5
+class Volume(VastResource):
+    resource_name = "volumes"
+
+    @requisite(semver="5.3.0")
+    def delete_by_id(self, _id, **params):
+        return super().delete_by_id(_id=_id, force=True, **params)
+
+    @requisite(semver="5.3.0")
+    def ensure(self, **params):
+        return super().ensure(**params)
+
+    @requisite(semver="5.3.0")
+    def get_snapshots(self, _id, **params):
+        return self.session.get(f"{self.resource_name}/{_id}/get_snapshots", **params)
+
+    @requisite(semver="5.3.0")
+    def discard_hosts(self, _id, **params):
+        data = dict(ids=[])
+        task = self.session.patch(f"{self.resource_name}/{_id}/set_hosts", data=data, **params)
+        return self.session.wait_task(task)
+
+@apiver.v5
+class BlockHost(VastResource):
+    resource_name = "blockhosts"
+
+    @requisite(semver="5.3.0")
+    def one(self, **params):
+       return super().one(**params)
+
+    @requisite(semver="5.3.0")
+    def ensure(self, node_id, transport_type, **params):
+        if blockhost := self.one(name=node_id):
+            return blockhost
+        data = dict(
+            name=node_id,
+            os_type="LINUX",
+            ana="OPTIMIZED",
+            connectivity_type=transport_type,
+            nqn=f"nqn.2014-08.com.vastcsiblock:{node_id}",
         )
+        return self.create(**data)
 
-    def delete_user(self, user_id):
-        self.delete(f"users/{user_id}")
+    @requisite(semver="5.3.0")
+    def delete_by_id(self, _id, **params):
+        return super().delete_by_id(_id=_id, force=True, **params)
 
-    def generate_access_key(self, user_id):
-        return self.post(f"users/{user_id}/access_keys/", log_result=False)
+    @requisite(semver="5.3.0")
+    def set_volume_to_blockhost(self, blockhost_id, ids_to_add=None, ids_to_remove=None, **params):
+        data = {}
+        if ids_to_add:
+            data["ids_to_add"] = listify(ids_to_add)
+        if ids_to_remove:
+            data["ids_to_remove"] = listify(ids_to_remove)
+        task = self.session.patch(
+            f"{self.resource_name}/{blockhost_id}/update_volumes", data=data, **params
+        )
+        return self.session.wait_task(task)
 
-    def delete_access_key(self, user_id, access_key):
-        return self.delete(f"users/{user_id}/access_keys/", data={"access_key": access_key}, log_result=False)
 
-
+##########################
+#
+#  Test VMS Session
+#
+##########################
 class TestVmsSession(RESTSession):
-    """RestSession simulation for sanity tests"""
+    """
+    Initializes a TestVmsSession instance, which simulates the behavior of an original VmsSession
+    with all its sub-resources and methods.
 
+    This TestVmsSession creates a full spec of the original VmsSession, including all of its sub-resources
+    (e.g., resources like `quotas`, `views`, `viewpolicies`, etc.) and methods.
+
+    All methods of the sub-resources are mocked to return `None` by default. However, if the TestVmsSession
+    contains special methods in the format `<subresource_name>_<subresource_method>`, these methods are
+    treated as side effects. When called, these side-effect methods will override the default `None` return
+    value, and their return value will be used as the return value of the mocked method.
+
+    This behavior is useful for testing scenarios where interactions with the `VmsSession` and its resources
+    need to be simulated without actually invoking the underlying operations.
+    """
     def __init__(self, config):
+        from unittest.mock import create_autospec, Mock
+
         super().__init__(config)
+        vms_session = VmsSession(config, *[None] * 4)
+        own_attributres = dir(self)
+        for resource in dir(vms_session):
+            if resource.startswith("_"):
+                continue
+            value = getattr(vms_session, resource)
+            if callable(value) and not resource in own_attributres:
+                setattr(self, resource, value)
+            elif isinstance(value, VastResource):
+                spec = Mock(spec=value, name=resource)
+                for name, method in inspect.getmembers(value, predicate=callable):
+                    # special method name to override default behavior
+                    own_override_property = f"{resource}_{name}"
+                    if name.startswith("_"):
+                        continue
+                    elif own_override_property in own_attributres:
+                        setattr(spec, name, create_autospec(method, side_effect=getattr(self, own_override_property)))
+                    else:
+                        setattr(spec, name, create_autospec(method, return_value=None))
+                setattr(self, resource, spec)
+
 
     @classmethod
-    def create(cls, config: Config, *_, **__):
+    def create(cls, config, *_, **__):
         return cls(config)
 
     def create_fake_quota(self, volume_id):
@@ -656,14 +935,14 @@ class TestVmsSession(RESTSession):
 
         return target_path
 
-    def get_vip(self, *_, **__) -> str:
+    def vippools_get_vip(self, *_, **__) -> str:
         return self.config.nfs_server
 
-    def get_quota(self, volume_id: str) -> "FakeQuota":
+    def quotas_one(self, name: str) -> "FakeQuota":
         """Create fake quota object which can simulate attributes of original Quota butch."""
-        return self._to_mock_volume(volume_id)
+        return self._to_mock_volume(name)
 
-    def delete_quota(self, quota: "FakeQuota"):
+    def quotas_delete(self, quota: "FakeQuota"):
         """
         Delete all folders and files under '/csi-volumes/<volume id>
         Normally in this method quota id should be passed but here we abuse first position argument to
@@ -673,7 +952,7 @@ class TestVmsSession(RESTSession):
         self.config.fake_quota_store[quota._volume_id].delete()
 
     @contextmanager
-    def temp_view(self, path, policy_id, tenant_id):
+    def views_temp_view(self, path, policy_id, tenant_id):
         yield Bunch(
             id=1,
             alias=path,
@@ -681,27 +960,11 @@ class TestVmsSession(RESTSession):
             tenant_name="test-tenant"
         )
 
-    def get_view(self, *_, **__):
+    def views_one(self, *_, **__):
         return Bunch(id=1, policy_id=1, tenant_id=1)
 
-    def get_view_policy(self, *_, **__):
+    def viewpolicies_one(self, *_, **__):
         return Bunch(id=1, tenant_id=1, tenant_name="test-tenant")
 
-    def get_snapshot(self, *_, **__):
+    def snapshots_list(self, *_, **__):
         return []
-
-    def _empty(self, *_, **__):
-        """
-        empty method for test scenarios
-        Method needs to be declared for compatibility with sanity tests.
-        """
-        pass
-
-    update_quota = _empty
-    delete_view_by_path = _empty
-    delete_view_by_id = _empty
-    ensure_snapshot_stream_deleted = _empty
-    refresh_auth_token = _empty
-    delete_folder = _empty
-    is_trash_api_usable = _empty
-    has_snapshots = _empty
