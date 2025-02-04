@@ -151,7 +151,7 @@ update_github [prod]:  &update_github
     entrypoint: [""]
   stage: deploy
   variables:
-    BETA: false
+    BETA: "false"
   only:
     - /^v[\d]\.[\d]+/
   before_script: &setup_github_access |
@@ -189,7 +189,7 @@ update_github [prod]:  &update_github
 update_github [beta]:
   <<: *update_github
   variables:
-    BETA: true
+    BETA: "true"
 
 
 mark_stable:
