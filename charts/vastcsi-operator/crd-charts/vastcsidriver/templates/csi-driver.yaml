@@ -1,15 +1,15 @@
 {{/* Vast CSI Driver that defines behavior rules for all downstream PVS during attachment */}}
 
 {{- if .Release.IsInstall -}}
-{{- if (lookup "storage.k8s.io/v1" "CSIDriver" "" "csi.vastdata.com") -}}
-{{- fail "CSIDriver csi.vastdata.com already exists. Ensure you are using the correct Helm release, or delete the existing release associated with this storage class before proceeding." -}}
+{{- if (lookup "storage.k8s.io/v1" "CSIDriver" "" (include "vastcsi.csiDriver" .)) -}}
+{{- fail (printf "CSIDriver %s already exists. Ensure you are using the correct Helm release, or delete the existing release associated with this storage class before proceeding." (include "vastcsi.csiDriver" .)) -}}
 {{- end -}}
 {{- end -}}
 
 apiVersion: storage.k8s.io/v1
 kind: CSIDriver
 metadata:
-  name: csi.vastdata.com
+  name: {{ include "vastcsi.csiDriver" . }}
   labels:
     {{- include "vastcsi.labels" . | nindent 4 }}
 spec:
