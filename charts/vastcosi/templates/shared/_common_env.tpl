@@ -4,13 +4,18 @@
 # changes in the corresponding template in the other chart.
 */}}
 
-{{- define "vastcosicommonEnv" -}}
 
+{{- define "vastcosi.csiDriver" -}}
+{{- coalesce $.Values.cosiDriverName "csi.vastdata.com" -}}
+{{- end -}}
+
+
+{{- define "vastcosicommonEnv" -}}
 {{- if (urlParse (required "endpoint is required" $.Values.endpoint )).scheme }}
     {{- fail "endpoint requires only host to be provided. Please exclude 'http//|https//' from url." -}}
 {{- end  }}
 - name: X_CSI_PLUGIN_NAME
-  value: "csi.vastdata.com"
+  value: {{ include "vastcosi.csiDriver" $ | quote }}
 - name: X_CSI_VMS_HOST
   value: {{ $.Values.endpoint | quote }}
 - name: X_CSI_ENABLE_VMS_SSL_VERIFICATION

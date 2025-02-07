@@ -55,6 +55,10 @@ numWorkers: 10
 # set `truncateVolumeName: null` to disable truncation.
 truncateVolumeName: 64
 
+# The name of the COSI driver registered with Kubernetes.
+# This value is used to identify the driver in COSI objects like BucketClasses etc.
+cosiDriverName: csi.vastdata.com
+
 ####################
 # VAST COSI PLUGIN OPTIONS
 ####################
