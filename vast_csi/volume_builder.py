@@ -6,6 +6,7 @@ from datetime import timedelta
 from typing import Optional, final, TypeVar, Tuple
 
 from easypy.bunch import Bunch
+from easypy.humanize import yesno_to_bool
 
 from . import csi_types as types
 from .csi_types import INVALID_ARGUMENT
@@ -110,7 +111,7 @@ class BaseBuilder(VolumeBuilderI):
         elif self.vip_pool_fqdn:
             context["vip_pool_fqdn"] = self.vip_pool_fqdn
             if self.vip_pool_fqdn_random_prefix:
-                context["vip_pool_fqdn_random_prefix"] = True
+                context["vip_pool_fqdn_random_prefix"] = "true"
         return context
 
     @property
@@ -145,7 +146,7 @@ class BaseBuilder(VolumeBuilderI):
 
         vip_pool_fqdn = parameters.get("vip_pool_fqdn")
         vip_pool_name = parameters.get("vip_pool_name")
-        vip_pool_fqdn_random_prefix = parameters.get("vip_pool_fqdn_random_prefix")
+        vip_pool_fqdn_random_prefix = yesno_to_bool(parameters.get("vip_pool_fqdn_random_prefix", "yes"))
         cls._validate_mount_src(vip_pool_name, vip_pool_fqdn, conf.use_local_ip_for_mount)
 
         volume_name_fmt = parameters.get("volume_name_fmt", conf.name_fmt)
