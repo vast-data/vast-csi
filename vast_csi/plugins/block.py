@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 import os.path
+from contextlib import contextmanager
+from tempfile import TemporaryDirectory
 
 from plumbum import local, cmd, ProcessExecutionError
 import grpc
@@ -62,6 +64,7 @@ from vast_csi.filesystem_utils import (
     format_device,
     resize_device,
     get_device_size,
+    check_fs_integrity,
     volume_locked,
 )
 from vast_csi.configuration import Config
@@ -116,6 +119,35 @@ def mount(src, tgt, flags=None, bind=False, fs_type=None):
         executable['-v', src, tgt] & logger.pipe_info("mount >>")
     except ProcessExecutionError as exc:
         raise MountFailed(detail=exc.stderr, src=src, tgt=tgt, mount_options=flags)
+
+
+@contextmanager
+def temporary_mount(src, tgt_dir, fs_type):
+    """
+    Creates a temporary mount for the given source and target directory.
+    Primary usage of this context manager is to resize
+    the XFS filesystem because it requires the filesystem to be mounted.
+    Note: attempts to resize XFS fs on source device lead to error:
+     /dev/device is not a mounted XFS filesystem
+
+    Args:
+        src (str): The source path to be mounted (e.g., a device or directory).
+        tgt_dir (str): The target directory where the source will be temporarily mounted.
+        fs_type (str, optional): The filesystem type to be used for the mount (e.g., 'xfs').
+    """
+    # Create a temporary directory within the target directory
+    with TemporaryDirectory(dir=tgt_dir) as temp_mount_point:
+        bind = False if fs_type == "xfs" else True
+        if bind:
+            # Create tmp file for bind mount. It will be deleted on context exit.
+            temp_mount_point = os.path.join(temp_mount_point, "device")
+            open(temp_mount_point, "a").close()
+        # Perform the mount
+        mount(src=src, tgt=temp_mount_point, bind=bind, fs_type=fs_type)
+        try:
+            yield temp_mount_point
+        finally:
+            cmd.umount(temp_mount_point)
 
 
 def umount_safe(path):
@@ -422,6 +454,7 @@ class BlockNode(NodeBase, Instrumented):
         host_nqn = publish_context["host_nqn"]
         nguid = publish_context["nguid"]
         discovery_server = publish_context["discovery_server"]  # Either vip pool ip or fqdn
+        need_resize = volume_context.get("need_resize", False)
 
         if nvme_session := get_connected_session(host_nqn=host_nqn, sybsystem_nqn=subsystem_nqn):
             # Nvme subsystem controllers already connected. No need to connect again.
@@ -450,20 +483,23 @@ class BlockNode(NodeBase, Instrumented):
         device_path = device.DevicePath
         change_io_policy(device_name=device.Name, io_policy="round-robin")
 
+        if volume_capabilities.is_filesystem:
+            fs_type = volume_capabilities.fs_type
+            formatted = format_device(requested_fs=fs_type, device=device_path)
+            if not formatted:
+                check_fs_integrity(device=device_path)
+            # The source PVC may have a different size but was never attached and, therefore, never formatted.
+            # In this case, the cloned PVC will be formatted as if it were a brand-new PVC,
+            # eliminating the need for resizing.
+            if need_resize and not formatted:
+                with temporary_mount(
+                        src=device_path, tgt_dir=staging_target_path, fs_type=fs_type
+                ) as temp_mount:
+                    resize_device(device=device_path, target_mount=temp_mount, fs_type=fs_type)
+
         logger.info(f"Binding device at {device_path} to {device_bind_path}.")
         device_bind_path.open("a").close()
         mount(src=device_path, tgt=device_bind_path, bind=True)
-        if volume_capabilities.is_filesystem:
-            try:
-                format_device(
-                    requested_fs=volume_capabilities.fs_type,
-                    device=device_bind_path,
-                )
-            except Exception as e:
-                logger.info(f"Failed to format device {device_bind_path}: {e}")
-                umount_safe(device_bind_path)
-                device_bind_path.delete()
-                raise
         return types.StageResp()
 
     def NodeUnstageVolume(self, volume_id, staging_target_path):
@@ -620,16 +656,16 @@ class BlockNode(NodeBase, Instrumented):
         if not staging_mount:
             raise Abort(NOT_FOUND, f"Mount information not found for staging path: {device_bind_path}")
 
-        device = staging_mount.devtmpfs_device
+        device_path = staging_mount.devtmpfs_device
         if volume_capabilities.is_filesystem:
             fs_type = get_filesystem_type(device_bind_path)
             resize_device(
-                device=device,
+                device=device_path,
                 target_mount=volume_path,
                 fs_type=fs_type,
             )
         else:
-            existing_capacity = get_device_size(device)
+            existing_capacity = get_device_size(device_path)
             if existing_capacity < requested_capacity:
                 raise Exception(
                     f"Requested capacity {requested_capacity} exceeds the current capacity {existing_capacity}. "

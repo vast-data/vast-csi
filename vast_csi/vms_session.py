@@ -748,11 +748,12 @@ class GlobalSnapshotStream(VastResource):
         Snapshots with expiration time will be deleted as soon as snapshot stream is stopped.
         """
         if snapshot_stream := self.one(**params):
-            if snapshot_stream.status.state != "FINISHED":
-                # Just stop the stream. It will be deleted automatically upon stop request.
-                self.stop_snapshot_stream(snapshot_stream.id)
-            else:
-                self.delete_by_id(_id=snapshot_stream.id, remove_dir=True)
+            state = snapshot_stream.status.get("state", "").lower()
+            if state != "finished":
+                logger.debug(f"Stopping snapshot stream {snapshot_stream.id} in state {state}")
+                task = self.stop_snapshot_stream(snapshot_stream.id)
+                self.session.wait_task(task)
+            self.delete_by_id(_id=snapshot_stream.id, remove_dir=True)
 
 
 class User(VastResource):

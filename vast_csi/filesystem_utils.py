@@ -221,7 +221,7 @@ def format_device(requested_fs: str, device: str, format_args: str = None):
     current_fs = get_filesystem_type(device)
     if current_fs == requested_fs:
         logger.info(f"Device {device} already has filesystem {requested_fs!r}")
-        return
+        return False
     if current_fs:
         raise Exception(
             f"Cannot stage filesystem {requested_fs} on device that already has filesystem {current_fs}"
@@ -232,6 +232,7 @@ def format_device(requested_fs: str, device: str, format_args: str = None):
     args.append(str(device))
     logger.info(f"{requested_fs} fs type has been requested with {args=}. Formatting device.")
     local[f"mkfs.{requested_fs}"][args] & logger.pipe_info(f"{requested_fs}: ")
+    return True
 
 
 def get_device_size(device: str):
@@ -243,13 +244,29 @@ def get_device_size(device: str):
         raise ValueError(f"Failed to parse size of device {device}: {output}")
 
 
-def get_fs_size(device: str):
+def check_fs_integrity(device: str):
+    """Check the integrity of the filesystem on the given device."""
+    try:
+        cmd.fsck["-a", "-f", device] & logger.pipe_info(f"fsck: ")
+    except ProcessExecutionError as exc:
+        # fsck returns 1 if it finds and fixes issues
+        if exc.retcode == 1:
+            logger.warning(f"fsck found and fixed issues on {device}: {exc}")
+        else:
+            raise
+
+
+def get_fs_size(device: str, target_mount: str, fs_type: str):
     """Get the block size and filesystem size for all types filesystems."""
-    fstats = os.statvfs(device)
-    block_size = fstats.f_frsize
-    # Filesystem size in bytes
-    fs_size = fstats.f_blocks * block_size
-    return block_size, fs_size
+    if fs_type in ("ext3", "ext4"):
+        return get_ext_size(device)
+    elif fs_type == "xfs":
+        return get_xfs_size(target_mount)
+    else:
+        raise Exception(
+            f"Unsupported filesystem type {fs_type!r}."
+            f" Supported fs types are: {', '.join(MKFS_ARGS)}"
+        )
 
 
 def ext_resize(device: str):
@@ -264,19 +281,50 @@ def xfs_resize(device: str):
     logger.info(f"Device {device!r} resized successfully")
 
 
-def check_and_repair_fs(device: str):
-    """Perform a filesystem check on the given device to ensure it is in a consistent state."""
-    cmd.fsck["-a", device] & logger.pipe_info(f"fsck: ")
+def _parse_fs_info_output(
+        output: str,
+        delimiter: str,
+        block_size_key: str,
+        block_count_key: str,
+):
+    """Parse the output of the "fsinfo" command. "fsinfo" command is specific to ext and xfs filesystems."""
+    block_size = block_count = 0
+    for line in output.splitlines():
+        tokens = line.split(delimiter)
+        if len(tokens) != 2:
+            continue
+        key, value = tokens[0].strip().lower(), tokens[1].strip().lower()
+        if key in block_size_key:
+            block_size = int(value)
+        elif key == block_count_key:
+            block_count = int(value)
+    return block_size, block_count
+
+def get_ext_size(mount_path):
+    """Get the size of ext filesystem."""
+    output = cmd.dumpe2fs("-h", mount_path)
+    block_size, block_count = _parse_fs_info_output(
+        output=output, delimiter=":", block_size_key="block size", block_count_key="block count"
+    )
+    return block_size, block_size * block_count
 
 
-def need_resize(device: str, fs_type: str):
+def get_xfs_size(mount_path):
+    """Get the size of xfs filesystem."""
+    output = cmd.xfs_io("-c", "statfs", mount_path)
+    block_size, block_count = _parse_fs_info_output(
+        output=output, delimiter="=", block_size_key="geom.bsize", block_count_key="geom.datablocks")
+    return block_size, block_size * block_count
+
+
+def need_resize(device: str, target_mount, fs_type: str):
     """Determine if a device needs resizing."""
     if not fs_type:
         logger.info(f"need_resize - no filesystem type specified for device {device}")
         return
 
     device_size = get_device_size(device)
-    block_size, fs_size = get_fs_size(device)
+    block_size, fs_size = get_fs_size(device, target_mount, fs_type)
     if fs_size == 0:
         raise Exception(f"failed to read size of filesystem on device {device!r}")
     logger.info(
@@ -288,7 +336,7 @@ def need_resize(device: str, fs_type: str):
 
 def resize_device(device: str, target_mount: str, fs_type: str):
     """Perform resize of the filesystem."""
-    if need_resize(device, fs_type):
+    if need_resize(device, target_mount, fs_type):
         if fs_type in ("ext3", "ext4"):
             ext_resize(device)
         elif fs_type == "xfs":

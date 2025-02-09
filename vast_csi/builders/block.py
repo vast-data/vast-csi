@@ -169,15 +169,16 @@ class BlockVolumeFromVolumeBuilder(BlockProvisionBase):
         else:
             # No need to perform additional VMS call if source and destination subsystems are the same
             destination_view = source_view
-        # Create an intermediate snapshot with limited expiration time
-        snapshot_name = f"snp-{self.name}"
-        snapshot = self.vms_session.snapshots.ensure(
-            name=snapshot_name,
-            path=source_path,
-            tenant_id=tenant_id,
-            expiration_delta=timedelta(minutes=5),
-        )
+
         if not (destination_volume := self.vms_session.volumes.one(name__endswith=volume_name)):
+            # Create an intermediate snapshot with limited expiration time
+            snapshot_name = f"snp-{self.name}"
+            snapshot = self.vms_session.snapshots.ensure(
+                name=snapshot_name,
+                path=source_path,
+                tenant_id=tenant_id,
+                expiration_delta=timedelta(minutes=5),
+            )
             destination_volume = self.vms_session.snapshots.clone_volume(
                 snapshot_id=snapshot.id,
                 target_subsystem_id=destination_view.id,
@@ -185,6 +186,9 @@ class BlockVolumeFromVolumeBuilder(BlockProvisionBase):
             )
         if requested_capacity > destination_volume.size:
             self.vms_session.volumes.update(destination_volume.id, size=requested_capacity)
+            # For cloned filesystem volumes need to perform local resizing
+            if self.volume_capabilities.is_filesystem:
+                volume_context.update(need_resize="true")
 
         volume_context.update(
             nguid=destination_volume.nguid,
@@ -226,6 +230,9 @@ class BlockVolumeFromSnapshotBuilder(BlockProvisionBase):
             )
         if requested_capacity > destination_volume.size:
             self.vms_session.volumes.update(destination_volume.id, size=requested_capacity)
+            # For cloned filesystem volumes need to perform local resizing
+            if self.volume_capabilities.is_filesystem:
+                volume_context.update(need_resize="true")
 
         volume_context.update(
             nguid=destination_volume.nguid,
