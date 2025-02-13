@@ -206,7 +206,7 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
         if not (volume := self.vms_session.volumes.one(name=self.name)):
             raise SourceNotFound(f"Volume {self.name} does not exist but claimed as existing.")
         volume_context.update(
-            uuid=volume.uuid,
+            nguid=volume.nguid,
             volume_id=str(volume.id),
             tenant_id=str(view.tenant_id),
             subsystem_nqn=view.nqn,
