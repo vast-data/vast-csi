@@ -172,15 +172,6 @@ update_github [prod]:  &update_github
     git remote -v
     git remote add github git@github.com:vast-data/vast-csi.git || true
 
-    # Check if the target branch exists on GitHub
-    if ! git ls-remote --exit-code --heads github $TARGET_BRANCH; then
-      echo "Branch $TARGET_BRANCH does not exist on GitHub. Creating a new empty branch."
-    
-      git switch --orphan $TARGET_BRANCH
-      git commit --allow-empty -m "Initial commit"
-      git push -u github $TARGET_BRANCH    
-    fi
-
     # Continue with the existing flow
     git fetch github $TARGET_BRANCH
     git checkout -B $TARGET_BRANCH FETCH_HEAD

@@ -31,3 +31,4 @@ jobs:
           config: releaser-config.yml
         env:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          CR_SKIP_EXISTING: true
