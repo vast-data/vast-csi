@@ -1,0 +1,7 @@
+The Vast CSI Driver Operator version {{ .Chart.Version }} has been successfully deployed in the {{ .Release.Namespace }} namespace.
+{{ if .Values.installSnapshotCRDS -}}
+Snapshot support is now enabled.
+{{- else -}}
+Snapshot support is now disabled.
+{{- end }}
+You may proceed to create VastCSIDriver, VastStorage and VastCluster resources to complete the CSI deployment.

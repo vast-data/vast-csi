@@ -1,0 +1,47 @@
+description: >
+  VastCluster encapsulates the connection details required for accessing a VAST cluster. This information is ultimately stored in a Kubernetes Secret.
+
+spec:
+  description: Spec defines the desired state of VastCluster.
+  properties:
+    endpoint:
+      description: Endpoint or URL of the VAST mgmt host.
+      type: string
+    username:
+      description: Username used for authentication.
+      type: string
+    password:
+      description: Password used for authentication.
+      type: string
+    sslCert:
+      description: Optional SSL certificate for secure connections.
+      type: string
+      nullable: true
+  required:
+    - endpoint
+    - username
+    - password
+  type: object
+
+specDescriptors:
+  - description: Password used for authentication.
+    displayName: Password
+    path: password
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:password
+  - description: Optional SSL certificate for secure connections.
+    displayName: SSL Certificate
+    path: sslCert
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:password
+
+example:
+  apiVersion: storage.vastdata.com/v1
+  kind: VastCluster
+  metadata:
+    name: vastcluster-sample
+  spec:
+    endpoint: {{ .Values.endpoint }}
+    username: {{ .Values.username }}
+    password: {{ .Values.password }}
+    sslCert: {{ .Values.sslCert }}

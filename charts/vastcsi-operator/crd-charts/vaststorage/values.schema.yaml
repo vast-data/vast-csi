@@ -1,0 +1,154 @@
+description: >
+  Represents VAST storage. Each VastStorage instance generates a corresponding
+  storage class that can be used in PVCs to create workloads.
+
+spec:
+  description: Spec defines the desired state of VastStorage.
+  properties:
+    clusterName:
+      description: The name of VastCluster reference.
+      type: string
+    storagePath:
+      description: Base path where volumes will be located on VAST.
+      type: string
+    viewPolicy:
+      description: VAST policy name to create views.
+      type: string
+    vipPool:
+      description: Name of VAST VIP pool to use.
+      type: string
+      nullable: true
+    vipPoolFQDN:
+      description: |-
+        The FQDN of the VIP pool to use. Must specify either vipPool or vipPoolFQDN.
+        Using a DNS skips an API call to the VMS for obtaining a random VIP from the vipPool, 
+        leading to faster volume mounting.
+        NOTE: The driver will prepend the FQDN with a random prefix, which forces the NFS client 
+        to resolve into a different VIP, thereby distributing the load across the entire range 
+        of the VIP pool.
+      nullable: true
+      type: string
+    qosPolicy:
+      description: Name of QoS policy associated with the view.
+      type: string
+      nullable: true
+    allowVolumeExpansion:
+      description: Allows resizing existing volumes.
+      default: true
+      type: boolean
+    mountOptions:
+      description: Add any extra mount NFS options here.
+      default: []
+      type: array
+      items:
+        type: string
+    reclaimPolicy:
+      description: >-
+        Reclaim policy defines what happens to the volume when the corresponding
+        PersistentVolumeClaim (PVC) is deleted.
+        See https://kubernetes.io/docs/concepts/storage/storage-classes/#reclaim-policy 
+        for more details.
+      default: Delete
+      enum:
+        - Delete
+        - Retain
+      type: string
+    setDefaultStorageClass:
+      description: >-
+        When enabled, Vast CSI will be set as the default storage class for the entire 
+        Kubernetes cluster. This means Vast CSI will automatically be chosen as the 
+        storage class for persistent volume claims (PVCs) that do not specify a 
+        storage class.
+        See https://kubernetes.io/docs/concepts/storage/storage-classes/#default-storageclass 
+        for more details.
+      type: boolean
+      default: false
+    volumeNameFormat:
+      description: String template for CSI-provisioned volume names, within VAST.
+      default: csi:{namespace}:{name}:{id}
+      type: string
+    ephemeralVolumeNameFormat:
+      description: String template for CSI-provisioned ephemeral volumes, within VAST.
+      default: csi:{namespace}:{name}:{id}
+      type: string
+    createSnapshotClass:
+      description: Create SnapshotClass for VastStorage.
+      type: boolean
+      default: true
+    snapshotClass:
+      description: VolumeSnapshotClass definition.
+      properties:
+        snapshotNameFormat:
+          type: string
+          default: csi:{namespace}:{name}:{id}
+        deletionPolicy:
+          description: >-
+            Specifies the deletion policy for snapshots associated with this snapshot class.
+            See https://kubernetes.io/docs/concepts/storage/volume-snapshot-classes/#deletionpolicy 
+            for more details.
+          default: Delete
+          enum:
+            - Delete
+            - Retain
+          type: string
+        setDefaultSnapshotClass:
+          description: >-
+            When enabled, this sets the VAST CSI Snapshot Class as the default for creating 
+            volume snapshots. This means VAST CSI Snapshot Class will be used automatically 
+            when volume snapshots are created without specifying a snapshot class. 
+            See https://kubernetes.io/docs/concepts/storage/volume-snapshot-classes/#the-volumesnapshotclass-resource 
+            for more details.
+          type: boolean
+          default: false
+      type: object
+  required:
+    - clusterName
+    - storagePath
+    - viewPolicy
+  type: object
+
+specDescriptors:
+  - description: The name of VastCluster reference.
+    displayName: clusterName
+    path: clusterName
+    x-descriptors:
+      - 'urn:alm:descriptor:io.kubernetes:storage.vastdata.com:v1:VastCluster'
+  - description: Allows resizing existing volumes.
+    displayName: allowVolumeExpansion
+    path: allowVolumeExpansion
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+  - description: Create SnapshotClass for VastStorage.
+    displayName: Create SnapshotClass
+    path: createSnapshotClass
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+  - displayName: SnapshotClass configuration
+    description: SnapshotClass options.
+    path: snapshotClass
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:createSnapshotClass:true'
+
+example:
+  apiVersion: storage.vastdata.com/v1
+  kind: VastStorage
+  metadata:
+    name: vastdata-filesystem
+  spec:
+    clusterName: ""
+    storagePath: ""
+    viewPolicy: ""
+    vipPool: ""
+    qosPolicy: ""
+    allowVolumeExpansion: {{ .Values.allowVolumeExpansion }}
+    ephemeralVolumeNameFormat: {{ .Values.ephemeralVolumeNameFormat }}
+    vipPoolFQDN: {{ .Values.vipPoolFQDN }}
+    mountOptions: {{ .Values.mountOptions }}
+    volumeNameFormat: {{ .Values.volumeNameFormat }}
+    reclaimPolicy: {{ .Values.reclaimPolicy }}
+    setDefaultStorageClass: {{ .Values.setDefaultStorageClass }}
+    createSnapshotClass: {{ .Values.createSnapshotClass }}
+    snapshotClass:
+      snapshotNameFormat: {{ .Values.snapshotClass.snapshotNameFormat }}
+      deletionPolicy: {{ .Values.snapshotClass.deletionPolicy }}
+      setDefaultSnapshotClass: {{ .Values.snapshotClass.setDefaultSnapshotClass }}

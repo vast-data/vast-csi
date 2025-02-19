@@ -1,0 +1,44 @@
+{{/* Generate one or more bucket classes from 'bucketClasses' section. */}}
+
+{{/* Iterate over BucketClasses from manifest */}}
+{{- range $name, $options := .Values.bucketClasses }}
+
+{{- $deletion_policy :=  pluck "deletionPolicy" $options $.Values.bucketClassDefaults | first | quote -}}
+{{- $view_policy :=  pluck "viewPolicy" $options $.Values.bucketClassDefaults | first | quote -}}
+{{- $vip_pool_name := pluck "vipPool" $options $.Values.bucketClassDefaults | first | quote -}}
+{{- if eq $vip_pool_name ( quote "" ) -}}
+  {{- fail "vipPool is required value. Please specify valid vip pool" -}}
+{{- end }}
+{{- $scheme := pluck "scheme" $options $.Values.bucketClassDefaults | first | quote -}}
+{{- if not ( $scheme | mustRegexMatch "http|https" ) -}}
+  {{- fail "scheme should be either 'http' or 'https'" -}}
+{{- end }}
+{{- $storage_path := pluck "storagePath" $options $.Values.bucketClassDefaults | first | quote -}}
+{{- if eq $storage_path ( quote "" ) -}}
+  {{- fail "storagePath is required value. Please specify valid storage path" -}}
+{{- end }}
+
+kind: BucketClass
+apiVersion: objectstorage.k8s.io/v1alpha1
+metadata:
+  name: {{ required "A BucketClass name must be not empty" $name }}
+  namespace: {{ include "vastcosinamespace" $ }}
+  labels:
+{{- include "vastcosilabels" $ | nindent 4 }}
+driverName: csi.vastdata.com
+deletionPolicy: {{ $deletion_policy }}
+parameters:
+  root_export: {{ $storage_path }}
+  vip_pool_name: {{ $vip_pool_name }}
+  scheme: {{ $scheme }}
+{{- if ne $view_policy ( quote "" ) }}
+  view_policy: {{ $view_policy }}
+{{- end }}
+{{- with omit $options "deletionPolicy" "viewPolicy" "vipPool" "scheme" "storagePath" }}
+  {{- range $key, $value := . }}
+  {{ $key }}: {{ $value | quote }}
+{{- end }}
+{{- end }}
+
+---
+{{- end }}

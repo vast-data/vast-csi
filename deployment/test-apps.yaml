@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vast-pvc-1
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: vastdata-filesystem
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vast-pvc-2
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: vastdata-filesystem
+  annotations:
+    pv.beta.kubernetes.io/gid: "1234"
+---
+kind: StatefulSet
+apiVersion: apps/v1
+metadata:
+  name: test-app-1
+spec:
+  serviceName: "test-service-1"
+  replicas: 5
+  selector:
+    matchLabels:
+      app: test-app-1
+  template:
+    metadata:
+      labels:
+        app: test-app-1
+        role: test-app-2
+    spec:
+      containers:
+        - name: my-frontend
+          image: busybox
+          volumeMounts:
+          - mountPath: "/shared"
+            name: my-shared-volume
+          command: [ 'while true; do date -Iseconds >> /shared/$HOSTNAME; sleep 1; done' ]
+      volumes:
+        - name: my-shared-volume
+          persistentVolumeClaim:
+            claimName: vast-pvc-1
+---
+kind: StatefulSet
+apiVersion: apps/v1
+metadata:
+  name: test-app-2
+spec:
+  serviceName: "test-service-2"
+  replicas: 2
+  selector:
+    matchLabels:
+      app: test-app-2
+  template:
+    metadata:
+      labels:
+        app: test-app-2
+        role: test-app-2
+    spec:
+      containers:
+        - name: my-frontend
+          image: busybox
+          volumeMounts:
+          - mountPath: "/shared"
+            name: my-shared-volume
+          command: [ 'while true; do date -Iseconds >> /shared/$HOSTNAME; sleep 1; done' ]
+      volumes:
+        - name: my-shared-volume
+          persistentVolumeClaim:
+            claimName: vast-pvc-2
