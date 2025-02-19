@@ -286,7 +286,7 @@ class CsiController(ControllerBase, Instrumented):
                 os.rmdir(tmpdir)  # will fail if not empty directory
 
     def DeleteVolume(self, vms_session, volume_id):
-        vms_session.globalsnapstreams.ensure_snapshot_stream_deleted(f"strm-{volume_id}")
+        vms_session.globalsnapstreams.ensure_snapshot_stream_deleted(name=f"strm-{volume_id}")
         if quota := vms_session.quotas.one(name=volume_id):
             # this is a check we have to do until Vast provides access to orphaned snapshots (ORION-135599)
             might_use_trash_folder = not CONF.dont_use_trash_api
