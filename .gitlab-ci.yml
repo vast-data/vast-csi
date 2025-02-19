@@ -155,7 +155,7 @@ update_github [prod]:  &update_github
   only:
     - /^v[\d]\.[\d]+/
   before_script: &setup_github_access |
-    mkdir ~/.ssh/
+    mkdir -p ~/.ssh/
     cp $GITHUB_KEY ~/.ssh/id_rsa
     chmod 0600 ~/.ssh/id_rsa
     ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
@@ -171,8 +171,10 @@ update_github [prod]:  &update_github
     fi
     git remote -v
     git remote add github git@github.com:vast-data/vast-csi.git || true
-    git fetch github $CI_COMMIT_REF_NAME
-    git checkout -B $CI_COMMIT_REF_NAME FETCH_HEAD
+
+    # Continue with the existing flow
+    git fetch github $TARGET_BRANCH
+    git checkout -B $TARGET_BRANCH FETCH_HEAD
     git checkout $CI_COMMIT_SHA -- .
     git commit -am "VAST Data CSI Plugin - $VERSION
 
