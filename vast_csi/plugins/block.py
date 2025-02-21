@@ -521,6 +521,7 @@ class BlockNode(NodeBase, Instrumented):
             self,
             volume_id,
             target_path,
+            exit_stack,
             staging_target_path=None,
             volume_capability=None,
             publish_context=None,
@@ -558,6 +559,7 @@ class BlockNode(NodeBase, Instrumented):
                 volume_id=volume_id,
                 staging_target_path=staging_target_path,
                 volume_capability=volume_capability,
+                exit_stack=exit_stack,
                 vms_session=vms_session,
                 publish_context=publish_context,
                 volume_context=volume_context
