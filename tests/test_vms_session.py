@@ -1,10 +1,12 @@
 import pytest
+import yaml
 import requests
+from plumbum import local
 from io import BytesIO
 from unittest.mock import patch, PropertyMock, MagicMock
 from vast_csi.plugins.csi import CsiController
 from requests import Response
-from vast_csi.vms_session import apiver, get_vms_session, Config, VmsSession, VastResource
+from vast_csi.vms_session import apiver, get_vms_session, Config, VmsSession, VastResource, LookupFieldError
 from vast_csi.exceptions import OperationNotSupported, ApiError
 from easypy.semver import SemVer
 from easypy.resilience import _Retry
@@ -516,3 +518,198 @@ def test_get(mock_session):
     result = resource.get(1, api_ver="v1")
     mock_session.get.assert_called_once_with("test_resource/1", api_ver="v1")
     assert result == Bunch(id=1, name="Test")
+
+
+
+class TestVmsSessionInitFromGlobalSecretSuite:
+    """
+    From CSI Driver prospective instantiation from "global secret"
+    is state when no credentials provided in secrets from storageClass and
+    no "cluster_name" provided IOW no option
+    to read credentials from special /opt/vms-auth/clusters.yaml file
+    """
+
+    def test_no_global_secret(self, config):
+        with pytest.raises(LookupFieldError, match="Could not find username"):
+            VmsSession.create(
+                config=config, username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name=None
+            )
+
+    @pytest.mark.parametrize('files, err', [
+        (("username", 'password'), "Could not find endpoint"),
+        (("username", 'endpoint'), "Could not find password"),
+        (("password", 'endpoint'), "Could not find username"),
+    ]
+    )
+    def test_missing_values(self, config, tmpdir, files, err):
+        tmpdir = local.path(tmpdir)
+        for file in files:
+            tmpdir.join(file).write("test")
+        config.vms_credentials_store = tmpdir
+        with pytest.raises(LookupFieldError, match=err):
+            VmsSession.create(
+                config=config, username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name=None
+            )
+
+
+    def test_instantiate_from_user_pass(self, config, tmpdir):
+        tmpdir = local.path(tmpdir)
+        tmpdir.join("username").write("test")
+        tmpdir.join("password").write("test")
+        tmpdir.join("endpoint").write("test")
+        config.vms_credentials_store = tmpdir
+        vms_session = VmsSession.create(
+            config=config, username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name=None
+        )
+        assert vms_session.username == "test"
+        assert vms_session.password == "test"
+        assert vms_session.endpoint == "test"
+
+
+    def test_instantiate_from_token(self, config, tmpdir):
+        tmpdir = local.path(tmpdir)
+        tmpdir.join("token").write("test")
+        tmpdir.join("endpoint").write("test")
+        config.vms_credentials_store = tmpdir
+        vms_session = VmsSession.create(
+            config=config, username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name=None
+        )
+        assert vms_session.token == "test"
+        assert vms_session.endpoint == "test"
+        assert not vms_session.username
+        assert not vms_session.password
+
+
+    def test_ambiguous_creds(self, config, tmpdir):
+        """Test either username/password or token should be provided"""
+        tmpdir = local.path(tmpdir)
+        tmpdir.join("username").write("test")
+        tmpdir.join("password").write("test")
+        tmpdir.join("endpoint").write("test")
+        tmpdir.join("token").write("test")
+        config.vms_credentials_store = tmpdir
+        with pytest.raises(Exception, match="Provide either"):
+            VmsSession.create(
+                config=config, username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name=None
+            )
+
+
+class TestVmsSessionInitFromArgumentsSuite:
+    """
+    Tests for instantiating VmsSession directly from passed arguments (StorageClass secret scope).
+    """
+
+
+    @pytest.mark.parametrize('username, password, endpoint, err', [
+        ("user", None, "endpoint", "Could not find password"),
+        (None, "pass", "endpoint", "Could not find username"),
+        ("user", "pass", None, "Could not find endpoint"),
+    ])
+    def test_missing_values(self, config, username, password, endpoint, err):
+        with pytest.raises(LookupFieldError, match=err):
+            VmsSession.create(
+                config=config, username=username, password=password, token=None, endpoint=endpoint, ssl_cert=None, cluster_name=None
+            )
+
+    def test_instantiate_from_user_pass(self, config):
+        vms_session = VmsSession.create(
+            config=config, username="test", password="test", token=None, endpoint="test", ssl_cert=None, cluster_name=None
+        )
+        assert vms_session.username == "test"
+        assert vms_session.password == "test"
+        assert vms_session.endpoint == "test"
+
+    def test_instantiate_from_token(self, config):
+        vms_session = VmsSession.create(
+            config=config, username=None, password=None, token="test", endpoint="test", ssl_cert=None, cluster_name=None
+        )
+        assert vms_session.token == "test"
+        assert vms_session.endpoint == "test"
+        assert not vms_session.username
+        assert not vms_session.password
+
+    def test_ambiguous_creds(self, config):
+        """Test either username/password or token should be provided, not both."""
+        with pytest.raises(Exception, match="Provide either"):
+            VmsSession.create(
+                config=config, username="user", password="pass", token="token", endpoint="test", ssl_cert=None, cluster_name=None
+            )
+
+
+
+class TestVmsSessionInitFromClustersSuite:
+    """
+    Tests for VmsSession instantiation from multi-cluster YAML configuration.
+    """
+
+    def test_missing_cluster_name(self, config, tmpdir):
+        """Test when cluster_name is not found in the clusters file."""
+        tmpdir.join("clusters").write(yaml.dump({"cluster1": {"username": "user1"}}))
+        config.vms_credentials_store = local.path(tmpdir)
+        with pytest.raises(LookupFieldError, match="Make sure cluster name is present in secret."):
+            VmsSession.create(
+                config=config, username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name="clusterX"
+            )
+
+    @pytest.mark.parametrize('cluster_data, err', [
+        ({"username": "user1", "endpoint": "clstr1.example.com"}, "Could not find password"),
+        ({"password": "111111", "endpoint": "clstr1.example.com"}, "Could not find username"),
+    ])
+    def test_missing_values_in_cluster(self, config, tmpdir, cluster_data, err):
+        """Test missing fields for a cluster in clusters.yaml."""
+        tmpdir.join("clusters").write(yaml.dump({"cluster1": cluster_data}))
+        config.vms_credentials_store = local.path(tmpdir)
+        with pytest.raises(LookupFieldError, match=err):
+            VmsSession.create(
+                config=config, username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name="cluster1"
+            )
+
+    def test_instantiate_from_user_pass(self, config, tmpdir):
+        """Test successful instantiation from cluster credentials with username/password."""
+        tmpdir.join("clusters").write(yaml.dump({
+            "cluster1": {
+                "username": "user1",
+                "password": "111111",
+                "endpoint": "clstr1.example.com"
+            }
+        }))
+        config.vms_credentials_store = local.path(tmpdir)
+        vms_session = VmsSession.create(
+            config=config, username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name="cluster1"
+        )
+        assert vms_session.username == "user1"
+        assert vms_session.password == "111111"
+        assert vms_session.endpoint == "clstr1.example.com"
+
+    def test_instantiate_from_token(self, config, tmpdir):
+        """Test successful instantiation from cluster credentials with token."""
+        tmpdir.join("clusters").write(yaml.dump({
+            "cluster2": {
+                "token": "xxxxxxxxxxxxxxxxxxxx",
+                "endpoint": "clstr2.example.com"
+            }
+        }))
+        config.vms_credentials_store = local.path(tmpdir)
+        vms_session = VmsSession.create(
+            config=config, username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name="cluster2"
+        )
+        assert vms_session.token == "xxxxxxxxxxxxxxxxxxxx"
+        assert vms_session.endpoint == "clstr2.example.com"
+        assert not vms_session.username
+        assert not vms_session.password
+
+    def test_ambiguous_creds(self, config, tmpdir):
+        """Test error when both username/password and token are provided in cluster config."""
+        tmpdir.join("clusters").write(yaml.dump({
+            "cluster1": {
+                "username": "user1",
+                "password": "111111",
+                "token": "xxxxxxxxxxxxxxxxxxxx",
+                "endpoint": "clstr1.example.com"
+            }
+        }))
+        config.vms_credentials_store = local.path(tmpdir)
+        with pytest.raises(Exception, match="Provide either"):
+            VmsSession.create(
+                config=config, username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name="cluster1"
+            )

@@ -44,6 +44,12 @@ for pkg_name in ("vast_csi.plugins.csi", "vast_csi.plugins.cosi",  "vast_csi.plu
 # Fixtures
 # ----------------------------------------------------------------------------------------------------------------------
 
+
+@pytest.fixture
+def config():
+    return Config()
+
+
 @pytest.fixture
 def mock_credentials(tmpdir):
     """Fixture to mock the credentials files"""
