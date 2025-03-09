@@ -79,7 +79,6 @@ spec:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
           resources: {{- toYaml .Values.controller.resources.csiAttacher | nindent 12 }}
-{{- if not (empty .Values.snapshotClasses) }}
         - name: csi-snapshotter
           image: {{ printf "%s:%s" $csi_images.csiSnapshotter.repository (toString $csi_images.csiSnapshotter.tag) }}
           args:
@@ -101,7 +100,6 @@ spec:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
           resources: {{- toYaml .Values.controller.resources.csiSnapshotter | nindent 12 }}
-{{- end }}
         - name: csi-resizer
           image: {{ printf "%s:%s" $csi_images.csiResizer.repository (toString $csi_images.csiResizer.tag) }}
           args:
