@@ -97,7 +97,7 @@ class BlockProvisionBase(BaseVolumeBuilder):
                 namespace=self.pvc_namespace, name=self.pvc_name
             )
         # make sure the volume group is a valid absolute path
-        return os.path.join("/", volume_group, self.name)
+        return os.path.join("/", volume_group, self.name).lstrip("/")
 
     @property
     def volume_context(self) -> dict:

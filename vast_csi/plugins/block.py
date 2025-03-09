@@ -282,8 +282,9 @@ class BlockController(ControllerBase, Instrumented):
     def ControllerPublishVolume(
             self, vms_session, node_id, volume_id, volume_capability, volume_context=None
     ):
+        volume_context = volume_context or dict()
         volume_capabilities = _validate_capabilities(volume_capability, volume_context)
-        if volume_id.startswith("/"):
+        if "volume_id" not in volume_context:
             # Assumed consuming existing volume where user specified full path to view in volumeHandle attribute.
             if volume_id != "/":
                 # keep path consistent.
