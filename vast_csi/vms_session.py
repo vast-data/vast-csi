@@ -581,14 +581,21 @@ class View(VastResource):
     @requisite(semver="5.3.0")
     @timecache(5 * MINUTE)
     @apiver.v5
-    def get_subsystem(self, subsystem=None, _id=None, **params):
+    def get_subsystem(self, subsystem, **params):
         """Get BLOCK type view by provided name."""
-        if subsystem:
-            view = self.one(name=subsystem, fail_if_missing=True, **params)
-        elif _id:
-            view = self.get(_id, **params)
+        view = self.one(name=subsystem, fail_if_missing=True, **params)
         assert "BLOCK" in view.protocols, f"View {view.name} is not a block volume"
         return view
+
+    @requisite(semver="5.3.0")
+    @timecache(5 * MINUTE)
+    @apiver.v5
+    def get_subsystem_by_id(self, _id, **params):
+        """Get BLOCK type view by provided id."""
+        view = self.get(_id, **params)
+        assert "BLOCK" in view.protocols, f"View {view.name} is not a block volume"
+        return view
+
 
 class Folder(VastResource):
     resource_name = "folders"

@@ -152,7 +152,7 @@ class BlockVolumeFromVolumeBuilder(BlockProvisionBase):
         orig_source_volume_id, _ = parse_volume_id(source_volume_id)
         if not (source_volume := self.vms_session.volumes.one(name__endswith=orig_source_volume_id)):
             raise SourceNotFound(f"Unknown volume: {orig_source_volume_id}")
-        if not (source_view := self.vms_session.views.get_subsystem(_id=source_volume.view_id)):
+        if not (source_view := self.vms_session.views.get_subsystem_by_id(_id=source_volume.view_id)):
             raise SourceNotFound(f"Unknown subsystem: {source_volume.view_id}")
 
         volume_context = self.volume_context
