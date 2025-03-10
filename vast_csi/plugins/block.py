@@ -373,7 +373,7 @@ class BlockController(ControllerBase, Instrumented):
         volume_id = source_volume_id
         if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
             raise Abort(NOT_FOUND, f"Unknown volume: {volume_id}")
-        if not (view := vms_session.views.get_subsystem(_id=volume.view_id)):
+        if not (view := vms_session.views.get_subsystem_by_id(_id=volume.view_id)):
             raise Abort(NOT_FOUND, f"Unknown subsystem: {volume.view_id}")
 
         # Full path is concatenation of view path and volume name.
