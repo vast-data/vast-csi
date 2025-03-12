@@ -16,6 +16,38 @@ PARENT = Path(__file__).parent.resolve()
 
 
 @pytest.mark.host_only
+def test_volume_stats_for_fs_type(*_):
+    volume_path = "/var/lib/kubelet/pods/f2f1afd1-4afb-4eae-b57d-64672ee2811d/volumes/kubernetes.io~csi/pvc-9f3d8700-89be-49b5-b388-dc92f4c9e473/mount"
+    with patch.object(hostcmd, "cat", return_value=PARENT.joinpath("data/procmounts2").read_text()):
+        target_mount = MountInfo.get_mount_by_destination(dest_path=volume_path)
+        assert target_mount.has_blockdev_root is False
+        assert target_mount.root == "/"
+        assert target_mount.mount_point == volume_path
+        with pytest.raises(ValueError):
+            target_mount.block_device
+
+
+@pytest.mark.host_only
+def test_volume_stats_for_block_type(*_):
+    volume_path = "/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/pvc-435b3f84-838e-4140-a4ec-f20bec791020/dev/9fbd20b4-90ee-43a7-ac5d-f3e3641e47d2"
+    with patch.object(hostcmd, "cat", return_value=PARENT.joinpath("data/procmounts2").read_text()):
+        target_mount = MountInfo.get_mount_by_destination(dest_path=volume_path)
+        assert target_mount.has_blockdev_root is True
+        assert target_mount.root == "/nvme1n1"
+        assert target_mount.mount_point == volume_path
+        assert target_mount.block_device == "/dev/nvme1n1"
+
+
+@pytest.mark.host_only
+def test_udev_managed_device(*_):
+    device_bind_path = "/data/kubelet/plugins/kubernetes.io/csi/block.csi.vastdata.com/2cbfbe7c253f51c170b9299d79a2a73879b40ae4b50d9ea8f8fa98b7f27bc5f0/globalmount/device"
+    with patch.object(hostcmd, "cat", return_value=PARENT.joinpath("data/procmounts2").read_text()):
+        staging_mount = MountInfo.get_mount_by_destination(dest_path=device_bind_path)
+        assert staging_mount
+        device_path = staging_mount.block_device
+        assert device_path == "/dev/nvme9n1"
+
+@pytest.mark.host_only
 def test_mount_info_block_staging_path(*_):
     device_bind_path = "/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/staging/pvc-590c142c-ae3c-46f3-894e-fdedb627d64f/device"
     # 3 targets represents 3 PODS that are using the same PVC
@@ -32,10 +64,9 @@ def test_mount_info_block_staging_path(*_):
     assert staging_mount
     assert staging_mount.mount_point == device_bind_path
     assert staging_mount2.mount_point == device_bind_path
-
-    assert staging_mount.has_devtmpfs_source
-    devtmpfs_device = staging_mount.devtmpfs_device
-    assert devtmpfs_device == "/dev/nvme1n1"
+    assert staging_mount.has_blockdev_root
+    block_device = staging_mount.block_device
+    assert block_device == "/dev/nvme1n1"
     # 3 mounts are binding from CSI driver and 3 are kubelet bindings
     assert len(target_mounts) == 6
     retrieved_targets = {target_mount.mount_point for target_mount in target_mounts}
@@ -58,9 +89,9 @@ def test_mount_info_fs_staging_path(*_):
     assert staging_mount.mount_point == device_bind_path
     assert staging_mount2.mount_point == device_bind_path
 
-    assert staging_mount.has_devtmpfs_source
-    devtmpfs_device = staging_mount.devtmpfs_device
-    assert devtmpfs_device == "/dev/nvme1n3"
+    assert staging_mount.has_blockdev_root
+    block_device = staging_mount.block_device
+    assert block_device == "/dev/nvme1n3"
     assert len(target_mounts) == 2
     retrieved_targets = {target_mount.mount_point for target_mount in target_mounts}
     assert targets.issubset(retrieved_targets)
@@ -93,13 +124,13 @@ def test_volume_locked():
 
 
 dumpe2fs_out = """
-Filesystem volume name:   
+Filesystem volume name:
 Last mounted on:          /
 Filesystem UUID:          bb29dda3-bdaa-4b39-86cf-4a6dc9634a1b
 Filesystem magic number:  0xEF53
 Filesystem revision #:    1 (dynamic)
 Filesystem features:      has_journal ext_attr resize_inode dir_index filetype needs_recovery extent flex_bg sparse_super large_file huge_file uninit_bg dir_nlink extra_isize
-Filesystem flags:         signed_directory_hash 
+Filesystem flags:         signed_directory_hash
 Default mount options:    user_xattr acl
 Filesystem state:         clean
 Errors behavior:          Continue
