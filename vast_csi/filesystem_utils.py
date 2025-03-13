@@ -1,4 +1,5 @@
 import os
+import re
 from shlex import split
 from threading import RLock
 from collections import defaultdict
@@ -10,6 +11,8 @@ from vast_csi.logging import logger
 
 
 PROC_MOUNT_INFO = "/proc/self/mountinfo"
+DEVICE_NAME_RGX = re.compile(r"^/?nvme\d+n\d+$")
+
 
 # Default formatting flags
 # See https://github.com/kubernetes/mount-utils/blob/master/mount_linux.go#L592
@@ -125,20 +128,21 @@ class MountInfo:
         return self.root
 
     @property
-    def has_devtmpfs_source(self):
-        """Return True if the mount source is a block device."""
-        return self.mount_source.startswith("devtmpfs")
+    def has_blockdev_root(self):
+        """Return True if the root is a block device."""
+        return bool(DEVICE_NAME_RGX.match(self.root))
+
 
     @property
-    def devtmpfs_device(self):
+    def block_device(self):
         """
         Return the device for a devtmpfs mount.
         The reason the device appears as /nvmexnx in the mount information even though it is mounted from /dev/nvmexnx
         is due to the way devtmpfs (Device Temporary File System) works and how devices are managed in the Linux kernel.
         """
-        if self.has_devtmpfs_source:
+        if self.has_blockdev_root:
             return os.path.join("/dev", self.root.lstrip("/"))
-        raise ValueError(f"Expected devtmpfs mount, but found {self.mount_source}.")
+        raise ValueError(f"Expected blockdev mount, but found {self.root}.")
 
     @classmethod
     def from_host(cls):

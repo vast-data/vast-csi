@@ -659,7 +659,7 @@ class BlockNode(NodeBase, Instrumented):
         if not staging_mount:
             raise Abort(NOT_FOUND, f"Mount information not found for staging path: {device_bind_path}")
 
-        device_path = staging_mount.devtmpfs_device
+        device_path = staging_mount.block_device
         if volume_capabilities.is_filesystem:
             fs_type = get_filesystem_type(device_bind_path)
             resize_device(
@@ -680,9 +680,9 @@ class BlockNode(NodeBase, Instrumented):
         target_mount = MountInfo.get_mount_by_destination(dest_path=volume_path)
         if not target_mount:
             raise Abort(NOT_FOUND, f"Mount information not found for volume path: {volume_path}")
-        if target_mount.has_devtmpfs_source:
+        if target_mount.has_blockdev_root:
             # Get the device path associated with the mount
-            return self._get_block_stats(target_mount.devtmpfs_device)
+            return self._get_block_stats(target_mount.block_device)
         else:
             return self._get_fs_stats(volume_path)
 
