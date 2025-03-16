@@ -302,7 +302,12 @@ class BlockController(ControllerBase, Instrumented):
                 raise Abort(NOT_FOUND, exc.message)
         transport_type = volume_context["transport_type"]
         vol_id = int(volume_context["volume_id"])
-        blockhost = vms_session.blockhosts.ensure(node_id=node_id, transport_type=transport_type)
+        tenant_id = int(volume_context["tenant_id"])
+        blockhost = vms_session.blockhosts.ensure(
+            node_id=node_id,
+            tenant_id=tenant_id,
+            transport_type=transport_type,
+        )
         if vol_id not in blockhost.volume_ids:
             try:
                 vms_session.blockhosts.set_volume_to_blockhost(blockhost_id=blockhost.id, ids_to_add=vol_id)
