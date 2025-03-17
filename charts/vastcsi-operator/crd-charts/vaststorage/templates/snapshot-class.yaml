@@ -27,7 +27,7 @@ metadata:
     snapshot.storage.kubernetes.io/is-default-class: {{ $is_default_class }}
   labels:
     {{- include "vastcsi.labels" $ | nindent 4 }}
-driver: csi.vastdata.com
+driver: {{ include "vastcsi.csiDriver" $ }}
 deletionPolicy: {{ $deletion_policy }}
 parameters:
   snapshot_name_fmt: {{ $snapshot_name_fmt }}
