@@ -50,7 +50,7 @@ class Config(TypedEnv):
     _mode = TypedEnv.Str("X_CSI_MODE", default="controller_and_node")
     _endpoint = TypedEnv.Str("CSI_ENDPOINT", default="unix:///var/run/csi.sock")
     _mount_options = TypedEnv.Str("X_CSI_MOUNT_OPTIONS", default="")  # For example: "port=2049,nolock,vers=3"
-    _vms_host = TypedEnv.Str("X_CSI_VMS_HOST", default="vast")
+    _vms_host = TypedEnv.Str("X_CSI_VMS_HOST", default="")
     name_fmt = "csi:{namespace}:{name}:{id}"
 
     fake_quota_store = local.path("/tmp/volumes")
@@ -60,21 +60,18 @@ class Config(TypedEnv):
 
     @cached_property
     def vms_user(self):
-        if not self.vms_credentials_store['username'].exists():
-            raise LookupFieldError(
-                field="username",
-                tip="Make sure username is present in global VMS credentials secret"
-            )
-        return self.vms_credentials_store['username'].read().strip()
+        if self.vms_credentials_store['username'].exists():
+            return self.vms_credentials_store['username'].read().strip()
 
     @cached_property
     def vms_password(self):
-        if not self.vms_credentials_store['password'].exists():
-            raise LookupFieldError(
-                field="password",
-                tip="Make sure password is present in global VMS credentials secret"
-            )
-        return self.vms_credentials_store['password'].read().strip()
+        if self.vms_credentials_store['password'].exists():
+            return self.vms_credentials_store['password'].read().strip()
+
+    @cached_property
+    def vms_token(self):
+        if self.vms_credentials_store['token'].exists():
+            return self.vms_credentials_store['token'].read().strip()
 
     @cached_property
     def vms_host(self):
