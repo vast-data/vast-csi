@@ -3,6 +3,8 @@
 {{- $csi_images := .Values.image -}}
 {{- $kubelet_path := .Values.kubeletPath | default "/var/lib/kubelet" | trimSuffix "/" }}
 {{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
+{{- $driver_name := include "vastcsi.csiDriver" . -}}
+{{- $csi_sock := printf "%s.sock" ($driver_name | lower | replace "." "-" | replace "_" "-" | trimSuffix "-" | trimPrefix "-") -}}
 
 apiVersion: apps/v1
 kind: DaemonSet
@@ -47,12 +49,12 @@ spec:
           lifecycle:
             preStop:
               exec:
-                command: ["/bin/sh", "-c", "rm -rf /registration/block.csi.vastdata.com /registration/block.csi.vastdata.com-reg.sock"]
+                command: ["/bin/sh", "-c", "rm -rf /registration/{{ $driver_name }} /registration/{{ $driver_name }}-reg.sock"]
           env:
             - name: ADDRESS
-              value: /csi/csi.sock
+              value: /csi/{{ $csi_sock }}
             - name: DRIVER_REG_SOCK_PATH
-              value: {{ $kubelet_path }}/plugins/block.csi.vastdata.com/csi.sock
+              value: {{ $kubelet_path }}/plugins/{{ $driver_name }}/{{ $csi_sock }}
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
@@ -70,7 +72,7 @@ spec:
           env:
 {{- include "vastcsi.commonEnv" . | indent 12 }}
             - name: CSI_ENDPOINT
-              value: unix:///csi/csi.sock
+              value: unix:///csi/{{ $csi_sock }}
             - name: X_CSI_MODE
               value: node
             - name: X_CSI_NODE_ID
@@ -113,7 +115,7 @@ spec:
             type: DirectoryOrCreate
         - name: plugin-dir
           hostPath:
-            path: {{ $kubelet_path }}/plugins/block.csi.vastdata.com
+            path: {{ $kubelet_path }}/plugins/{{ $driver_name }}
             type: DirectoryOrCreate
         - name: pods-mount-dir
           hostPath:
