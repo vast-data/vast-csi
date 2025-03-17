@@ -45,7 +45,7 @@
 
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
-provisioner: block.csi.vastdata.com
+provisioner: {{ include "vastcsi.csiDriver" $ }}
 metadata:
   name: {{ required "A StorageClass name must be not empty" $name }}
   namespace: {{ include "vastcsi.namespace" $ }}

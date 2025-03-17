@@ -1,7 +1,9 @@
 {{/* Vast CSI Controller */}}
 
 {{- $csi_images := .Values.image -}}
-{{- $plugin_proxy_sock := "/var/lib/csi/sockets/pluginproxy/csi.sock" -}}
+{{- $driver_name := include "vastcsi.csiDriver" . -}}
+{{- $csi_sock := printf "%s.sock" ($driver_name | lower | replace "." "-" | replace "_" "-" | trimSuffix "-" | trimPrefix "-") -}}
+{{- $plugin_proxy_sock := printf "/var/lib/csi/sockets/pluginproxy/%s" $csi_sock -}}
 {{- $plugin_proxy_sock_path := "/var/lib/csi/sockets/pluginproxy/" -}}
 {{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
 
