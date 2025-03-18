@@ -3,6 +3,11 @@
 {{- end }}
 
 
+{{- define "vastcsi.csiDriver" -}}
+{{- coalesce $.Values.csiDriverName "block.csi.vastdata.com" -}}
+{{- end -}}
+
+
 {{- define "vastcsi.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
@@ -22,7 +27,7 @@
 {{- define "vastcsi.commonEnv" }}
 
 - name: X_CSI_PLUGIN_NAME
-  value: "block.csi.vastdata.com"
+  value: {{ include "vastcsi.csiDriver" $ | quote }}
 - name: X_CSI_VMS_HOST
   value: {{ $.Values.endpoint | default "" |  quote }}
 - name: X_CSI_ENABLE_VMS_SSL_VERIFICATION
