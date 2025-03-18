@@ -272,11 +272,8 @@ class BlockController(ControllerBase, Instrumented):
 
     def DeleteVolume(self, vms_session, volume_id):
         vms_session.globalsnapstreams.ensure_snapshot_stream_deleted(name__contains=volume_id)
-        if volume := vms_session.volumes.one(name__endswith=volume_id):
-            if volume.block_hosts:
-                # Unmap volume from all blockhosts (EV volume case)
-                vms_session.volumes.discard_hosts(volume.id)
-            vms_session.volumes.delete_by_id(volume.id)
+        # Unmap is occurring implicitly due to the use of the force flag.
+        vms_session.volumes.delete(name__endswith=volume_id)
         return types.DeleteResp()
 
     def ControllerPublishVolume(
@@ -308,13 +305,10 @@ class BlockController(ControllerBase, Instrumented):
             tenant_id=tenant_id,
             transport_type=transport_type,
         )
-        if vol_id not in blockhost.volume_ids:
-            try:
-                vms_session.blockhosts.set_volume_to_blockhost(blockhost_id=blockhost.id, ids_to_add=vol_id)
-            except TaskFailed as e:
-                raise Exception(
-                    f"Failed to map host {blockhost.name!r} to volume {vol_id}. {e}"
-                )
+        vms_session.blockhostmappings.ensure_map(
+            volume_id=vol_id,
+            host_id=blockhost.id,
+        )
         vip_pool_name = volume_context.get("vip_pool_name")
         vip_pool_fqdn = volume_context.get("vip_pool_fqdn")
         if vip_pool_fqdn:
@@ -339,17 +333,11 @@ class BlockController(ControllerBase, Instrumented):
     def ControllerUnpublishVolume(self, vms_session, node_id, volume_id):
         if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
             logger.info(f"Volume not found with name: {volume_id}")
-            pass
-        elif not (blockhost := vms_session.blockhosts.one(name=node_id)):
-            # Issue might be on ControllerPublishVolume stage before ensuring blockhost.
-            # Not an error condition.
-            logger.info(f"Blockhost not found with name: {node_id}")
-            pass
         else:
-            if volume.id in blockhost.volume_ids:
-                vms_session.blockhosts.set_volume_to_blockhost(
-                    blockhost_id=blockhost.id, ids_to_remove=volume.id
-                )
+            vms_session.blockhostmappings.ensure_unmap(
+                volume__id=volume.id,
+                block_host__name=node_id
+            )
         return types.CtrlUnpublishResp()
 
     def ControllerExpandVolume(self, vms_session, volume_id, capacity_range):
