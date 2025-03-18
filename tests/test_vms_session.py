@@ -440,7 +440,7 @@ def test_delete(mock_session):
 
     # Call the delete method and check that it calls the session's delete method
     result = resource.delete(api_ver="v1", foo="bar")
-    mock_session.delete.assert_called_once_with("test_resource/1", api_ver="v1", data={})
+    mock_session.delete.assert_called_once_with("test_resource/1", api_ver="v1")
     assert result == Bunch(status="deleted")
 
 

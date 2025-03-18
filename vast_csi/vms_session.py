@@ -254,6 +254,7 @@ class VmsSession(RESTSession):
         self.users = User(self)
         self.volumes = Volume(self)
         self.blockhosts = BlockHost(self)
+        self.blockhostmappings = BlockHostMapping(self)
 
     def serialize(self, salt: str):
         session_data = pickle.dumps((self.username, self.password, self.endpoint, self.ssl_cert))
@@ -459,7 +460,7 @@ class VastResource(ABC):
 
     def delete_by_id(self, _id, api_ver=None, **params):
         """Delete entry by id"""
-        return self.session.delete(f"{self.resource_name}/{_id}", api_ver=api_ver, data=params)
+        return self.session.delete(f"{self.resource_name}/{_id}", api_ver=api_ver, **params)
 
     def one(self, fail_if_missing=False, api_ver=None, **params):
         """
@@ -734,7 +735,7 @@ class GlobalSnapshotStream(VastResource):
     resource_name = "globalsnapstreams"
 
     def stop_snapshot_stream(self, snapshot_stream_id):
-        self.session.patch(f"{self.resource_name}/{snapshot_stream_id}/stop")
+        return self.session.patch(f"{self.resource_name}/{snapshot_stream_id}/stop")
 
     @requisite(semver="4.6.0", operation="create_globalsnapshotstream")
     def ensure(self, name, snapshot_id, tenant_id, destination_path):
@@ -760,7 +761,7 @@ class GlobalSnapshotStream(VastResource):
                 logger.debug(f"Stopping snapshot stream {snapshot_stream.id} in state {state}")
                 task = self.stop_snapshot_stream(snapshot_stream.id)
                 self.session.wait_task(task)
-            self.delete_by_id(_id=snapshot_stream.id, remove_dir=True)
+            self.delete_by_id(_id=snapshot_stream.id, data={"remove_dir": True})
 
 
 class User(VastResource):
@@ -779,29 +780,17 @@ class Volume(VastResource):
 
     @requisite(semver="5.3.0")
     def delete_by_id(self, _id, **params):
-        return super().delete_by_id(_id=_id, force=True, **params)
-
-    @requisite(semver="5.3.0")
-    def ensure(self, **params):
-        return super().ensure(**params)
+        """Delete entry by id"""
+        params["params"] =  {"force": True}
+        return super().delete_by_id(_id=_id, **params)
 
     @requisite(semver="5.3.0")
     def get_snapshots(self, _id, **params):
         return self.session.get(f"{self.resource_name}/{_id}/get_snapshots", **params)
 
-    @requisite(semver="5.3.0")
-    def discard_hosts(self, _id, **params):
-        data = dict(ids=[])
-        task = self.session.patch(f"{self.resource_name}/{_id}/set_hosts", data=data, **params)
-        return self.session.wait_task(task)
-
 @apiver.v5
 class BlockHost(VastResource):
     resource_name = "blockhosts"
-
-    @requisite(semver="5.3.0")
-    def one(self, **params):
-       return super().one(**params)
 
     @requisite(semver="5.3.0")
     def ensure(self, node_id, transport_type, tenant_id, **params):
@@ -817,22 +806,30 @@ class BlockHost(VastResource):
         )
         return self.create(**data)
 
-    @requisite(semver="5.3.0")
-    def delete_by_id(self, _id, **params):
-        return super().delete_by_id(_id=_id, force=True, **params)
 
-    @requisite(semver="5.3.0")
-    def set_volume_to_blockhost(self, blockhost_id, ids_to_add=None, ids_to_remove=None, **params):
-        data = {}
-        if ids_to_add:
-            data["ids_to_add"] = listify(ids_to_add)
-        if ids_to_remove:
-            data["ids_to_remove"] = listify(ids_to_remove)
-        task = self.session.patch(
-            f"{self.resource_name}/{blockhost_id}/update_volumes", data=data, **params
-        )
+@apiver.v5
+class BlockHostMapping(VastResource):
+    resource_name = "blockhostvolumes"
+
+    def map(self, volume_id, host_id):
+        data = {"pairs_to_add": [{"host_id": host_id, "volume_id": volume_id}]}
+        task = self.session.patch(f"{self.resource_name}/bulk", data=data)
         return self.session.wait_task(task)
 
+    def ensure_map(self, volume_id, host_id):
+        if not self.one(volume__id=volume_id, block_host__id=host_id):
+            return self.map(volume_id, host_id)
+
+    def unmap(self, volume_id, host_id):
+        data = {"pairs_to_remove": [{"host_id": host_id, "volume_id": volume_id}]}
+        task = self.session.patch(f"{self.resource_name}/bulk", data=data)
+        return self.session.wait_task(task)
+
+    def ensure_unmap(self, **params):
+        if mapping := self.one(**params):
+            return self.unmap(
+                volume_id=mapping.volume["id"], host_id=mapping.block_host["id"]
+            )
 
 ##########################
 #
