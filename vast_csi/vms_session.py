@@ -804,11 +804,12 @@ class BlockHost(VastResource):
        return super().one(**params)
 
     @requisite(semver="5.3.0")
-    def ensure(self, node_id, transport_type, **params):
-        if blockhost := self.one(name=node_id):
+    def ensure(self, node_id, transport_type, tenant_id, **params):
+        if blockhost := self.one(name=node_id, tenant_id=tenant_id):
             return blockhost
         data = dict(
             name=node_id,
+            tenant_id=tenant_id,
             os_type="LINUX",
             ana="OPTIMIZED",
             connectivity_type=transport_type,
