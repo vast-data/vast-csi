@@ -77,7 +77,7 @@ build_csi_operator:
   INSTALL_IMAGE: "prev_version"
   VAST_upgrade_to: $INSTALL_IMAGE
   VAST_COMET__KWARG: csi_plugin_version=${CI_PIPELINE_ID}
-  TRIGGER_SOURCE: "vastcsi"
+  TRIGGER: "lb_csi_sanity [from-upstream]"
 
 
 test_csi [latest]: &test_csi
