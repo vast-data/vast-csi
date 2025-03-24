@@ -161,6 +161,10 @@ run_csi_sanity: ## Run CSI sanity tests
 	@$(call check_required_env,IMAGE_TAG)
 	@$(CURDIR)/packaging/sanity.sh $(IMAGE_TAG)
 
+compare_versions: ## Compare two sem versions
+	@$(call check_required_env,CURRENT_DEFAULT_BRANCH NEW_DEFAULT_BRANCH)
+	@$(CURDIR)/scripts/compare_versions.sh $(CURRENT_DEFAULT_BRANCH) $(NEW_DEFAULT_BRANCH)
+
 help: ## Show help
 	@echo "Please specify a build target. The choices are:"
 	@awk -F ': ## ' '/^[a-zA-Z0-9_-]+:.* ## .*/ {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
