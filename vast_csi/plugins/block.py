@@ -564,8 +564,10 @@ class BlockNode(NodeBase, Instrumented):
         if readonly:
             mount_flags.append("ro")
 
-        if volume_capabilities.is_filesystem:
-            if (fs_type := volume_capabilities.fs_type) != get_filesystem_type(device_bind_path):
+        is_file_system = volume_capabilities.is_filesystem
+        fs_type = volume_capabilities.fs_type
+        if is_file_system:
+            if fs_type != get_filesystem_type(device_bind_path):
                 raise Exception(
                     f"Device at {device_bind_path} is not formatted with {volume_capabilities.fs_type}."
                 )
@@ -601,11 +603,13 @@ class BlockNode(NodeBase, Instrumented):
             mount(src=device_bind_path, tgt=target_path, flags=mount_flags, bind=True)
 
         if not MountInfo.get_mount_by_destination(dest_path=target_path):
-            raise Abort(
-                NOT_FOUND,
-                f"An unexpected error occurred while attempting to mount "
-                f"{device_bind_path} to {target_path}. See mount output for more details."
+            err_msg = (
+                f"An unexpected error occurred while attempting to mount"
+                f" {device_bind_path} to {target_path}."
             )
+            if is_file_system:
+                err_msg += f" Check if mount options {mount_flags} are correct for chosen filesystem {fs_type}."
+            raise Abort(NOT_FOUND, err_msg)
         return types.NodePublishResp()
 
     def NodeUnpublishVolume(self, volume_id, target_path, vms_session=None):
