@@ -480,7 +480,7 @@ class BlockNode(NodeBase, Instrumented):
         if volume_capabilities.is_filesystem:
             fs_type = volume_capabilities.fs_type
             formatted = format_device(requested_fs=fs_type, device=device_path)
-            if not formatted:
+            if not formatted and not fs_type == "xfs":
                 check_fs_integrity(device=device_path)
             # The source PVC may have a different size but was never attached and, therefore, never formatted.
             # In this case, the cloned PVC will be formatted as if it were a brand-new PVC,
