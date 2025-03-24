@@ -480,6 +480,9 @@ class BlockNode(NodeBase, Instrumented):
         if volume_capabilities.is_filesystem:
             fs_type = volume_capabilities.fs_type
             formatted = format_device(requested_fs=fs_type, device=device_path)
+            # - check fs integrity only if:
+            #   - device is not formatted. Can be if pvc is cloned from snapshot/volume or re-attached.
+            #   - fs_type is not xfs. xfs does not require fsck.
             if not formatted and not fs_type == "xfs":
                 check_fs_integrity(device=device_path)
             # The source PVC may have a different size but was never attached and, therefore, never formatted.
@@ -655,11 +658,24 @@ class BlockNode(NodeBase, Instrumented):
         device_path = staging_mount.block_device
         if volume_capabilities.is_filesystem:
             fs_type = get_filesystem_type(device_bind_path)
-            resize_device(
-                device=device_path,
-                target_mount=volume_path,
-                fs_type=fs_type,
-            )
+            if not MountInfo.get_mount_by_destination(dest_path=volume_path):
+                logger.info(f"Volume path {volume_path} is not mounted. Create tmp mount.")
+                # It is possible that NodeExpandVolume can be triggered before NodePublishVolume
+                # in scenario when:
+                #    1. Volume is created
+                #    2. Volume is expanded
+                #    3. Volume is published
+                # for such scenario we need to create temporary mount to resize the filesystem.
+                with temporary_mount(
+                        src=device_path, tgt_dir=staging_target_path, fs_type=fs_type
+                ) as temp_mount:
+                    resize_device(device=device_path, target_mount=temp_mount, fs_type=fs_type)
+            else:
+                resize_device(
+                    device=device_path,
+                    target_mount=volume_path,
+                    fs_type=fs_type,
+                )
         else:
             existing_capacity = get_device_size(device_path)
             if existing_capacity < requested_capacity:
