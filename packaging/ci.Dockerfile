@@ -1,6 +1,13 @@
 FROM docker:latest
 
-RUN apk add --no-cache make curl bash git go
+RUN apk add --no-cache make curl bash git go jq
+
+# Install GitHub CLI (gh)
+RUN curl -LO https://github.com/cli/cli/releases/download/v2.32.0/gh_2.32.0_linux_amd64.tar.gz \
+    && tar -xvzf gh_2.32.0_linux_amd64.tar.gz \
+    && mv gh_2.32.0_linux_amd64/bin/gh /usr/local/bin/ \
+    && rm -rf gh_2.32.0_linux_amd64 gh_2.32.0_linux_amd64.tar.gz \
+    && gh --version
 
 # Install helm
 # Need to install on-edge version to have toYamlPretty function. https://github.com/helm/helm/pull/12583
