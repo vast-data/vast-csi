@@ -693,7 +693,7 @@ class Snapshot(VastResource):
 
     def has_snapshots(self, path):
         # we intentionally limit the number of results
-        ret = self.list(path__startswith=path.rstrip("/"), page_size=10)
+        ret = self.list(path__contains=path.rstrip("/"), page_size=10)
         return ret.results
 
     def create(self, name, path, tenant_id, expiration_delta=None):
@@ -783,10 +783,6 @@ class Volume(VastResource):
         """Delete entry by id"""
         params["params"] =  {"force": True}
         return super().delete_by_id(_id=_id, **params)
-
-    @requisite(semver="5.3.0")
-    def get_snapshots(self, _id, **params):
-        return self.session.get(f"{self.resource_name}/{_id}/get_snapshots", **params)
 
 @apiver.v5
 class BlockHost(VastResource):
