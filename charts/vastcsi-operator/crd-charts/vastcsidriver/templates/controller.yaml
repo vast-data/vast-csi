@@ -128,6 +128,8 @@ spec:
           image: {{ $csi_images.csiVastPlugin.repository | default $csi_images.csiVastPlugin.defaultRepository }}
           args:
             - "serve"
+            - "--plugin"
+            - {{ ternary "csi" "block" $is_nfs_driver }}
           imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default "IfNotPresent" }}
           securityContext:
             privileged: true
