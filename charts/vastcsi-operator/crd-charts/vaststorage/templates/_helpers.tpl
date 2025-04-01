@@ -27,3 +27,22 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/name: {{ include "vastcsi.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
+
+{{- define "vastcsi.csiDriver" -}}
+{{- .Values.driverName | required "Driver Name is not provided" -}}
+{{- end -}}
+
+{{/* Validate if secret exists. */}}
+{{- define "vastcsi.secret" -}}
+{{- $secret := $.Values.clusterName -}}
+{{- $secret_namespace := $.Release.Namespace -}}
+{{- if not $secret -}}
+  {{- fail "clusterName is required value. Please specify valid clusterName" -}}
+{{- end }}
+{{- if $.Release.IsInstall -}}
+{{- if not (lookup "v1" "Secret" $secret_namespace $secret) -}}
+  {{- fail (printf "cluster '%s' doesn't exist in namespace '%s' or doesn't have underlying secret." .Values.clusterName .Release.Namespace) -}}
+{{- end -}}
+{{- end -}}
+{{- $secret }}
+{{- end -}}
