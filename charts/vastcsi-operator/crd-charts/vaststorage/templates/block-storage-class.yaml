@@ -10,7 +10,7 @@
 {{/* Validate vipPool and vipPoolFQDN parameters. Only one of them should be provided. */}}
 {{- $vip_pool_name := .Values.vipPool -}}
 {{- $vip_pool_fqdn := .Values.vipPoolFQDN -}}
-{{- $vip_pool_fqdn_random_prefix := .Values.vipPoolFQDNRandomPrefix -}}
+{{- $vip_pool_fqdn_random_prefix := .Values.vipPoolFQDNRandomPrefix | quote -}}
 {{- if (and $vip_pool_name $vip_pool_fqdn) -}}
   {{- fail (printf "vipPool and vipPoolFQDN are mutually exclusive in the StorageClass '%s' parameters. Do not set a default value from storageDefaults for either field; choose only one to specify." .Release.Name) -}}
 {{- end }}
