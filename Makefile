@@ -19,7 +19,7 @@ ifndef CSI_PLUGIN_IMG
     CSI_PLUGIN_IMG := $(DOCKER_REGISTRY)/dev/vast-csi
 endif
 ifndef CHANNEL
-CHANNEL := "alpha"
+CHANNEL := "stable"
 endif
 ifndef NAMESPACE
 NAMESPACE := "vast-csi"
