@@ -15,11 +15,6 @@
 - name: vms-auth
   secret:
     secretName: {{ $.Values.secretName | quote }}
-    items:
-    - key: username
-      path: username
-    - key: password
-      path: password
 {{- end }}
 {{- if $.ca_bundle }}
 - name: vms-ca-bundle
