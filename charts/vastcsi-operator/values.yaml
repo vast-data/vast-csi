@@ -1,3 +1,5 @@
+name: "csi.vastdata.com"
+
 # Namespace for csi driver operator installation.
 # If a namespace is not specified during the installation of the CSI driver operator,
 # it will default to the namespace of the Helm release.
@@ -47,4 +49,4 @@ installSnapshotCRDS: true
 # Instead, these templates become part of the installation section of the ClusterServiceVersion.
 # This option is intended for clusters with OLM installed, where the intention is to install and manage the operator via OLM.
 olmBuild: false
-maturity: "alpha"
+maturity: "stable"
