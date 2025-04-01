@@ -5,12 +5,13 @@
 {{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
 {{- $driver_name := include "vastcsi.csiDriver" . -}}
 {{- $csi_sock := printf "%s.sock" ($driver_name | lower | replace "." "-" | replace "_" "-" | trimSuffix "-" | trimPrefix "-") -}}
-
+{{- $is_nfs_driver := (eq .Values.driverType "nfs") }}
+{{- $name_prefix := $is_nfs_driver | ternary "csi" "block" }}
 
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: csi-vast-node
+  name: {{ $name_prefix }}-vast-node
   namespace: {{ include "vastcsi.namespace" . }}
   labels:
 {{ include "vastcsi.labels" . | indent 4 }}
@@ -18,12 +19,12 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: "csi-vast-node"
+      app: "{{ $name_prefix }}-vast-node"
 {{- include "vastcsi.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        app: csi-vast-node
+        app: {{ $name_prefix }}-vast-node
         role: csi-vast
 {{- include "vastcsi.labels" . | nindent 8 }}
     spec:
