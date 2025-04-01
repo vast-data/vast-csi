@@ -10,3 +10,5 @@ username: ""
 password: ""
 # Default value, replace with actual SSL cert
 sslCert: ""
+# Default value, replace with actual token
+token: ""
