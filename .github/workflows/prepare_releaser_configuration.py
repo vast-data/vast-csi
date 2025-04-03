@@ -7,6 +7,7 @@ Stable releases are created from branches with a valid version number (e.g. `1.0
 import os
 import re
 import sys
+import shutil
 from pathlib import Path
 import fileinput
 
@@ -17,6 +18,10 @@ VERSION = ROOT.joinpath("version.txt").read_text().strip().lstrip("v")
 CHARTS = [
     ROOT / "charts" / "vastcsi" / "Chart.yaml",
     ROOT / "charts" / "vastcosi" / "Chart.yaml",
+]
+
+IGNORED_CHARTS = [
+    ROOT / "charts" / "vastcsi-operator"
 ]
 
 if __name__ == '__main__':
@@ -31,6 +36,9 @@ if __name__ == '__main__':
     release_name_template = "helm-{{ .Name }}-{{ .Version }}"
     pages_branch = "gh-pages-beta" if is_beta else "gh-pages"
     version = f"{VERSION}-beta.{SHA}" if is_beta else VERSION
+
+    for chart in IGNORED_CHARTS:
+        shutil.rmtree(chart, ignore_errors=True)
 
     # Create unique release name based on version and commit sha
     for chart in CHARTS:

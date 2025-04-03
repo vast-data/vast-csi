@@ -14,7 +14,7 @@ variables:
   DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
   IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:${CI_PIPELINE_ID}
   # source: packaging/base.Dockerfile
-  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2024-12-15
+  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2025-01-19
   ORION_BRANCH: comet/master
 
 build_csi_base:
@@ -150,10 +150,12 @@ update_github [prod]:  &update_github
     name: alpine/git
     entrypoint: [""]
   stage: deploy
+  variables:
+    BETA: "false"
   only:
     - /^v[\d]\.[\d]+/
   before_script: &setup_github_access |
-    mkdir ~/.ssh/
+    mkdir -p ~/.ssh/
     cp $GITHUB_KEY ~/.ssh/id_rsa
     chmod 0600 ~/.ssh/id_rsa
     ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
@@ -162,17 +164,24 @@ update_github [prod]:  &update_github
   script: |
     set -x
     VERSION=$(cat version.txt)
+    TARGET_BRANCH=$CI_COMMIT_REF_NAME
+    if $BETA; then
+      VERSION=${VERSION}-beta
+      TARGET_BRANCH=${TARGET_BRANCH}-beta
+    fi
     git remote -v
     git remote add github git@github.com:vast-data/vast-csi.git || true
-    git fetch github $CI_COMMIT_REF_NAME
-    git checkout -B $CI_COMMIT_REF_NAME FETCH_HEAD
+
+    # Continue with the existing flow
+    git fetch github $TARGET_BRANCH
+    git checkout -B $TARGET_BRANCH FETCH_HEAD
     git checkout $CI_COMMIT_SHA -- .
     git commit -am "VAST Data CSI Plugin - $VERSION
 
       (from $CI_COMMIT_SHA)"
 
     git tag -f $VERSION
-    git push -f --tags github HEAD:$CI_COMMIT_REF_NAME
+    git push -f --tags github HEAD:$TARGET_BRANCH
 
   when: manual
   tags:
@@ -181,8 +190,8 @@ update_github [prod]:  &update_github
 
 update_github [beta]:
   <<: *update_github
-  only:
-    - /v[\d]\.[\d]+-beta.*/
+  variables:
+    BETA: "true"
 
 
 mark_stable:
