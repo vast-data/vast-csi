@@ -34,7 +34,6 @@ class BlockProvisionBase(BaseVolumeBuilder):
     cluster_name: Optional[str] = None
     vip_pool_name: Optional[str] = None
     vip_pool_fqdn: Optional[str] = None
-    vip_pool_fqdn_random_prefix: Optional[bool] = None
     capacity_range: Optional[int] = None
     pvc_name: Optional[str] = None
     pvc_namespace: Optional[str] = None
@@ -56,7 +55,6 @@ class BlockProvisionBase(BaseVolumeBuilder):
         tenant_name = parameters.get("tenant_name")
         vip_pool_fqdn = parameters.get("vip_pool_fqdn")
         vip_pool_name = parameters.get("vip_pool_name")
-        vip_pool_fqdn_random_prefix = parameters.get("vip_pool_fqdn_random_prefix")
         volume_group = parameters.get("volume_group", "")
         transport_type = parameters.get("transport_type", "TCP").upper()
         metadata = cls._parse_metadata_from_params(parameters)
@@ -75,7 +73,6 @@ class BlockProvisionBase(BaseVolumeBuilder):
             volume_group=volume_group,
             vip_pool_name=vip_pool_name,
             vip_pool_fqdn=vip_pool_fqdn,
-            vip_pool_fqdn_random_prefix=vip_pool_fqdn_random_prefix,
             cluster_name=cluster_name,
             volume_content_source=volume_content_source,
             **metadata,
@@ -115,9 +112,7 @@ class BlockProvisionBase(BaseVolumeBuilder):
         if self.vip_pool_name:
             context["vip_pool_name"] = self.vip_pool_name
         elif self.vip_pool_fqdn:
-            context["vip_pool_fqdn"] = self.vip_pool_fqdn
-            if self.vip_pool_fqdn_random_prefix:
-                context["vip_pool_fqdn_random_prefix"] = "true"
+            context["vip_pool_fqdn"] = self.vip_pool_fqdn_with_prefix
         return context
 
 
@@ -282,7 +277,6 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
     cluster_name: Optional[str] = None
     vip_pool_name: Optional[str] = None
     vip_pool_fqdn: Optional[str] = None
-    vip_pool_fqdn_random_prefix: Optional[bool] = None
     transport_type: Optional[str] = "TCP"
 
     @classmethod
@@ -299,7 +293,6 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
         tenant_name = parameters.get("tenant_name")
         vip_pool_fqdn = parameters.get("vip_pool_fqdn")
         vip_pool_name = parameters.get("vip_pool_name")
-        vip_pool_fqdn_random_prefix = parameters.get("vip_pool_fqdn_random_prefix")
         transport_type = parameters.get("transport_type", "TCP").upper()
         cls._validate_mount_src(vip_pool_name, vip_pool_fqdn, conf.use_local_ip_for_mount)
         cluster_name = parameters.get("cluster_name")
@@ -312,7 +305,6 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
             volume_capabilities=volume_capabilities,
             vip_pool_name=vip_pool_name,
             vip_pool_fqdn=vip_pool_fqdn,
-            vip_pool_fqdn_random_prefix=vip_pool_fqdn_random_prefix,
             transport_type=transport_type,
             cluster_name=cluster_name,
         )
@@ -328,9 +320,7 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
         if self.vip_pool_name:
             context["vip_pool_name"] = self.vip_pool_name
         elif self.vip_pool_fqdn:
-            context["vip_pool_fqdn"] = self.vip_pool_fqdn
-            if self.vip_pool_fqdn_random_prefix:
-                context["vip_pool_fqdn_random_prefix"] = "true"
+            context["vip_pool_fqdn"] = self.vip_pool_fqdn_with_prefix
         return context
 
     def build_volume(self) -> types.Volume:
