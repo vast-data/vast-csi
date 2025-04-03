@@ -113,6 +113,11 @@ class CommonPropsMixin:
         return os.path.join("/", self.root_export)
 
     @property
+    def vip_pool_fqdn_with_prefix(self) -> str:
+        """Return a random FQDN for the VIP pool with a prefix."""
+        return f"{get_random_fqdn_prefix()}.{self.vip_pool_fqdn}"
+
+    @property
     def volume_id_with_metadata(self):
         """Return the volume ID with metadata."""
         return to_volume_id_with_metadata(self.name, self.cluster_name)
