@@ -25,7 +25,6 @@
 
 {{- $vip_pool_name := pluck "vipPool" $options $.Values.storageClassDefaults | first | quote -}}
 {{- $vip_pool_fqdn := pluck "vipPoolFQDN" $options $.Values.storageClassDefaults | first | quote -}}
-{{- $vip_pool_fqdn_random_prefix := pluck "vipPoolFQDNRandomPrefix" $options $.Values.storageClassDefaults | first | quote -}}
 
 {{- if and (ne $vip_pool_name ( quote "" )) (ne $vip_pool_fqdn ( quote "" )) -}}
 {{- fail (printf "vipPool and vipPoolFQDN are mutually exclusive in the StorageClass '%s' parameters. Do not set a default value from storageDefaults for either field; choose only one to specify." $name) -}}
@@ -62,7 +61,7 @@ parameters:
   lb_strategy: "roundrobin" # deprecated; this is here for backwards compatibility, so users don't have to delete their helm deployment and reinstall (since StorageClass is immutable)
   volume_name_fmt: {{ $volume_name_fmt }}
   eph_volume_name_fmt: {{ $eph_volume_name_fmt }}
-{{- range $key, $value := dict "vip_pool_name" $vip_pool_name "vip_pool_fqdn" $vip_pool_fqdn "qos_policy" $qos_policy "vip_pool_fqdn_random_prefix" $vip_pool_fqdn_random_prefix }}
+{{- range $key, $value := dict "vip_pool_name" $vip_pool_name "vip_pool_fqdn" $vip_pool_fqdn "qos_policy" $qos_policy }}
   {{- if and $value (ne $value ( quote "" )) }}
   {{ $key }}: {{ if (kindIs "int" $value) }}{{ $value | quote }}{{ else }}{{ $value }}{{ end }}
   {{- end }}
