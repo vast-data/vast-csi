@@ -246,6 +246,7 @@ class VmsSession(RESTSession):
         self.viewpolicies = ViewPolicy(self)
         self.views = View(self)
         self.quospolicies = QosPolicy(self)
+        self.tenants = Tenant(self)
         self.folders = Folder(self)
         self.vippools = VipPool(self)
         self.quotas = Quota(self)
@@ -523,6 +524,10 @@ class QosPolicy(VastResource):
     resource_name = "qospolicies"
 
 
+class Tenant(VastResource):
+    resource_name = "tenants"
+
+
 class View(VastResource):
     resource_name = "views"
 
@@ -789,16 +794,17 @@ class BlockHost(VastResource):
     resource_name = "blockhosts"
 
     @requisite(semver="5.3.0")
-    def ensure(self, node_id, transport_type, tenant_id, **params):
-        if blockhost := self.one(name=node_id, tenant_id=tenant_id):
+    def ensure(self, node_id, transport_type, tenant_name, **params):
+        if blockhost := self.one(name=node_id, tenant_name=tenant_name):
             return blockhost
+        tenant = self.session.tenants.one(name=tenant_name)
         data = dict(
             name=node_id,
-            tenant_id=tenant_id,
+            tenant_id=tenant.id,
             os_type="LINUX",
             ana="OPTIMIZED",
             connectivity_type=transport_type,
-            nqn=f"nqn.2014-08.com.vastcsiblock:{node_id}",
+            nqn=f"nqn.2014-08.com.vastcsiblock:{tenant_name}:{node_id}",
         )
         return self.create(**data)
 
