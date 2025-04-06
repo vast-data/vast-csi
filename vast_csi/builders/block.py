@@ -1,5 +1,4 @@
 import os
-import json
 from datetime import timedelta
 from dataclasses import dataclass
 from typing import final, Optional
@@ -27,10 +26,11 @@ class BlockProvisionBase(BaseVolumeBuilder):
     name: str
     volume_capabilities: Capabilities
     subsystem: str
-    volume_group: str = None
-    transport_type: str = None
 
     # Optional parameters
+    tenant_name: Optional[str] = None
+    volume_group: Optional[str] = None
+    transport_type: Optional[str] = None
     cluster_name: Optional[str] = None
     vip_pool_name: Optional[str] = None
     vip_pool_fqdn: Optional[str] = None
@@ -52,6 +52,7 @@ class BlockProvisionBase(BaseVolumeBuilder):
     ) -> "BaseBuilder":
         """Parse context and return builder instance."""
         subsystem = cls._get_required_param(parameters, "subsystem")
+        tenant_name = parameters.get("tenant_name")
         vip_pool_fqdn = parameters.get("vip_pool_fqdn")
         vip_pool_name = parameters.get("vip_pool_name")
         volume_group = parameters.get("volume_group", "")
@@ -67,6 +68,7 @@ class BlockProvisionBase(BaseVolumeBuilder):
             volume_capabilities=volume_capabilities,
             capacity_range=capacity_range,
             subsystem=subsystem,
+            tenant_name=tenant_name,
             transport_type=transport_type,
             volume_group=volume_group,
             vip_pool_name=vip_pool_name,
@@ -124,7 +126,10 @@ class EmptyBlockVolumeBuilder(BlockProvisionBase):
         # volume group must contain volume id despite how nested it is.
         # volume id is used to delete volume.
         volume_context = self.volume_context
-        view = self.vms_session.views.get_subsystem(subsystem=self.subsystem)
+        view = self.vms_session.views.get_subsystem(
+            subsystem=self.subsystem,
+            tenant_name=self.tenant_name,
+        )
         volume = self.vms_session.volumes.ensure(
             name=volume_name,
             view_id=view.id,
@@ -165,7 +170,10 @@ class BlockVolumeFromVolumeBuilder(BlockProvisionBase):
         source_path = os.path.join(source_view.path, source_volume.name.lstrip("/"))
         if source_view.name != self.subsystem:
             # Query destination subsystem if it differs from the source subsystem
-            destination_view = self.vms_session.views.get_subsystem(subsystem=self.subsystem)
+            destination_view = self.vms_session.views.get_subsystem(
+                subsystem=self.subsystem,
+                tenant_name=self.tenant_name,
+            )
         else:
             # No need to perform additional VMS call if source and destination subsystems are the same
             destination_view = source_view
@@ -221,7 +229,10 @@ class BlockVolumeFromSnapshotBuilder(BlockProvisionBase):
         requested_capacity = self.get_requested_capacity()
         volume_context["volume_name"] = volume_name
 
-        destination_view = self.vms_session.views.get_subsystem(subsystem=self.subsystem)
+        destination_view = self.vms_session.views.get_subsystem(
+            subsystem=self.subsystem,
+            tenant_name=self.tenant_name,
+        )
         if not (destination_volume := self.vms_session.volumes.one(name__endswith=volume_name)):
             destination_volume = self.vms_session.snapshots.clone_volume(
                 snapshot_id=snapshot.id,
@@ -261,6 +272,7 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
     subsystem: str
 
     # Optional parameters
+    tenant_name: Optional[str] = None
     cluster_name: Optional[str] = None
     vip_pool_name: Optional[str] = None
     vip_pool_fqdn: Optional[str] = None
@@ -277,6 +289,7 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
     ):
         """Parse context and return builder instance"""
         subsystem = cls._get_required_param(parameters, "subsystem")
+        tenant_name = parameters.get("tenant_name")
         vip_pool_fqdn = parameters.get("vip_pool_fqdn")
         vip_pool_name = parameters.get("vip_pool_name")
         transport_type = parameters.get("transport_type", "TCP").upper()
@@ -287,6 +300,7 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
             configuration=conf,
             name=name,
             subsystem=subsystem,
+            tenant_name=tenant_name,
             volume_capabilities=volume_capabilities,
             vip_pool_name=vip_pool_name,
             vip_pool_fqdn=vip_pool_fqdn,
@@ -310,8 +324,10 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
 
     def build_volume(self) -> types.Volume:
         volume_context = self.volume_context
-        if not (view := self.vms_session.views.get_subsystem(subsystem=self.subsystem)):
-            raise SourceNotFound(f"View {self.subsystem} does not exist but claimed as existing.")
+        view = self.vms_session.views.get_subsystem(
+            subsystem=self.subsystem,
+            tenant_name=self.tenant_name,
+        )
         if not (volume := self.vms_session.volumes.one(name=self.name)):
             raise SourceNotFound(f"Volume {self.name} does not exist but claimed as existing.")
         volume_context.update(
