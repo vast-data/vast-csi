@@ -138,7 +138,7 @@ class EmptyBlockVolumeBuilder(BlockProvisionBase):
         volume_context.update(
             nguid=volume.nguid,
             volume_id=str(volume.id),
-            tenant_id=str(view.tenant_id),
+            tenant_name=view.tenant_name,
             subsystem_nqn=view.nqn,
         )
         return types.Volume(
@@ -162,6 +162,7 @@ class BlockVolumeFromVolumeBuilder(BlockProvisionBase):
 
         volume_context = self.volume_context
         tenant_id = source_view.tenant_id
+        tenant_name = source_view.tenant_name
         volume_name = self.build_volume_name()
         requested_capacity = self.get_requested_capacity()
         volume_context["volume_name"] = volume_name
@@ -201,7 +202,7 @@ class BlockVolumeFromVolumeBuilder(BlockProvisionBase):
         volume_context.update(
             nguid=destination_volume.nguid,
             volume_id=str(destination_volume.id),
-            tenant_id=str(tenant_id),
+            tenant_name=tenant_name,
             subsystem_nqn=destination_view.nqn,
         )
         return types.Volume(
@@ -248,7 +249,7 @@ class BlockVolumeFromSnapshotBuilder(BlockProvisionBase):
         volume_context.update(
             nguid=destination_volume.nguid,
             volume_id=str(destination_volume.id),
-            tenant_id=str(snapshot.tenant_id),
+            tenant_name=snapshot.tenant_name,
             subsystem_nqn=destination_view.nqn,
         )
         return types.Volume(
@@ -333,7 +334,7 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
         volume_context.update(
             nguid=volume.nguid,
             volume_id=str(volume.id),
-            tenant_id=str(view.tenant_id),
+            tenant_name=view.tenant_name,
             subsystem_nqn=view.nqn,
         )
         return volume_context
