@@ -193,7 +193,11 @@ class TestControllerSuite:
 
         if kwargs.get("static_pv_create_views"):
             session.ensure_view.mock.assert_called_once_with(
-                path=volume_id.rstrip("/"), protocols=['NFS'], view_policy='default', qos_policy=None
+                path=volume_id.rstrip("/"),
+                protocols=['NFS'],
+                view_policy='default',
+                qos_policy=None,
+                qos_policy_id=None,
             )
         else:
             session.ensure_view.mock.assert_not_called()

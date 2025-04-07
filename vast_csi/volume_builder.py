@@ -90,6 +90,7 @@ class BaseBuilder(VolumeBuilderI):
     vip_pool_fqdn: Optional[str] = None
     vip_pool_fqdn_random_prefix: Optional[bool] = None
     qos_policy: Optional[str] = None
+    qos_policy_id: Optional[int] = None
     capacity_range: Optional[int] = None  # Optional desired volume capacity
     pvc_name: Optional[str] = None
     pvc_namespace: Optional[str] = None
@@ -153,6 +154,11 @@ class BaseBuilder(VolumeBuilderI):
         qos_policy = parameters.get("qos_policy")
         cluster_name = parameters.get("cluster_name")
 
+        if "qos_policy_id" in parameters:
+            qos_policy_id = int(parameters.get("qos_policy_id"))
+        else:
+            qos_policy_id = None
+
         return cls(
             vms_session=vms_session,
             configuration=conf,
@@ -171,6 +177,7 @@ class BaseBuilder(VolumeBuilderI):
             vip_pool_fqdn_random_prefix=vip_pool_fqdn_random_prefix,
             mount_options=mount_options,
             qos_policy=qos_policy,
+            qos_policy_id=qos_policy_id,
             cluster_name=cluster_name,
         )
 
@@ -260,8 +267,11 @@ class EmptyVolumeBuilder(BaseBuilder):
         volume_context["volume_name"] = volume_name
 
         view = self.vms_session.ensure_view(
-            path=self.view_path, protocols=[self.mount_protocol], view_policy=self.view_policy,
-            qos_policy=self.qos_policy
+            path=self.view_path,
+            protocols=[self.mount_protocol],
+            view_policy=self.view_policy,
+            qos_policy=self.qos_policy,
+            qos_policy_id=self.qos_policy_id,
         )
         quota = self.vms_session.ensure_quota(
             volume_id=volume_name, view_path=self.view_path,
@@ -313,8 +323,11 @@ class VolumeFromVolumeBuilder(BaseBuilder):
         # View should go after snapshot stream.
         # Otherwise, snapshot stream action will detect folder already exist and will be rejected
         view = self.vms_session.ensure_view(
-            path=self.view_path, protocols=[self.mount_protocol],
-            view_policy=self.view_policy, qos_policy=self.qos_policy
+            path=self.view_path,
+            protocols=[self.mount_protocol],
+            view_policy=self.view_policy,
+            qos_policy=self.qos_policy,
+            qos_policy_id=self.qos_policy_id,
         )
         quota = self.vms_session.ensure_quota(
             volume_id=volume_name, view_path=self.view_path,
@@ -367,8 +380,11 @@ class VolumeFromSnapshotBuilder(BaseBuilder):
                 snapshot_stream_name=snapshot_stream_name,
             )
             view = self.vms_session.ensure_view(
-                path=self.view_path, protocols=[self.mount_protocol],
-                view_policy=self.view_policy, qos_policy=self.qos_policy
+                path=self.view_path,
+                protocols=[self.mount_protocol],
+                view_policy=self.view_policy,
+                qos_policy=self.qos_policy,
+                qos_policy_id=self.qos_policy_id,
             )
             quota = self.vms_session.ensure_quota(
                 volume_id=volume_name, view_path=self.view_path,
@@ -436,6 +452,11 @@ class StaticVolumeBuilder(BaseBuilder):
             capacity_range = Bunch(required_bytes=required_bytes)
         else:
             capacity_range = None
+        if "qos_policy_id" in parameters:
+            qos_policy_id = int(parameters.get("qos_policy_id"))
+        else:
+            qos_policy_id = None
+
         return cls(
             vms_session=vms_session,
             configuration=conf,
@@ -451,6 +472,7 @@ class StaticVolumeBuilder(BaseBuilder):
             vip_pool_fqdn=vip_pool_fqdn,
             mount_options=mount_options,
             qos_policy=qos_policy,
+            qos_policy_id=qos_policy_id,
             create_view=create_view,
             create_quota=create_quota
         )
@@ -471,8 +493,11 @@ class StaticVolumeBuilder(BaseBuilder):
         if self.create_view:
             # Check if view with expected system path already exists.
             view = self.vms_session.ensure_view(
-                path=self.view_path, protocols=[self.mount_protocol],
-                view_policy=self.view_policy, qos_policy=self.qos_policy
+                path=self.view_path,
+                protocols=[self.mount_protocol],
+                view_policy=self.view_policy,
+                qos_policy=self.qos_policy,
+                qos_policy_id=self.qos_policy_id,
             )
         else:
             if not (view := self.vms_session.get_view(path=self.view_path)):
