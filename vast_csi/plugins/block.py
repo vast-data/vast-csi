@@ -301,10 +301,10 @@ class BlockController(ControllerBase, Instrumented):
                 raise Abort(NOT_FOUND, exc.message)
         transport_type = volume_context["transport_type"]
         vol_id = int(volume_context["volume_id"])
-        tenant_id = int(volume_context["tenant_id"])
+        tenant_name = volume_context["tenant_name"]
         blockhost = vms_session.blockhosts.ensure(
             node_id=node_id,
-            tenant_id=tenant_id,
+            tenant_name=tenant_name,
             transport_type=transport_type,
         )
         vms_session.blockhostmappings.ensure_map(
