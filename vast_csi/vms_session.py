@@ -360,13 +360,11 @@ class VmsSession(RESTSession):
                 raise Exception(f"Too many views were found by condition {kwargs}: {views}")
             return views[0]
 
-    def ensure_view(self, path, protocols, view_policy, qos_policy):
+    def ensure_view(self, path, protocols, view_policy, qos_policy, qos_policy_id=None):
         if not (view := self.get_view(path=str(path), policy__name=view_policy)):
             view_policy = self.get_view_policy(policy_name=view_policy)
             if qos_policy:
                 qos_policy_id = self.get_qos_policy(qos_policy).id
-            else:
-                qos_policy_id = None
             view = self.create_view(
                 path=path, protocols=protocols, policy_id=view_policy.id,
                 qos_policy_id=qos_policy_id, tenant_id=view_policy.tenant_id
@@ -487,7 +485,13 @@ class VmsSession(RESTSession):
     def ensure_quota(self, volume_id, view_path, tenant_id, requested_capacity=None):
         if quota := self.get_quota(path=view_path, tenant_id=tenant_id):
             # Check if volume with provided name but another capacity already exists.
-            if requested_capacity and quota.hard_limit != requested_capacity:
+            if (
+                requested_capacity
+                and
+                quota.hard_limit is not None
+                and
+                quota.hard_limit != requested_capacity
+            ):
                 raise Exception(
                     "Volume already exists with different capacity than requested "
                     f"({quota.hard_limit})")
