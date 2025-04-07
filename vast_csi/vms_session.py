@@ -531,13 +531,11 @@ class Tenant(VastResource):
 class View(VastResource):
     resource_name = "views"
 
-    def ensure(self, path, protocols, view_policy, qos_policy, create_dir=True):
+    def ensure(self, path, protocols, view_policy, qos_policy, create_dir=True, qos_policy_id=None):
         if not (view := self.one(path=str(path), policy__name=view_policy)):
             view_policy = self.session.viewpolicies.one(name=view_policy, fail_if_missing=True)
             if qos_policy:
                 qos_policy_id = self.session.quospolicies.one(name=qos_policy, fail_if_missing=True).id
-            else:
-                qos_policy_id = None
             view = self.create(
                 path=str(path),
                 protocols=protocols,
@@ -673,7 +671,13 @@ class Quota(VastResource):
     def ensure(self, volume_id, view_path, tenant_id, requested_capacity=None):
         if quota := self.one(path=view_path, tenant_id=tenant_id):
             # Check if volume with provided name but another capacity already exists.
-            if requested_capacity and quota.hard_limit != requested_capacity:
+            if (
+                requested_capacity
+                and
+                quota.hard_limit is not None
+                and
+                quota.hard_limit != requested_capacity
+            ):
                 raise Exception(
                     "Volume already exists with different capacity than requested "
                     f"({quota.hard_limit})")
