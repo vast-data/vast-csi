@@ -38,6 +38,7 @@ class FileSystemProvisionBase(BaseVolumeBuilder):
     vip_pool_name: Optional[str] = None
     vip_pool_fqdn: Optional[str] = None
     qos_policy: Optional[str] = None
+    qos_policy_id: Optional[int] = None
     capacity_range: Optional[int] = None  # Optional desired volume capacity
     pvc_name: Optional[str] = None
     pvc_namespace: Optional[str] = None
@@ -85,6 +86,10 @@ class FileSystemProvisionBase(BaseVolumeBuilder):
         volume_name_fmt = parameters.get("volume_name_fmt", conf.name_fmt)
         qos_policy = parameters.get("qos_policy")
         cluster_name = parameters.get("cluster_name")
+        if "qos_policy_id" in parameters:
+            qos_policy_id = int(parameters.get("qos_policy_id"))
+        else:
+            qos_policy_id = None
 
         return cls(
             vms_session=vms_session,
@@ -100,6 +105,7 @@ class FileSystemProvisionBase(BaseVolumeBuilder):
             vip_pool_name=vip_pool_name,
             vip_pool_fqdn=vip_pool_fqdn,
             qos_policy=qos_policy,
+            qos_policy_id=qos_policy_id,
             cluster_name=cluster_name,
             **cls._parse_metadata_from_params(parameters)
         )
@@ -125,6 +131,7 @@ class EmptyVolumeBuilder(FileSystemProvisionBase):
             protocols=[self.mount_protocol],
             view_policy=self.view_policy,
             qos_policy=self.qos_policy,
+            qos_policy_id=self.qos_policy_id,
         )
         quota = self.vms_session.quotas.ensure(
             volume_id=volume_name,
@@ -185,6 +192,7 @@ class VolumeFromVolumeBuilder(FileSystemProvisionBase):
             protocols=[self.mount_protocol],
             view_policy=self.view_policy,
             qos_policy=self.qos_policy,
+            qos_policy_id=self.qos_policy_id,
         )
         quota = self.vms_session.quotas.ensure(
             volume_id=volume_name,
@@ -241,7 +249,8 @@ class VolumeFromSnapshotBuilder(FileSystemProvisionBase):
                 path=self.view_path,
                 protocols=[self.mount_protocol],
                 view_policy=self.view_policy,
-                qos_policy=self.qos_policy
+                qos_policy=self.qos_policy,
+                qos_policy_id=self.qos_policy_id,
             )
             quota = self.vms_session.quotas.ensure(
                 volume_id=volume_name,
@@ -294,6 +303,7 @@ class StaticVolumeBuilder(BaseVolumeBuilder):
     vip_pool_name: Optional[str] = None
     vip_pool_fqdn: Optional[str] = None
     qos_policy: Optional[str] = None
+    qos_policy_id: Optional[int] = None
     capacity_range: Optional[int] = None  # Optional desired volume capacity
     pvc_name: Optional[str] = None
     pvc_namespace: Optional[str] = None
@@ -326,6 +336,11 @@ class StaticVolumeBuilder(BaseVolumeBuilder):
             capacity_range = Bunch(required_bytes=required_bytes)
         else:
             capacity_range = None
+        if "qos_policy_id" in parameters:
+            qos_policy_id = int(parameters.get("qos_policy_id"))
+        else:
+            qos_policy_id = None
+
         return cls(
             vms_session=vms_session,
             configuration=conf,
@@ -338,6 +353,7 @@ class StaticVolumeBuilder(BaseVolumeBuilder):
             vip_pool_name=vip_pool_name,
             vip_pool_fqdn=vip_pool_fqdn,
             qos_policy=qos_policy,
+            qos_policy_id=qos_policy_id,
             create_view=create_view,
             create_quota=create_quota,
             **cls._parse_metadata_from_params(parameters)
@@ -378,6 +394,7 @@ class StaticVolumeBuilder(BaseVolumeBuilder):
                 protocols=[self.mount_protocol],
                 view_policy=self.view_policy,
                 qos_policy=self.qos_policy,
+                qos_policy_id=self.qos_policy_id,
             )
         else:
             if not (view := self.vms_session.views.one(path=self.view_path)):
