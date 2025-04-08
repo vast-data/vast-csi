@@ -41,7 +41,7 @@
 
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
-provisioner: csi.vastdata.com
+provisioner: {{ include "vastcsi.csiDriver" $ }}
 metadata:
   name: {{ .Release.Name }}
   namespace: {{ include "vastcsi.namespace" $ }}

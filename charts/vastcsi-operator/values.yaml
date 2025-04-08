@@ -19,7 +19,7 @@ proxyImage: registry.redhat.io/openshift4/ose-kube-rbac-proxy@sha256:77df668a959
 suggestedNamespace: "vast-csi"
 
 # Operator documentation link
-operatorDocs: "https://support.vastdata.com/s/topic/0TOV400000018tBOAQ/vast-csi-driver"
+operatorDocs: "https://support.vastdata.com/s/article/UUID-1d8ba33a-43fc-ee6d-1331-de1aa54257c7"
 
 overrides:
   csiVastPlugin:

@@ -14,11 +14,6 @@
 - name: vms-auth
   secret:
     secretName: {{ required "secretName field must be specified" .Values.secretName | quote }}
-    items:
-    - key: username
-      path: username
-    - key: password
-      path: password
 {{- if $.ca_bundle }}
 - name: vms-ca-bundle
   secret:

@@ -66,6 +66,10 @@ truncateVolumeName: 64
 # http/https ports are not open.
 attachRequired: true
 
+# The name of the CSI driver registered with Kubernetes.
+# This value is used to identify the driver in CSI objects like VolumeAttachments and CSINodes.
+csiDriverName: csi.vastdata.com
+
 
 ####################
 # VAST CONTROLLER AND NODE IMAGE SPECIFICATION

@@ -1,9 +1,5 @@
 {{/* Generate one or more storage classes from 'storageClasses' section. */}}
 
-{{- if not .Values.storageClasses -}}
-  {{- fail "`storageClasses` cannot be empty section. Specify at least one StorageClass with required parameters (vipPolicy, storagePath etc)" -}}
-{{- end -}}
-
 {{/* Iterate over StorageClasses from manifest */}}
 {{- range $name, $options := .Values.storageClasses }}
 
@@ -50,7 +46,7 @@
 
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
-provisioner: csi.vastdata.com
+provisioner: {{ include "vastcsi.csiDriver" $ }}
 metadata:
   name: {{ required "A StorageClass name must be not empty" $name }}
   namespace: {{ include "vastcsi.namespace" $ }}

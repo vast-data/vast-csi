@@ -135,6 +135,10 @@ truncateVolumeName: 64
 # http/https ports are not open.
 attachRequired: true
 
+# The name of the CSI driver registered with Kubernetes.
+# This value is used to identify the driver in CSI objects like VolumeAttachments and CSINodes.
+csiDriverName: csi.vastdata.com
+
 ####################
 # VAST CSI SNAPSHOTS CLASS OPTIONS
 ####################
@@ -180,7 +184,7 @@ snapshotClasses: {}
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.5.0  # the version of the Vast CSI driver
+    tag: v2.6.0  # the version of the Vast CSI driver
     imagePullPolicy: IfNotPresent
   csiAttacher:
     repository: registry.k8s.io/sig-storage/csi-attacher
@@ -258,7 +262,7 @@ controller:
         memory: 20Mi
     csiResizer:
       limits:
-        memory: 200Mi
+        memory: 300Mi
       requests:
         cpu: 10m
         memory: 20Mi

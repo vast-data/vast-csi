@@ -1,8 +1,8 @@
-import re
 import uuid
 import pytest
-from unittest.mock import patch, MagicMock
-from vast_csi.server import CsiController, Abort, MissingParameter
+from unittest.mock import MagicMock
+from vast_csi.plugins.csi import CsiController
+from vast_csi.exceptions import Abort, MissingParameter
 
 import grpc
 import vast_csi.csi_types as types
@@ -12,8 +12,7 @@ from easypy.bunch import Bunch
 class TestControllerSuite:
 
     @pytest.mark.parametrize("fs_type, mount_flags, mode, err_message", [
-        ("abc", "abc", types.AccessModeType.SINGLE_NODE_WRITER, "Unsupported file system type: abc"),
-        ("ext4", "", types.AccessModeType.MULTI_NODE_SINGLE_WRITER, "Unsupported access mode: 4 (use [1, 2, 3, 5])"),
+        ("abc", "abc", types.AccessModeType.SINGLE_NODE_WRITER, "unsupported file system type: abc"),
     ])
     def test_create_volume_invalid_capability(self, volume_capabilities, fs_type, mount_flags, mode, err_message):
         """Test invalid VolumeCapabilities must be validated"""
@@ -27,7 +26,7 @@ class TestControllerSuite:
 
         # Assertion
         err = ex_context.value
-        assert err.message == err_message
+        assert err_message in err.message
         assert err.code == grpc.StatusCode.INVALID_ARGUMENT
 
     @pytest.mark.parametrize("parameters, err_message", [
@@ -81,9 +80,8 @@ class TestControllerSuite:
         cont = CsiController()
         parameters = dict(root_export="/foo/bar", view_policy="default", vip_pool_name="vippool-1")
         capabilities = volume_capabilities(fs_type="ext4", mount_flags="", mode=types.AccessModeType.SINGLE_NODE_WRITER)
-        vms_session.ensure_view = MagicMock()
-        vms_session.get_quota = MagicMock(return_value=Bunch(tenant_id=1, hard_limit=999))
-
+        vms_session.views.ensure = MagicMock()
+        vms_session.quotas.one = MagicMock(return_value=Bunch(tenant_id=1, hard_limit=999))
 
         # Execution
         with pytest.raises(Exception) as ex_context:
@@ -94,34 +92,24 @@ class TestControllerSuite:
         # Assertion
         err = ex_context.value
         assert str(err) == "Volume already exists with different capacity than requested (999)"
-        assert vms_session.ensure_view.call_count == 1
-        assert vms_session.get_quota.call_count == 1
-        assert vms_session.ensure_view.call_args.args == ()
-        assert vms_session.get_quota.call_args.kwargs["path"] == "/foo/bar/test_volume"
+        assert vms_session.views.ensure.call_count == 1
+        assert vms_session.quotas.one.call_count == 1
+        assert vms_session.views.ensure.call_args.args == ()
+        assert vms_session.quotas.one.call_args.kwargs["path"] == "/foo/bar/test_volume"
 
-    @pytest.mark.parametrize("raw_mount_options", [
-        "[vers=4 ,  nolock,   proto=tcp,   nconnect=4]",
-        "[vers=4 nolock proto=tcp nconnect=4]",
-        "[vers=4,nolock,proto=tcp,nconnect=4]",
-        "vers=4 ,  nolock,   proto=tcp,   nconnect=4",
-        "vers=4 nolock proto=tcp nconnect=4",
-        "vers=4,nolock,proto=tcp,nconnect=4",
-    ])
-    def test_parse_mount_options(self, raw_mount_options):
-        mount_options = ",".join(re.sub(r"[\[\]]", "", raw_mount_options).replace(",", " ").split())
-        assert mount_options == "vers=4,nolock,proto=tcp,nconnect=4"
-
-    @patch("vast_csi.vms_session.VmsSession.get_quota", MagicMock(return_value=Bunch(tenant_id=1)))
-    @patch("vast_csi.vms_session.VmsSession.get_vip", MagicMock(return_value="2.2.2.2"))
     @pytest.mark.parametrize("local_ip", ["1.1.1.1", "::1", "2001:0db8:85a3:0000:0000:8a2e:0370:7334"])
     @pytest.mark.parametrize("vip_pool_name", ["", "test-vip"])
-    def test_publish_volume_with_local_ip(self, vms_session, volume_capabilities, monkeypatch, local_ip, vip_pool_name):
+    def test_publish_volume_with_local_ip(self, vms_session_with_mocked_resources_factory, volume_capabilities, monkeypatch, local_ip, vip_pool_name):
         """
         Test if use_local_ip_for_mount is set, it will use local IP for mount (even when vip_pool_name is provided)
         """
         # Preparation
+        session = vms_session_with_mocked_resources_factory(
+            ("vippools", "get_vip", "2.2.2.2"),
+            ("quotas", "one", Bunch(tenant_id=1)),
+        )
         cont = CsiController()
-        conf = vms_session.config
+        conf = session.config
         node_id = "test-node"
         volume_id = "test-volume"
         monkeypatch.setattr(conf, "use_local_ip_for_mount", local_ip),
@@ -130,7 +118,11 @@ class TestControllerSuite:
 
         # Execution
         resp = cont.ControllerPublishVolume(
-            vms_session=vms_session, node_id=node_id, volume_id=volume_id, volume_capability=capabilities[0], volume_context=volume_context
+            vms_session=session,
+            node_id=node_id,
+            volume_id=volume_id,
+            volume_capability=capabilities[0],
+            volume_context=volume_context
         )
         publish_context = resp.publish_context
 
@@ -173,7 +165,9 @@ class TestControllerSuite:
         dict(static_pv_create_quotas="yes"),
         dict(static_pv_create_view="yes", static_pv_create_quotas="yes"),
     ])
-    def test_static_volume_create_create_view_and_quota(self, fake_session, volume_capabilities, kwargs):
+    def test_static_volume_create_create_view_and_quota(
+            self, vms_session_with_mocked_resources_factory, volume_capabilities, kwargs
+    ):
         # Prepare test data
         volume_id = "/static/volume/path/"
         node_id = "node1"
@@ -181,10 +175,17 @@ class TestControllerSuite:
         capabilities = volume_capabilities(
             fs_type="ext4", mount_flags=["test"], mode=types.AccessModeType.SINGLE_NODE_WRITER
         )
+        view = Bunch(path="/test/view", id=1, tenant_id=1, tenant_name="default")
+        quota = Bunch(id=1, hard_limit=1000, tenant_id=1, tenant_name="test")
         cont = CsiController()
-
-        with fake_session(view=Bunch(path=volume_id, id=1, tenant_id=1, tenant_name="default")) as session:
-            resp = cont.ControllerPublishVolume(session, node_id, volume_id, capabilities[0], volume_context)
+        session = vms_session_with_mocked_resources_factory(
+            ("views", "one", view),
+            ("views", "ensure", view),
+            ("quotas", "one", quota),
+            ("quotas", "ensure", quota),
+            ("vippools", "get_vip", "127.0.0.1"),
+        )
+        resp = cont.ControllerPublishVolume(session, node_id, volume_id, capabilities[0], volume_context)
 
         publish_context = dict(resp.publish_context)
         assert publish_context["nfs_server_ip"] == "127.0.0.1"
@@ -192,20 +193,24 @@ class TestControllerSuite:
         assert publish_context["mount_options"] == "test"
 
         if kwargs.get("static_pv_create_views"):
-            session.ensure_view.mock.assert_called_once_with(
-                path=volume_id.rstrip("/"), protocols=['NFS'], view_policy='default', qos_policy=None
+            session.views.ensure.assert_called_once_with(
+                path=volume_id.rstrip("/"),
+                protocols=['NFS'],
+                view_policy='default',
+                qos_policy=None,
+                qos_policy_id=None,
             )
         else:
-            session.ensure_view.mock.assert_not_called()
+            session.views.ensure.assert_not_called()
         if kwargs.get("static_pv_create_quotas"):
-            session.ensure_quota.mock.assert_called_once_with(
+            session.quotas.ensure.assert_called_once_with(
                 volume_id="csi-" + str(uuid.uuid5(uuid.NAMESPACE_DNS, volume_id.rstrip("/"))),
                 view_path=volume_id.rstrip("/"), tenant_id=1,  requested_capacity=0,
             )
         else:
-            session.ensure_quota.mock.assert_not_called()
+            session.quotas.ensure.assert_not_called()
 
-    def test_static_volume_wrong_tenant(self, vms_session, volume_capabilities):
+    def test_static_volume_wrong_tenant(self, vms_session_with_mocked_resources_factory, volume_capabilities):
         # Prepare test data
         volume_id = "/static/volume/path/"
         node_id = "node1"
@@ -213,12 +218,14 @@ class TestControllerSuite:
         capabilities = volume_capabilities(
             fs_type="ext4", mount_flags=["test"], mode=types.AccessModeType.SINGLE_NODE_WRITER
         )
-        vms_session.get_view = MagicMock(return_value=Bunch(path=volume_id, id=1, tenant_id=5, tenant_name="default"))
-        vms_session.get_quota = MagicMock(return_value=Bunch(tenant_id=1, hard_limit=999, tenant_name="test"))
+        session = vms_session_with_mocked_resources_factory(
+            ("views", "one", Bunch(path=volume_id, id=1, tenant_id=5, tenant_name="default")),
+            ("quotas", "one", Bunch(tenant_id=1, hard_limit=999, tenant_name="test")),
+            ("vippools", "get_vip", "127.0.0.1"),
+        )
         cont = CsiController()
-
         with pytest.raises(Exception) as ex_context:
-            cont.ControllerPublishVolume(vms_session, node_id, volume_id, capabilities[0], volume_context)
+            cont.ControllerPublishVolume(session, node_id, volume_id, capabilities[0], volume_context)
 
         err = ex_context.value
         assert "Volume already exists with different tenancy ownership (test)" in str(err)

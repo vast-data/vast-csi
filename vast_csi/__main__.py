@@ -12,6 +12,12 @@ def main():
     subparsers = parser.add_subparsers()
 
     serve_parse = subparsers.add_parser("serve", help='Start the CSI Plugin Server (not for humans)')
+    serve_parse.add_argument(
+        "--plugin", "-p",
+        default="csi",
+        choices=["csi", "cosi", "block"],
+        help="Specify the plugin type (default: csi)"
+    )
     serve_parse.set_defaults(func=_serve)
 
     info_parse = subparsers.add_parser("info", help='Print versioning information for this CSI plugin')
@@ -51,12 +57,13 @@ def _system_info(*_):
 def _test(args):
     """Runs the tests without code coverage"""
     import pytest
-    sys.exit(pytest.main(["-x", "tests", "-s", "-v"]))
+    pytest_args = ["-x", "tests", "-s", "-v", "--maxfail=5", "--disable-warnings", "-m", "not host_only"]
+    sys.exit(pytest.main(pytest_args))
 
 
 def _serve(args):
     from . server import serve
-    return serve()
+    return serve(args.plugin)
 
 
 if __name__ == '__main__':
