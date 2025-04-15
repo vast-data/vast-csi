@@ -30,6 +30,43 @@ def is_native_multipath_enabled():
     except Exception:
         return False
 
+def is_luks_device(device_path: str) -> bool:
+    """
+    Check if the given device is a LUKS-encrypted volume.
+
+    Args:
+        device_path (str): The path to the block device.
+
+    Returns:
+        bool: True if the device is LUKS, False otherwise.
+    """
+    try:
+        run(["cryptsetup", "isLuks", device_path])
+        return True
+    except ProcessExecutionError:
+        return False
+
+def is_crypto_luks(device_path):
+    """
+    Determines whether the given device is a LUKS-encrypted block device.
+
+    Args:
+        device_path (str): The path to the block device (e.g., /dev/nvme0n1).
+
+    Returns:
+        bool: True if the device is using LUKS encryption (FSTYPE is crypto_LUKS), False otherwise.
+    """
+    try:
+        result = subprocess.run(
+            ['lsblk', '-no', 'FSTYPE', device_path],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True
+        )
+        return result.stdout.strip() == 'crypto_LUKS'
+    except subprocess.CalledProcessError:
+        return False
 
 def list_nvme_sessions():
     """

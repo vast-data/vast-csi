@@ -68,6 +68,7 @@ class Instrumented:
             params = {fld.name: value for fld, value in request.ListFields()}
             # secrets are not logged and not the part of function signature.
             secrets = params.pop("secrets", {})
+            volume_secret = params.pop("volume_secret", {})
             missing_params = required_params - {"request", "context", "vms_session", "exit_stack"} - set(params)
 
             # Get cluster_name from volume_id, snapshot_id or source_volume_id in case of id identifier with metadata
@@ -93,6 +94,9 @@ class Instrumented:
                 for line in stringify_dict(params):
                     log(f"({method})    {line}")
 
+            if volume_secret:
+                log(f"({method})    volume_secret: <redacted>")
+
             if "vms_session" in required_params:
                 # If secret exist and method signature requires `vms_session`
                 # then `vms_session` with secret will be injected into function parameters
@@ -103,6 +107,12 @@ class Instrumented:
                     params["vms_session"] = get_vms_session(**{k: secrets.get(k) for k in vms_session_args})
                 except LookupFieldError:
                     params["vms_session"] = None
+
+            if "volume_secret" in required_params:
+                params["volume_secret"] = volume_secret
+            elif "volume_secret" in non_required_params:
+                if volume_secret:
+                    params["volume_secret"] = volume_secret
 
             exit_stack = ExitStack()
             if "exit_stack" in required_params:

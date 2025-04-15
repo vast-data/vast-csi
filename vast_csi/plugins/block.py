@@ -53,6 +53,8 @@ from vast_csi.block_utils import (
     try_nvme_probes,
     change_io_policy,
     is_native_multipath_enabled,
+    is_luks_device,
+    is_luks_crypto,
 )
 from vast_csi.utils import (
     stringify_dict,
@@ -316,6 +318,7 @@ class BlockController(ControllerBase, Instrumented):
         )
         vip_pool_name = volume_context.get("vip_pool_name")
         vip_pool_fqdn = volume_context.get("vip_pool_fqdn")
+        volume_encryption = volume_context.get("volume_encryption")
         if vip_pool_fqdn:
             discovery_server = vip_pool_fqdn
             if volume_context.get("vip_pool_fqdn_random_prefix"):
@@ -335,6 +338,7 @@ class BlockController(ControllerBase, Instrumented):
                 host_nqn=blockhost.nqn,
                 nguid=nguid,
                 discovery_server=discovery_server,
+                volume_encryption=volume_encryption
             )
         return types.CtrlPublishResp(publish_context=publish_context)
 
@@ -432,6 +436,7 @@ class BlockNode(NodeBase, Instrumented):
             vms_session=None,
             publish_context=None,
             volume_context=None,
+            volume_secret=None,
     ):
         exit_stack.enter_context(volume_locked(volume_id))
         volume_context = volume_context or dict()
@@ -456,6 +461,7 @@ class BlockNode(NodeBase, Instrumented):
         host_nqn = publish_context["host_nqn"]
         nguid = publish_context["nguid"]
         discovery_server = publish_context["discovery_server"]  # Either vip pool ip or fqdn
+        volume_encryption = publish_context["volume_encryption"]
         need_resize = volume_context.get("need_resize", False)
 
         if nvme_session := get_connected_session(host_nqn=host_nqn, sybsystem_nqn=subsystem_nqn):
@@ -484,6 +490,37 @@ class BlockNode(NodeBase, Instrumented):
 
         device_path = device.DevicePath
         change_io_policy(device_name=device.Name, io_policy="round-robin")
+
+        if volume_encryption:
+            luks_device_name = f"crypt-{volume_id}"
+            luks_device_path = f"/dev/mapper/{luks_device_name}"
+
+            if volume_secret:
+                passphrase = volume_secret.get("passphrase")
+                if not passphrase:
+                    raise Abort(INVALID_ARGUMENT, "Missing passphrase for encrypted volume")
+            else:
+                raise Abort(INVALID_ARGUMENT, "Volume encryption detected, but 'volume_secret' not provided. Please provide a passphrase for the encrypted volume.")
+
+            if not os.path.exists(luks_device_path):
+                is_luks = is_luks_device() and is_luks_crypto()
+
+                if not is_luks:
+                    logger.info(f"Formatting device {device_path} with LUKS")
+                    try:
+                        hostcmd.run(["cryptsetup", "luksFormat", "--batch-mode", device_path], input=passphrase.encode())
+                    except ProcessExecutionError as e:
+                        raise Abort(INTERNAL, f"LUKS format failed for {device_path}: {e.stderr.strip()}")
+
+                logger.info(f"Opening encrypted device {device_path} as {luks_device_name}")
+                try:
+                    hostcmd.run(["cryptsetup", "open", device_path, luks_device_name], input=passphrase.encode())
+                except ProcessExecutionError as e:
+                    raise Abort(INTERNAL, f"Failed to open LUKS device {device_path}: {e.stderr.strip()}")
+            else:
+                logger.info(f"LUKS device already opened at {luks_device_path}")
+
+            device_path = luks_device_path
 
         if volume_capabilities.is_filesystem:
             fs_type = volume_capabilities.fs_type
