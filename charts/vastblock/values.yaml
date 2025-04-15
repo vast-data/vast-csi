@@ -58,6 +58,21 @@ storageClassDefaults:
   # can represent nested folder structures. For example:
   #   - "folder1/folder2/block-{namespace}-{id}
   volumeGroup: ""
+  # Enables encryption using LUKS on the device on the client side.
+  # If set to true, the CSI driver will expect a volume-specific secret to be provided
+  # with the encryption passphrase.
+  # This secret must be referenced in the StorageClass with the keys:
+  #   csi.storage.k8s.io/volume-secret-name: <secret-name>
+  #   csi.storage.k8s.io/volume-secret-namespace: <namespace>
+
+  # Example Kubernetes Secret for volume encryption:
+  #     kubectl create secret generic volume-secret-namespace \
+  #     --from-literal=passphrase='my-secret-pass'
+
+  # Ensure the StorageClass has the following parameters set when volume_encryption is true:
+  #   csi.storage.k8s.io/volume-secret-name: volume-secret
+  #   csi.storage.k8s.io/volume-secret-namespace: default
+  volume_encryption: true
   # Name of VAST VIP pool to use. Must specify either vipPool or vipPoolFQDN.
   vipPool: ""
   # The FQDN of the VIP pool to use. Must specify either vipPool or vipPoolFQDN.
