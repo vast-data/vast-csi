@@ -479,6 +479,37 @@ class BlockNode(NodeBase, Instrumented):
         device_path = device.DevicePath
         change_io_policy(device_name=device.Name, io_policy="round-robin")
 
+        luks_device_name = f"crypt-{volume_id}"
+        luks_device_path = f"/dev/mapper/{luks_device_name}"
+
+        # Needs to be fetched from KMS or k8 secret
+        # JUST for Testing purposes for now
+        passphrase = "testencryption"
+
+        if not os.path.exists(luks_device_path):
+            try:
+                hostcmd.run(["cryptsetup", "isLuks", device_path])
+                is_luks = True
+            except ProcessExecutionError:
+                is_luks = False
+
+            if not is_luks:
+                logger.info(f"Formatting device {device_path} with LUKS")
+                try:
+                    hostcmd.run(["cryptsetup", "luksFormat", "--batch-mode", device_path], input=passphrase.encode())
+                except ProcessExecutionError as e:
+                    raise Abort(INTERNAL, f"LUKS format failed for {device_path}: {e.stderr.strip()}")
+
+            logger.info(f"Opening encrypted device {device_path} as {luks_device_name}")
+            try:
+                hostcmd.run(["cryptsetup", "open", device_path, luks_device_name], input=passphrase.encode())
+            except ProcessExecutionError as e:
+                raise Abort(INTERNAL, f"Failed to open LUKS device {device_path}: {e.stderr.strip()}")
+        else:
+            logger.info(f"LUKS device already opened at {luks_device_path}")
+
+        device_path = luks_device_path
+
         if volume_capabilities.is_filesystem:
             fs_type = volume_capabilities.fs_type
             formatted = format_device(requested_fs=fs_type, device=device_path)
