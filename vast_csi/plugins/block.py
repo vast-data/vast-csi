@@ -25,6 +25,7 @@ from easypy.caching import cached_property
 from vast_csi.logging import logger
 from vast_csi.proto import csi_pb2_grpc as csi_grpc
 from vast_csi import csi_types as types
+from vast_csi.luks_utils import LuksManager, isHostCryptPath
 from vast_csi.csi_types import (
     INVALID_ARGUMENT,
     ALREADY_EXISTS,
@@ -53,8 +54,6 @@ from vast_csi.block_utils import (
     try_nvme_probes,
     change_io_policy,
     is_native_multipath_enabled,
-    is_luks_device,
-    is_luks_crypto,
 )
 from vast_csi.utils import (
     stringify_dict,
@@ -304,6 +303,7 @@ class BlockController(ControllerBase, Instrumented):
         transport_type = volume_context["transport_type"]
         vol_id = int(volume_context["volume_id"])
         tenant_name = volume_context["tenant_name"]
+        host_encryption = volume_context.get("host_encryption", False)
         blockhost = vms_session.blockhosts.ensure(
             node_id=node_id,
             tenant_name=tenant_name,
@@ -315,7 +315,6 @@ class BlockController(ControllerBase, Instrumented):
         )
         vip_pool_name = volume_context.get("vip_pool_name")
         vip_pool_fqdn = volume_context.get("vip_pool_fqdn")
-        volume_encryption = volume_context.get("volume_encryption")
         if vip_pool_fqdn:
             discovery_server = vip_pool_fqdn
         elif vip_pool_name:
@@ -332,8 +331,12 @@ class BlockController(ControllerBase, Instrumented):
                 host_nqn=blockhost.nqn,
                 nguid=nguid,
                 discovery_server=discovery_server,
-                volume_encryption=volume_encryption
             )
+
+        if isinstance(host_encryption, dict):
+            for k, v in host_encryption.items():
+                publish_context[f"host_encryption.{k}"] = str(v)
+
         return types.CtrlPublishResp(publish_context=publish_context)
 
     def ControllerUnpublishVolume(self, vms_session, node_id, volume_id):
@@ -430,7 +433,6 @@ class BlockNode(NodeBase, Instrumented):
             vms_session=None,
             publish_context=None,
             volume_context=None,
-            volume_secret=None,
     ):
         exit_stack.enter_context(volume_locked(volume_id))
         volume_context = volume_context or dict()
@@ -455,7 +457,6 @@ class BlockNode(NodeBase, Instrumented):
         host_nqn = publish_context["host_nqn"]
         nguid = publish_context["nguid"]
         discovery_server = publish_context["discovery_server"]  # Either vip pool ip or fqdn
-        volume_encryption = publish_context["volume_encryption"]
         need_resize = volume_context.get("need_resize", False)
 
         if nvme_session := get_connected_session(host_nqn=host_nqn, sybsystem_nqn=subsystem_nqn):
@@ -485,36 +486,15 @@ class BlockNode(NodeBase, Instrumented):
         device_path = device.DevicePath
         change_io_policy(device_name=device.Name, io_policy="round-robin")
 
-        if volume_encryption:
-            luks_device_name = f"crypt-{volume_id}"
-            luks_device_path = f"/dev/mapper/{luks_device_name}"
+        host_encryption_present = any(key.startswith("host_encryption.") for key in volume_context)
+        passphrase = getattr(vms_session, "passphrase", None)
+        if host_encryption_present:
+            if not passphrase:
+                raise Abort(INVALID_ARGUMENT, "Host encryption detected, but 'host_encryption_secret' not provided. Please provide a passphrase for the encrypted volume.")
 
-            if volume_secret:
-                passphrase = volume_secret.get("passphrase")
-                if not passphrase:
-                    raise Abort(INVALID_ARGUMENT, "Missing passphrase for encrypted volume")
-            else:
-                raise Abort(INVALID_ARGUMENT, "Volume encryption detected, but 'volume_secret' not provided. Please provide a passphrase for the encrypted volume.")
-
-            if not os.path.exists(luks_device_path):
-                is_luks = is_luks_device() and is_luks_crypto()
-
-                if not is_luks:
-                    logger.info(f"Formatting device {device_path} with LUKS")
-                    try:
-                        hostcmd.run(["cryptsetup", "luksFormat", "--batch-mode", device_path], input=passphrase.encode())
-                    except ProcessExecutionError as e:
-                        raise Abort(INTERNAL, f"LUKS format failed for {device_path}: {e.stderr.strip()}")
-
-                logger.info(f"Opening encrypted device {device_path} as {luks_device_name}")
-                try:
-                    hostcmd.run(["cryptsetup", "open", device_path, luks_device_name], input=passphrase.encode())
-                except ProcessExecutionError as e:
-                    raise Abort(INTERNAL, f"Failed to open LUKS device {device_path}: {e.stderr.strip()}")
-            else:
-                logger.info(f"LUKS device already opened at {luks_device_path}")
-
-            device_path = luks_device_path
+            luks_manager = LuksManager(logger, volume_id, device_path, volume_context)
+            luks_manager.init_host_encryption(passphrase=passphrase)
+            device_path = luks_manager.luks_device_path
 
         if volume_capabilities.is_filesystem:
             fs_type = volume_capabilities.fs_type
@@ -531,7 +511,7 @@ class BlockNode(NodeBase, Instrumented):
                 with temporary_mount(
                         src=device_path, tgt_dir=staging_target_path, fs_type=fs_type
                 ) as temp_mount:
-                    resize_device(device=device_path, target_mount=temp_mount, fs_type=fs_type)
+                    resize_device(device=device_path, target_mount=temp_mount, fs_type=fs_type, passphrase=passphrase)
 
         logger.info(f"Binding device at {device_path} to {device_bind_path}.")
         device_bind_path.open("a").close()
@@ -542,6 +522,7 @@ class BlockNode(NodeBase, Instrumented):
         staging_target_path = local.path(staging_target_path)
         device_bind_path = get_device_bind_path(staging_target_path)
         staging_mount, target_mounts = MountInfo.get_mounts_by_source(src=device_bind_path)
+
         if target_mounts:
             targets_mount_points = ", ".join(mount.mount_point for mount in target_mounts)
             logger.info(f"Staging path {device_bind_path} is being used by {targets_mount_points} targets.")
@@ -550,6 +531,11 @@ class BlockNode(NodeBase, Instrumented):
             umount_safe(device_bind_path)
         else:
             logger.info(f"Device not found at {device_bind_path}")
+
+        # If device is encrypted teardown accordingly
+        if isHostCryptPath(device_bind_path, volume_id):
+            with LuksManager(logger, volume_id) as lm:
+                lm.fini_host_encryption()
         remove_path_if_not_mounted(device_bind_path)
         return types.UnstageResp()
 
@@ -574,6 +560,7 @@ class BlockNode(NodeBase, Instrumented):
 
         volume_capabilities = _validate_capabilities(volume_capability, volume_context, publish_context)
         is_ephemeral = volume_context.get("csi.storage.k8s.io/ephemeral") == "true"
+        host_encryption_present = any(key.startswith("host_encryption.") for key in volume_context)
         if is_ephemeral:
             if not vms_session:
                 raise Exception(
@@ -629,7 +616,7 @@ class BlockNode(NodeBase, Instrumented):
                 meta_file=meta_file,
                 volume_id=volume_id,
                 is_ephemeral=is_ephemeral,
-                vms_session=vms_session
+                vms_session=vms_session,
             )
             try:
                 mount(src=device_bind_path, tgt=target_path, flags=mount_flags, fs_type=fs_type)

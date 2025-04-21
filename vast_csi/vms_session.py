@@ -132,12 +132,13 @@ def _derive_key(salt):
 
 
 @locking_cache
-def get_vms_session(username=None, password=None, endpoint=None, ssl_cert=None, cluster_name=None):
+def get_vms_session(username=None, password=None, endpoint=None, ssl_cert=None, cluster_name=None, passphrase=None):
     config = Config()
     session_cls = TestVmsSession if config.mock_vast else VmsSession
     return session_cls.create(
         config=config, username=username, password=password,
         endpoint=endpoint, ssl_cert=ssl_cert, cluster_name=cluster_name,
+        passphrase=passphrase,
     )
 
 
@@ -216,13 +217,14 @@ class VmsSession(RESTSession):
     Communication with vms cluster.
     Operations over vip pools, quotas, snapshots etc.
     """
-    def __init__(self, config, username, password, endpoint, ssl_cert):
+    def __init__(self, config, username, password, endpoint, ssl_cert, passphrase=None):
         super().__init__(config)
         self.username = username
         self.password = password
         self.endpoint = endpoint
         self.ssl_cert = ssl_cert
         self.base_url = f"https://{endpoint}/api"
+        self.passphrase = passphrase
         # Modify the SSL verification CA bundle path established
         # by the underlying Certifi library's defaults if ssl_verify==True.
         certs_base_dir = "/etc/ssl/certs"
@@ -258,7 +260,7 @@ class VmsSession(RESTSession):
         self.blockhostmappings = BlockHostMapping(self)
 
     def serialize(self, salt: str):
-        session_data = pickle.dumps((self.username, self.password, self.endpoint, self.ssl_cert))
+        session_data = pickle.dumps((self.username, self.password, self.endpoint, self.ssl_cert, self.passphrase))
         iv = os.urandom(16)
         key = _derive_key(salt)
         cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
@@ -280,10 +282,10 @@ class VmsSession(RESTSession):
         # Decrypt the data
         plainbytes = decryptor.update(ciphertext) + decryptor.finalize()
         username, password, endpoint, ssl_cert = pickle.loads(plainbytes)
-        return get_vms_session(username=username, password=password, endpoint=endpoint, ssl_cert=ssl_cert)
+        return get_vms_session(username=username, password=password, endpoint=endpoint, ssl_cert=ssl_cert, passphrase=passphrase)
 
     @classmethod
-    def create(cls, config, username, password, endpoint, ssl_cert, cluster_name):
+    def create(cls, config, username, password, endpoint, ssl_cert, cluster_name, passphrase=None):
         """
         Creates an instance of the session, initializing credentials based on provided arguments or configuration context.
 
@@ -330,6 +332,7 @@ class VmsSession(RESTSession):
             username = cluster_auth_config.username
             password = cluster_auth_config.password
             endpoint = cluster_auth_config.endpoint
+            passphrase = cluster_auth_config.passphrase
             config_source = f"multi-cluster auth configuration ({cluster_name=})"
         else:
             # The presence of the name in the arguments already indicates
@@ -340,6 +343,7 @@ class VmsSession(RESTSession):
                 username = config.vms_user
                 password = config.vms_password
                 endpoint = config.vms_host
+                passphrase = config.passphrase
                 if not endpoint:
                     raise LookupFieldError(field="endpoint", tip="Make sure endpoint is specified in values.yaml.")
             if not username:
@@ -350,7 +354,7 @@ class VmsSession(RESTSession):
                 raise LookupFieldError(field="endpoint",  tip="Make sure endpoint is present in secret.")
             config_source = "mounted credentials (global secret)" if is_global else "StorageClass secret"
 
-        session = cls(config, username, password, endpoint, ssl_cert)
+        session = cls(config, username, password, endpoint, ssl_cert, passphrase)
         ssl_verification = "enabled" if session.ssl_verify else "disabled"
         logger.info(f"VMS session has been instantiated from {config_source}. SSL verification {ssl_verification}.")
         return session
