@@ -27,7 +27,6 @@
 
 {{- $tenant_name := pluck "tenantName" $options $.Values.storageClassDefaults | first | quote -}}
 {{- $volume_group := pluck "volumeGroup" $options $.Values.storageClassDefaults | first | quote -}}
-{{- $volume_encryption := pluck "volumeEncryption" $options $.Values.storageClassDefaults | first | quote -}}
 {{- $mount_options :=  pluck "mountOptions" $options $.Values.storageClassDefaults | first -}}
 {{- $reclaim_policy :=  pluck "reclaimPolicy" $options $.Values.storageClassDefaults | first | quote -}}
 {{-
@@ -40,7 +39,7 @@
 {{- $storage_class_secret_namespace := pluck "secretNamespace" $options $.Values.storageClassDefaults | first | default $.Release.Namespace | quote -}}
 {{- $fstype := pluck "fsType" $options $.Values.storageClassDefaults | first -}}
 {{- $transport_type := pluck "transportType" $options $.Values.storageClassDefaults | first -}}
-
+{{- $host_encryption := pluck "host_encryption" $options $.Values.storageClassDefaults | first | default dict -}}
 
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
@@ -55,10 +54,13 @@ metadata:
 reclaimPolicy: {{ $reclaim_policy }}
 parameters:
   subsystem: {{ $subsystem }}
-{{- range $key, $value := dict "vip_pool_name" $vip_pool_name "vip_pool_fqdn" $vip_pool_fqdn "volume_group" $volume_group "transport_type" $transport_type "fsType" $fstype "tenant_name" $tenant_name "vip_pool_fqdn_random_prefix" $vip_pool_fqdn_random_prefix  "volume_encryption" $volume_encryption }}
+{{- range $key, $value := dict "vip_pool_name" $vip_pool_name "vip_pool_fqdn" $vip_pool_fqdn "volume_group" $volume_group "transport_type" $transport_type "fsType" $fstype "tenant_name" $tenant_name "vip_pool_fqdn_random_prefix" $vip_pool_fqdn_random_prefix }}
   {{- if and $value (ne $value ( quote "" )) }}
   {{ $key }}: {{ if (kindIs "int" $value) }}{{ $value | quote }}{{ else }}{{ $value }}{{ end }}
   {{- end }}
+{{- end }}
+{{- if $host_encryption }}
+{{- include "vastcsi.dictToYaml" (list $host_encryption "host_encryption.") | indent 2 }}
 {{- end }}
 {{-  if ne $storage_class_secret ( quote "" ) }}
   csi.storage.k8s.io/provisioner-secret-name: {{ $storage_class_secret }}

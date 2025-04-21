@@ -9,10 +9,10 @@ parameters:
   csi.storage.k8s.io/controller-publish-secret-namespace: default
   csi.storage.k8s.io/provisioner-secret-name: vast-mgmt
   csi.storage.k8s.io/provisioner-secret-namespace: default
+  csi.storage.k8s.io/node-stage-secret-name: vast-mgmt
+  csi.storage.k8s.io/node-stage-secret-namespace: default
   subsystem: myblock
-  vip_pool_name: vip1
+  vip_pool_name: vippool-1
   transport_type: TCP
-  volume_encryption: "true"
-  csi.storage.k8s.io/volume-secret-name: volume-secret
-  csi.storage.k8s.io/volume-secret-namespace: default
+  host_encryption: '{"luks_type":"luks2","cipher":"aes-xts-plain64"}'
 provisioner: block.csi.vastdata.com
