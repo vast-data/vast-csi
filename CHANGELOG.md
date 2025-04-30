@@ -3,6 +3,10 @@
 ## Version 2.6.0
 * Block CSI Driver (VCSI-193)
 
+## Version 2.5.1
+* Custom driver name
+* Allow optional qos_policy_id storage class argument (unsupported via helm) (VCSI-226)
+
 ## Version 2.5.0
 * CSI driver operator (VCSI-173)
 * Allow using VIPPool DNS name instead of the CSI choosing IPs (VCSI-167)
