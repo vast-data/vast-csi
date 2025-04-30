@@ -40,6 +40,25 @@ entries:
     - https://github.com/vast-data/vast-csi/releases/download/helm-vastcosi-2.6.0/vastcosi-2.6.0.tgz
     version: 2.6.0
   - apiVersion: v2
+    created: "2025-04-30T11:37:11.501799632Z"
+    description: Helm chart for Deployment of VAST Container Object Storage Interface
+      (COSI)
+    digest: 9468891304e2c01f53288c1c210fd9d248aafea7ebc6bb990dd8e401b2eab722
+    home: https://support.vastdata.com/s/topic/0TOV400000026yzOAA/vast-csi-driver
+    icon: https://uploads.vastdata.com/2020/04/vast-white-1.svg
+    keywords:
+    - vast
+    - csi
+    - driver
+    - vastdata
+    - cosi
+    - cosi-driver
+    name: vastcosi
+    type: application
+    urls:
+    - https://github.com/vast-data/vast-csi/releases/download/helm-vastcosi-2.5.1/vastcosi-2.5.1.tgz
+    version: 2.5.1
+  - apiVersion: v2
     created: "2024-10-23T10:11:05.508744089Z"
     description: Helm chart for Deployment of VAST Container Object Storage Interface
       (COSI)
@@ -152,6 +171,23 @@ entries:
     urls:
     - https://github.com/vast-data/vast-csi/releases/download/helm-vastcsi-2.6.0/vastcsi-2.6.0.tgz
     version: 2.6.0
+  - apiVersion: v2
+    created: "2025-04-30T11:37:11.627973786Z"
+    description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
+    digest: 5ef41b509efc47035332cf920588b3478a09a1fdb3e22326726fdc3c3dda0b79
+    home: https://support.vastdata.com/s/topic/0TOV400000026yzOAA/vast-csi-driver
+    icon: https://uploads.vastdata.com/2020/04/vast-white-1.svg
+    keywords:
+    - vast
+    - csi
+    - driver
+    - vastdata
+    - csi-driver
+    name: vastcsi
+    type: application
+    urls:
+    - https://github.com/vast-data/vast-csi/releases/download/helm-vastcsi-2.5.1/vastcsi-2.5.1.tgz
+    version: 2.5.1
   - apiVersion: v2
     created: "2024-10-23T10:11:05.61884993Z"
     description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
@@ -395,4 +431,4 @@ entries:
     urls:
     - https://github.com/vast-data/vast-csi/releases/download/helm-vastcsi-operator-2.5.0/vastcsi-operator-2.5.0.tgz
     version: 2.5.0
-generated: "2025-04-08T14:13:59.982195846Z"
+generated: "2025-04-30T11:37:11.628181956Z"
