@@ -15,6 +15,7 @@ from .exceptions import LookupFieldError
 from easypy.caching import cached_property
 from easypy.timing import Timer
 from easypy.units import HOUR
+from easypy.bunch import Bunch
 
 
 class Config(TypedEnv):
@@ -75,6 +76,20 @@ class Config(TypedEnv):
                 tip="Make sure password is present in global VMS credentials secret"
             )
         return self.vms_credentials_store['password'].read().strip()
+
+    @cached_property
+    def cluster_credentials(self):
+        """Read multi-cluster auth configuration from the secret"""
+        import yaml
+
+        if not self.vms_credentials_store['clusters'].exists():
+            raise LookupFieldError(
+                field="clusters",
+                tip="Make sure multiClusterSecretName "
+                    "is specified and contains the required 'clusters' yaml specification"
+            )
+        with self.vms_credentials_store['clusters'].open() as f:
+            return Bunch.from_dict(yaml.safe_load(f))
 
     @property
     def mount_options(self):

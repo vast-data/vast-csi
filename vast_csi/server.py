@@ -22,6 +22,8 @@ from pprint import pformat
 from datetime import datetime
 import inspect
 from tempfile import mkdtemp
+from base64 import b32encode
+from random import getrandbits
 
 import json
 from json import JSONDecodeError
@@ -63,6 +65,8 @@ from .volume_builder import (
     VolumeFromVolumeBuilder,
     TestVolumeBuilder,
     StaticVolumeBuilder,
+    parse_volume_id,
+    to_volume_id_with_metadata,
 )
 from .exceptions import (
     Abort,
@@ -155,6 +159,23 @@ class Instrumented:
             # secrets are not logged and not the part of function signature.
             secrets = params.pop("secrets", {})
             missing_params = required_params - {"request", "context", "vms_session"} - set(params)
+
+            # Get cluster_name from volume_id, snapshot_id or source_volume_id in case of id identifier with metadata
+            cluster_names = set()
+            for fld in ("volume_id", "snapshot_id", "source_volume_id"):
+                if fld in params:
+                    id_value = params[fld]
+                    orig_value, cluster_name = parse_volume_id(id_value)
+                    cluster_names.add(cluster_name)
+                    params[fld] = orig_value
+            cluster_names.add(params.get("parameters", {}).get("cluster_name"))
+            cluster_names.discard(None)
+            if not cluster_names:
+                pass
+            elif len(cluster_names) == 1:
+                secrets["cluster_name"] = cluster_names.pop()
+            else:
+                raise Exception(f"too many cluster names specified: {', '.join(cluster_names)}")
 
             log(f"{peer} >>> {method}:")
 
@@ -347,7 +368,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
             capacity_range=capacity_range,
             parameters=parameters,
             volume_content_source=volume_content_source,
-            ephemeral_volume_name=ephemeral_volume_name
+            ephemeral_volume_name=ephemeral_volume_name,
         )
         # Create volume, volume from snapshot or mount local path (for testing purposes)
         try:
@@ -513,6 +534,10 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
         vip_pool_fqdn = volume_context.get("vip_pool_fqdn")
         if vip_pool_fqdn:
             nfs_server_ip = vip_pool_fqdn
+            if volume_context.get("vip_pool_fqdn_random_prefix"):
+                prefix = b32encode(getrandbits(16).to_bytes(2, "big")).decode("ascii").rstrip("=")
+                nfs_server_ip = f"{prefix}.{nfs_server_ip}"
+
         elif vip_pool_name or CONF.mock_vast:
             nfs_server_ip = vms_session.get_vip(vip_pool_name=vip_pool_name)
         else:
@@ -558,6 +583,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
     def CreateSnapshot(self, vms_session, source_volume_id, name, parameters=None):
 
         parameters = parameters or dict()
+        cluster_name = parameters.get("cluster_name")
         volume_id = source_volume_id
         if not (quota := vms_session.get_quota(volume_id)):
             raise Abort(NOT_FOUND, f"Unknown volume: {volume_id}")
@@ -621,8 +647,8 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
 
             snp = types.Snapshot(
                 size_bytes=0,  # indicates 'unspecified'
-                snapshot_id=str(snap.id),
-                source_volume_id=volume_id,
+                snapshot_id=to_volume_id_with_metadata(snap.id, cluster_name),
+                source_volume_id=to_volume_id_with_metadata(source_volume_id, cluster_name),
                 creation_time=string_to_proto_timestamp(snap.created),
                 ready_to_use=True,
             )

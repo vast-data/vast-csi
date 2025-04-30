@@ -70,6 +70,9 @@ storageClassDefaults:
   # NOTE: The driver will prepend the FQDN with a random prefix, which forces the NFS client to resolve into a different VIP,
   # thereby distributing the load across the entire range of the VIP pool.
   vipPoolFQDN: ""
+  # vipPoolFQDNRandomPrefix helps distribute load across the entire VIP pool by randomizing the VIP resolved for each volume mount.
+  # If set to true, a random prefix will be added to the VIP FQDN, ensuring that each NFS mount request resolves to a different VIP from the VIP pool.
+  vipPoolFQDNRandomPrefix: true
   # VAST policy name to create views - must be provided by user
   viewPolicy: ""
   # Allows resizing existing volumes
@@ -135,6 +138,10 @@ truncateVolumeName: 64
 # http/https ports are not open.
 attachRequired: true
 
+# The name of the CSI driver registered with Kubernetes.
+# This value is used to identify the driver in CSI objects like VolumeAttachments and CSINodes.
+csiDriverName: csi.vastdata.com
+
 ####################
 # VAST CSI SNAPSHOTS CLASS OPTIONS
 ####################
@@ -180,7 +187,7 @@ snapshotClasses: {}
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.5.0  # the version of the Vast CSI driver
+    tag: v2.5.1  # the version of the Vast CSI driver
     imagePullPolicy: IfNotPresent
   csiAttacher:
     repository: registry.k8s.io/sig-storage/csi-attacher
