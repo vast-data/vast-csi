@@ -132,11 +132,11 @@ def _derive_key(salt):
 
 
 @locking_cache
-def get_vms_session(username=None, password=None, endpoint=None, ssl_cert=None, cluster_name=None):
+def get_vms_session(username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name=None):
     config = Config()
     session_cls = TestVmsSession if config.mock_vast else VmsSession
     return session_cls.create(
-        config=config, username=username, password=password,
+        config=config, username=username, password=password, token=token,
         endpoint=endpoint, ssl_cert=ssl_cert, cluster_name=cluster_name,
     )
 
@@ -177,7 +177,7 @@ class RESTSession(requests.Session):
         ret = super().request(
             verb, url, verify=self.ssl_verify, params=params, **kwargs
         )
-        if ret.status_code == 403 and "Token is invalid or expired" in ret.text:
+        if not self.token and ret.status_code == 403 and "Token is invalid or expired" in ret.text:
             self.refresh_auth_token()
             raise retrying.Retry("refresh token")
 
@@ -216,10 +216,11 @@ class VmsSession(RESTSession):
     Communication with vms cluster.
     Operations over vip pools, quotas, snapshots etc.
     """
-    def __init__(self, config, username, password, endpoint, ssl_cert):
+    def __init__(self, config, username, password, token, endpoint, ssl_cert):
         super().__init__(config)
         self.username = username
         self.password = password
+        self.token = token
         self.endpoint = endpoint
         self.ssl_cert = ssl_cert
         self.base_url = f"https://{endpoint}/api"
@@ -239,6 +240,9 @@ class VmsSession(RESTSession):
             # This way requests library can use mounted CA bundle or default system CA bundle under the same path.
             cert_path = f"{certs_base_dir}/ca-certificates.crt"
         self.ssl_verify = (False, cert_path)[config.ssl_verify]
+
+        if self.token:
+            self.headers["Authorization"] = f"Api-Token {self.token}"
 
         # Sub resources
         self.versions = Version(self)
@@ -283,13 +287,14 @@ class VmsSession(RESTSession):
         return get_vms_session(username=username, password=password, endpoint=endpoint, ssl_cert=ssl_cert)
 
     @classmethod
-    def create(cls, config, username, password, endpoint, ssl_cert, cluster_name):
+    def create(cls, config, username, password, token, endpoint, ssl_cert, cluster_name):
         """
         Creates an instance of the session, initializing credentials based on provided arguments or configuration context.
 
         :param config: The configuration object containing credentials and settings.
         :param username: Optional; the username for authentication. If not provided, it will be sourced from the secret.
         :param password: Optional; the password for authentication. If not provided, it will be sourced from the secret.
+        :param token: Optional; the token for authentication.
         :param endpoint: Optional; the endpoint URL. If not provided, it will be sourced from the secret or environment.
         :param ssl_cert: SSL certificate for secure connections.
         :param cluster_name: Optional; specifies the cluster name for multi-cluster authentication.
@@ -310,8 +315,7 @@ class VmsSession(RESTSession):
                   password: 111111
                   endpoint: clstr1.example.com
                 cluster2:
-                  username: user2
-                  password: 222222
+                  token: xxxxxxxxxxxxxxxxxxxx
                   endpoint: clstr2.example.com
                 ```
 
@@ -327,8 +331,9 @@ class VmsSession(RESTSession):
         if cluster_name:
             if not (cluster_auth_config := config.cluster_credentials.get(cluster_name)):
                 raise LookupFieldError(field="cluster_name", tip="Make sure cluster name is present in secret.")
-            username = cluster_auth_config.username
-            password = cluster_auth_config.password
+            username = cluster_auth_config.get("username")
+            password = cluster_auth_config.get("password")
+            token = cluster_auth_config.get("token")
             endpoint = cluster_auth_config.endpoint
             config_source = f"multi-cluster auth configuration ({cluster_name=})"
         else:
@@ -336,21 +341,30 @@ class VmsSession(RESTSession):
             # that we have a StorageClass scope secret at this point.
             # In other words, it's not a globally mounted secret. Other secret fields will be validated below.
             is_global = not bool(username)
+            config_source = "mounted credentials (global secret)" if is_global else "StorageClass secret"
             if config.vms_credentials_store.exists() and is_global:
                 username = config.vms_user
                 password = config.vms_password
+                token = config.vms_token
                 endpoint = config.vms_host
-                if not endpoint:
-                    raise LookupFieldError(field="endpoint", tip="Make sure endpoint is specified in values.yaml.")
-            if not username:
-                raise LookupFieldError(field="username", tip="Make sure username is present in secret.")
-            if not password:
-                raise LookupFieldError(field="password",  tip="Make sure password is present in secret.")
-            if not endpoint:
-                raise LookupFieldError(field="endpoint",  tip="Make sure endpoint is present in secret.")
-            config_source = "mounted credentials (global secret)" if is_global else "StorageClass secret"
 
-        session = cls(config, username, password, endpoint, ssl_cert)
+        if not token:
+            if not username:
+                raise LookupFieldError(field="username", tip=f"Make sure username is present in {config_source}.")
+            if not password:
+                raise LookupFieldError(field="password", tip=f"Make sure password is present in {config_source}.")
+        elif username or password:
+            raise Exception("Provide either both 'username' and 'password', or a 'token', but not both.")
+        if not endpoint:
+            raise LookupFieldError(field="endpoint", tip=f"Make sure endpoint is present in {config_source}.")
+        session = cls(
+            config=config,
+            username=username,
+            password=password,
+            token=token,
+            endpoint=endpoint,
+            ssl_cert=ssl_cert,
+        )
         ssl_verification = "enabled" if session.ssl_verify else "disabled"
         logger.info(f"VMS session has been instantiated from {config_source}. SSL verification {ssl_verification}.")
         return session
@@ -862,7 +876,7 @@ class TestVmsSession(RESTSession):
         from unittest.mock import create_autospec, Mock
 
         super().__init__(config)
-        vms_session = VmsSession(config, *[None] * 4)
+        vms_session = VmsSession(config, *[None] * 5)
         own_attributres = dir(self)
         for resource in dir(vms_session):
             if resource.startswith("_"):

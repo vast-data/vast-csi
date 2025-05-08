@@ -57,6 +57,7 @@ from vast_csi.block_utils import (
 from vast_csi.utils import (
     stringify_dict,
     string_to_proto_timestamp,
+    get_random_fqdn_prefix,
 )
 from vast_csi.filesystem_utils import (
     get_filesystem_type,
@@ -315,6 +316,9 @@ class BlockController(ControllerBase, Instrumented):
         vip_pool_fqdn = volume_context.get("vip_pool_fqdn")
         if vip_pool_fqdn:
             discovery_server = vip_pool_fqdn
+            if volume_context.get("vip_pool_fqdn_random_prefix"):
+                prefix = get_random_fqdn_prefix()
+                discovery_server = f"{prefix}.{discovery_server}"
         elif vip_pool_name:
             discovery_server = vms_session.vippools.get_vip(vip_pool_name=vip_pool_name)
         else:
