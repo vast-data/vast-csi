@@ -13,7 +13,7 @@ fi
 VAST_CSI_IMAGE=$1
 export VERSION=v4.3.0
 docker build -t csi-sanity:$VERSION -<<EOF
-FROM golang:latest
+FROM $DOCKER_REGISTRY/docker.io/library/golang:1.23
 RUN git clone --branch $VERSION --depth 1 https://github.com/kubernetes-csi/csi-test.git
 RUN cd csi-test/cmd/csi-sanity && make && mv /go/csi-test/cmd/csi-sanity/csi-sanity /
 EOF
@@ -29,7 +29,7 @@ docker network create $NETWORK 2> /dev/null || true
 
 trap "(docker kill nfs test-subject; docker network rm $NETWORK; docker volume rm -f csi-tests) 1> /dev/null 2>&1 || true" exit
 
-docker run -d --name nfs --rm --privileged --network $NETWORK erezhorev/dockerized_nfs_server
+docker run -d --name nfs --rm --privileged --network $NETWORK $DOCKER_REGISTRY/dev/infra:dockerized_nfs_server
 
 docker run \
     --init \
