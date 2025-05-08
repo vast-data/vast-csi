@@ -70,4 +70,4 @@ class TaskFailed(PredicateNotSatisfied, TException):
 
 
 class NVMEConnectionFailed(TException):
-    template = "NVME connection to {host} failed"
+    template = "NVME connection to {host_nqn} failed"
