@@ -32,6 +32,7 @@ from vast_csi.utils import (
     get_mount,
     normalize_mount_options,
     string_to_proto_timestamp,
+    get_random_fqdn_prefix,
 )
 from vast_csi.proto import csi_pb2_grpc as csi_grpc
 from vast_csi import csi_types as types
@@ -363,6 +364,9 @@ class CsiController(ControllerBase, Instrumented):
         vip_pool_fqdn = volume_context.get("vip_pool_fqdn")
         if vip_pool_fqdn:
             nfs_server_ip = vip_pool_fqdn
+            if volume_context.get("vip_pool_fqdn_random_prefix"):
+                prefix = get_random_fqdn_prefix()
+                nfs_server_ip = f"{prefix}.{nfs_server_ip}"
         elif vip_pool_name or CONF.mock_vast:
             nfs_server_ip = vms_session.vippools.get_vip(vip_pool_name=vip_pool_name)
         else:

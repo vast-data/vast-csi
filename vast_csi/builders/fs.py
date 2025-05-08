@@ -37,6 +37,7 @@ class FileSystemProvisionBase(BaseVolumeBuilder):
     cluster_name: Optional[str] = None
     vip_pool_name: Optional[str] = None
     vip_pool_fqdn: Optional[str] = None
+    vip_pool_fqdn_random_prefix: Optional[bool] = None
     qos_policy: Optional[str] = None
     qos_policy_id: Optional[int] = None
     capacity_range: Optional[int] = None  # Optional desired volume capacity
@@ -56,7 +57,9 @@ class FileSystemProvisionBase(BaseVolumeBuilder):
         if self.vip_pool_name:
             context["vip_pool_name"] = self.vip_pool_name
         elif self.vip_pool_fqdn:
-            context["vip_pool_fqdn"] = self.vip_pool_fqdn_with_prefix
+            context["vip_pool_fqdn"] = self.vip_pool_fqdn
+            if self.vip_pool_fqdn_random_prefix:
+                context["vip_pool_fqdn_random_prefix"] = "true"
         return context
 
     @property
@@ -81,6 +84,7 @@ class FileSystemProvisionBase(BaseVolumeBuilder):
         view_policy = cls._get_required_param(parameters, "view_policy")
         vip_pool_fqdn = parameters.get("vip_pool_fqdn")
         vip_pool_name = parameters.get("vip_pool_name")
+        vip_pool_fqdn_random_prefix = cls._get_bool_param(parameters, "vip_pool_fqdn_random_prefix")
         cls._validate_mount_src(vip_pool_name, vip_pool_fqdn, conf.use_local_ip_for_mount)
 
         volume_name_fmt = parameters.get("volume_name_fmt", conf.name_fmt)
@@ -104,6 +108,7 @@ class FileSystemProvisionBase(BaseVolumeBuilder):
             view_policy=view_policy,
             vip_pool_name=vip_pool_name,
             vip_pool_fqdn=vip_pool_fqdn,
+            vip_pool_fqdn_random_prefix=vip_pool_fqdn_random_prefix,
             qos_policy=qos_policy,
             qos_policy_id=qos_policy_id,
             cluster_name=cluster_name,
@@ -302,6 +307,7 @@ class StaticVolumeBuilder(BaseVolumeBuilder):
     volume_name_fmt: Optional[str] = None
     vip_pool_name: Optional[str] = None
     vip_pool_fqdn: Optional[str] = None
+    vip_pool_fqdn_random_prefix: Optional[bool] = None
     qos_policy: Optional[str] = None
     qos_policy_id: Optional[int] = None
     capacity_range: Optional[int] = None  # Optional desired volume capacity
@@ -328,6 +334,7 @@ class StaticVolumeBuilder(BaseVolumeBuilder):
             raise MissingParameter(param="view_policy")
         vip_pool_fqdn = parameters.get("vip_pool_fqdn")
         vip_pool_name = parameters.get("vip_pool_name")
+        vip_pool_fqdn_random_prefix = cls._get_bool_param(parameters, "vip_pool_fqdn_random_prefix")
         cls._validate_mount_src(vip_pool_name, vip_pool_fqdn, conf.use_local_ip_for_mount)
         volume_name_fmt = parameters.get("volume_name_fmt", conf.name_fmt)
         qos_policy = parameters.get("qos_policy")
@@ -352,6 +359,7 @@ class StaticVolumeBuilder(BaseVolumeBuilder):
             view_policy=view_policy,
             vip_pool_name=vip_pool_name,
             vip_pool_fqdn=vip_pool_fqdn,
+            vip_pool_fqdn_random_prefix=vip_pool_fqdn_random_prefix,
             qos_policy=qos_policy,
             qos_policy_id=qos_policy_id,
             create_view=create_view,
@@ -375,7 +383,9 @@ class StaticVolumeBuilder(BaseVolumeBuilder):
         if self.vip_pool_name:
             context["vip_pool_name"] = self.vip_pool_name
         elif self.vip_pool_fqdn:
-            context["vip_pool_fqdn"] = self.vip_pool_fqdn_with_prefix
+            context["vip_pool_fqdn"] = self.vip_pool_fqdn
+            if self.vip_pool_fqdn_random_prefix:
+                context["vip_pool_fqdn_random_prefix"] = "true"
         return context
 
     def build_volume(self) -> dict:

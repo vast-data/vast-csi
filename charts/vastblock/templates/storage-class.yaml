@@ -19,6 +19,7 @@
 
 {{- $vip_pool_name := pluck "vipPool" $options $.Values.storageClassDefaults | first | quote -}}
 {{- $vip_pool_fqdn := pluck "vipPoolFQDN" $options $.Values.storageClassDefaults | first | quote -}}
+{{- $vip_pool_fqdn_random_prefix := pluck "vipPoolFQDNRandomPrefix" $options $.Values.storageClassDefaults | first | quote -}}
 
 {{- if and (ne $vip_pool_name ( quote "" )) (ne $vip_pool_fqdn ( quote "" )) -}}
 {{- fail (printf "vipPool and vipPoolFQDN are mutually exclusive in the StorageClass '%s' parameters. Do not set a default value from storageDefaults for either field; choose only one to specify." $name) -}}
@@ -53,7 +54,7 @@ metadata:
 reclaimPolicy: {{ $reclaim_policy }}
 parameters:
   subsystem: {{ $subsystem }}
-{{- range $key, $value := dict "vip_pool_name" $vip_pool_name "vip_pool_fqdn" $vip_pool_fqdn "volume_group" $volume_group "transport_type" $transport_type "fsType" $fstype "tenant_name" $tenant_name }}
+{{- range $key, $value := dict "vip_pool_name" $vip_pool_name "vip_pool_fqdn" $vip_pool_fqdn "volume_group" $volume_group "transport_type" $transport_type "fsType" $fstype "tenant_name" $tenant_name "vip_pool_fqdn_random_prefix" $vip_pool_fqdn_random_prefix }}
   {{- if and $value (ne $value ( quote "" )) }}
   {{ $key }}: {{ if (kindIs "int" $value) }}{{ $value | quote }}{{ else }}{{ $value }}{{ end }}
   {{- end }}
