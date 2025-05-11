@@ -2,8 +2,16 @@
 # VAST REST SESSION ATTRIBUTES
 ####################
 # Secret name, which corresponds to a secret containing credentials to login - must be provided by user
-# Secret must contain username and password fields
-# Example: kubectl create secret generic vast-mgmt --from-literal=username='< VAST username >' --from-literal=password='< VAST password >'
+# The secret can use either username and password fields or an API token for authentication.
+# Example:
+#     kubectl create secret generic vast-mgmt \
+#     --from-literal=username=< VAST username > \
+#     --from-literal=password=< VAST password > \
+#     --from-literal=endpoint=< VAST endpoint >
+# Or create secret with Api-Token based authentication:
+#     kubectl create secret generic vast-mgmt \
+#     --from-literal=token=< API token > \
+#     --from-literal=endpoint=< VAST endpoint >
 secretName: ""
 
 # API endpoint of VAST appliance - must be provided by user
@@ -66,7 +74,7 @@ cosiDriverName: csi.vastdata.com
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.6.0  # the version of the Vast COSI driver
+    tag: v2.6.1  # the version of the Vast COSI driver
     imagePullPolicy: IfNotPresent
   objectstorageProvisioner:
     repository: gcr.io/k8s-staging-sig-storage/objectstorage-sidecar/objectstorage-sidecar
