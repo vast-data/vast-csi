@@ -17,8 +17,7 @@ driver: {{ include "vastcsi.csiDriver" $ }}
 deletionPolicy: {{ $deletion_policy }}
 parameters:
   snapshot_name_fmt: {{ $snapshot_name_fmt }}
-  csi.storage.k8s.io/snapshotter-secret-name: {{ include "vastcsi.secret" $ }}
-  csi.storage.k8s.io/snapshotter-secret-namespace: {{ .Release.Namespace }}
+{{- include "vastcsi.snapshotClassSecrets" . | nindent 2 }}
 ---
 
 {{- end }}

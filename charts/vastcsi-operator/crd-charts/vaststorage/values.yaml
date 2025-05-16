@@ -5,7 +5,12 @@
 driverType: "nfs" # Supported values: "nfs", "block"
 # Reference to installed VastDriver CRD
 driverName: ""
-# Reference to installed VastCluster CRD
+# The name of the Secret that stores the VMS credentials.
+# Note: The Secret must be created manually unless it is generated automatically by creating a VastCluster.
+secretName: ""
+# Secret namespace. If not specified, the Secret will be looked up in the same namespace where the Operator is running.
+secretNamespace: ""
+# Reference to installed VastCluster CRD - One of secretName or clusterName must be provided
 clusterName: ""
 
 ####################

@@ -22,6 +22,9 @@ spec:
       nullable: true
   required:
     - endpoint
+  oneOf:
+    - required: [ token ]
+    - required: [ username, password ]
   type: object
 
 specDescriptors:

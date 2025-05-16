@@ -46,16 +46,7 @@ parameters:
   {{ $key }}: {{ if (kindIs "int" $value) }}{{ $value | quote }}{{ else }}{{ $value }}{{ end }}
   {{- end }}
 {{- end }}
-  csi.storage.k8s.io/provisioner-secret-name: {{ include "vastcsi.secret" $ }}
-  csi.storage.k8s.io/provisioner-secret-namespace: {{ .Release.Namespace }}
-  csi.storage.k8s.io/controller-publish-secret-name: {{ include "vastcsi.secret" $ }}
-  csi.storage.k8s.io/controller-publish-secret-namespace: {{ .Release.Namespace }}
-  csi.storage.k8s.io/node-publish-secret-name: {{ include "vastcsi.secret" $ }}
-  csi.storage.k8s.io/node-publish-secret-namespace: {{ .Release.Namespace }}
-  csi.storage.k8s.io/node-stage-secret-name: {{ include "vastcsi.secret" $ }}
-  csi.storage.k8s.io/node-stage-secret-namespace: {{ .Release.Namespace }}
-  csi.storage.k8s.io/controller-expand-secret-name: {{ include "vastcsi.secret" $ }}
-  csi.storage.k8s.io/controller-expand-secret-namespace: {{ .Release.Namespace }}
+{{- include "vastcsi.storageClassSecrets" . | nindent 2 }}
 allowVolumeExpansion: {{ $allow_volume_expansion }}
 {{- if kindIs "string" $mount_options -}}
 {{/* Keep option to specify mountOptions as string for backward compatibility */}}

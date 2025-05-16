@@ -23,6 +23,10 @@ spec:
           jsonPath: .spec.image.csiVastPlugin.image
           name: CSIPluginImage
           type: string
+        - description: CSI Driver Type
+          jsonPath: .spec.driverType
+          name: Type
+          type: string
       name: v1
       schema:
         openAPIV3Schema:

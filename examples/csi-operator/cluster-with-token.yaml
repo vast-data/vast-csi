@@ -1,0 +1,15 @@
+# The creation of a VastCluster resource is optional if a corresponding Kubernetes Secret is created manually.
+# Example of a Kubernetes Secret counterpart:
+# kubectl create secret generic vast-mgmt \
+#  --from-literal=endpoint=10.27.113.27 \
+#  --from-literal=token='xxxxxxxxxxxxxxx' \
+#  -n vast-csi
+apiVersion: storage.vastdata.com/v1
+kind: VastCluster
+metadata:
+  name: cluster
+  namespace: vast-csi
+spec:
+  endpoint: 10.27.113.27
+  token: "xxxxxxxxxxxxxxx"
+

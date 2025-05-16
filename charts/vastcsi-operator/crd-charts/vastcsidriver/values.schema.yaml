@@ -1525,6 +1525,9 @@ spec:
       description: Select the type of driver to deploy.
       type: string
       default: {{ .Values.driverType }}
+      enum:
+        - nfs
+        - block
     secretName:
       description: |-
         Name of the global secret that holds VAST credentials. 

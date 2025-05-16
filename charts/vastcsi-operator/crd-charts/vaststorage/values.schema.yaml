@@ -9,18 +9,32 @@ spec:
       description: Choose the driver type for VastStorage.
       type: string
       default: {{ .Values.driverType }}
+      enum:
+        - nfs
+        - block
     driverName:
       description: The name of VastDriver reference.
       type: string
+    secretName:
+      description: The name of VMS Secret object.
+      type: string
+      default: ""
+    secretNamespace:
+      description: Secret namespace. If not specified, the Secret will be looked up in the same namespace where the Operator is running.
+      type: string
+      default: ""
     clusterName:
       description: The name of VastCluster reference.
       type: string
+      default: ""
     storagePath:
       description: Base path where volumes will be located on VAST.
       type: string
+      default: ""
     viewPolicy:
       description: VAST policy name to create views.
       type: string
+      default: ""
     vipPool:
       description: Name of VAST VIP pool to use.
       type: string
@@ -49,6 +63,7 @@ spec:
     subsystem:
       description: VAST subsystem for volume creation.
       type: string
+      default: ""
     tenantName:
       description:  Tenant name – required for additional filtering when multiple subsystems share the same name.
       type: string
@@ -150,7 +165,11 @@ spec:
           default: false
       type: object
   required:
+    - secretName
+    - secretNamespace
     - clusterName
+    - driverType
+    - driverName
     - storagePath
     - viewPolicy
     - subsystem
@@ -176,11 +195,27 @@ specDescriptors:
     path: driverName
     x-descriptors:
       - 'urn:alm:descriptor:io.kubernetes:storage.vastdata.com:v1:VastCSIDriver'
-  - description: Choose VastCluster to create VastStorage for.
-    displayName: Cluster Name
+  - displayName: VastCluster Name
     path: clusterName
+    description: >
+      Name of the VastCluster to use.
+      Leave empty if you are manually specifying a Secret.
     x-descriptors:
       - 'urn:alm:descriptor:io.kubernetes:storage.vastdata.com:v1:VastCluster'
+  - displayName: Secret Name
+    path: secretName
+    description: >
+      Name of the Secret with credentials.
+      Used only if VastCluster is not specified.
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+  - displayName: Secret Namespace
+    path: secretNamespace
+    description: >
+      Namespace of the Secret. Optional if using the operator’s namespace.
+      Ignored if VastCluster is specified.
+    x-descriptors:
+      - 'urn:alm:descriptor:io.kubernetes:Namespace'
   - description: Base Storage Path for NFS views.
     displayName: Storage Path
     path: storagePath
@@ -313,6 +348,8 @@ example:
     driverType: {{ .Values.driverType }}
     driverName: ""
     clusterName: ""
+    secretName: ""
+    secretNamespace: ""
     storagePath: ""
     viewPolicy: ""
     vipPool: ""
