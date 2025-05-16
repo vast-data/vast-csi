@@ -26,7 +26,6 @@
 {{- end }}
 {{- end }}
 
-
 {{/* Volume bindings for vms credentials and vms session certificates */}}
 {{ define "vastcsi.vmsAuthVolumeMount" }}
 {{- if $.Values.secretName }}

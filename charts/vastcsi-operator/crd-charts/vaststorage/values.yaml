@@ -53,6 +53,8 @@ qosPolicy: ""
 
 # Subsystem name - must be provided by user
 subsystem: ""
+# Tenant name – required for additional filtering when multiple subsystems share the same name.
+tenantName: ""
 # Optional template for constructing the volume group name.
 # It supports placeholders for the PVC name, namespace, and ID,
 # which can be used in the format {namespace}, {name}, and {id}.

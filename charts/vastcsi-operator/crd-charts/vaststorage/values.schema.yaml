@@ -49,6 +49,9 @@ spec:
     subsystem:
       description: VAST subsystem for volume creation.
       type: string
+    tenantName:
+      description:  Tenant name – required for additional filtering when multiple subsystems share the same name.
+      type: string
       nullable: true
     volumeGroup:
       description: |-
@@ -202,6 +205,12 @@ specDescriptors:
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:text'
       - *block-driver-dep
+  - description: Tenant name - required for additional filtering when multiple subsystems share the same name.
+    displayName: Tenant Name
+    path: tenantName
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+      - *block-driver-dep
   - description: |-
       Optional template for constructing common volume prefix.
       It supports placeholders for the PVC name, namespace, and ID,
@@ -309,6 +318,7 @@ example:
     vipPool: ""
     qosPolicy: ""
     subsystem: ""
+    tenantName: ""
     volumeGroup: ""
     fsType: ""
     allowVolumeExpansion: {{ .Values.allowVolumeExpansion }}

@@ -15,6 +15,7 @@
   {{- fail (printf "vipPool and vipPoolFQDN are mutually exclusive in the StorageClass '%s' parameters. Do not set a default value from storageDefaults for either field; choose only one to specify." .Release.Name) -}}
 {{- end }}
 
+{{- $tenant_name := .Values.tenantName -}}
 {{- $volume_group := .Values.volumeGroup -}}
 {{- $fstype := .Values.fsType -}}
 {{- $transport_type := .Values.transportType -}}
@@ -40,7 +41,7 @@ parameters:
   subsystem: {{ $subsystem }}
   volume_name_fmt: {{ $volume_name_fmt }}
   eph_volume_name_fmt: {{ $eph_volume_name_fmt }}
-{{- range $key, $value := dict "vip_pool_name" $vip_pool_name "vip_pool_fqdn" $vip_pool_fqdn "volume_group" $volume_group "transport_type" $transport_type "fsType" $fstype "vip_pool_fqdn_random_prefix" $vip_pool_fqdn_random_prefix }}
+{{- range $key, $value := dict "vip_pool_name" $vip_pool_name "vip_pool_fqdn" $vip_pool_fqdn "volume_group" $volume_group "transport_type" $transport_type "fsType" $fstype "tenant_name" $tenant_name "vip_pool_fqdn_random_prefix" $vip_pool_fqdn_random_prefix }}
   {{- if and $value (ne $value "") }}
   {{ $key }}: {{ if (kindIs "int" $value) }}{{ $value | quote }}{{ else }}{{ $value }}{{ end }}
   {{- end }}

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Check if the image tag was provided
 if [ "$#" -ne 1 ]; then
@@ -8,8 +8,8 @@ fi
 
 IMAGE_TAG=$1
 
-# Pull the image silently and extract the digest
-DIGEST=$(docker pull "$IMAGE_TAG" 2>/dev/null | grep -oP 'Digest: sha256:\K[a-f0-9]+')
+# Pull the image and extract the digest
+DIGEST=$(docker pull "$IMAGE_TAG" 2>/dev/null | awk '/Digest:/ {print $2}' | cut -d: -f2)
 
 # Check if digest extraction was successful
 if [ -z "$DIGEST" ]; then
