@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## Version 2.6.2
+* Added support for locating mount paths via symlinks.
+
 ## Version 2.6.1
 * Added support for token-based authentication as an alternative to username and password (ORION-226852)
 
