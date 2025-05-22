@@ -82,6 +82,22 @@ class HostCommand:
 
 
 hostcmd = HostCommand()
+realpath_cmd = HostCommand("realpath")
+
+def get_host_realpath(path):
+    """
+    Get the real path of a given path in the Docker host's filesystem.
+    This function uses the `realpath` command to resolve symbolic links and
+    return the absolute path.
+    """
+    path = str(path)
+    try:
+        return realpath_cmd(path).strip()
+    except ProcessExecutionError as exc:
+        if "No such file or directory" in exc.stderr:
+            # If the path doesn't exist, return the original path
+            return path
+        raise
 
 
 class MountInfo:
@@ -156,10 +172,13 @@ class MountInfo:
         """Return the source device for a path.
         The source of a mounted path will either be the mount source of the
         mount point or the root if it's a bind mount.
+        This method  resolves symlinks to support real mounts.
         """
+        dest_path_resolved = get_host_realpath(dest_path)
         mount_info = cls.from_host()
         for mount in mount_info:
-            if mount.mount_point == str(dest_path):
+            mount_point_resolved = get_host_realpath(mount.mount_point)
+            if mount_point_resolved == dest_path_resolved:
                 return mount
         return None
 
@@ -180,15 +199,25 @@ class MountInfo:
         """
         src_mount = None
         target_mounts = []
+        src_resolved = get_host_realpath(src)
+
         mounts_by_source = defaultdict(list)
         mount_info = cls.from_host()
+
         for mount in mount_info:
-            if not src_mount and mount.mount_point == str(src):
+            mount_point_resolved = get_host_realpath(mount.mount_point)
+            mount_source_resolved = get_host_realpath(mount.source)
+
+            if not src_mount and mount_point_resolved == src_resolved:
                 src_mount = mount
             else:
-                mounts_by_source[mount.source].append(mount)
+                mounts_by_source[mount_source_resolved].append(mount)
+
         if src_mount:
-            target_mounts = mounts_by_source[src_mount.source] + mounts_by_source[src_mount.mount_point]
+            resolved_src = get_host_realpath(src_mount.source)
+            resolved_mount_point = get_host_realpath(src_mount.mount_point)
+            target_mounts = mounts_by_source[resolved_src] + mounts_by_source[resolved_mount_point]
+
         return src_mount, target_mounts
 
 

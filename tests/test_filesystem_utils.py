@@ -1,3 +1,4 @@
+import os.path
 from threading import Thread, Event
 from unittest.mock import patch
 import pytest
@@ -5,6 +6,7 @@ from pathlib import Path
 from vast_csi.filesystem_utils import (
     MountInfo,
     hostcmd,
+    realpath_cmd,
     volume_locked,
     VolumeLockedError,
     get_ext_size,
@@ -18,7 +20,11 @@ PARENT = Path(__file__).parent.resolve()
 @pytest.mark.host_only
 def test_volume_stats_for_fs_type(*_):
     volume_path = "/var/lib/kubelet/pods/f2f1afd1-4afb-4eae-b57d-64672ee2811d/volumes/kubernetes.io~csi/pvc-9f3d8700-89be-49b5-b388-dc92f4c9e473/mount"
-    with patch.object(hostcmd, "cat", return_value=PARENT.joinpath("data/procmounts2").read_text()):
+    with (
+        patch.object(hostcmd, "cat", return_value=PARENT.joinpath("data/procmounts2").read_text()),
+        patch("vast_csi.filesystem_utils.get_host_realpath", new=os.path.realpath),
+
+    ):
         target_mount = MountInfo.get_mount_by_destination(dest_path=volume_path)
         assert target_mount.has_blockdev_root is False
         assert target_mount.root == "/"
@@ -30,7 +36,10 @@ def test_volume_stats_for_fs_type(*_):
 @pytest.mark.host_only
 def test_volume_stats_for_block_type(*_):
     volume_path = "/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/pvc-435b3f84-838e-4140-a4ec-f20bec791020/dev/9fbd20b4-90ee-43a7-ac5d-f3e3641e47d2"
-    with patch.object(hostcmd, "cat", return_value=PARENT.joinpath("data/procmounts2").read_text()):
+    with (
+        patch.object(hostcmd, "cat", return_value=PARENT.joinpath("data/procmounts2").read_text()),
+        patch("vast_csi.filesystem_utils.get_host_realpath", new=os.path.realpath),
+    ):
         target_mount = MountInfo.get_mount_by_destination(dest_path=volume_path)
         assert target_mount.has_blockdev_root is True
         assert target_mount.root == "/nvme1n1"
@@ -41,7 +50,10 @@ def test_volume_stats_for_block_type(*_):
 @pytest.mark.host_only
 def test_udev_managed_device(*_):
     device_bind_path = "/data/kubelet/plugins/kubernetes.io/csi/block.csi.vastdata.com/2cbfbe7c253f51c170b9299d79a2a73879b40ae4b50d9ea8f8fa98b7f27bc5f0/globalmount/device"
-    with patch.object(hostcmd, "cat", return_value=PARENT.joinpath("data/procmounts2").read_text()):
+    with (
+        patch.object(hostcmd, "cat", return_value=PARENT.joinpath("data/procmounts2").read_text()),
+        patch("vast_csi.filesystem_utils.get_host_realpath", new=os.path.realpath),
+    ):
         staging_mount = MountInfo.get_mount_by_destination(dest_path=device_bind_path)
         assert staging_mount
         device_path = staging_mount.block_device
@@ -57,7 +69,10 @@ def test_mount_info_block_staging_path(*_):
         "/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish/pvc-590c142c-ae3c-46f3-894e-fdedb627d64f/73066e63-cb84-4d61-b1dc-6d3372ac9ae2",
     }
 
-    with patch.object(hostcmd, "cat", return_value=PARENT.joinpath("data/procmounts").read_text()):
+    with (
+        patch.object(hostcmd, "cat", return_value=PARENT.joinpath("data/procmounts").read_text()),
+        patch("vast_csi.filesystem_utils.get_host_realpath", new=os.path.realpath),
+    ):
         staging_mount, target_mounts = MountInfo.get_mounts_by_source(src=device_bind_path)
         staging_mount2 = MountInfo.get_mount_by_destination(dest_path=device_bind_path)
 
@@ -81,7 +96,10 @@ def test_mount_info_fs_staging_path(*_):
         "/var/lib/kubelet/pods/7d0015d3-84a8-42e1-8211-5578f35c53db/volumes/kubernetes.io~csi/pvc-ccc37670-ad1c-4454-ab29-db35577b57f2/mount",
     }
 
-    with patch.object(hostcmd, "cat", return_value=PARENT.joinpath("data/procmounts").read_text()):
+    with (
+        patch.object(hostcmd, "cat", return_value=PARENT.joinpath("data/procmounts").read_text()),
+        patch("vast_csi.filesystem_utils.get_host_realpath", new=os.path.realpath),
+    ):
         staging_mount, target_mounts = MountInfo.get_mounts_by_source(src=device_bind_path)
         staging_mount2 = MountInfo.get_mount_by_destination(dest_path=device_bind_path)
 
