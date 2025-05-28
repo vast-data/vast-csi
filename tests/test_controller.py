@@ -6,6 +6,7 @@ from vast_csi.server import CsiController, Abort, MissingParameter
 
 import grpc
 import vast_csi.csi_types as types
+from vast_csi.utils import wrap_ipv6
 from easypy.bunch import Bunch
 
 
@@ -139,7 +140,7 @@ class TestControllerSuite:
         if vip_pool_name:
             assert publish_context["nfs_server_ip"] == "2.2.2.2"
         else:
-            assert publish_context["nfs_server_ip"] == local_ip
+            assert publish_context["nfs_server_ip"] == wrap_ipv6(local_ip)
 
     def test_static_volume_no_vip_pool(self, vms_session, volume_capabilities):
         # Prepare test data

@@ -46,6 +46,7 @@ from .utils import (
     get_mount,
     normalize_mount_options,
     string_to_proto_timestamp,
+    wrap_ipv6,
 )
 from .proto import csi_pb2_grpc as csi_grpc
 from .proto import cosi_pb2_grpc as cosi_grpc
@@ -412,6 +413,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
 
         logger.info(f"Creating temporary base view.")
         with vms_session.temp_view(path.dirname, view_policy.id, view_policy.tenant_id) as base_view:
+            nfs_server_ip = wrap_ipv6(nfs_server_ip)
             mount_spec = f"{nfs_server_ip}:{base_view.alias}"
             mounted = False
             tmpdir = local.path(mkdtemp())  # convert string to local.path
@@ -548,7 +550,7 @@ class CsiController(csi_grpc.ControllerServicer, Instrumented):
         return types.CtrlPublishResp(
             publish_context=dict(
                 export_path=export_path,
-                nfs_server_ip=nfs_server_ip,
+                nfs_server_ip=wrap_ipv6(nfs_server_ip),
                 # volume_context is not accessible for static volumes. Pass mount_options through publish_context.
                 mount_options=volume_context.get("mount_options", ""),
             )
