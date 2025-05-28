@@ -153,3 +153,14 @@ def is_valid_ip(ip_str):
         return True
     except ValueError:
         return False
+
+
+def wrap_ipv6(ip_or_host: str) -> str:
+    try:
+        ip = ip_address(ip_or_host)
+        if ip.version == 6:
+            return f"[{ip_or_host}]"
+    except ValueError:
+        # Not an IP address, possibly an FQDN
+        pass
+    return ip_or_host
