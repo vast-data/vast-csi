@@ -33,6 +33,7 @@ from vast_csi.utils import (
     normalize_mount_options,
     string_to_proto_timestamp,
     get_random_fqdn_prefix,
+    wrap_ipv6,
 )
 from vast_csi.proto import csi_pb2_grpc as csi_grpc
 from vast_csi import csi_types as types
@@ -242,6 +243,7 @@ class CsiController(ControllerBase, Instrumented):
 
         logger.info(f"Creating temporary base view.")
         with vms_session.views.temp_view(path.dirname, view_policy.id, view_policy.tenant_id) as base_view:
+            nfs_server_ip = wrap_ipv6(nfs_server_ip)
             mount_spec = f"{nfs_server_ip}:{base_view.alias}"
             mounted = False
             tmpdir = local.path(mkdtemp())  # convert string to local.path
@@ -377,7 +379,7 @@ class CsiController(ControllerBase, Instrumented):
         return types.CtrlPublishResp(
             publish_context=dict(
                 export_path=export_path,
-                nfs_server_ip=nfs_server_ip,
+                nfs_server_ip=wrap_ipv6(nfs_server_ip),
                 # volume_context is not accessible for static volumes. Pass mount_options through publish_context.
                 mount_options=volume_capabilities.mount_flags_str,
             )
