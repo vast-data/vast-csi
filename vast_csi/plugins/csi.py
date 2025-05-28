@@ -238,7 +238,7 @@ class CsiController(ControllerBase, Instrumented):
                 "Ensure that deletionVipPool is properly "
                 "configured in your Helm configuration to perform local volume deletion."
             )
-            nfs_server_ip = vms_session.get_vip(CONF.deletion_vip_pool, view_policy.tenant_id)
+            nfs_server_ip = vms_session.vippools.get_vip(CONF.deletion_vip_pool, view_policy.tenant_id)
 
         logger.info(f"Creating temporary base view.")
         with vms_session.views.temp_view(path.dirname, view_policy.id, view_policy.tenant_id) as base_view:
