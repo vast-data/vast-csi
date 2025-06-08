@@ -17,7 +17,7 @@ metadata:
   name: vast-csi-operator-leader-election-role
   namespace: {{ .Values.namespace | default .Release.Namespace | quote }}
 rules:
-  {{ include "csi-operator.rbac.leader-election" . }}
+  {{- include "csi-operator.rbac.leader-election" . | nindent 2 }}
 
 ---
 
@@ -26,7 +26,7 @@ kind: ClusterRole
 metadata:
   name: vast-csi-operator-manager-role
 rules:
-  {{ include "csi-operator.rbac.manager" . }}
+  {{- include "csi-operator.rbac.manager" . | nindent 2 }}
 
 ---
 
@@ -35,7 +35,7 @@ kind: ClusterRole
 metadata:
   name: vast-csi-operator-proxy-role
 rules:
-  {{ include "csi-operator.rbac.proxy" . }}
+  {{- include "csi-operator.rbac.proxy" . | nindent 2 }}
 
 ---
 
