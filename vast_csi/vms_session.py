@@ -655,7 +655,7 @@ class VipPool(VastResource):
         Returns:
             Random vip ip from provided vip pool.
         """
-        vippool = self.one(name=vip_pool_name)
+        vippool = self.one(name=vip_pool_name, fail_if_missing=True)
         if isinstance(tenant_id, str):
             # for tenant_id passed as volume context.
             tenant_id = int(tenant_id)
