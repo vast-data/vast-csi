@@ -303,9 +303,11 @@ class BlockController(ControllerBase, Instrumented):
         transport_type = volume_context["transport_type"]
         vol_id = int(volume_context["volume_id"])
         tenant_name = volume_context["tenant_name"]
+        subsystem = volume_context["subsystem"]
         blockhost = vms_session.blockhosts.ensure(
             node_id=node_id,
             tenant_name=tenant_name,
+            subsystem=subsystem,
             transport_type=transport_type,
         )
         vms_session.blockhostmappings.ensure_map(

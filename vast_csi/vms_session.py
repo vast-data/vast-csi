@@ -655,7 +655,7 @@ class VipPool(VastResource):
         Returns:
             Random vip ip from provided vip pool.
         """
-        vippool = self.one(name=vip_pool_name)
+        vippool = self.one(name=vip_pool_name, fail_if_missing=True)
         if isinstance(tenant_id, str):
             # for tenant_id passed as volume context.
             tenant_id = int(tenant_id)
@@ -812,13 +812,17 @@ class BlockHost(VastResource):
     resource_name = "blockhosts"
 
     @requisite(semver="5.3.0")
-    def ensure(self, node_id, transport_type, tenant_name, **params):
+    def ensure(self, node_id, transport_type, tenant_name, subsystem, **params):
         if blockhost := self.one(name=node_id, tenant_name=tenant_name):
             return blockhost
-        tenant = self.session.tenants.one(name=tenant_name)
+        # Need to determine the tenant_id from the subsystem
+        view = self.session.views.get_subsystem(
+            subsystem=subsystem,
+            tenant_name=tenant_name,
+        )
         data = dict(
             name=node_id,
-            tenant_id=tenant.id,
+            tenant_id=view.tenant_id,
             os_type="LINUX",
             ana="OPTIMIZED",
             connectivity_type=transport_type,

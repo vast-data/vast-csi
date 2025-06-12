@@ -1,10 +1,16 @@
 # CHANGELOG
 
+## Version 2.6.2
+* Added support for locating mount paths via symlinks.
+
 ## Version 2.6.1
 * Added support for token-based authentication as an alternative to username and password (ORION-226852)
 
 ## Version 2.6.0
 * Block CSI Driver (VCSI-193)
+
+## Version 2.5.2
+* Added support for IPv6 addresses when mounting volumes. IPv6 addresses are now automatically wrapped in square brackets.
 
 ## Version 2.5.1
 * Custom driver name
