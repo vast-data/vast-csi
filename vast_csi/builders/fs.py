@@ -189,6 +189,7 @@ class VolumeFromVolumeBuilder(FileSystemProvisionBase):
             snapshot_id=snapshot.id,
             destination_path=self.view_path,
             tenant_id=tenant_id,
+            wait=True,
         )
         # View should go after snapshot stream.
         # Otherwise, snapshot stream action will detect folder already exist and will be rejected
@@ -249,6 +250,7 @@ class VolumeFromSnapshotBuilder(FileSystemProvisionBase):
                 snapshot_id=snapshot.id,
                 destination_path=self.view_path,
                 tenant_id=tenant_id,
+                wait=True,
             )
             view = self.vms_session.views.ensure(
                 path=self.view_path,

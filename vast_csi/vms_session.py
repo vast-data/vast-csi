@@ -425,6 +425,9 @@ class VmsSession(RESTSession, SerializationMixin):
 
 class VastResource(ABC):
     resource_name = NotImplemented
+    TARGET_STATE = NotImplemented
+    FAILED_STATES = NotImplemented
+    RUNNING_STATES = NotImplemented
 
     def __init__(self, session: VmsSession):
         self.session = session
@@ -483,6 +486,33 @@ class VastResource(ABC):
     def get(self, _id, api_ver=None):
         """Get single entry by id"""
         return self.session.get(f"{self.resource_name}/{_id}", api_ver=api_ver)
+
+    def _wait_for_state(self, resource_id):
+        """
+        Wait for a resource to reach a specific state.
+        
+        Args:
+            resource_id: The resource ID to wait for
+        """
+
+        def is_resource_in_target_state():
+            state = self.get(resource_id).state
+            if state == self.TARGET_STATE:
+                logger.info(f"{self.resource_name} {resource_id} reached target state: {state}")
+                return True
+            elif state in self.FAILED_STATES:
+                raise Exception(f"{self.resource_name} {resource_id} failed with state: {state}")
+            elif state in self.RUNNING_STATES:
+                logger.info(f"{self.resource_name} {resource_id} still running (state: {state})")
+                return False
+            else:
+                logger.warning(f"Unknown {self.resource_name} state: {state}")
+                return False
+        
+        timeout = self.session.config.timeout
+        logger.info(f"Waiting for {self.resource_name} {resource_id} to reach state '{self.TARGET_STATE}' (timeout: {timeout}s)...")
+        
+        wait(timeout, is_resource_in_target_state, sleep=5, message=f"{self.resource_name} {resource_id} did not reach state '{self.TARGET_STATE}' within {timeout} seconds")
 
 
 class Version(VastResource):
@@ -736,12 +766,15 @@ class Snapshot(VastResource):
 
 class GlobalSnapshotStream(VastResource):
     resource_name = "globalsnapstreams"
+    TARGET_STATE = "Completed"
+    FAILED_STATES = ["Suspended"]
+    RUNNING_STATES = ["Initializing", "Syncing", "Finalizing", "Active"]
 
     def stop_snapshot_stream(self, snapshot_stream_id):
         return self.session.patch(f"{self.resource_name}/{snapshot_stream_id}/stop")
 
     @requisite(semver="4.6.0", operation="create_globalsnapshotstream")
-    def ensure(self, name, snapshot_id, tenant_id, destination_path):
+    def ensure(self, name, snapshot_id, tenant_id, destination_path, wait=False):
         if not (snapshot_stream := self.one(name=name)):
             data = dict(
                 loanee_root_path=destination_path,
@@ -750,6 +783,10 @@ class GlobalSnapshotStream(VastResource):
                 loanee_tenant_id=tenant_id, # target tenant_id
             )
             snapshot_stream = self.session.post(f"snapshots/{snapshot_id}/clone/", data)
+        
+        if wait:
+            self._wait_for_state(snapshot_stream.id)
+        
         return snapshot_stream
 
     @requisite(semver="4.6.0", ignore=True)
