@@ -1,9 +1,9 @@
 apiVersion: storage.vastdata.com/v1
 kind: VastCSIDriver
 metadata:
-  name: csidriver
+  name: csi.vastdata.com
   namespace: vast-csi
 spec:
   image:
     csiVastPlugin:
-      image: vastdataorg/csi:v2.5.0
+      repository: vastdataorg/csi:v2.6.1

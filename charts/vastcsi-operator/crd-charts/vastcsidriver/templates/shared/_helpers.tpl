@@ -4,10 +4,44 @@
 # changes in the corresponding template in the other chart.
 */}}
 
-{{- define "vastcsi.csiDriver" -}}
-{{- coalesce $.Values.csiDriverName "csi.vastdata.com" -}}
-{{- end -}}
+{{- define "vastcsi.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+{{- end }}
 
+{{- define "vastcsi.commonArgs" -}}
+- "--csi-address=$(ADDRESS)"
+- "--v={{ .Values.logLevel | default 5 }}"
+{{- end }}
+
+{{- define "vastcsi.namespace" -}}
+{{- quote (coalesce $.Release.Namespace "vast-csi") -}}
+{{- end }}
+
+{{- define "vastcsi.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/* Common labels */}}
+{{- define "vastcsi.labels" -}}
+helm.sh/chart: {{ include "vastcsi.chart" . }}
+{{ include "vastcsi.selectorLabels" . }}
+{{- if .Chart.AppVersion }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- end }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+drivertype: {{ .Values.driverType }}
+{{- end }}
+
+{{/* Common selectors */}}
+{{- define "vastcsi.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "vastcsi.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{- define "vastcsi.csiDriver" -}}
+{{- $default_driver_name := ternary "csi.vastdata.com" "block.csi.vastdata.com" (eq $.Values.driverType "nfs") -}}
+{{- coalesce .Release.Name $default_driver_name -}}
+{{- end -}}
 
 {{- define "vastcsi.commonEnv" }}
 - name: X_CSI_PLUGIN_NAME

@@ -5,12 +5,13 @@
 {{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
 {{- $driver_name := include "vastcsi.csiDriver" . -}}
 {{- $csi_sock := printf "%s.sock" ($driver_name | lower | replace "." "-" | replace "_" "-" | trimSuffix "-" | trimPrefix "-") -}}
-
+{{- $is_nfs_driver := (eq .Values.driverType "nfs") }}
+{{- $name_prefix := $is_nfs_driver | ternary "csi" "block" }}
 
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: csi-vast-node
+  name: {{ $name_prefix }}-vast-node
   namespace: {{ include "vastcsi.namespace" . }}
   labels:
 {{ include "vastcsi.labels" . | indent 4 }}
@@ -18,12 +19,12 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: "csi-vast-node"
+      app: "{{ $name_prefix }}-vast-node"
 {{- include "vastcsi.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        app: csi-vast-node
+        app: {{ $name_prefix }}-vast-node
         role: csi-vast
 {{- include "vastcsi.labels" . | nindent 8 }}
     spec:
@@ -68,6 +69,8 @@ spec:
           image: {{ $csi_images.csiVastPlugin.repository | default $csi_images.csiVastPlugin.defaultRepository }}
           args:
             - "serve"
+            - "--plugin"
+            - {{ ternary "csi" "block" $is_nfs_driver }}
           imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default "IfNotPresent" }}
           env:
 {{- include "vastcsi.commonEnv" . | indent 12 }}
@@ -93,7 +96,14 @@ spec:
               mountPropagation: "Bidirectional"
             - name: device-dir
               mountPath: /dev
-          {{- if .Values.node.propagateHostMountOptions }}
+          {{- if not $is_nfs_driver }}
+            - name: sys-dir
+              mountPath: /sys
+            - name: host
+              mountPath: /host
+              mountPropagation: "Bidirectional"
+          {{- end }}
+          {{- if and .Values.node.propagateHostMountOptions $is_nfs_driver }}
             - name: host-nfsmount-conf-d
               mountPath: /etc/nfsmount.conf.d
           {{- end }}
@@ -123,8 +133,17 @@ spec:
         - name: device-dir
           hostPath:
             path: /dev
+        {{- if not $is_nfs_driver }}
+        - name: sys-dir
+          hostPath:
+            path: /sys
+        - name: host
+          hostPath:
+            path: /
+            type: Directory
+        {{- end }}
         {{- include "vastcsi.vmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}
-        {{- if .Values.node.propagateHostMountOptions }}
+        {{- if and .Values.node.propagateHostMountOptions $is_nfs_driver }}
         - name: host-nfsmount-conf-d
           hostPath:
             path: /etc/nfsmount.conf.d

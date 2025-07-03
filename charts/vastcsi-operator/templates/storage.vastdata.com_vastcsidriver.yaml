@@ -23,6 +23,10 @@ spec:
           jsonPath: .spec.image.csiVastPlugin.image
           name: CSIPluginImage
           type: string
+        - description: CSI Driver Type
+          jsonPath: .spec.driverType
+          name: Type
+          type: string
       name: v1
       schema:
         openAPIV3Schema:
@@ -37,7 +41,7 @@ spec:
             metadata:
               properties:
                 name:
-                  description: Only one driver may exist on a cluster at a time.
+                  description: One NFS and one Block driver can coexist per namespace, but not multiple of the same type.
                   type: string
               type: object
             spec: {{- $csidriver_spec.spec | toYamlPretty | nindent 14 }}

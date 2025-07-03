@@ -28,6 +28,10 @@ spec:
           jsonPath: .spec.snapshotClass.name
           name: SnapshotClass
           type: string
+        - description: Storage Type
+          jsonPath: .spec.driverType
+          name: Type
+          type: string
       name: v1
       schema:
         openAPIV3Schema:

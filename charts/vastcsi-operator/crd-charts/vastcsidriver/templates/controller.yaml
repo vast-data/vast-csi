@@ -4,12 +4,14 @@
 {{- $plugin_proxy_sock := "/var/lib/csi/sockets/pluginproxy/csi.sock" -}}
 {{- $plugin_proxy_sock_path := "/var/lib/csi/sockets/pluginproxy/" -}}
 {{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
+{{- $is_nfs_driver := (eq .Values.driverType "nfs") }}
+{{- $name_prefix := $is_nfs_driver | ternary "csi" "block" }}
 
 
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: csi-vast-controller
+  name: {{ $name_prefix }}-vast-controller
   namespace: {{ include "vastcsi.namespace" . }}
   labels:
     {{- include "vastcsi.labels" . | nindent 4 }}
@@ -18,13 +20,13 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: csi-vast-controller
+      app: {{ $name_prefix }}-vast-controller
       {{- include "vastcsi.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
         role: csi-vast
-        app: csi-vast-controller
+        app: {{ $name_prefix }}-vast-controller
         {{- include "vastcsi.labels" . | nindent 8 }}
     spec:
       {{- if .Values.imagePullSecrets }}
@@ -126,6 +128,8 @@ spec:
           image: {{ $csi_images.csiVastPlugin.repository | default $csi_images.csiVastPlugin.defaultRepository }}
           args:
             - "serve"
+            - "--plugin"
+            - {{ ternary "csi" "block" $is_nfs_driver }}
           imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default "IfNotPresent" }}
           securityContext:
             privileged: true
