@@ -1,4 +1,10 @@
 ####################
+# COMMON SETTINGS
+####################
+
+driverType: "nfs" # Supported values: "nfs", "block"
+
+####################
 # VAST REST SESSION ATTRIBUTES
 ####################
 
@@ -65,11 +71,6 @@ truncateVolumeName: 64
 # which might speed up the volume attach operation significantly but not appropriate for workload nodes where
 # http/https ports are not open.
 attachRequired: true
-
-# The name of the CSI driver registered with Kubernetes.
-# This value is used to identify the driver in CSI objects like VolumeAttachments and CSINodes.
-csiDriverName: csi.vastdata.com
-
 
 ####################
 # VAST CONTROLLER AND NODE IMAGE SPECIFICATION
@@ -156,7 +157,7 @@ controller:
         memory: 20Mi
     csiResizer:
       limits:
-        memory: 200Mi
+        memory: 300Mi
       requests:
         cpu: 10m
         memory: 20Mi

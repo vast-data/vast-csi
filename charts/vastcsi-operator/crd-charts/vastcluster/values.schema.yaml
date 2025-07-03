@@ -13,14 +13,18 @@ spec:
     password:
       description: Password used for authentication.
       type: string
+    token:
+      description: API token for accessing VAST mgmt. If provided, it will be used instead of 'username' and 'password'."
+      type: string
     sslCert:
       description: Optional SSL certificate for secure connections.
       type: string
       nullable: true
   required:
     - endpoint
-    - username
-    - password
+  oneOf:
+    - required: [ token ]
+    - required: [ username, password ]
   type: object
 
 specDescriptors:
@@ -44,4 +48,5 @@ example:
     endpoint: {{ .Values.endpoint }}
     username: {{ .Values.username }}
     password: {{ .Values.password }}
+    token: {{ .Values.token }}
     sslCert: {{ .Values.sslCert }}

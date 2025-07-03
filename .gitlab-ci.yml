@@ -6,7 +6,7 @@ stages:
   - redhat
 
 # source: packaging/ci.Dockerfile
-image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:CI-2025-03-23
+image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:CI-2025-05-16
 
 variables:
   PLATFORMS: "linux/amd64,linux/arm64" # comma-separated list of platforms to build multi-arch images
@@ -14,7 +14,7 @@ variables:
   DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
   IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:${CI_PIPELINE_ID}
   # source: packaging/base.Dockerfile
-  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2025-01-19
+  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2025-05-16
   ORION_BRANCH: comet/master
 
 build_csi_base:
@@ -243,16 +243,18 @@ update_certified_operators:
   stage: redhat
   before_script: *setup_github_access
   script: |
-    set -x  
-    VERSION=$(cat version.txt)
+    set -x 
+    docker login -u ${RH_DOCKER_USER} -p ${RH_DOCKER_PASSWORD} registry.connect.redhat.com
+    export VERSION=$(sed 's/^v//' version.txt)
     
     export IMG_PULL_SECRET=null
     export PIPE=null
-    export IMG=${RH_REGISTRY}/csi-operator@sha256
-    export OPERATOR_TAG=$(./scripts/img_to_digest.sh ${IMG}:${VERSION})
+    export IMG=${RH_REGISTRY}/csi-operator
+    export OPERATOR_TAG=$(./scripts/img_to_digest.sh "${IMG}:${VERSION}")
     
-    export CSI_PLUGIN_IMG=${RH_REGISTRY}/csi@sha256
-    export CSI_TAG=$(./scripts/img_to_digest.sh ${CSI_PLUGIN_IMG}:${VERSION})
+    export CSI_PLUGIN_IMG=${RH_REGISTRY}/csi
+    export CSI_TAG=$(./scripts/img_to_digest.sh "${CSI_PLUGIN_IMG}:${VERSION}")
+    
     if [ -z "$OPERATOR_TAG" ]; then
         echo "Error: OPERATOR_TAG is empty."
         exit 1
@@ -261,10 +263,17 @@ update_certified_operators:
         echo "Error: CSI_TAG is empty."
         exit 1
     fi
-    make operator-bundle-gen
+    
+    # Push CSI Operator bundle also to the internal ECR registry.
+    # We might want to test it before release
+    OPERATOR_BUNDLE_TAG=internal-bundle-certified
+    make operator-bundle-build
+    docker tag "${IMG}:latest-csi-operator-bundle" "${IMAGE_NAME}-internal-bundle-certified"
+    echo "Pushing pre-release bundle: ${IMAGE_NAME}-internal-bundle-certified"
+    docker push "${IMAGE_NAME}-internal-bundle-certified"
     
     git clone git@github.com:vast-data/certified-operators.git
-    DEST=certified-operators/operators/vast-csi-operator/${VERSION}
+    DEST=certified-operators/operators/vast-csi-operator/v${VERSION}
     # Check if DEST directory exists
     if [ -d "$DEST" ]; then
         FORCE_FLAG="--force"
@@ -277,7 +286,7 @@ update_certified_operators:
     
     cd certified-operators    
     git add .
-    git commit -am "VAST CSI Operator - $VERSION
+    git commit -sam "VAST CSI Operator - v${VERSION}
 
       (from $CI_COMMIT_SHA)"    
     git push origin main $FORCE_FLAG

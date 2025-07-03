@@ -19,7 +19,7 @@ ifndef CSI_PLUGIN_IMG
     CSI_PLUGIN_IMG := $(DOCKER_REGISTRY)/dev/vast-csi
 endif
 ifndef CHANNEL
-CHANNEL := "alpha"
+CHANNEL := "stable"
 endif
 ifndef NAMESPACE
 NAMESPACE := "vast-csi"
@@ -90,8 +90,8 @@ operator-bundle-gen: ## Generate bundle manifests and metadata, then validate ge
           --set olmBuild=true \
           --set installSnapshotCRDS=false \
           --set maturity=$(CHANNEL) \
-          --set managerImage="${IMG}:${OPERATOR_TAG}" \
-          --set overrides.csiVastPlugin.repository=$(CSI_PLUGIN_IMG):$(CSI_TAG) \
+          --set managerImage="$(shell scripts/concat_img_tag.sh $(IMG) $(OPERATOR_TAG))" \
+          --set overrides.csiVastPlugin.repository="$(shell scripts/concat_img_tag.sh $(CSI_PLUGIN_IMG) $(CSI_TAG))" \
           --set imagePullSecret=$(IMG_PULL_SECRET) \
 		  --set ciPipe=$(PIPE)
 	@operator-sdk bundle validate $(CURDIR)/bundle
@@ -99,8 +99,8 @@ operator-bundle-gen: ## Generate bundle manifests and metadata, then validate ge
 operator-bundle-build: ## Generate manifests, metadata etc and build docker bundle image
 	@$(MAKE) operator-bundle-gen
 	@$(call check_required_env,IMG OPERATOR_BUNDLE_TAG OPERATOR_VERSION CHANNEL)
-	docker build --build-arg CHANNEL=${CHANNEL} -t "${IMG}:${OPERATOR_BUNDLE_TAG}" -f $(CURDIR)/packaging/operator_bundle.Dockerfile .
-	docker tag "${IMG}:${OPERATOR_BUNDLE_TAG}" "${IMG}:latest-csi-operator-bundle"
+	docker build --build-arg CHANNEL=${CHANNEL} -t "$(shell scripts/concat_img_tag.sh $(IMG) $(OPERATOR_BUNDLE_TAG))" -f $(CURDIR)/packaging/operator_bundle.Dockerfile .
+	docker tag "$(shell scripts/concat_img_tag.sh $(IMG) $(OPERATOR_BUNDLE_TAG))" "${IMG}:latest-csi-operator-bundle"
 
 operator-bundle-push: ## Push bundle image to docker repository (specified in defaults)
 	@$(call check_required_env,IMG OPERATOR_BUNDLE_TAG)
