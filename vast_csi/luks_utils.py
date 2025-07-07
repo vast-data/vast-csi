@@ -1,41 +1,124 @@
-import re
-import json
-from plumbum import local
-from easypy.bunch import Bunch, bunchify
-from easypy.collections import listify
-from vast_csi.filesystem_utils import hostcmd, HostCommand
-from plumbum import local, cmd, ProcessExecutionError
+from pathlib import Path
+from vast_csi.filesystem_utils import hostcmd
+from plumbum import cmd, ProcessExecutionError, FG
 from vast_csi.logging import logger
-from vast_csi.exceptions import Abort
-from vast_csi.csi_types import NOT_FOUND
+from vast_csi.exceptions import Abort, LookupFieldError
+from vast_csi.csi_types import ABORTED, INVALID_ARGUMENT
+from vast_csi.serialization_utils import SerializationMixin
+from vast_csi.configuration import Config
 
-def luksDevicePath(volume_name):
-    return f"/dev/mapper/{volume_name}"
-def luksDeviceName(volume_id):
-    return f"vast-csi-crypt-{volume_id}"
-def isHostCryptPath(device, volume_id):
-    return device == luksDevicePath(luksDeviceName(volume_id))
 
-class LuksManager:
-    def __init__(self, logger, vol_id=None, device_path=None, vol_context=None):
-        self.vol_id = vol_id
-        self.encryption_config = self._parse_encryption_config(vol_context or {})
-        self.logger = logger
-        self.device_path = device_path
-        self.luks_device_name = luksDeviceName(vol_id)
-        self.luks_device_path = luksDevicePath(self.luks_device_name)
+def get_luks_manager(
+        volume_id: str,
+        passphrase: str = None,
+        volume_context: dict = None,
+        cluster_name: str = None,
+) -> "LuksManager":
+    """Factory function to create a LuksManager instance."""
+    config = Config()
+    return LuksManager.create(
+        config=config,
+        volume_id=volume_id,
+        passphrase=passphrase,
+        volume_context=volume_context,
+        cluster_name=cluster_name,
+    )
 
-    @staticmethod
-    def _parse_encryption_config(vol_context):
+
+class LuksManager(SerializationMixin):
+    def __init__(self, volume_id: str, passphrase: str = None, volume_context: dict = None):
+        self.volume_id = volume_id
+        self.passphrase = passphrase
+        self.raw_volume_context = volume_context or {}
+        self.encryption_config = self._parse_encryption_config(self.raw_volume_context)
+        self.luks_device_name = f"vast-csi-crypt-{volume_id}"
+        self.luks_device_path = f"/dev/mapper/{self.luks_device_name}"
+
+
+    @classmethod
+    def create(cls, config, volume_id, passphrase, volume_context, cluster_name):
         """
-        Extracts host encryption params from the items dictionary.
+        Creates a LuksManager instance, resolving the encryption passphrase from
+        arguments or secret-based configuration.
+
+        If `cluster_name` is provided, the passphrase is loaded from a multi-cluster YAML config.
+        If not, and no passphrase is given, it falls back to the deprecated global secret.
 
         Args:
-            items (dict): Dictionary containing volume context or parameters.
+            config (Config): The configuration object containing secret paths and settings.
+            volume_id (str): The unique identifier for the volume to encrypt.
+            passphrase (str, optional): The passphrase used for LUKS encryption. If not provided,
+                it will be resolved from secret configuration.
+            volume_context (dict, optional): Volume context fields, typically from the StorageClass.
+            cluster_name (str, optional): The cluster name to use when resolving secrets
+                from a multi-cluster configuration.
+
+        Behavior:
+            The passphrase is resolved based on the following logic:
+
+            1. **StorageClass Secret (Recommended)**:
+                If `cluster_name` is not provided and `passphrase` is explicitly passed,
+                it is used directly. This is the preferred method for secure encryption.
+
+            2. **Multi-Cluster Secret**:
+                If `cluster_name` is provided, the passphrase is read from a YAML config mounted
+                at `/opt/vms-auth/clusters`, where each top-level key is a cluster name. For example:
+
+                ```yaml
+                cluster1:
+                  passphrase: my-secret-key
+                cluster2:
+                  passphrase: another-secret
+                ```
+
+            3. **Global Secret (Deprecated)**:
+                If neither `cluster_name` nor a direct `passphrase` is provided,
+                the passphrase is loaded from the global secret (e.g., `/opt/vms-auth/passphrase`).
+                This method is discouraged and retained for backward compatibility.
 
         Returns:
-            dict: A dictionary of host encryption parameters without the prefix.
+            LuksManager: A configured instance ready to manage LUKS operations for the specified volume.
+
+        Raises:
+            LookupFieldError: If a required value like the passphrase is missing from the expected source.
         """
+        if cluster_name:
+            if not (cluster_auth_config := config.cluster_credentials.get(cluster_name)):
+                raise LookupFieldError(field="cluster_name", tip="Make sure cluster name is present in secret.")
+            passphrase = cluster_auth_config.get("passphrase")
+        else:
+            # The presence of the passphrase in the arguments already indicates
+            # that we have a StorageClass scope secret at this point.
+            # In other words, it's not a globally mounted secret. Other secret fields will be validated below.
+            is_global = not bool(passphrase)
+            if config.vms_credentials_store.exists() and is_global:
+                passphrase = config.host_encryption_passphrase
+
+        return cls(
+            volume_id=volume_id,
+            passphrase=passphrase,
+            volume_context=volume_context,
+
+        )
+
+    def dump_data(self) -> object:
+        return self.volume_id, self.passphrase, self.raw_volume_context
+
+    @staticmethod
+    def load_data(data_fields: object) -> "LuksManager":
+        """
+        Reconstruct an object from deserialized data fields.
+        Args:
+            data_fields: The result of unpickling the stored internal state.
+        Returns:
+            An instance of the LuksManager class.
+        """
+        volume_id, passphrase, volume_context = data_fields
+        return get_luks_manager(volume_id=volume_id, passphrase=passphrase, volume_context=volume_context)
+
+
+    @staticmethod
+    def _parse_encryption_config(vol_context: dict) -> dict:
         prefix = "host_encryption."
         return {
             key[len(prefix):]: value
@@ -43,61 +126,48 @@ class LuksManager:
             if key.startswith(prefix)
         }
 
-    def init_host_encryption(self, passphrase: str) -> None:
+    def requires_encryption(self) -> bool:
+        """Check if LUKS encryption is active (i.e., passphrase is supplied)."""
+        if self.encryption_config and not self.passphrase:
+            raise Abort(INVALID_ARGUMENT, "Encryption config is present but passphrase is missing.")
+        return bool(self.passphrase)
+
+    def _require_passphrase(self):
+        if not self.passphrase:
+            raise Abort(INVALID_ARGUMENT, "Passphrase must be provided for LUKS operations")
+
+
+    def init_host_encryption(self, device_path: str) -> None:
         """
         Handle formatting and opening a LUKS device for a volume if not already done.
-
-        Args:
-            passphrase (str): Passphrase for encryption.
         """
-        config = self.encryption_config
-        luks_type = config.get("luks_type", "luks2")
-        cipher = config.get("cipher", "aes-xts-plain64")
-        key_size = config.get("key_size", "512")
-        hash_algo = config.get("hash_algo", "sha256")
-        pbkdf_mem = config.get("pbkdf_mem", "65536")
 
         # Check if LUKS device exists and active
-        is_luks = self._is_luks_device()
+        is_luks = self._is_luks_device(device_path=device_path)
         if not is_luks:
             # Format and open device
-            self.logger.info(f"Formatting device {self.device_path} with LUKS")
+            logger.info(f"Formatting device {device_path} with LUKS")
             self._luks_format_device(
-                passphrase=passphrase,
-                luks_type=luks_type,
-                cipher=cipher,
-                key_size=key_size,
-                hash_algo=hash_algo,
-                pbkdf_mem=pbkdf_mem
+               device_path=device_path,
             )
-            self.logger.info(f"Opening encrypted device {self.luks_device_path} as {self.luks_device_name}")
-            self._luks_open_device(
-                passphrase=passphrase
-            )
-            self.logger.info(f"Done opening encrypted device {self.luks_device_path} as {self.luks_device_name}")
+            logger.info(f"Opening encrypted device {self.luks_device_path} as {self.luks_device_name}")
+            self._luks_open_device(device_path=device_path)
+            logger.info(f"Done opening encrypted device {self.luks_device_path} as {self.luks_device_name}")
         elif not self._is_luks_active():
             # Device already LUKS encrypted, but not mapped because it isn't opened yet
-            self.logger.info(f"Opening encrypted device {self.luks_device_path} as {self.luks_device_name}")
-            self._luks_open_device(
-                passphrase=passphrase
-            )
-            self.logger.info(f"Done opening encrypted device {self.luks_device_path} as {self.luks_device_name}")
+            logger.info(f"Opening encrypted device {self.luks_device_path} as {self.luks_device_name}")
+            self._luks_open_device(device_path=device_path)
+            logger.info(f"Done opening encrypted device {self.luks_device_path} as {self.luks_device_name}")
         else:
             # LUKS device exists and active
-            self.logger.info(f"LUKS device already opened at {self.luks_device_path}")
+            logger.info(f"LUKS device already opened at {self.luks_device_path}")
 
-    def _is_luks_device(self) -> bool:
-        """
-        Check if the given device is LUKS-encrypted or not.
-
-        Args:
-            None
-
-        Returns:
-            bool: True if the device is LUKS, False otherwise.
-        """
+    def _is_luks_device(self, device_path: str) -> bool:
+        """Check if the raw device is LUKS-encrypted."""
+        if not Path(device_path).exists():
+            return False
         try:
-            hostcmd.cryptsetup("isLuks", self.device_path)
+            hostcmd.cryptsetup("isLuks", device_path)
             return True
         except ProcessExecutionError:
             return False
@@ -105,10 +175,6 @@ class LuksManager:
     def _is_luks_active(self) -> bool:
         """
         Check if a given LUKS mapping is currently active (opened).
-
-        Args:
-            None
-
         Returns:
             bool: True if the LUKS mapping is active, False otherwise.
         """
@@ -118,110 +184,84 @@ class LuksManager:
         except ProcessExecutionError:
             return False
 
-    def fini_host_encryption(self) -> None:
+    def luks_close_device(self) -> bool:
         """
-        Closes a mapped LUKS device, if open.
-
-        This function delegates to _luks_close_device, which handles
-        closing the LUKS device.
-        """
-        self._luks_close_device()
-
-    def _luks_close_device(self) -> None:
-        """
-        Removes (closes) a mapped LUKS device.
-
-        Args:
-            None
-
-        Raises:
-            Abort: If cryptsetup command fails.
-        """
-        logger.info(f"Attempting to close LUKS device: {self.luks_device_name}")
-        try:
-            hostcmd.cryptsetup("luksClose", self.luks_device_name)
-            self.logger.info(f"LUKS device {self.luks_device_name} closed successfully.")
-        except ProcessExecutionError as e:
-            self.logger.warning(f"Failed to close LUKS device {self.luks_device_name}: {e.stderr.strip() if e.stderr else str(e)}")
-
-    def _luks_open_device(self, passphrase: str) -> None:
-        """
-        Open a LUKS-encrypted device and map it to a specified device name.
-
-        Args:
-            passphrase (str): Passphrase to unlock the LUKS device.
-
-        Raises:
-            Abort: If cryptsetup fails to open the device.
-        """
-        try:
-            hostcmd = HostCommand("cryptsetup")
-            crypt_cmd = hostcmd.get_executable("open", self.device_path, self.luks_device_name)
-            echo_cmd = local["echo"]["-n", passphrase]
-            retcode, stdout, stderr = (echo_cmd | crypt_cmd).run(retcode=None)
-
-        except ProcessExecutionError as e:
-            raise Abort(NOT_FOUND, f"Failed to open LUKS device {device_path}: {e.stderr.strip() if e.stderr else str(e)}")
-
-    def _luks_format_device(self, passphrase: str, luks_type: str, cipher: str,
-                           key_size: str, hash_algo: str,
-                           pbkdf_mem: str) -> None:
-        """
-        Format a block device with LUKS encryption using cryptsetup on the Docker host.
-
-        Args:
-            passphrase (str): Passphrase for LUKS encryption.
-            luks_type (str): LUKS format type (e.g., luks1, luks2).
-            cipher (str): Cipher algorithm to use (e.g., aes-xts-plain64).
-            key_size (str): Key size in bits (e.g., 512).
-            hash_algo (str): Hash algorithm (e.g., sha256).
-            pbkdf_mem (str): PBKDF memory in KB (e.g., 65536).
-
-        Raises:
-            Abort: If cryptsetup fails.
-        """
-        try:
-            hostcmd = HostCommand("cryptsetup")
-            crypt_cmd = hostcmd.get_executable(
-                "luksFormat",
-                "--type", luks_type,
-                "--cipher", cipher,
-                "--key-size", key_size,
-                "--hash", hash_algo,
-                "--pbkdf-memory", pbkdf_mem,
-                "--batch-mode", self.device_path,
-            )
-            echo_cmd = local["echo"]["-n", passphrase]
-            retcode, stdout, stderr = (echo_cmd | crypt_cmd).run(retcode=None)
-
-        except ProcessExecutionError as e:
-            raise Abort(NOT_FOUND, f"LUKS format failed for {self.device_path}: {e.stderr.strip() if e.stderr else str(e)}")
-
-    def luks_resize_device(self, passphrase: str) -> bool:
-        """
-        Resize the LUKS-encrypted device and the filesystem inside it.
-
-        Args:
-            passphrase (str): Passphrase for LUKS encryption.
-
+        Safely close the LUKS device if it exists and is mapped.
         Returns:
-            bool: True if the device and filesystem were resized successfully, False otherwise.
+          bool: True if the device was closed, False if no mapped device was found or it failed to close.
         """
-        if not self._is_luks_device():
-            self.logger.info(f"Device {self.luks_device_path} is not a LUKS-encrypted device.")
+        if not Path(self.luks_device_path).exists():
+            logger.debug(f"No mapped LUKS device found at {self.luks_device_path}.")
             return False
 
         try:
-            hostcmd = HostCommand("cryptsetup")
-            crypt_cmd = hostcmd.get_executable(
-                "resize",
-                self.luks_device_path,
-            )
-            echo_cmd = local["echo"]["-n", passphrase]
-            retcode, stdout, stderr = (echo_cmd | crypt_cmd).run(retcode=None)
-            self.logger.info(f"Device {self.luks_device_path} resized successfully")
+            hostcmd.cryptsetup("luksClose", self.luks_device_name)
+            logger.info(f"LUKS device {self.luks_device_name} closed successfully.")
             return True
-
         except ProcessExecutionError as e:
-            self.logger.error(f"Error resizing LUKS device {self.luks_device_path}: {e}")
+            logger.warning(f"Failed to close LUKS device {self.luks_device_name}: {e}")
+            return False
+
+    def _luks_open_device(self, device_path: str) -> None:
+        """Run `cryptsetup open` with stdin passphrase."""
+        self._require_passphrase()
+
+        try:
+            crypt_cmd = hostcmd.cryptsetup.get_executable(
+                "open", device_path, self.luks_device_name
+            )
+            echo_cmd = cmd.echo["-n", self.passphrase]
+            (echo_cmd | crypt_cmd) & FG
+        except ProcessExecutionError as e:
+            raise Abort(ABORTED, f"Failed to open LUKS device {device_path}: {e}")
+
+    def _luks_format_device(self, device_path: str) -> None:
+        """Run `cryptsetup luksFormat` with stdin passphrase."""
+        self._require_passphrase()
+
+        args = [
+            "luksFormat",
+            "--type", self.encryption_config.get("luks_type", "luks2"),
+            "--cipher", self.encryption_config.get("cipher", "aes-xts-plain64"),
+            "--key-size", self.encryption_config.get("key_size", "512"),
+            "--hash", self.encryption_config.get("hash_algo", "sha256"),
+            "--pbkdf-memory", self.encryption_config.get("pbkdf_mem", "65536"),
+            "--batch-mode",
+            "--key-file", "-",
+            device_path,
+        ]
+        try:
+            crypt_cmd = hostcmd.cryptsetup.get_executable(*args)
+            echo_cmd = cmd.echo["-n", self.passphrase]
+            (echo_cmd | crypt_cmd) & FG
+        except ProcessExecutionError as e:
+            raise Abort(ABORTED, f"LUKS format failed for {device_path}: {e}")
+
+    def luks_resize_device(self, device_path: str) -> bool:
+        """
+        Resize the LUKS-encrypted device.
+
+        This adjusts the LUKS container size after the underlying block device has grown.
+        The decrypted /dev/mapper path remains the same, but the LUKS metadata must be adjusted.
+
+        Args:
+            device_path (str): The original encrypted block device path (e.g., /dev/nvme0n1)
+
+        Returns:
+            bool: True if resized successfully, False otherwise.
+        """
+        self._require_passphrase()
+
+        if not self._is_luks_device(device_path):
+            logger.info(f"Device {device_path} is not a LUKS-encrypted device.")
+            return False
+
+        try:
+            crypt_cmd = hostcmd.cryptsetup.get_executable("resize", self.luks_device_path)
+            echo_cmd = cmd.echo["-n", self.passphrase]
+            (echo_cmd | crypt_cmd) & FG
+            logger.info(f"LUKS device {self.luks_device_path} resized successfully.")
+            return True
+        except ProcessExecutionError as e:
+            logger.error(f"Error resizing LUKS device {self.luks_device_path}: {e}")
             return False

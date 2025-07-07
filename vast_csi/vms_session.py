@@ -3,8 +3,6 @@ import re
 import json
 import requests
 import hashlib
-import pickle
-import base64
 import inspect
 from abc import ABC
 from pprint import pformat
@@ -15,13 +13,10 @@ from datetime import datetime
 from functools import wraps
 from requests.exceptions import ConnectionError
 from requests.utils import default_user_agent
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.backends import default_backend
 
 from easypy.bunch import Bunch, bunchify
 from easypy.caching import cached_property
-from easypy.collections import shuffled, listify
+from easypy.collections import shuffled
 from easypy.semver import SemVer
 from easypy.caching import timecache, locking_cache
 from easypy.units import HOUR, MINUTE
@@ -38,6 +33,7 @@ from .configuration import Config
 from .exceptions import ApiError, MountFailed, OperationNotSupported, LookupFieldError, TaskFailed
 from .utils import generate_ip_range
 from . import csi_types as types
+from .serialization_utils import SerializationMixin
 
 
 class ApiVersion:
@@ -121,24 +117,13 @@ class CannotUseTrashAPI(OperationNotSupported):
     template = "Cannot delete folder via VMS: {reason}"
 
 
-def _derive_key(salt):
-    # Derive a key from the salt
-    if isinstance(salt, str):
-        salt = salt.encode("utf-8")
-
-    kdf = hashes.Hash(hashes.SHA256(), backend=default_backend())
-    kdf.update(salt)
-    return kdf.finalize()
-
-
 @locking_cache
-def get_vms_session(username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name=None, passphrase=None):
+def get_vms_session(username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name=None):
     config = Config()
     session_cls = TestVmsSession if config.mock_vast else VmsSession
     return session_cls.create(
         config=config, username=username, password=password, token=token,
         endpoint=endpoint, ssl_cert=ssl_cert, cluster_name=cluster_name,
-        passphrase=passphrase,
     )
 
 
@@ -212,12 +197,12 @@ class RESTSession(requests.Session):
         setattr(self, attr, func)
         return func
 
-class VmsSession(RESTSession):
+class VmsSession(RESTSession, SerializationMixin):
     """
     Communication with vms cluster.
     Operations over vip pools, quotas, snapshots etc.
     """
-    def __init__(self, config, username, password, token, endpoint, ssl_cert, passphrase=None):
+    def __init__(self, config, username, password, token, endpoint, ssl_cert):
         super().__init__(config)
         self.username = username
         self.password = password
@@ -225,7 +210,6 @@ class VmsSession(RESTSession):
         self.endpoint = endpoint
         self.ssl_cert = ssl_cert
         self.base_url = f"https://{endpoint}/api"
-        self.passphrase = passphrase
         # Modify the SSL verification CA bundle path established
         # by the underlying Certifi library's defaults if ssl_verify==True.
         certs_base_dir = "/etc/ssl/certs"
@@ -263,33 +247,25 @@ class VmsSession(RESTSession):
         self.blockhosts = BlockHost(self)
         self.blockhostmappings = BlockHostMapping(self)
 
-    def serialize(self, salt: str):
-        session_data = pickle.dumps((self.username, self.password, self.endpoint, self.ssl_cert, self.passphrase))
-        iv = os.urandom(16)
-        key = _derive_key(salt)
-        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
-        encryptor = cipher.encryptor()
-        ciphertext = encryptor.update(session_data) + encryptor.finalize()
-        # Return IV and ciphertext (both base64 encoded for storage)
-        return base64.b64encode(iv + ciphertext).decode()
+
+    def dump_data(self) -> object:
+        return self.username, self.password, self.endpoint, self.ssl_cert
+
+
+    @staticmethod
+    def load_data(data_fields: object) -> "VmsSession":
+        """
+        Reconstruct an object from deserialized data fields.
+        Args:
+            data_fields: The result of unpickling the stored internal state.
+        Returns:
+            An instance of the VmsSession class.
+        """
+        username, password, endpoint, ssl_cert = data_fields
+        return get_vms_session(username=username, password=password, endpoint=endpoint, ssl_cert=ssl_cert)
 
     @classmethod
-    def deserialize(cls, salt: str, encrypted_data: str):
-        encrypted_data = base64.b64decode(encrypted_data)
-        # Extract IV and ciphertext
-        iv = encrypted_data[:16]
-        ciphertext = encrypted_data[16:]
-        # Create cipher object
-        key = _derive_key(salt)
-        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
-        decryptor = cipher.decryptor()
-        # Decrypt the data
-        plainbytes = decryptor.update(ciphertext) + decryptor.finalize()
-        username, password, endpoint, ssl_cert = pickle.loads(plainbytes)
-        return get_vms_session(username=username, password=password, endpoint=endpoint, ssl_cert=ssl_cert, passphrase=passphrase)
-
-    @classmethod
-    def create(cls, config, username, password, token, endpoint, ssl_cert, cluster_name, passphrase=None):
+    def create(cls, config, username, password, token, endpoint, ssl_cert, cluster_name):
         """
         Creates an instance of the session, initializing credentials based on provided arguments or configuration context.
 
@@ -337,7 +313,6 @@ class VmsSession(RESTSession):
             password = cluster_auth_config.get("password")
             token = cluster_auth_config.get("token")
             endpoint = cluster_auth_config.endpoint
-            passphrase = cluster_auth_config.passphrase
             config_source = f"multi-cluster auth configuration ({cluster_name=})"
         else:
             # The presence of the name in the arguments already indicates
@@ -350,7 +325,6 @@ class VmsSession(RESTSession):
                 password = config.vms_password
                 token = config.vms_token
                 endpoint = config.vms_host
-                passphrase = config.passphrase
 
         if not token:
             if not username:
@@ -367,7 +341,6 @@ class VmsSession(RESTSession):
             password=password,
             token=token,
             endpoint=endpoint,
-            passphrase=passphrase,
             ssl_cert=ssl_cert,
         )
         ssl_verification = "enabled" if session.ssl_verify else "disabled"

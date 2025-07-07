@@ -80,6 +80,11 @@ class Config(TypedEnv):
         return self._vms_host
 
     @cached_property
+    def host_encryption_passphrase(self):
+        if self.vms_credentials_store['passphrase'].exists():
+            return self.vms_credentials_store['passphrase'].read().strip()
+
+    @cached_property
     def cluster_credentials(self):
         """Read multi-cluster auth configuration from the secret"""
         import yaml

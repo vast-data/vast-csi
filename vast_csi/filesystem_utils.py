@@ -367,12 +367,9 @@ def need_resize(device: str, target_mount, fs_type: str):
     return device_size > fs_size + block_size
 
 
-def resize_device(device: str, target_mount: str, fs_type: str, passphrase=None):
+def resize_device(device: str, target_mount: str, fs_type: str):
     """Perform resize of the filesystem."""
     if need_resize(device, target_mount, fs_type):
-        if passphrase:
-            luks_manager = LuksManager(logger, device_path=device)
-            luks_manager.luks_resize_device(passphrase)
         if fs_type in ("ext3", "ext4"):
             ext_resize(device)
         elif fs_type == "xfs":

@@ -29,14 +29,14 @@ from easypy.bunch import Bunch
 from vast_csi.proto import csi_pb2_grpc as csi_grpc
 from vast_csi import csi_types as types
 from vast_csi.csi_types import FAILED_PRECONDITION
-from vast_csi.vms_session import VmsSession
 
 from vast_csi.logging import logger
 from vast_csi.utils import stringify_dict
 from vast_csi.csi_types import INVALID_ARGUMENT, UNKNOWN
 from vast_csi.builders import  parse_volume_id
 from vast_csi.exceptions import Abort, LookupFieldError
-from vast_csi.vms_session import get_vms_session
+from vast_csi.vms_session import get_vms_session, VmsSession
+from vast_csi.luks_utils import get_luks_manager, LuksManager
 from vast_csi.quantity import parse_quantity
 
 
@@ -68,7 +68,6 @@ class Instrumented:
             params = {fld.name: value for fld, value in request.ListFields()}
             # secrets are not logged and not the part of function signature.
             secrets = params.pop("secrets", {})
-            host_encryption_secret = secrets.get("passphrase", None)
             missing_params = required_params - {"request", "context", "vms_session", "exit_stack"} - set(params)
 
             # Get cluster_name from volume_id, snapshot_id or source_volume_id in case of id identifier with metadata
@@ -94,9 +93,6 @@ class Instrumented:
                 for line in stringify_dict(params):
                     log(f"({method})    {line}")
 
-            if host_encryption_secret:
-                log(f"({method})    host_encryption_secret: <redacted>")
-
             if "vms_session" in required_params:
                 # If secret exist and method signature requires `vms_session`
                 # then `vms_session` with secret will be injected into function parameters
@@ -107,6 +103,15 @@ class Instrumented:
                     params["vms_session"] = get_vms_session(**{k: secrets.get(k) for k in vms_session_args})
                 except LookupFieldError:
                     params["vms_session"] = None
+
+            if "luks_manager" in required_params:
+                # If method signature requires `luks_manager`
+                params["luks_manager"] = get_luks_manager(
+                    volume_id=params["volume_id"],
+                    passphrase=secrets.get("passphrase", None),
+                    volume_context=params.get("volume_context", {}),
+                    cluster_name=secrets.get("cluster_name", None),
+                )
 
             exit_stack = ExitStack()
             if "exit_stack" in required_params:
@@ -356,7 +361,14 @@ class NodeBase(csi_grpc.NodeServicer):
         return resp.publish_context
 
 
-    def _store_meta_file(self, meta_file, volume_id, is_ephemeral, vms_session):
+    def _store_meta_file(
+            self,
+            meta_file,
+            volume_id,
+            is_ephemeral,
+            vms_session,
+            luks_manager=None,
+    ):
         """
         Stores metadata about a volume in a file, including information about
         whether the volume is ephemeral, host_encryption and, if so, serialized session data.
@@ -368,6 +380,8 @@ class NodeBase(csi_grpc.NodeServicer):
 
         if is_ephemeral:
             payload["vms_session"] = vms_session.serialize(salt=volume_id)
+            if luks_manager:
+                payload["luks_manager"] = luks_manager.serialize(salt=volume_id)
 
         with meta_file.open("w") as f:
             json.dump(payload, f)
@@ -384,7 +398,7 @@ class NodeBase(csi_grpc.NodeServicer):
         if meta.get("is_ephemeral"):
             if vms_session_data := meta.get("vms_session"):
                 vms_session = VmsSession.deserialize(
-                    salt=volume_id, encrypted_data=vms_session_data
+                    salt=volume_id, encrypted_blob=vms_session_data
                 )
             elif not vms_session:
                 raise Abort(
@@ -392,6 +406,12 @@ class NodeBase(csi_grpc.NodeServicer):
                     "Ephemeral Volume provisioning requires "
                     "configuring a global VMS credentials secret or nodePublishSecretRef secret reference."
                 )
+            if luks_manager_data := meta.get("luks_manager"):
+                luks_manager = LuksManager.deserialize(
+                    salt=volume_id, encrypted_blob=luks_manager_data
+                )
+                luks_manager.luks_close_device()
+
             self.controller.DeleteVolume.__wrapped__(
                 self.controller, vms_session=vms_session, volume_id=meta["volume_id"]
             )
