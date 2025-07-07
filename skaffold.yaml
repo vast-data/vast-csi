@@ -1,0 +1,70 @@
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: csi-driver
+build:
+  artifacts:
+    - image: csi
+      requires:
+        - image: base
+          alias: BASE_IMAGE_NAME
+      docker:
+        dockerfile: packaging/Dockerfile
+        buildArgs:
+          GIT_COMMIT: "{{.GIT_COMMIT}}"
+          VERSION: "{{.VERSION}}"
+          CI_PIPELINE_ID: local
+    - image: base
+      docker:
+        dockerfile: packaging/base.Dockerfile
+  local:
+    push: false
+    concurrency: 0
+
+deploy:
+  statusCheckDeadlineSeconds: 1800
+  helm:
+    releases:
+      - name: vastcsi
+        chartPath: charts/vastcsi
+        namespace: "{{.NAMESPACE}}"
+        createNamespace: true
+        setValueTemplates:
+          image:
+            csiVastPlugin:
+              repository: "{{.IMAGE_REPO_csi}}"
+              tag: "{{.IMAGE_TAG_csi}}"
+          storageClasses: {} # This will be filled in by the profile
+        setValues:
+          storageClasses:
+            vastdata-filesystem:
+              secretName: vast-mgmt
+          snapshotClasses:
+            vastdata-snapshot:
+              secretName: vast-mgmt
+
+profiles:
+  - name: nfs
+    patches:
+      - op: replace
+        path: /deploy/helm/releases/0/chartPath
+        value: charts/vastcsi
+      - op: add
+        path: /deploy/helm/releases/0/setValueTemplates/storageClasses
+        value:
+          vastdata-filesystem:
+            vipPool: "{{.VIP_POOL}}"
+            storagePath: "/k8s"
+            viewPolicy: "{{.VIEW_POLICY}}"
+
+  - name: block
+    patches:
+      - op: replace
+        path: /deploy/helm/releases/0/chartPath
+        value: charts/vastblock
+      - op: add
+        path: /deploy/helm/releases/0/setValueTemplates/storageClasses
+        value:
+          vastdata-filesystem:
+            vipPool: "{{.VIP_POOL}}"
+            subsystem: "{{.SUBSYSTEM}}"
