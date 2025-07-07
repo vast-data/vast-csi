@@ -56,6 +56,7 @@ def mock_credentials(tmpdir):
     tmpdir.join("username").write("test")
     tmpdir.join("password").write("test")
     tmpdir.join("endpoint").write("mock.test.com")
+    tmpdir.join("passphrase").write("test_passphrase")
     return local.path(tmpdir)
 
 @pytest.fixture
