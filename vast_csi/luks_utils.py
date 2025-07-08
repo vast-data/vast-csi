@@ -130,36 +130,38 @@ class LuksManager(SerializationMixin):
         if not self.passphrase:
             raise Abort(INVALID_ARGUMENT, "Passphrase must be provided for LUKS operations")
 
-
-    def init_host_encryption(self, device_path: str) -> None:
+    def init_host_encryption(self, device_path: str) -> str:
         """
-        Handle formatting and opening a LUKS device for a volume if not already done.
-        """
+        Prepare and activate LUKS encryption on the specified device.
 
-        # Check if LUKS device exists and active
-        is_luks = self._is_luks_device(device_path=device_path)
-        if not is_luks:
-            # Format and open device
-            logger.info(f"Formatting device {device_path} with LUKS")
-            self._luks_format_device(
-               device_path=device_path,
-            )
-            logger.info(f"Opening encrypted device {self.luks_device_path} as {self.luks_device_name}")
+        - If the device is not yet encrypted, it will be formatted with LUKS and mapped.
+        - If already encrypted but not active, it will be mapped.
+        - If already mapped, no action is taken.
+
+        Returns:
+            The path to the active LUKS device (e.g., /dev/mapper/csi-<volume>).
+        """
+        if not self._is_luks_device(device_path=device_path):
+            logger.info(f"Initializing LUKS encryption on device: {device_path}")
+            self._luks_format_device(device_path=device_path)
+
+            logger.info(f"Mapping LUKS device: {self.luks_device_path}")
             self._luks_open_device(device_path=device_path)
-            logger.info(f"Done opening encrypted device {self.luks_device_path} as {self.luks_device_name}")
+            logger.info(f"LUKS device mapped successfully: {self.luks_device_path}")
+
         elif not self._is_luks_active():
-            # Device already LUKS encrypted, but not mapped because it isn't opened yet
-            logger.info(f"Opening encrypted device {self.luks_device_path} as {self.luks_device_name}")
+            logger.info(f"Detected encrypted but inactive LUKS device: {self.luks_device_path}")
+            logger.info(f"Mapping existing LUKS device: {self.luks_device_path}")
             self._luks_open_device(device_path=device_path)
-            logger.info(f"Done opening encrypted device {self.luks_device_path} as {self.luks_device_name}")
+            logger.info(f"LUKS device mapped successfully: {self.luks_device_path}")
+
         else:
-            # LUKS device exists and active
-            logger.info(f"LUKS device already opened at {self.luks_device_path}")
+            logger.info(f"LUKS device already active: {self.luks_device_path}")
+
+        return self.luks_device_path
 
     def _is_luks_device(self, device_path: str) -> bool:
         """Check if the raw device is LUKS-encrypted."""
-        if not Path(device_path).exists():
-            return False
         try:
             hostcmd.cryptsetup("isLuks", device_path)
             return True
@@ -193,7 +195,7 @@ class LuksManager(SerializationMixin):
             logger.info(f"LUKS device {self.luks_device_name} closed successfully.")
             return True
         except ProcessExecutionError as e:
-            logger.warning(f"Failed to close LUKS device {self.luks_device_name}: {e}")
+            logger.warning(f"Failed to close LUKS device {self.luks_device_name}: {e.stderr}")
             return False
 
     def _luks_open_device(self, device_path: str) -> None:
@@ -207,7 +209,7 @@ class LuksManager(SerializationMixin):
             echo_cmd = cmd.echo["-n", self.passphrase]
             (echo_cmd | crypt_cmd) & FG
         except ProcessExecutionError as e:
-            raise Abort(ABORTED, f"Failed to open LUKS device {device_path}: {e}")
+            raise Abort(ABORTED, f"Failed to open LUKS device {device_path}: {e.stderr}")
 
     def _luks_format_device(self, device_path: str) -> None:
         """Run `cryptsetup luksFormat` with stdin passphrase."""
@@ -224,12 +226,13 @@ class LuksManager(SerializationMixin):
             "--key-file", "-",
             device_path,
         ]
+        logger.info(f"LUKS encryption args: {args}")
         try:
             crypt_cmd = hostcmd.cryptsetup.get_executable(*args)
             echo_cmd = cmd.echo["-n", self.passphrase]
             (echo_cmd | crypt_cmd) & FG
         except ProcessExecutionError as e:
-            raise Abort(ABORTED, f"LUKS format failed for {device_path}: {e}")
+            raise Abort(ABORTED, f"LUKS format failed for {device_path}: {e.stderr}")
 
     def luks_resize_device(self, device_path: str) -> bool:
         """
@@ -257,5 +260,5 @@ class LuksManager(SerializationMixin):
             logger.info(f"LUKS device {self.luks_device_path} resized successfully.")
             return True
         except ProcessExecutionError as e:
-            logger.error(f"Error resizing LUKS device {self.luks_device_path}: {e}")
+            logger.error(f"Error resizing LUKS device {self.luks_device_path}: {e.stderr}")
             return False
