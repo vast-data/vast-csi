@@ -17,55 +17,37 @@ class TestLuksManager(unittest.TestCase):
         }
 
     def test_requires_encryption_true(self):
-        manager = LuksManager(self.volume_id, passphrase=self.passphrase, volume_context=self.context)
+        manager = LuksManager(self.volume_id, passphrase=self.passphrase, encryption_config=self.context)
         self.assertTrue(manager.requires_encryption())
 
     def test_requires_encryption_abort(self):
-        manager = LuksManager(self.volume_id, passphrase=None, volume_context=self.context)
+        manager = LuksManager(self.volume_id, passphrase=None, encryption_config=self.context)
         with self.assertRaises(Abort):
             manager.requires_encryption()
 
     def test_create_with_explicit_passphrase(self):
         config = MagicMock(spec=Config)
-        manager = LuksManager.create(config, self.volume_id, passphrase=self.passphrase, volume_context={}, cluster_name=None)
+        manager = LuksManager.create(config, self.volume_id, passphrase=self.passphrase, encryption_config={}, cluster_name=None)
         self.assertEqual(manager.passphrase, self.passphrase)
 
     def test_create_from_multicluster(self):
         config = MagicMock(spec=Config)
         config.cluster_credentials = {"cluster1": {"passphrase": "multi-secret"}}
-        manager = LuksManager.create(config, self.volume_id, passphrase=None, volume_context={}, cluster_name="cluster1")
+        manager = LuksManager.create(config, self.volume_id, passphrase=None, encryption_config={}, cluster_name="cluster1")
         self.assertEqual(manager.passphrase, "multi-secret")
 
     def test_create_multicluster_missing(self):
         config = MagicMock(spec=Config)
         config.cluster_credentials = {}
         with self.assertRaises(LookupFieldError):
-            LuksManager.create(config, self.volume_id, passphrase=None, volume_context={}, cluster_name="missing")
+            LuksManager.create(config, self.volume_id, passphrase=None, encryption_config={}, cluster_name="missing")
 
     def test_create_from_global_secret(self):
         config = MagicMock(spec=Config)
         config.vms_credentials_store.exists.return_value = True
         config.host_encryption_passphrase = "global-secret"
-        manager = LuksManager.create(config, self.volume_id, passphrase=None, volume_context={}, cluster_name=None)
+        manager = LuksManager.create(config, self.volume_id, passphrase=None, encryption_config={}, cluster_name=None)
         self.assertEqual(manager.passphrase, "global-secret")
-
-    def test_parse_encryption_config(self):
-        config = {
-            "host_encryption.luks_type": "luks2",
-            "host_encryption.cipher": "aes",
-            "not_encryption.key": "value"
-        }
-        parsed = LuksManager._parse_encryption_config(config)
-        self.assertEqual(parsed["luks_type"], "luks2")
-        self.assertEqual(parsed["cipher"], "aes")
-        self.assertNotIn("not_encryption.key", parsed)
-
-    def test_dump_and_load_data(self):
-        manager = LuksManager(self.volume_id, passphrase=self.passphrase, volume_context=self.context)
-        data = manager.dump_data()
-        with patch("vast_csi.luks_utils.get_luks_manager") as mocked:
-            LuksManager.load_data(data)
-            mocked.assert_called_once()
 
 # -------------------------------
 # Create from arguments or secret
@@ -76,7 +58,7 @@ class TestLuksManagerInit:
         lm = LuksManager.create(
             volume_id="vol123",
             passphrase=None,
-            volume_context={},
+            encryption_config={},
             config=config,
             cluster_name=None,
         )
@@ -86,7 +68,7 @@ class TestLuksManagerInit:
         lm = LuksManager.create(
             volume_id="vol123",
             passphrase=None,
-            volume_context={"devicePath": "/dev/nvme0n1"},
+            encryption_config={"devicePath": "/dev/nvme0n1"},
             config=config,
             cluster_name=None,
         )
@@ -96,13 +78,13 @@ class TestLuksManagerInit:
         mgr = LuksManager.create(
             volume_id="vol123",
             passphrase="supersecret",
-            volume_context={"devicePath": "/dev/nvme0n1"},
+            encryption_config={"devicePath": "/dev/nvme0n1"},
             config=config,
             cluster_name=None,
         )
         assert mgr.volume_id == "vol123"
         assert mgr.passphrase == "supersecret"
-        assert mgr.raw_volume_context["devicePath"] == "/dev/nvme0n1"
+        assert mgr.encryption_config["devicePath"] == "/dev/nvme0n1"
 
     def test_cluster_secret_resolution(self, config):
         config.cluster_credentials = {
@@ -112,7 +94,7 @@ class TestLuksManagerInit:
             config=config,
             volume_id="vol123",
             passphrase=None,
-            volume_context={"devicePath": "/dev/a"},
+            encryption_config={"devicePath": "/dev/a"},
             cluster_name="cluster1"
         )
         assert mgr.passphrase == "xyz"
@@ -124,7 +106,7 @@ class TestLuksManagerInit:
                 config=config,
                 volume_id="volX",
                 passphrase=None,
-                volume_context={"devicePath": "/dev/a"},
+                encryption_config={"devicePath": "/dev/a"},
                 cluster_name="nonexistent"
             )
 
@@ -137,7 +119,7 @@ class TestLuksManagerInit:
             config=config,
             volume_id="v123",
             passphrase=None,
-            volume_context={"devicePath": "/dev/zzz"},
+            encryption_config={"devicePath": "/dev/zzz"},
             cluster_name=None
         )
         assert mgr.passphrase == "fallback"
@@ -148,30 +130,13 @@ class TestLuksManagerInit:
 # -------------------------------
 
 def test_serialize_and_deserialize():
-    mgr = LuksManager(volume_id="v123", passphrase="abc", volume_context={"devicePath": "/dev/z"})
+    mgr = LuksManager(volume_id="v123", passphrase="abc", encryption_config={"devicePath": "/dev/z"})
     salt = "somesalt"
     encoded = mgr.serialize(salt)
     loaded = LuksManager.deserialize(salt, encoded)
     assert loaded.volume_id == "v123"
     assert loaded.passphrase == "abc"
-    assert loaded.raw_volume_context["devicePath"] == "/dev/z"
-
-
-# -------------------------------
-# Legacy data format fallback
-# -------------------------------
-
-def test_deserialize_from_legacy_format():
-    legacy_data = ("legacy", "abc", {"devicePath": "/dev/legacy"})
-
-    with patch("vast_csi.luks_utils.get_luks_manager") as mocked:
-        mocked.return_value = MagicMock()
-        LuksManager.load_data(legacy_data)
-        mocked.assert_called_once_with(
-            volume_id="legacy",
-            passphrase="abc",
-            volume_context={"devicePath": "/dev/legacy"}
-        )
+    assert loaded.encryption_config["devicePath"] == "/dev/z"
 
 
 # -------------------------------
@@ -195,15 +160,3 @@ def test_require_passphrase_raises_abort():
     mgr = LuksManager("v4", None, {})
     with pytest.raises(Abort, match="Passphrase must be provided"):
         mgr._require_passphrase()
-
-def test_parse_encryption_config():
-    vol_context = {
-        "host_encryption.luks_type": "luks1",
-        "host_encryption.key_size": "256",
-        "unrelated": "ignore_me"
-    }
-    config = LuksManager._parse_encryption_config(vol_context)
-    assert config == {
-        "luks_type": "luks1",
-        "key_size": "256"
-    }

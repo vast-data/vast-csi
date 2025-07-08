@@ -60,7 +60,7 @@ parameters:
   {{- end }}
 {{- end }}
 {{- if $host_encryption }}
-{{- include "vastcsi.dictToKeyValParams" (list $host_encryption "host_encryption.") | indent 2 }}
+{{ include "vastcsi.dictToJsonStringParam" (list $host_encryption "host_encryption") | indent 2 }}
 {{- end }}
 {{-  if ne $storage_class_secret ( quote "" ) }}
   csi.storage.k8s.io/provisioner-secret-name: {{ $storage_class_secret }}

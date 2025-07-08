@@ -108,15 +108,6 @@ class BlockProvisionBase(BaseVolumeBuilder):
         # make sure the volume group is a valid absolute path
         return os.path.join("/", volume_group, self.name).lstrip("/")
 
-    @staticmethod
-    def _parse_host_encryption(params):
-        host_encryption = params.get("host_encryption", {})
-        if isinstance(host_encryption, str):
-            try:
-                host_encryption = json.loads(host_encryption)
-            except json.JSONDecodeError:
-                host_encryption = {}
-        return host_encryption
 
     @property
     def volume_context(self) -> dict:
@@ -133,8 +124,7 @@ class BlockProvisionBase(BaseVolumeBuilder):
             if self.vip_pool_fqdn_random_prefix:
                 context["vip_pool_fqdn_random_prefix"] = "true"
         if self.host_encryption:
-            for key, value in self.host_encryption.items():
-                context[f"host_encryption.{key}"] = value
+            context[f"host_encryption"] = json.dumps(self.host_encryption)
         return context
 
 
@@ -300,7 +290,7 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
     vip_pool_name: Optional[str] = None
     vip_pool_fqdn: Optional[str] = None
     vip_pool_fqdn_random_prefix: Optional[bool] = None
-    host_encryption: Optional[str] = None
+    host_encryption: Optional[dict] = None
     transport_type: Optional[str] = "TCP"
 
     @classmethod
@@ -319,7 +309,7 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
         vip_pool_name = parameters.get("vip_pool_name")
         vip_pool_fqdn_random_prefix = cls._get_bool_param(parameters, "vip_pool_fqdn_random_prefix")
         transport_type = parameters.get("transport_type", "TCP").upper()
-        host_encryption = parameters.get("host_encryption")
+        host_encryption = cls._parse_host_encryption(parameters)
         cls._validate_mount_src(vip_pool_name, vip_pool_fqdn, conf.use_local_ip_for_mount)
         cluster_name = parameters.get("cluster_name")
         return cls(
@@ -352,7 +342,7 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
             if self.vip_pool_fqdn_random_prefix:
                 context["vip_pool_fqdn_random_prefix"] = "true"
         if self.host_encryption:
-            context["host_encryption"] = self.host_encryption
+            context[f"host_encryption"] = json.dumps(self.host_encryption)
         return context
 
     def build_volume(self) -> types.Volume:

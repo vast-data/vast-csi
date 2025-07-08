@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from vast_csi.filesystem_utils import hostcmd
 from plumbum import cmd, ProcessExecutionError, FG
@@ -16,27 +17,30 @@ def get_luks_manager(
 ) -> "LuksManager":
     """Factory function to create a LuksManager instance."""
     config = Config()
+    encryption_config = {}
+    if volume_context:
+        host_encryption = volume_context.get("host_encryption")
+        if host_encryption:
+            encryption_config = json.loads(host_encryption)
     return LuksManager.create(
         config=config,
         volume_id=volume_id,
         passphrase=passphrase,
-        volume_context=volume_context,
+        encryption_config=encryption_config,
         cluster_name=cluster_name,
     )
 
-
 class LuksManager(SerializationMixin):
-    def __init__(self, volume_id: str, passphrase: str = None, volume_context: dict = None):
+    def __init__(self, volume_id: str, passphrase: str = None, encryption_config: dict = None):
         self.volume_id = volume_id
         self.passphrase = passphrase
-        self.raw_volume_context = volume_context or {}
-        self.encryption_config = self._parse_encryption_config(self.raw_volume_context)
+        self.encryption_config = encryption_config
         self.luks_device_name = f"vast-csi-crypt-{volume_id}"
         self.luks_device_path = f"/dev/mapper/{self.luks_device_name}"
 
 
     @classmethod
-    def create(cls, config, volume_id, passphrase, volume_context, cluster_name):
+    def create(cls, config, volume_id, passphrase, encryption_config, cluster_name):
         """
         Creates a LuksManager instance, resolving the encryption passphrase from
         arguments or secret-based configuration.
@@ -49,7 +53,7 @@ class LuksManager(SerializationMixin):
             volume_id (str): The unique identifier for the volume to encrypt.
             passphrase (str, optional): The passphrase used for LUKS encryption. If not provided,
                 it will be resolved from secret configuration.
-            volume_context (dict, optional): Volume context fields, typically from the StorageClass.
+            encryption_config (dict, optional): Encryption configuration parameters for LUKS.
             cluster_name (str, optional): The cluster name to use when resolving secrets
                 from a multi-cluster configuration.
 
@@ -97,12 +101,12 @@ class LuksManager(SerializationMixin):
         return cls(
             volume_id=volume_id,
             passphrase=passphrase,
-            volume_context=volume_context,
+            encryption_config=encryption_config,
 
         )
 
     def dump_data(self) -> object:
-        return self.volume_id, self.passphrase, self.raw_volume_context
+        return self.volume_id, self.passphrase, self.encryption_config
 
     @staticmethod
     def load_data(data_fields: object) -> "LuksManager":
@@ -113,18 +117,8 @@ class LuksManager(SerializationMixin):
         Returns:
             An instance of the LuksManager class.
         """
-        volume_id, passphrase, volume_context = data_fields
-        return get_luks_manager(volume_id=volume_id, passphrase=passphrase, volume_context=volume_context)
-
-
-    @staticmethod
-    def _parse_encryption_config(vol_context: dict) -> dict:
-        prefix = "host_encryption."
-        return {
-            key[len(prefix):]: value
-            for key, value in vol_context.items()
-            if key.startswith(prefix)
-        }
+        volume_id, passphrase, encryption_config = data_fields
+        return LuksManager(volume_id=volume_id, passphrase=passphrase, encryption_config=encryption_config)
 
     def requires_encryption(self) -> bool:
         """Check if LUKS encryption is active (i.e., passphrase is supplied)."""

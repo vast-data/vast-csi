@@ -83,3 +83,14 @@ app.kubernetes.io/instance: {{ .Release.Name }}
   {{- end }}
 {{- end }}
 {{- end }}
+
+{{- define "vastcsi.dictToJsonStringParam" -}}
+{{- $map := index . 0 -}}
+{{- $key := index . 1 -}}
+{{- if not (kindIs "map" $map) }}
+  {{- $errorMsg := printf "Invalid format. Expected a map for JSON serialization but got:\n%s" (toYaml $map) }}
+  {{- fail $errorMsg }}
+{{- else }}
+{{ $key }}: {{ $map | toJson | quote }}
+{{- end }}
+{{- end }}
