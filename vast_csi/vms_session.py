@@ -789,6 +789,16 @@ class GlobalSnapshotStream(VastResource):
         
         return snapshot_stream
 
+    @requisite(semver="4.6.0")
+    def wait_by_loanee_path(self, loanee_root_path):
+        """
+        Wait for a global snapshot stream to be created by its loanee root path.
+        This helper is useful for block volumes where GSS stream creation is hidden
+        and gss stream has no meaningful name to query it by.
+        """
+        snapshot_stream = self.one(loanee_root_path__startswith=loanee_root_path, fail_if_missing=True)
+        self._wait_for_state(snapshot_stream.id)
+
     @requisite(semver="4.6.0", ignore=True)
     def ensure_snapshot_stream_deleted(self, **params):
         """
