@@ -66,16 +66,19 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 
-{{- define "vastcsi.dictToYaml" -}}
-{{- $input := index . 0 -}}        {{/* The map to render */}}
-{{- $prefix := index . 1 | default "" -}}  {{/* Optional prefix for keys */}}
+{{- define "vastcsi.dictToKeyValParams" -}}
+{{- $input := index . 0 -}}               {{/* The map to render */}}
+{{- $prefix := index . 1 | default "" -}} {{/* Optional prefix for keys */}}
+
 {{- if not (kindIs "map" $input) }}
   {{- $errorMsg := printf "Invalid format. Expected a dictionary but got:\n%s" (toYaml $input) }}
   {{- fail $errorMsg }}
 {{- else }}
   {{- range $k, $v := $input }}
-    {{- if and $v (ne $v "") }}
+    {{- if $v }}
+      {{- if or (not (kindIs "string" $v)) (ne $v "") }}
 {{ printf "%s%s: %s" $prefix $k ($v | quote) }}
+      {{- end }}
     {{- end }}
   {{- end }}
 {{- end }}

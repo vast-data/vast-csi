@@ -83,7 +83,7 @@ storageClassDefaults:
   #   key_size: "512"                     # Key size in bits (e.g., 256 or 512)
   #   hash: "sha256"                      # Hashing algorithm
   #   pbkdf_memory: "65536"               # Memory cost for PBKDF in KB
-  host_encryption: {}
+  hostEncryption: {}
   # Name of VAST VIP pool to use. Must specify either vipPool or vipPoolFQDN.
   vipPool: ""
   # The FQDN of the VIP pool to use. Must specify either vipPool or vipPoolFQDN.
