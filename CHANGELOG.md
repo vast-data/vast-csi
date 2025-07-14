@@ -5,6 +5,7 @@
 * Added support for `blockingClones` option in the StorageClass.
   When enabled, the CSI driver waits for the Global Snapshot Stream (GSS) to fully complete
   before returning from a volume clone operation. (VCSI-255)
+* Added qosPolicy parameter for Block. Allow optional qos_policy_id storage class argument (unsupported via helm) (VCSI-267)
 
 ## Version 2.6.2
 * Added support for locating mount paths via symlinks.
