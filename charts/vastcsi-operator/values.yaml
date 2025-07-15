@@ -12,7 +12,7 @@ ciPipe: null
 imagePullSecret: null
 
 # Operator manager image
-managerImage: null
+managerImage: registry.connect.redhat.com/vastdataorg/csi-operator@sha256:80f7bb251cf6115811e9c2b5bca8614f0fe549bd568ebe675a501416e7155399
 # Operator proxy image
 # Note: community version fo kube-rbac-proxi: gcr.io/kubebuilder/kube-rbac-proxy:v0.5.0
 proxyImage: registry.redhat.io/openshift4/ose-kube-rbac-proxy@sha256:77df668a9591bbaae675d0553f8dca5423c0f257317bc08fe821d965f44ed019
