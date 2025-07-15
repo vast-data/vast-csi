@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## Version 2.6.3
+* Added support for host encryption of volumes using LUKS for block csi driver (VCSI-250)
+
 ## Version 2.6.2
 * Added support for locating mount paths via symlinks.
 
