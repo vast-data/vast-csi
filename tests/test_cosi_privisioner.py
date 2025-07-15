@@ -70,6 +70,7 @@ class TestCosiProvisionerSuite:
             "default_retention_period": "1d",
             "allow_s3_anonymous_access": True,
             "share": "test-bucket",
+            "create_dir": True,
         }
         ensure_user_kwargs = session.users.create.call_args.kwargs
         assert 50000 <= ensure_user_kwargs.pop("uid") <= 60000
@@ -114,6 +115,7 @@ class TestCosiProvisionerSuite:
             "bucket": "test-bucket",
             "bucket_owner": "test-bucket",
             "tenant_id": 1,
+            "create_dir": True,
         }
 
     @pytest.mark.parametrize("missing_param", ["root_export", "vip_pool_name"])
