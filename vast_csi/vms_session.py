@@ -3,8 +3,6 @@ import re
 import json
 import requests
 import hashlib
-import pickle
-import base64
 import inspect
 from abc import ABC
 from pprint import pformat
@@ -15,13 +13,10 @@ from datetime import datetime
 from functools import wraps
 from requests.exceptions import ConnectionError
 from requests.utils import default_user_agent
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.backends import default_backend
 
 from easypy.bunch import Bunch, bunchify
 from easypy.caching import cached_property
-from easypy.collections import shuffled, listify
+from easypy.collections import shuffled
 from easypy.semver import SemVer
 from easypy.caching import timecache, locking_cache
 from easypy.units import HOUR, MINUTE
@@ -38,6 +33,7 @@ from .configuration import Config
 from .exceptions import ApiError, MountFailed, OperationNotSupported, LookupFieldError, TaskFailed
 from .utils import generate_ip_range
 from . import csi_types as types
+from .serialization_utils import SerializationMixin
 
 
 class ApiVersion:
@@ -121,16 +117,6 @@ class CannotUseTrashAPI(OperationNotSupported):
     template = "Cannot delete folder via VMS: {reason}"
 
 
-def _derive_key(salt):
-    # Derive a key from the salt
-    if isinstance(salt, str):
-        salt = salt.encode("utf-8")
-
-    kdf = hashes.Hash(hashes.SHA256(), backend=default_backend())
-    kdf.update(salt)
-    return kdf.finalize()
-
-
 @locking_cache
 def get_vms_session(username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name=None):
     config = Config()
@@ -211,7 +197,7 @@ class RESTSession(requests.Session):
         setattr(self, attr, func)
         return func
 
-class VmsSession(RESTSession):
+class VmsSession(RESTSession, SerializationMixin):
     """
     Communication with vms cluster.
     Operations over vip pools, quotas, snapshots etc.
@@ -261,29 +247,21 @@ class VmsSession(RESTSession):
         self.blockhosts = BlockHost(self)
         self.blockhostmappings = BlockHostMapping(self)
 
-    def serialize(self, salt: str):
-        session_data = pickle.dumps((self.username, self.password, self.endpoint, self.ssl_cert))
-        iv = os.urandom(16)
-        key = _derive_key(salt)
-        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
-        encryptor = cipher.encryptor()
-        ciphertext = encryptor.update(session_data) + encryptor.finalize()
-        # Return IV and ciphertext (both base64 encoded for storage)
-        return base64.b64encode(iv + ciphertext).decode()
 
-    @classmethod
-    def deserialize(cls, salt: str, encrypted_data: str):
-        encrypted_data = base64.b64decode(encrypted_data)
-        # Extract IV and ciphertext
-        iv = encrypted_data[:16]
-        ciphertext = encrypted_data[16:]
-        # Create cipher object
-        key = _derive_key(salt)
-        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
-        decryptor = cipher.decryptor()
-        # Decrypt the data
-        plainbytes = decryptor.update(ciphertext) + decryptor.finalize()
-        username, password, endpoint, ssl_cert = pickle.loads(plainbytes)
+    def dump_data(self) -> object:
+        return self.username, self.password, self.endpoint, self.ssl_cert
+
+
+    @staticmethod
+    def load_data(data_fields: object) -> "VmsSession":
+        """
+        Reconstruct an object from deserialized data fields.
+        Args:
+            data_fields: The result of unpickling the stored internal state.
+        Returns:
+            An instance of the VmsSession class.
+        """
+        username, password, endpoint, ssl_cert = data_fields
         return get_vms_session(username=username, password=password, endpoint=endpoint, ssl_cert=ssl_cert)
 
     @classmethod

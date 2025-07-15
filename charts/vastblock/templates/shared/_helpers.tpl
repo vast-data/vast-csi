@@ -64,3 +64,33 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/name: {{ include "vastcsi.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
+
+
+{{- define "vastcsi.dictToKeyValParams" -}}
+{{- $input := index . 0 -}}               {{/* The map to render */}}
+{{- $prefix := index . 1 | default "" -}} {{/* Optional prefix for keys */}}
+
+{{- if not (kindIs "map" $input) }}
+  {{- $errorMsg := printf "Invalid format. Expected a dictionary but got:\n%s" (toYaml $input) }}
+  {{- fail $errorMsg }}
+{{- else }}
+  {{- range $k, $v := $input }}
+    {{- if $v }}
+      {{- if or (not (kindIs "string" $v)) (ne $v "") }}
+{{ printf "%s%s: %s" $prefix $k ($v | quote) }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}
+
+{{- define "vastcsi.dictToJsonStringParam" -}}
+{{- $map := index . 0 -}}
+{{- $key := index . 1 -}}
+{{- if not (kindIs "map" $map) }}
+  {{- $errorMsg := printf "Invalid format. Expected a map for JSON serialization but got:\n%s" (toYaml $map) }}
+  {{- fail $errorMsg }}
+{{- else }}
+{{ $key }}: {{ $map | toJson | quote }}
+{{- end }}
+{{- end }}

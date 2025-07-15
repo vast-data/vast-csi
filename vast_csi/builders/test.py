@@ -27,6 +27,7 @@ class TestVolumeBuilder(BaseVolumeBuilder):
     cluster_name: Optional[str] = None
     vip_pool_name: Optional[str] = None
     vip_pool_fqdn: Optional[str] = None
+    host_encryption: Optional[dict] = None
     qos_policy: Optional[str] = None
     capacity_range: Optional[int] = None  # Optional desired volume capacity
     pvc_name: Optional[str] = None

@@ -1,4 +1,5 @@
 import os
+import json
 from abc import ABC
 from typing import Optional, TypeVar, Tuple
 from vast_csi.csi_types import INVALID_ARGUMENT
@@ -183,3 +184,10 @@ class BaseVolumeBuilder(CommonPropsMixin, VolumeBuilderI):
             pvc_name=params.get("csi.storage.k8s.io/pvc/name"),
             pvc_namespace=params.get("csi.storage.k8s.io/pvc/namespace"),
         )
+
+    @staticmethod
+    def _parse_host_encryption(params):
+        host_encryption = params.get("host_encryption", {})
+        if isinstance(host_encryption, str):
+            host_encryption = json.loads(host_encryption)
+        return host_encryption

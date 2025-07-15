@@ -1,4 +1,5 @@
 import os
+import json
 from datetime import timedelta
 from dataclasses import dataclass
 from typing import final, Optional
@@ -38,6 +39,7 @@ class BlockProvisionBase(BaseVolumeBuilder):
     capacity_range: Optional[int] = None
     pvc_name: Optional[str] = None
     pvc_namespace: Optional[str] = None
+    host_encryption: Optional[dict] = None
     volume_content_source: Optional[types.VolumeContentSource] = None  # Either volume or snapshot
 
     @classmethod
@@ -58,6 +60,7 @@ class BlockProvisionBase(BaseVolumeBuilder):
         vip_pool_name = parameters.get("vip_pool_name")
         vip_pool_fqdn_random_prefix = cls._get_bool_param(parameters, "vip_pool_fqdn_random_prefix")
         volume_group = parameters.get("volume_group", "")
+        host_encryption = cls._parse_host_encryption(parameters)
         transport_type = parameters.get("transport_type", "TCP").upper()
         metadata = cls._parse_metadata_from_params(parameters)
         cls._validate_mount_src(vip_pool_name, vip_pool_fqdn, conf.use_local_ip_for_mount)
@@ -75,6 +78,7 @@ class BlockProvisionBase(BaseVolumeBuilder):
             volume_group=volume_group,
             vip_pool_name=vip_pool_name,
             vip_pool_fqdn=vip_pool_fqdn,
+            host_encryption=host_encryption,
             vip_pool_fqdn_random_prefix=vip_pool_fqdn_random_prefix,
             cluster_name=cluster_name,
             volume_content_source=volume_content_source,
@@ -104,6 +108,7 @@ class BlockProvisionBase(BaseVolumeBuilder):
         # make sure the volume group is a valid absolute path
         return os.path.join("/", volume_group, self.name).lstrip("/")
 
+
     @property
     def volume_context(self) -> dict:
         context = {
@@ -118,6 +123,8 @@ class BlockProvisionBase(BaseVolumeBuilder):
             context["vip_pool_fqdn"] = self.vip_pool_fqdn
             if self.vip_pool_fqdn_random_prefix:
                 context["vip_pool_fqdn_random_prefix"] = "true"
+        if self.host_encryption:
+            context[f"host_encryption"] = json.dumps(self.host_encryption)
         return context
 
 
@@ -283,6 +290,7 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
     vip_pool_name: Optional[str] = None
     vip_pool_fqdn: Optional[str] = None
     vip_pool_fqdn_random_prefix: Optional[bool] = None
+    host_encryption: Optional[dict] = None
     transport_type: Optional[str] = "TCP"
 
     @classmethod
@@ -301,6 +309,7 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
         vip_pool_name = parameters.get("vip_pool_name")
         vip_pool_fqdn_random_prefix = cls._get_bool_param(parameters, "vip_pool_fqdn_random_prefix")
         transport_type = parameters.get("transport_type", "TCP").upper()
+        host_encryption = cls._parse_host_encryption(parameters)
         cls._validate_mount_src(vip_pool_name, vip_pool_fqdn, conf.use_local_ip_for_mount)
         cluster_name = parameters.get("cluster_name")
         return cls(
@@ -315,6 +324,7 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
             vip_pool_fqdn_random_prefix=vip_pool_fqdn_random_prefix,
             transport_type=transport_type,
             cluster_name=cluster_name,
+            host_encryption=host_encryption,
         )
 
     @property
@@ -331,6 +341,8 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
             context["vip_pool_fqdn"] = self.vip_pool_fqdn
             if self.vip_pool_fqdn_random_prefix:
                 context["vip_pool_fqdn_random_prefix"] = "true"
+        if self.host_encryption:
+            context[f"host_encryption"] = json.dumps(self.host_encryption)
         return context
 
     def build_volume(self) -> types.Volume:

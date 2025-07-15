@@ -39,7 +39,7 @@
 {{- $storage_class_secret_namespace := pluck "secretNamespace" $options $.Values.storageClassDefaults | first | default $.Release.Namespace | quote -}}
 {{- $fstype := pluck "fsType" $options $.Values.storageClassDefaults | first -}}
 {{- $transport_type := pluck "transportType" $options $.Values.storageClassDefaults | first -}}
-
+{{- $host_encryption := pluck "hostEncryption" $options $.Values.storageClassDefaults | first | default dict -}}
 
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
@@ -58,6 +58,9 @@ parameters:
   {{- if and $value (ne $value ( quote "" )) }}
   {{ $key }}: {{ if (kindIs "int" $value) }}{{ $value | quote }}{{ else }}{{ $value }}{{ end }}
   {{- end }}
+{{- end }}
+{{- if $host_encryption }}
+{{ include "vastcsi.dictToJsonStringParam" (list $host_encryption "host_encryption") | indent 2 }}
 {{- end }}
 {{-  if ne $storage_class_secret ( quote "" ) }}
   csi.storage.k8s.io/provisioner-secret-name: {{ $storage_class_secret }}

@@ -30,7 +30,6 @@ def is_native_multipath_enabled():
     except Exception:
         return False
 
-
 def list_nvme_sessions():
     """
     Example output:

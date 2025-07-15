@@ -39,6 +39,7 @@ spec:
           {{- toYaml .Values.node.podAntiAffinity | nindent 10 }}
         nodeAffinity:
           {{- toYaml .Values.node.nodeAffinity | nindent 10 }}
+      hostIPC: true
       containers:
         - name: csi-node-driver-registrar
           image: {{ printf "%s:%s" $csi_images.csiNodeDriverRegistrar.repository (toString $csi_images.csiNodeDriverRegistrar.tag) }}

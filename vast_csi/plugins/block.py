@@ -304,6 +304,7 @@ class BlockController(ControllerBase, Instrumented):
         vol_id = int(volume_context["volume_id"])
         tenant_name = volume_context["tenant_name"]
         subsystem = volume_context["subsystem"]
+        host_encryption = volume_context.get("host_encryption", False)
         blockhost = vms_session.blockhosts.ensure(
             node_id=node_id,
             tenant_name=tenant_name,
@@ -336,6 +337,11 @@ class BlockController(ControllerBase, Instrumented):
                 nguid=nguid,
                 discovery_server=discovery_server,
             )
+
+        if isinstance(host_encryption, dict):
+            for k, v in host_encryption.items():
+                publish_context[f"host_encryption.{k}"] = str(v)
+
         return types.CtrlPublishResp(publish_context=publish_context)
 
     def ControllerUnpublishVolume(self, vms_session, node_id, volume_id):
@@ -429,6 +435,7 @@ class BlockNode(NodeBase, Instrumented):
             staging_target_path,
             volume_capability,
             exit_stack,
+            luks_manager,
             vms_session=None,
             publish_context=None,
             volume_context=None,
@@ -485,6 +492,10 @@ class BlockNode(NodeBase, Instrumented):
         device_path = device.DevicePath
         change_io_policy(device_name=device.Name, io_policy="round-robin")
 
+        # Host encryption handling
+        if luks_manager.requires_encryption():
+            device_path = luks_manager.init_host_encryption(device_path=device_path)
+
         if volume_capabilities.is_filesystem:
             fs_type = volume_capabilities.fs_type
             formatted = format_device(requested_fs=fs_type, device=device_path)
@@ -500,6 +511,8 @@ class BlockNode(NodeBase, Instrumented):
                 with temporary_mount(
                         src=device_path, tgt_dir=staging_target_path, fs_type=fs_type
                 ) as temp_mount:
+                    if luks_manager.requires_encryption():
+                        luks_manager.luks_resize_device(device_path=device_path)
                     resize_device(device=device_path, target_mount=temp_mount, fs_type=fs_type)
 
         logger.info(f"Binding device at {device_path} to {device_bind_path}.")
@@ -507,10 +520,11 @@ class BlockNode(NodeBase, Instrumented):
         mount(src=device_path, tgt=device_bind_path, bind=True)
         return types.StageResp()
 
-    def NodeUnstageVolume(self, volume_id, staging_target_path):
+    def NodeUnstageVolume(self, volume_id, staging_target_path, luks_manager):
         staging_target_path = local.path(staging_target_path)
         device_bind_path = get_device_bind_path(staging_target_path)
         staging_mount, target_mounts = MountInfo.get_mounts_by_source(src=device_bind_path)
+
         if target_mounts:
             targets_mount_points = ", ".join(mount.mount_point for mount in target_mounts)
             logger.info(f"Staging path {device_bind_path} is being used by {targets_mount_points} targets.")
@@ -519,6 +533,9 @@ class BlockNode(NodeBase, Instrumented):
             umount_safe(device_bind_path)
         else:
             logger.info(f"Device not found at {device_bind_path}")
+
+        # If device is encrypted teardown accordingly
+        luks_manager.luks_close_device()
         remove_path_if_not_mounted(device_bind_path)
         return types.UnstageResp()
 
@@ -527,6 +544,7 @@ class BlockNode(NodeBase, Instrumented):
             volume_id,
             target_path,
             exit_stack,
+            luks_manager,
             staging_target_path=None,
             volume_capability=None,
             publish_context=None,
@@ -565,6 +583,7 @@ class BlockNode(NodeBase, Instrumented):
                 staging_target_path=staging_target_path,
                 volume_capability=volume_capability,
                 exit_stack=exit_stack,
+                luks_manager=luks_manager,
                 vms_session=vms_session,
                 publish_context=publish_context,
                 volume_context=volume_context
@@ -598,7 +617,8 @@ class BlockNode(NodeBase, Instrumented):
                 meta_file=meta_file,
                 volume_id=volume_id,
                 is_ephemeral=is_ephemeral,
-                vms_session=vms_session
+                vms_session=vms_session,
+                luks_manager=luks_manager,
             )
             try:
                 mount(src=device_bind_path, tgt=target_path, flags=mount_flags, fs_type=fs_type)
@@ -623,7 +643,7 @@ class BlockNode(NodeBase, Instrumented):
             raise Abort(NOT_FOUND, err_msg)
         return types.NodePublishResp()
 
-    def NodeUnpublishVolume(self, volume_id, target_path, vms_session=None):
+    def NodeUnpublishVolume(self, volume_id, target_path, luks_manager, vms_session=None):
         target_path = local.path(target_path)
         meta_file = target_path[".vast-csi-meta"]
         if target_mount := MountInfo.get_mount_by_destination(dest_path=target_path):
@@ -642,6 +662,7 @@ class BlockNode(NodeBase, Instrumented):
                 self.NodeUnstageVolume.__wrapped__(
                     self,
                     volume_id=volume_id,
+                    luks_manager=luks_manager,
                     staging_target_path=target_path
                 )
             os.remove(meta_file)
