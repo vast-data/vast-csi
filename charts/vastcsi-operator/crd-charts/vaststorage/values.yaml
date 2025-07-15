@@ -4,7 +4,7 @@
 
 driverType: "nfs" # Supported values: "nfs", "block"
 # Reference to installed VastDriver CRD
-driverName: ""
+provisioner: ""
 # The name of the Secret that stores the VMS credentials.
 # Note: The Secret must be created manually unless it is generated automatically by creating a VastCluster.
 secretName: ""

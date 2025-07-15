@@ -29,7 +29,7 @@ helm.sh/chart: {{ include "vastcsi.chart" . }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
-drivertype: {{ .Values.driverType }}
+storage.vastdata.com/driverType: {{ .Values.driverType }}
 {{- end }}
 
 {{/* Common selectors */}}
