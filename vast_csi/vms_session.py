@@ -556,6 +556,8 @@ class View(VastResource):
                    kwargs[key] = yesno_to_bool(kwargs[key])
             if "SMB" in protocols:
                 kwargs["share"] = os.path.basename(path)
+            if "create_dir" not in kwargs:
+                kwargs["create_dir"] = True
             view = self.create(
                 bucket=bucket_name, bucket_owner=bucket_name, path=path,
                 protocols=protocols, policy_id=policy_id, tenant_id=tenant_id,
