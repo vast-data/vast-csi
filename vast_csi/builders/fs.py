@@ -40,6 +40,7 @@ class FileSystemProvisionBase(BaseVolumeBuilder):
     vip_pool_fqdn_random_prefix: Optional[bool] = None
     qos_policy: Optional[str] = None
     qos_policy_id: Optional[int] = None
+    blocking_clones: Optional[bool] = None
     capacity_range: Optional[int] = None  # Optional desired volume capacity
     pvc_name: Optional[str] = None
     pvc_namespace: Optional[str] = None
@@ -90,6 +91,7 @@ class FileSystemProvisionBase(BaseVolumeBuilder):
         volume_name_fmt = parameters.get("volume_name_fmt", conf.name_fmt)
         qos_policy = parameters.get("qos_policy")
         cluster_name = parameters.get("cluster_name")
+        blocking_clones = cls._get_bool_param(parameters, "blocking_clones")
         if "qos_policy_id" in parameters:
             qos_policy_id = int(parameters.get("qos_policy_id"))
         else:
@@ -112,6 +114,7 @@ class FileSystemProvisionBase(BaseVolumeBuilder):
             qos_policy=qos_policy,
             qos_policy_id=qos_policy_id,
             cluster_name=cluster_name,
+            blocking_clones=blocking_clones,
             **cls._parse_metadata_from_params(parameters)
         )
 
@@ -189,6 +192,7 @@ class VolumeFromVolumeBuilder(FileSystemProvisionBase):
             snapshot_id=snapshot.id,
             destination_path=self.view_path,
             tenant_id=tenant_id,
+            wait=self.blocking_clones,
         )
         # View should go after snapshot stream.
         # Otherwise, snapshot stream action will detect folder already exist and will be rejected
@@ -249,6 +253,7 @@ class VolumeFromSnapshotBuilder(FileSystemProvisionBase):
                 snapshot_id=snapshot.id,
                 destination_path=self.view_path,
                 tenant_id=tenant_id,
+                wait=self.blocking_clones,
             )
             view = self.vms_session.views.ensure(
                 path=self.view_path,

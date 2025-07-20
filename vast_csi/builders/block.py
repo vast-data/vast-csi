@@ -36,6 +36,7 @@ class BlockProvisionBase(BaseVolumeBuilder):
     vip_pool_name: Optional[str] = None
     vip_pool_fqdn: Optional[str] = None
     vip_pool_fqdn_random_prefix: Optional[bool] = None
+    blocking_clones: Optional[bool] = None
     capacity_range: Optional[int] = None
     pvc_name: Optional[str] = None
     pvc_namespace: Optional[str] = None
@@ -65,6 +66,7 @@ class BlockProvisionBase(BaseVolumeBuilder):
         metadata = cls._parse_metadata_from_params(parameters)
         cls._validate_mount_src(vip_pool_name, vip_pool_fqdn, conf.use_local_ip_for_mount)
         cluster_name = parameters.get("cluster_name")
+        blocking_clones = cls._get_bool_param(parameters, "blocking_clones")
 
         return cls(
             vms_session=vms_session,
@@ -82,6 +84,7 @@ class BlockProvisionBase(BaseVolumeBuilder):
             vip_pool_fqdn_random_prefix=vip_pool_fqdn_random_prefix,
             cluster_name=cluster_name,
             volume_content_source=volume_content_source,
+            blocking_clones=blocking_clones,
             **metadata,
         )
 
@@ -205,6 +208,12 @@ class BlockVolumeFromVolumeBuilder(BlockProvisionBase):
                 target_subsystem_id=destination_view.id,
                 target_volume_path=volume_name,
             )
+
+        if self.blocking_clones:
+            # Wait for the clone to be ready
+            destination_path = os.path.join(destination_view.path, destination_volume.name.lstrip("/"))
+            self.vms_session.globalsnapstreams.wait_by_loanee_path(loanee_root_path=destination_path)
+
         if requested_capacity > destination_volume.size:
             self.vms_session.volumes.update(destination_volume.id, size=requested_capacity)
             # For cloned filesystem volumes need to perform local resizing
@@ -252,6 +261,12 @@ class BlockVolumeFromSnapshotBuilder(BlockProvisionBase):
                 target_subsystem_id=destination_view.id,
                 target_volume_path=volume_name,
             )
+
+        if self.blocking_clones:
+            # Wait for the clone to be ready
+            destination_path = os.path.join(destination_view.path, destination_volume.name.lstrip("/"))
+            self.vms_session.globalsnapstreams.wait_by_loanee_path(loanee_root_path=destination_path)
+
         if requested_capacity > destination_volume.size:
             self.vms_session.volumes.update(destination_volume.id, size=requested_capacity)
             # For cloned filesystem volumes need to perform local resizing
