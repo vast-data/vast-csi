@@ -1,39 +1,39 @@
+{{/*Create chart name and version as used by the chart label.*/}}
+
 {{- define "vastcsi.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
-
-
-{{- define "vastcsi.csiDriver" -}}
-{{- coalesce $.Values.csiDriverName "block.csi.vastdata.com" -}}
-{{- end -}}
-
-
-{{- define "vastcsi.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
-{{- end }}
-
 
 {{- define "vastcsi.commonArgs" -}}
 - "--csi-address=$(ADDRESS)"
 - "--v={{ .Values.logLevel | default 5 }}"
 {{- end }}
 
+{{- /*
+# IMPORTANT: cosi and csi helm charts share similar templates.
+# If you make changes to a template in one chart, make sure to replicate those
+# changes in the corresponding template in the other chart.
+*/}}
 
-{{- define "vastcsi.namespace" -}}
-{{- coalesce $.Release.Namespace "vast-csi" | quote -}}
-{{- end }}
-
+{{- define "vastcsi.csiDriver" -}}
+{{- coalesce $.Values.csiDriverName "csi.vastdata.com" -}}
+{{- end -}}
 
 {{- define "vastcsi.commonEnv" }}
-
 - name: X_CSI_PLUGIN_NAME
   value: {{ include "vastcsi.csiDriver" $ | quote }}
 - name: X_CSI_VMS_HOST
   value: {{ $.Values.endpoint | default "" |  quote }}
 - name: X_CSI_ENABLE_VMS_SSL_VERIFICATION
   value: {{ $.Values.verifySsl | quote }}
+- name: X_CSI_DELETION_VIP_POOL_NAME
+  value: {{ $.Values.deletionVipPool | quote }}
+- name: X_CSI_DELETION_VIEW_POLICY
+  value: {{ $.Values.deletionViewPolicy | quote }}
 - name: X_CSI_WORKER_THREADS
   value: {{ $.Values.numWorkers | quote }}
+- name: X_CSI_DONT_USE_TRASH_API
+  value: {{ $.Values.dontUseTrashApi | quote }}
 - name: X_CSI_USE_LOCALIP_FOR_MOUNT
   value: {{ $.Values.useLocalIpForMount | quote }}
 - name: X_CSI_ATTACH_REQUIRED
@@ -44,9 +44,17 @@
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}
 {{- end }}
-
 {{- end }}
 
+{{- define "vastcsi.namespace" -}}
+{{- coalesce $.Release.Namespace "vast-csi" | quote -}}
+{{- end }}
+
+{{/* Common labels and selectors */}}
+
+{{- define "vastcsi.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end }}
 
 {{/* Common labels */}}
 {{- define "vastcsi.labels" -}}
@@ -58,13 +66,11 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
-
 {{/* Common selectors */}}
 {{- define "vastcsi.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "vastcsi.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
-
 
 {{/*
 Renders key-value pairs for CSI parameters.
@@ -104,29 +110,5 @@ Result: key: "true"
 {{ $key }}: "true"
     {{- end }}
   {{- end }}
-{{- end }}
-{{- end }}
-
-
-{{/*
-Renders a key-value pair where the value is the input map serialized to a JSON string.
-
-Inputs:
-- .0: map to serialize (must be of type "map")
-- .1: key to associate with the JSON string
-
-Result:
-<key>: "<JSON-string>"
-
-Fails if the input is not a map.
-*/}}
-{{- define "vastcsi.dictToJsonStringParam" -}}
-{{- $map := index . 0 -}}
-{{- $key := index . 1 -}}
-{{- if not (kindIs "map" $map) }}
-  {{- $errorMsg := printf "Invalid format. Expected a map for JSON serialization but got:\n%s" (toYaml $map) }}
-  {{- fail $errorMsg }}
-{{- else }}
-{{ $key }}: {{ $map | toJson | quote }}
 {{- end }}
 {{- end }}

@@ -101,6 +101,14 @@ storageClassDefaults:
   qosPolicy: ""
   # Reclaim policy to use with the storage class.
   reclaimPolicy: "Delete"
+  # If true, the CSI driver will wait for the GSS (global snapshot stream) process to fully complete
+  # before returning from a volume clone operation.
+  # This ensures the volume is fully usable and consistent at the time of provisioning, but may add
+  # significant latency if the underlying GSS operation is long-running.
+  #
+  # If false (default), the driver returns as soon as the clone operation is initiated, allowing
+  # Kubernetes to proceed while the data stream continues in the background.
+  blockingClones: false
 
 # Default storage class to use with CSI DRIVER.
 # The only required value is 'vipPool' name where user should provide name of existing vip pool on

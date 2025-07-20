@@ -19,6 +19,7 @@ from pprint import pformat
 import inspect
 from contextlib import ExitStack
 
+import easypy.sync
 from requests.exceptions import HTTPError
 from plumbum.commands.processes import ProcessExecutionError
 
