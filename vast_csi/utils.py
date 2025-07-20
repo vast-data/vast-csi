@@ -1,4 +1,5 @@
 import re
+import uuid
 from pprint import pformat
 from datetime import datetime
 from ipaddress import summarize_address_range, ip_address
@@ -164,3 +165,11 @@ def wrap_ipv6(ip_or_host: str) -> str:
         # Not an IP address, possibly an FQDN
         pass
     return ip_or_host
+
+
+def string_to_static_uuid(value: str) -> str:
+    """
+    Generate a deterministic UUIDv5 based on the input string,
+    using the standard DNS namespace.
+    """
+    return str(uuid.uuid5(uuid.NAMESPACE_DNS, value))

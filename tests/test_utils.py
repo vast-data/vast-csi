@@ -1,5 +1,5 @@
 import pytest
-from vast_csi.utils import is_ver_nfs4_present, generate_ip_range, wrap_ipv6
+from vast_csi.utils import is_ver_nfs4_present, generate_ip_range, wrap_ipv6, string_to_static_uuid
 
 
 @pytest.mark.parametrize(
@@ -85,3 +85,13 @@ def test_generate_ip_range(ip_ranges, expected):
 def test_wrap_ipv6(addr, expected):
     """Test if IPv6 address is wrapped in brackets"""
     assert wrap_ipv6(addr) == expected
+
+
+@pytest.mark.parametrize("input_value, expected", [
+    ("nqn.2023-01.io.vast:tenant1", "afa6c1de-cf88-5e9c-9ae9-9be476f926a3"),
+    ("tenant2", "df01a830-f608-522a-9295-6d867e40f370"),
+    ("example-volume", "c7b9d154-7fac-53bf-b33c-439817cad04e"),
+])
+def test_string_to_static_uuid_is_deterministic(input_value, expected):
+    """Ensure UUID is deterministic and correctly computed."""
+    assert string_to_static_uuid(input_value) == expected
