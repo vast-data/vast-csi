@@ -100,6 +100,8 @@ storageClassDefaults:
   setDefaultStorageClass: false
   # Add any extra mount NFS options here
   mountOptions: []
+  # Name of QoS policy associates with the volume.
+  qosPolicy: ""
   # Reclaim policy to use with the storage class.
   reclaimPolicy: "Delete"
   # Filesystem type to format the volume during creation.
