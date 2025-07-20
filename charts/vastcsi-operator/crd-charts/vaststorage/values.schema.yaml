@@ -12,8 +12,18 @@ spec:
       enum:
         - nfs
         - block
-    driverName:
-      description: The name of VastDriver reference.
+    provisioner:
+      description: The name of VastDriver provisioner reference.
+      type: string
+    nfsProvisioner:
+      description: >
+        [OLM Console only] Used internally by the OpenShift UI form when driverType is 'nfs'.
+        Automatically sets provisioner. Should not be set manually in YAML mode.
+      type: string
+    blockProvisioner:
+      description: >
+        [OLM Console only] Used internally by the OpenShift UI form when driverType is 'block'.
+        Automatically sets provisioner. Should not be set manually in YAML mode.
       type: string
     secretName:
       description: The name of VMS Secret object.
@@ -169,7 +179,6 @@ spec:
     - secretNamespace
     - clusterName
     - driverType
-    - driverName
     - storagePath
     - viewPolicy
     - subsystem
@@ -190,11 +199,18 @@ specDescriptors:
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:select:nfs'
       - 'urn:alm:descriptor:com.tectonic.ui:select:block'
-  - description: Choose VastDriver to create VastStorage for.
-    displayName: Driver Name
-    path: driverName
+  - description: Choose Provisioner to create VastStorage for.
+    displayName: Provisioner Name (NFS)
+    path: nfsProvisioner
     x-descriptors:
-      - 'urn:alm:descriptor:io.kubernetes:storage.vastdata.com:v1:VastCSIDriver'
+      - *nfs-driver-dep
+      - 'urn:alm:descriptor:io.kubernetes:storage.k8s.io:v1:CSIDriver?storage.vastdata.com/driverType=nfs'
+  - description: Choose Provisioner to create VastStorage for.
+    displayName: Provisioner Name (Block)
+    path: blockProvisioner
+    x-descriptors:
+      - *block-driver-dep
+      - 'urn:alm:descriptor:io.kubernetes:storage.k8s.io:v1:CSIDriver?storage.vastdata.com/driverType=block'
   - displayName: VastCluster Name
     path: clusterName
     description: >
@@ -338,6 +354,11 @@ specDescriptors:
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:hidden'
       - *block-driver-dep
+  - displayName: Provisioner Name
+    description: Choose Provisioner to create VastStorage for.
+    path: provisioner
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:hidden'
 
 example:
   apiVersion: storage.vastdata.com/v1
@@ -346,7 +367,7 @@ example:
     name: vastdata-filesystem
   spec:
     driverType: {{ .Values.driverType }}
-    driverName: ""
+    provisioner: ""
     clusterName: ""
     secretName: ""
     secretNamespace: ""

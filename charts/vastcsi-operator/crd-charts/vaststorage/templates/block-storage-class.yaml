@@ -38,14 +38,23 @@ metadata:
     {{- include "vastcsi.labels" $ | nindent 4 }}
 reclaimPolicy: {{ $reclaim_policy }}
 parameters:
-  subsystem: {{ $subsystem }}
-  volume_name_fmt: {{ $volume_name_fmt }}
-  eph_volume_name_fmt: {{ $eph_volume_name_fmt }}
-{{- range $key, $value := dict "vip_pool_name" $vip_pool_name "vip_pool_fqdn" $vip_pool_fqdn "volume_group" $volume_group "transport_type" $transport_type "fsType" $fstype "tenant_name" $tenant_name "vip_pool_fqdn_random_prefix" $vip_pool_fqdn_random_prefix }}
-  {{- if and $value (ne $value "") }}
-  {{ $key }}: {{ if (kindIs "int" $value) }}{{ $value | quote }}{{ else }}{{ $value }}{{ end }}
-  {{- end }}
-{{- end }}
+
+{{- include "vastcsi.dictToKeyValParams" (list (dict
+  "subsystem" $subsystem
+  "vip_pool_name" $vip_pool_name
+  "vip_pool_fqdn" $vip_pool_fqdn
+  "volume_group" $volume_group
+  "transport_type" $transport_type
+  "fsType" $fstype
+  "tenant_name" $tenant_name
+  "volume_name_fmt" $volume_name_fmt
+  "eph_volume_name_fmt" $eph_volume_name_fmt
+)) | indent 2 }}
+
+{{- include "vastcsi.dictToBoolParams" (list (dict
+  "vip_pool_fqdn_random_prefix" $vip_pool_fqdn_random_prefix
+)) | indent 2 }}
+
 {{- include "vastcsi.storageClassSecrets" . | nindent 2 }}
 allowVolumeExpansion: {{ $allow_volume_expansion }}
 {{- if kindIs "string" $mount_options -}}
