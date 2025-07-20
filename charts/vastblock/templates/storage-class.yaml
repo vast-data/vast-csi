@@ -39,9 +39,9 @@
 {{- $storage_class_secret_namespace := pluck "secretNamespace" $options $.Values.storageClassDefaults | first | default $.Release.Namespace | quote -}}
 {{- $fstype := pluck "fsType" $options $.Values.storageClassDefaults | first -}}
 {{- $transport_type := pluck "transportType" $options $.Values.storageClassDefaults | first -}}
+{{- $qos_policy :=  pluck "qosPolicy" $options $.Values.storageClassDefaults | first | quote -}}
 {{- $host_encryption := pluck "hostEncryption" $options $.Values.storageClassDefaults | first | default dict -}}
 {{- $blocking_clones := pluck "blockingClones" $options $.Values.storageClassDefaults | first | quote -}}
-
 
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
@@ -64,6 +64,7 @@ parameters:
   "transport_type" $transport_type
   "fsType" $fstype
   "tenant_name" $tenant_name
+  "qos_policy" $qos_policy
 )) | indent 2 }}
 
 {{- include "vastcsi.dictToBoolParams" (list (dict
