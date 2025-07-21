@@ -58,6 +58,7 @@ from vast_csi.utils import (
     stringify_dict,
     string_to_proto_timestamp,
     get_random_fqdn_prefix,
+    string_to_static_uuid,
 )
 from vast_csi.filesystem_utils import (
     get_filesystem_type,
@@ -90,9 +91,9 @@ ServiceCapabilities = cap_lib.ServiceCapabilities(
 #
 ################################################################
 
-def nvme_connect(host_nqn, discovery_server):
+def nvme_connect(host_nqn, discovery_server, host_id):
     try:
-        connect_nvme_targets(discovery_server=discovery_server, host_nqn=host_nqn)
+        connect_nvme_targets(discovery_server=discovery_server, host_nqn=host_nqn, host_id=host_id)
     except ProcessExecutionError as exc:
         raise NVMEConnectionFailed(detail=exc.stderr, host_nqn=host_nqn, discovery_server=discovery_server)
 
@@ -477,8 +478,11 @@ class BlockNode(NodeBase, Instrumented):
                     "NVMe native multipath is not enabled on the system. "
                     "Please enable it to use NVMe subsystems."
                 )
-            logger.info(f"Connecting to NVMe targets for subsystem {subsystem_nqn} at {discovery_server}")
-            nvme_connect(discovery_server=discovery_server, host_nqn=host_nqn)
+            host_id = string_to_static_uuid(host_nqn)
+            logger.info(
+                f"Connecting to NVMe targets for subsystem {subsystem_nqn} at {discovery_server} (host_id={host_id})"
+            )
+            nvme_connect(discovery_server=discovery_server, host_nqn=host_nqn, host_id=host_id)
 
         if not (device := get_nvme_device_by_nguid(nguid=nguid)):
             raise Abort(
