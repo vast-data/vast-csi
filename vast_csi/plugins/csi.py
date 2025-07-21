@@ -14,7 +14,6 @@
 #    under the License.
 
 import os
-import uuid
 from datetime import datetime
 from tempfile import mkdtemp
 
@@ -34,6 +33,7 @@ from vast_csi.utils import (
     string_to_proto_timestamp,
     get_random_fqdn_prefix,
     wrap_ipv6,
+    string_to_static_uuid,
 )
 from vast_csi.proto import csi_pb2_grpc as csi_grpc
 from vast_csi import csi_types as types
@@ -329,7 +329,7 @@ class CsiController(ControllerBase, Instrumented):
                 volume_id = volume_id.rstrip("/")
             logger.info(f"Binding static volume: {volume_id}")
             export_path = volume_context["root_export"] = volume_id
-            name = str(uuid.uuid5(uuid.NAMESPACE_DNS, volume_id))
+            name = string_to_static_uuid(volume_id)
             create_view = yesno_to_bool(volume_context.get("static_pv_create_views", "no"))
             create_quota = yesno_to_bool(volume_context.get("static_pv_create_quotas", "no"))
             builder = StaticVolumeBuilder.from_parameters(
