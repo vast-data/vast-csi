@@ -164,6 +164,33 @@ class LuksManager(SerializationMixin):
 
         return self.luks_device_path
 
+    def luks_device_exists(self) -> bool:
+        """
+        Check if the LUKS mapper device exists.
+        Returns:
+            bool: True if the mapper device exists, False otherwise.
+        """
+        return Path(self.luks_device_path).exists()
+
+
+    def get_backing_block_device(self) -> str:
+        """
+        Extract the original backing device path for a given LUKS mapper device
+        using 'cryptsetup status <name>'.
+        Returns:
+            str: The path to the original block device (e.g., '/dev/nvme1n2').
+
+        Raises:
+            RuntimeError: If the device cannot be determined.
+        """
+        output = hostcmd.cryptsetup("status", self.luks_device_name)
+        for line in output.splitlines():
+            if line.strip().startswith("device:"):
+                return line.split(":", 1)[1].strip()
+        raise RuntimeError(
+            f"'device:' line not found in cryptsetup output for {self.luks_device_path}. Output: {output}"
+        )
+
     def _is_luks_device(self, device_path: str) -> bool:
         """Check if the raw device is LUKS-encrypted."""
         try:
