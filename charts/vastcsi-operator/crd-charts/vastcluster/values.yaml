@@ -12,3 +12,5 @@ password: ""
 sslCert: ""
 # Default value, replace with actual token
 token: ""
+# Default value, replace with actual passphrase for host encryption
+passphrase: ""
