@@ -18,7 +18,10 @@
 {{- $tenant_name := .Values.tenantName -}}
 {{- $volume_group := .Values.volumeGroup -}}
 {{- $fstype := .Values.fsType -}}
+{{- $qos_policy := .Values.qosPolicy -}}
 {{- $transport_type := .Values.transportType -}}
+{{- $blocking_clones := .Values.blockingClones -}}
+{{- $host_encryption := .Values.hostEncryption -}}
 
 {{- $volume_name_fmt := .Values.volumeNameFormat -}}
 {{- $eph_volume_name_fmt := .Values.ephemeralVolumeNameFormat -}}
@@ -49,11 +52,17 @@ parameters:
   "tenant_name" $tenant_name
   "volume_name_fmt" $volume_name_fmt
   "eph_volume_name_fmt" $eph_volume_name_fmt
+  "qos_policy" $qos_policy
 )) | indent 2 }}
 
 {{- include "vastcsi.dictToBoolParams" (list (dict
   "vip_pool_fqdn_random_prefix" $vip_pool_fqdn_random_prefix
+  "blocking_clones" $blocking_clones
 )) | indent 2 }}
+
+{{- if $host_encryption }}
+{{ include "vastcsi.dictToJsonStringParam" (list $host_encryption "host_encryption") | indent 2 }}
+{{- end }}
 
 {{- include "vastcsi.storageClassSecrets" . | nindent 2 }}
 allowVolumeExpansion: {{ $allow_volume_expansion }}

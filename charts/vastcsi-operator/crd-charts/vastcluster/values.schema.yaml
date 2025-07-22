@@ -20,6 +20,12 @@ spec:
       description: Optional SSL certificate for secure connections.
       type: string
       nullable: true
+    passphrase:
+      description: >-
+        Optional passphrase used to enable LUKS-based host encryption on the client.
+        If present, host-side encryption will be activated automatically.
+      type: string
+      nullable: true
   required:
     - endpoint
   oneOf:
@@ -50,3 +56,4 @@ example:
     password: {{ .Values.password }}
     token: {{ .Values.token }}
     sslCert: {{ .Values.sslCert }}
+    passphrase: {{ .Values.passphrase }}
