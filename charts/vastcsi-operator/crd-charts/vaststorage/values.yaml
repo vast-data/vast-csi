@@ -49,8 +49,22 @@ reclaimPolicy: "Delete"
 storagePath: ""
 # VAST policy name to create views - must be provided by user
 viewPolicy: ""
-# Name of QoS policy associates with the view.
+# Name of QoS policy associates with the view or volume.
 qosPolicy: ""
+# Enables encryption using LUKS on the device on the client side.
+# If set to true, the CSI driver will expect a passphrase to be provided
+# with the vast-mgmt secret.
+
+# Example Kubernetes Secret for host encryption:
+# kubectl create secret generic vast-mgmt --from-literal=username='' --from-literal=password='' --from-literal=endpoint='' --from-literal=passphrase=''
+
+# Ensure the StorageClass has the following parameters set when host Encryption is true:
+# Optional host encryption parameters (will default if not specified):
+#   cipher: "aes-xts-plain64"           # Encryption cipher
+#   key_size: "512"                     # Key size in bits (e.g., 256 or 512)
+#   hash: "sha256"                      # Hashing algorithm
+#   pbkdf_memory: "65536"               # Memory cost for PBKDF in KB
+hostEncryption: null
 
 ####################
 # VAST CSI STORAGE CLASS OPTIONS (BLOCK)
@@ -79,6 +93,14 @@ fsType: ""
 #   - RDMA
 # Default: TCP
 transportType: "TCP"
+# If true, the CSI driver will wait for the GSS (global snapshot stream) process to fully complete
+# before returning from a volume clone operation.
+# This ensures the volume is fully usable and consistent at the time of provisioning, but may add
+# significant latency if the underlying GSS operation is long-running.
+#
+# If false (default), the driver returns as soon as the clone operation is initiated, allowing
+# Kubernetes to proceed while the data stream continues in the background.
+blockingClones: false
 
 ####################
 # VAST CSI SNAPSHOT CLASS OPTIONS

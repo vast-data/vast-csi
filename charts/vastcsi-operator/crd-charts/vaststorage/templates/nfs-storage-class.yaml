@@ -27,6 +27,8 @@
 {{- $qos_policy := .Values.qosPolicy -}}
 {{- $mount_options := .Values.mountOptions -}}
 {{- $reclaim_policy := .Values.reclaimPolicy -}}
+{{- $blocking_clones := .Values.blockingClones -}}
+
 {{- $allow_volume_expansion := .Values.allowVolumeExpansion | quote | mustRegexMatch "true" | ternary true false -}}
 
 kind: StorageClass
@@ -54,6 +56,7 @@ parameters:
 
 {{- include "vastcsi.dictToBoolParams" (list (dict
   "vip_pool_fqdn_random_prefix" $vip_pool_fqdn_random_prefix
+  "blocking_clones" $blocking_clones
 )) | indent 2 }}
 
 {{- include "vastcsi.storageClassSecrets" . | nindent 2 }}

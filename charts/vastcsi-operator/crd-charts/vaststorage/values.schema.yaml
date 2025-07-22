@@ -67,9 +67,44 @@ spec:
       type: boolean
       default: true
     qosPolicy:
-      description: Name of QoS policy associated with the view.
+      description: Name of QoS policy associated with the view or volume.
       type: string
       nullable: true
+    blockingClones:
+      description: |-
+        If true, the CSI driver will wait for the GSS (global snapshot stream) process to fully complete
+        before returning from a volume clone operation.
+
+        This ensures the volume is fully usable and consistent at the time of provisioning, but may add
+        significant latency if the underlying GSS operation is long-running.
+
+        If false (default), the driver returns as soon as the clone operation is initiated, allowing
+        Kubernetes to proceed while the data stream continues in the background.
+      type: boolean
+      default: false
+    hostEncryption:
+      description: |-
+        Enables encryption using LUKS on the device at the client side.
+        If set, the CSI driver will expect a `passphrase` to be provided in the vast-mgmt Kubernetes Secret.
+      type: object
+      nullable: true
+      properties:
+        cipher:
+          type: string
+          nullable: true
+          description: Encryption cipher used for LUKS.
+        key_size:
+          type: integer
+          nullable: true
+          description: Key size in bits, e.g., 256 or 512. Must be supported by the selected cipher
+        hash:
+          type: string
+          nullable: true
+          description: Hash algorithm used for key derivation.
+        pbkdf_memory:
+          type: integer
+          nullable: true
+          description: Memory cost for PBKDF in kilobytes.
     subsystem:
       description: VAST subsystem for volume creation.
       type: string
@@ -244,12 +279,68 @@ specDescriptors:
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:text'
       - *nfs-driver-dep
-  - description: Name of QoS policy associates with the views.
+  - description: Name of QoS policy associates with the views or volumes.
     displayName: QoS Policy
     path: qosPolicy
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:text'
-      - *nfs-driver-dep
+  - description: >
+      If true, the CSI driver will wait for the GSS (global snapshot stream) process to fully complete
+      before returning from a volume clone operation. This ensures consistency at provisioning time but
+      may increase latency. If false (default), the clone operation returns immediately after initiation.
+    displayName: Blocking Clones
+    path: blockingClones
+    x-descriptors:
+    - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+  - description: >
+      Enables LUKS-based host encryption for block volumes.
+      Requires a passphrase to be defined in the vast-mgmt Secret and may optionally include parameters
+      such as cipher, key size, hash algorithm, and PBKDF memory cost.
+    displayName: Host Encryption
+    path: hostEncryption
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:hostEncryption'
+      - *block-driver-dep
+  - description: >
+      Encryption cipher used for LUKS. Must match supported kernel/cryptsetup values.
+    displayName: Cipher
+    path: hostEncryption.cipher
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:select:'
+      - 'urn:alm:descriptor:com.tectonic.ui:select:aes-xts-plain64'
+      - 'urn:alm:descriptor:com.tectonic.ui:select:aes-cbc-essiv:sha256'
+      - 'urn:alm:descriptor:com.tectonic.ui:select:serpent-xts-plain64'
+      - 'urn:alm:descriptor:com.tectonic.ui:select:twofish-cbc-essiv:sha256'
+      - *block-driver-dep
+  - description: >
+      Key size in bits. Must be compatible with selected cipher.
+      Common values: 256 (AES-128 XTS) or 512 (AES-256 XTS).
+    displayName: Key Size
+    path: hostEncryption.key_size
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:number'
+      - *block-driver-dep
+  - description: >
+      Hash algorithm used for passphrase derivation in PBKDF.
+    displayName: Hash Algorithm
+    path: hostEncryption.hash
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:select:'
+      - 'urn:alm:descriptor:com.tectonic.ui:select:sha1'
+      - 'urn:alm:descriptor:com.tectonic.ui:select:sha256'
+      - 'urn:alm:descriptor:com.tectonic.ui:select:sha512'
+      - 'urn:alm:descriptor:com.tectonic.ui:select:ripemd160'
+      - 'urn:alm:descriptor:com.tectonic.ui:select:whirlpool'
+      - *block-driver-dep
+  - description: >
+      Memory cost for PBKDF in kilobytes. Applies only for memory-hard algorithms like argon2id.
+    displayName: PBKDF Memory
+    path: hostEncryption.pbkdf_memory
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:number'
+      - *block-driver-dep
+
+
   - description: VAST subsystem for volume creation.
     displayName: Subsystem
     path: subsystem
@@ -379,6 +470,8 @@ example:
     tenantName: ""
     volumeGroup: ""
     fsType: ""
+    blockingClones: {{ .Values.blockingClones }}
+    hostEncryption: {{ .Values.hostEncryption }}
     allowVolumeExpansion: {{ .Values.allowVolumeExpansion }}
     ephemeralVolumeNameFormat: {{ .Values.ephemeralVolumeNameFormat }}
     vipPoolFQDN: {{ .Values.vipPoolFQDN }}
