@@ -315,10 +315,10 @@ class VmsSession(RESTSession, SerializationMixin):
             endpoint = cluster_auth_config.endpoint
             config_source = f"multi-cluster auth configuration ({cluster_name=})"
         else:
-            # The presence of the name in the arguments already indicates
+            # The presence of the name ot token in the arguments already indicates
             # that we have a StorageClass scope secret at this point.
             # In other words, it's not a globally mounted secret. Other secret fields will be validated below.
-            is_global = not bool(username)
+            is_global = not (username or token)
             config_source = "mounted credentials (global secret)" if is_global else "StorageClass secret"
             if config.vms_credentials_store.exists() and is_global:
                 username = config.vms_user
