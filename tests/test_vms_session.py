@@ -1105,6 +1105,41 @@ class TestVmsSessionInitFromGlobalSecretSuite:
                 config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name=None
             )
 
+    def test_global_store_ignored_when_token_provided(self, config, tmpdir):
+        tmpdir = local.path(tmpdir)
+        tmpdir.join("username").write("test")
+        tmpdir.join("password").write("test")
+        tmpdir.join("endpoint").write("test")
+        tmpdir.join("token").write("test")
+        config.vms_credentials_store = tmpdir
+
+        session = VmsSession.create(
+            config=config, username=None, password=None, token="xxx",
+            endpoint="https://from-secret", ssl_cert=None, cluster_name=None,
+        )
+
+        assert session.username is None
+        assert session.password is None
+        assert session.token == "xxx"
+        assert session.endpoint == "https://from-secret"
+
+    def test_global_store_ignored_when_username_provided(self, config, tmpdir):
+        tmpdir = local.path(tmpdir)
+        tmpdir.join("username").write("test")
+        tmpdir.join("password").write("test")
+        tmpdir.join("endpoint").write("test")
+        tmpdir.join("token").write("test")
+        config.vms_credentials_store = tmpdir
+
+        session = VmsSession.create(
+            config=config, username="admin", password="admin", token=None,
+            endpoint="https://from-secret", ssl_cert=None, cluster_name=None,
+        )
+
+        assert session.username == "admin"
+        assert session.password == "admin"
+        assert session.token is None
+        assert session.endpoint == "https://from-secret"
 
 class TestVmsSessionInitFromArgumentsSuite:
     """
