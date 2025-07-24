@@ -14,3 +14,5 @@ sslCert: ""
 token: ""
 # Default value, replace with actual passphrase for host encryption
 passphrase: ""
+# Default value, replace with actual tenant name
+tenant: ""

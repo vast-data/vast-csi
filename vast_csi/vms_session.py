@@ -118,12 +118,12 @@ class CannotUseTrashAPI(OperationNotSupported):
 
 
 @locking_cache
-def get_vms_session(username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name=None):
+def get_vms_session(username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name=None):
     config = Config()
     session_cls = TestVmsSession if config.mock_vast else VmsSession
     return session_cls.create(
         config=config, username=username, password=password, token=token,
-        endpoint=endpoint, ssl_cert=ssl_cert, cluster_name=cluster_name,
+        tenant=tenant, endpoint=endpoint, ssl_cert=ssl_cert, cluster_name=cluster_name,
     )
 
 
@@ -202,13 +202,15 @@ class VmsSession(RESTSession, SerializationMixin):
     Communication with vms cluster.
     Operations over vip pools, quotas, snapshots etc.
     """
-    def __init__(self, config, username, password, token, endpoint, ssl_cert):
+    def __init__(self, config, username, password, token, tenant, endpoint, ssl_cert, cluster_name):
         super().__init__(config)
         self.username = username
         self.password = password
         self.token = token
+        self.tenant = tenant
         self.endpoint = endpoint
         self.ssl_cert = ssl_cert
+        self.cluster_name = cluster_name  # for serialization
         self.base_url = f"https://{endpoint}/api"
         # Modify the SSL verification CA bundle path established
         # by the underlying Certifi library's defaults if ssl_verify==True.
@@ -229,6 +231,8 @@ class VmsSession(RESTSession, SerializationMixin):
 
         if self.token:
             self.headers["Authorization"] = f"Api-Token {self.token}"
+        if self.tenant:
+            self.headers["X-Tenant-Name"] = self.tenant
 
         # Sub resources
         self.versions = Version(self)
@@ -249,11 +253,18 @@ class VmsSession(RESTSession, SerializationMixin):
 
 
     def dump_data(self) -> object:
-        return self.username, self.password, self.endpoint, self.ssl_cert
-
+        return {
+            "username": self.username,
+            "password": self.password,
+            "token": self.token,
+            "tenant": self.tenant,
+            "endpoint": self.endpoint,
+            "ssl_cert": self.ssl_cert,
+            "cluster_name": self.cluster_name,
+        }
 
     @staticmethod
-    def load_data(data_fields: object) -> "VmsSession":
+    def load_data(data_fields: dict) -> "VmsSession":
         """
         Reconstruct an object from deserialized data fields.
         Args:
@@ -261,11 +272,10 @@ class VmsSession(RESTSession, SerializationMixin):
         Returns:
             An instance of the VmsSession class.
         """
-        username, password, endpoint, ssl_cert = data_fields
-        return get_vms_session(username=username, password=password, endpoint=endpoint, ssl_cert=ssl_cert)
+        return get_vms_session(**data_fields)
 
     @classmethod
-    def create(cls, config, username, password, token, endpoint, ssl_cert, cluster_name):
+    def create(cls, config, username, password, token, tenant, endpoint, ssl_cert, cluster_name):
         """
         Creates an instance of the session, initializing credentials based on provided arguments or configuration context.
 
@@ -273,6 +283,7 @@ class VmsSession(RESTSession, SerializationMixin):
         :param username: Optional; the username for authentication. If not provided, it will be sourced from the secret.
         :param password: Optional; the password for authentication. If not provided, it will be sourced from the secret.
         :param token: Optional; the token for authentication.
+        :param tenant: Optional; the tenant name for tenant scoped authentication (tenant admin).
         :param endpoint: Optional; the endpoint URL. If not provided, it will be sourced from the secret or environment.
         :param ssl_cert: SSL certificate for secure connections.
         :param cluster_name: Optional; specifies the cluster name for multi-cluster authentication.
@@ -295,6 +306,7 @@ class VmsSession(RESTSession, SerializationMixin):
                 cluster2:
                   token: xxxxxxxxxxxxxxxxxxxx
                   endpoint: clstr2.example.com
+                  tenant: csi-tenant
                 ```
 
         3. Global Secret (Deprecated): If neither `cluster_name` nor username/password arguments are provided,
@@ -312,6 +324,7 @@ class VmsSession(RESTSession, SerializationMixin):
             username = cluster_auth_config.get("username")
             password = cluster_auth_config.get("password")
             token = cluster_auth_config.get("token")
+            tenant = cluster_auth_config.get("tenant")
             endpoint = cluster_auth_config.endpoint
             config_source = f"multi-cluster auth configuration ({cluster_name=})"
         else:
@@ -324,6 +337,7 @@ class VmsSession(RESTSession, SerializationMixin):
                 username = config.vms_user
                 password = config.vms_password
                 token = config.vms_token
+                tenant = config.vms_tenant
                 endpoint = config.vms_host
 
         if not token:
@@ -340,11 +354,14 @@ class VmsSession(RESTSession, SerializationMixin):
             username=username,
             password=password,
             token=token,
+            tenant=tenant,
             endpoint=endpoint,
             ssl_cert=ssl_cert,
+            cluster_name=cluster_name,
         )
         ssl_verification = "enabled" if session.ssl_verify else "disabled"
-        logger.info(f"VMS session has been instantiated from {config_source}. SSL verification {ssl_verification}.")
+        tenant_scope = f" with tenant scope {tenant=}" if tenant else ""
+        logger.info(f"VMS session has been instantiated from {config_source}{tenant_scope}. SSL verification {ssl_verification}.")
         return session
 
     def refresh_auth_token(self):
@@ -907,7 +924,7 @@ class TestVmsSession(RESTSession):
         from unittest.mock import create_autospec, Mock
 
         super().__init__(config)
-        vms_session = VmsSession(config, *[None] * 5)
+        vms_session = VmsSession(config, *[None] * 7)
         own_attributres = dir(self)
         for resource in dir(vms_session):
             if resource.startswith("_"):

@@ -74,6 +74,11 @@ class Config(TypedEnv):
             return self.vms_credentials_store['token'].read().strip()
 
     @cached_property
+    def vms_tenant(self):
+        if self.vms_credentials_store['tenant'].exists():
+            return self.vms_credentials_store['tenant'].read().strip()
+
+    @cached_property
     def vms_host(self):
         if self.vms_credentials_store['endpoint'].exists():
             return self.vms_credentials_store['endpoint'].read().strip()

@@ -16,6 +16,10 @@ spec:
     token:
       description: API token for accessing VAST mgmt. If provided, it will be used instead of 'username' and 'password'."
       type: string
+    tenant:
+      description: The tenant name for tenant scoped authentication (tenant admin).
+      type: string
+      nullable: true
     sslCert:
       description: Optional SSL certificate for secure connections.
       type: string
@@ -55,5 +59,6 @@ example:
     username: {{ .Values.username }}
     password: {{ .Values.password }}
     token: {{ .Values.token }}
+    tenant: {{ .Values.tenant }}
     sslCert: {{ .Values.sslCert }}
     passphrase: {{ .Values.passphrase }}
