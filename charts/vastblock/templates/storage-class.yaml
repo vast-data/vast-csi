@@ -87,6 +87,8 @@ parameters:
   csi.storage.k8s.io/node-stage-secret-namespace: {{ $storage_class_secret_namespace }}
   csi.storage.k8s.io/controller-expand-secret-name: {{ $storage_class_secret }}
   csi.storage.k8s.io/controller-expand-secret-namespace: {{ $storage_class_secret_namespace }}
+  csi.storage.k8s.io/node-expand-secret-name: {{ $storage_class_secret }}
+  csi.storage.k8s.io/node-expand-secret-namespace: {{ $storage_class_secret_namespace }}
 {{- end }}
 allowVolumeExpansion: {{ $allow_volume_expansion }}
 {{- if kindIs "string" $mount_options -}}

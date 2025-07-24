@@ -164,6 +164,59 @@ class LuksManager(SerializationMixin):
 
         return self.luks_device_path
 
+    def luks_device_exists(self) -> bool:
+        """
+        Check if the LUKS mapper device exists.
+        Returns:
+            bool: True if the mapper device exists, False otherwise.
+        """
+        return Path(self.luks_device_path).exists()
+
+
+    def get_backing_block_device(self) -> str:
+        """
+        Extract the original backing device path for a given LUKS mapper device
+        by traversing sysfs.
+        
+        Returns:
+            str: The path to the original block device (e.g., '/dev/nvme1n2').
+
+        Raises:
+            RuntimeError: If the device cannot be determined.
+        """
+        # Check if the LUKS device exists
+        luks_device_path = Path(self.luks_device_path)
+        if not luks_device_path.exists():
+            raise RuntimeError(f"LUKS device {self.luks_device_path} does not exist")
+        
+        try:
+            # Resolve the symlink to get the actual device mapper name (dm-X)
+            real_device = luks_device_path.resolve()
+            dm_name = real_device.name  # This gives us dm-X
+            
+            # Look in sysfs for the slaves (backing devices)
+            slaves_path = Path(f"/sys/block/{dm_name}/slaves")
+            if not slaves_path.exists():
+                raise RuntimeError(f"Sysfs slaves directory not found: {slaves_path}")
+            
+            # Get the backing devices
+            slave_devices = list(slaves_path.iterdir())
+            if not slave_devices:
+                raise RuntimeError(f"No backing devices found in {slaves_path}")
+            
+            if len(slave_devices) > 1:
+                logger.warning(f"Multiple backing devices found for {self.luks_device_path}: {[d.name for d in slave_devices]}")
+            
+            # Return the first (and typically only) backing device
+            backing_device_name = slave_devices[0].name
+            backing_device_path = f"/dev/{backing_device_name}"
+            
+            logger.debug(f"Found backing device {backing_device_path} for LUKS device {self.luks_device_path}")
+            return backing_device_path
+            
+        except Exception as e:
+            raise RuntimeError(f"Failed to determine backing device for {self.luks_device_path} via sysfs: {e}")
+
     def _is_luks_device(self, device_path: str) -> bool:
         """Check if the raw device is LUKS-encrypted."""
         try:

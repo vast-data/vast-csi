@@ -681,6 +681,7 @@ class BlockNode(NodeBase, Instrumented):
             staging_target_path,
             volume_capability,
             exit_stack,
+            luks_manager,
     ):
         exit_stack.enter_context(volume_locked(volume_id))
         volume_capabilities = _validate_capabilities(volume_capability)
@@ -692,7 +693,26 @@ class BlockNode(NodeBase, Instrumented):
         if not staging_mount:
             raise Abort(NOT_FOUND, f"Mount information not found for staging path: {device_bind_path}")
 
-        device_path = staging_mount.block_device
+        # Host encryption resize handling
+        if luks_manager.luks_device_exists():
+            # Note: StorageClass secret is present in this endpoint since kubernetes 1.25.
+            # https://kubernetes.io/blog/2022/09/21/kubernetes-1-25-use-secrets-while-expanding-csi-volumes-on-node-alpha/
+            # Without secret you still can use host encryption, but you will not be able to resize the volume.
+            # Or use "global" secret as a workaround.
+            if not luks_manager.passphrase:
+                raise Abort(
+                    FAILED_PRECONDITION,
+                    "LUKS passphrase is required to resize encrypted volumes. "
+                    "Ensure your Kubernetes cluster supports NodeExpandSecret, or use a global secret that includes the passphrase."
+                )
+
+            device_path = luks_manager.luks_device_path
+            origin_device_path = luks_manager.get_backing_block_device()
+            logger.info(f"Original device path for LUKS volume: {origin_device_path}")
+            luks_manager.luks_resize_device(device_path=origin_device_path)
+        else:
+            device_path = origin_device_path = staging_mount.block_device
+
         if volume_capabilities.is_filesystem:
             fs_type = get_filesystem_type(device_bind_path)
             if not MountInfo.get_mount_by_destination(dest_path=volume_path):
@@ -714,7 +734,7 @@ class BlockNode(NodeBase, Instrumented):
                     fs_type=fs_type,
                 )
         else:
-            existing_capacity = get_device_size(device_path)
+            existing_capacity = get_device_size(origin_device_path)
             if existing_capacity < requested_capacity:
                 raise Exception(
                     f"Requested capacity {requested_capacity} exceeds the current capacity {existing_capacity}. "
@@ -722,7 +742,11 @@ class BlockNode(NodeBase, Instrumented):
                 )
         return types.NodeExpandResp(capacity_bytes=requested_capacity)
 
-    def NodeGetVolumeStats(self, volume_id, volume_path):
+    def NodeGetVolumeStats(self, volume_id, volume_path, luks_manager):
+        if luks_manager.luks_device_exists():
+            # If the volume is encrypted, we need to get stats from the backing block device
+            return self._get_block_stats(luks_manager.get_backing_block_device())
+
         target_mount = MountInfo.get_mount_by_destination(dest_path=volume_path)
         if not target_mount:
             raise Abort(NOT_FOUND, f"Mount information not found for volume path: {volume_path}")
