@@ -11,6 +11,9 @@ from vast_csi.logging import logger
 
 
 PROC_MOUNT_INFO = "/proc/self/mountinfo"
+# Regex for matching block device names typically used for CSI volumes.
+# Supports:
+# - NVMe devices (e.g., /nvme0n1 or nvme1n2)
 DEVICE_NAME_RGX = re.compile(r"^/?nvme\d+n\d+$")
 
 

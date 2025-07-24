@@ -113,6 +113,8 @@ csi.storage.k8s.io/node-stage-secret-name: "{{ $secret_name }}"
 csi.storage.k8s.io/node-stage-secret-namespace: "{{ $secret_namespace }}"
 csi.storage.k8s.io/controller-expand-secret-name: "{{ $secret_name }}"
 csi.storage.k8s.io/controller-expand-secret-namespace: "{{ $secret_namespace }}"
+csi.storage.k8s.io/node-expand-secret-name: "{{ $secret_name }}"
+csi.storage.k8s.io/node-expand-secret-namespace: "{{ $secret_namespace }}"
 
 {{- end -}}
 

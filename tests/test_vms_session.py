@@ -1114,7 +1114,7 @@ class TestVmsSessionInitFromGlobalSecretSuite:
         config.vms_credentials_store = tmpdir
 
         session = VmsSession.create(
-            config=config, username=None, password=None, token="xxx",
+            config=config, username=None, password=None, token="xxx", tenant=None,
             endpoint="https://from-secret", ssl_cert=None, cluster_name=None,
         )
 
@@ -1132,7 +1132,7 @@ class TestVmsSessionInitFromGlobalSecretSuite:
         config.vms_credentials_store = tmpdir
 
         session = VmsSession.create(
-            config=config, username="admin", password="admin", token=None,
+            config=config, username="admin", password="admin", token=None, tenant=None,
             endpoint="https://from-secret", ssl_cert=None, cluster_name=None,
         )
 

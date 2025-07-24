@@ -6,7 +6,6 @@ from pathlib import Path
 from vast_csi.filesystem_utils import (
     MountInfo,
     hostcmd,
-    realpath_cmd,
     volume_locked,
     VolumeLockedError,
     get_ext_size,

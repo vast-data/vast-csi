@@ -101,6 +101,19 @@ test_csi_multicluster [latest]:
     NUM_SYSTEMS: 2
 
 
+test_csi_functional:
+  stage: test
+  when: manual
+  trigger:
+    project: dev/orion
+    branch: $ORION_BRANCH
+    strategy: depend
+  allow_failure: true
+  variables:
+    <<: *common_vars
+    TRIGGER: "test_csi_functional [from-upstream]"
+
+
 test_csi:
   <<: *test_csi
   when: manual
