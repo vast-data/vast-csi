@@ -4,6 +4,9 @@
 # Secret name, which corresponds to a secret containing credentials to login - should be provided by user if secretName is not provided in StorageClass attributes
 # Secret must contain username and password fields
 # Example: kubectl create secret generic vast-mgmt --from-literal=username='< VAST username >' --from-literal=password='< VAST password >'
+# Optionally, you can include:
+# - ssl_cert: SSL certificate for secure communication
+# - tenant: The tenant name for tenant scoped authentication (tenant admin).
 secretName: ""
 
 # API endpoint of VAST appliance - should be provided by user if secretName is not provided in StorageClass attributes
@@ -69,6 +72,7 @@ storageClassDefaults:
   #
   # Optionally, you can include:
   # - ssl_cert: SSL certificate for secure communication
+  # - tenant: The tenant name for tenant scoped authentication (tenant admin).
   # All other fields are ignored.
   secretName: ""
   # Secret namespace. If not specified then secret will be searched in the same namespace as StorageClass is created.
@@ -176,11 +180,13 @@ snapshotClassDefaults:
   # Example: kubectl create secret generic vast-mgmt --from-literal=username='< VAST username >' --from-literal=password='< VAST password >' --from-literal=endpoint='< VAST endpoint >'
   # Optionally you can include CA ssl certificate. Along with verifySsl option enabled it will establish trusted connection per SnapshotClass
   # if you have different certificates per cluster (Otherwise use `sslCertsSecretName` to specify global secret with ssl certificate to be used across all snapshot classes):
+  # You can also include tenant for tenant scoped authentication:
   # Example:
   #     kubectl create secret generic vast-mgmt \
   #    --from-literal=username='<VAST username>' \
   #    --from-literal=password='<VAST password>' \
   #    --from-literal=endpoint='<VAST endpoint>' \
+  #    --from-literal=tenant='<tenant name>' \
   #    --from-file=ssl_cert='<path to sslCert.crt>'
   secretName: ""
   # Secret namespace. If not specified then secret will be searched in the same namespace as SnapshotClass is created.
