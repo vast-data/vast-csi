@@ -10,6 +10,10 @@
 #    --from-literal=username='<VAST username>' \
 #    --from-literal=password='<VAST password>' \
 #    --from-literal=endpoint='<VAST endpoint>'
+#
+# Optionally, you can include:
+# - ssl_cert: SSL certificate for secure communication
+# - tenant: The tenant name for tenant scoped authentication (tenant admin).
 secretName: ""
 
 # Set true to enable certificate validity test
@@ -55,6 +59,7 @@ storageClassDefaults:
   #
   # Optionally, you can include:
   # - ssl_cert: SSL certificate for secure communication
+  # - tenant: The tenant name for tenant scoped authentication (tenant admin).
   # All other fields are ignored.
   secretName: ""
   # Secret namespace. If not specified then secret will be searched in the same namespace as StorageClass is created.

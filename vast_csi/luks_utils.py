@@ -106,10 +106,15 @@ class LuksManager(SerializationMixin):
         )
 
     def dump_data(self) -> object:
-        return self.volume_id, self.passphrase, self.encryption_config
+        return {
+            "volume_id": self.volume_id,
+            "passphrase": self.passphrase,
+            "encryption_config": self.encryption_config,
+        }
+
 
     @staticmethod
-    def load_data(data_fields: object) -> "LuksManager":
+    def load_data(data_fields: dict) -> "LuksManager":
         """
         Reconstruct an object from deserialized data fields.
         Args:
@@ -117,8 +122,7 @@ class LuksManager(SerializationMixin):
         Returns:
             An instance of the LuksManager class.
         """
-        volume_id, passphrase, encryption_config = data_fields
-        return LuksManager(volume_id=volume_id, passphrase=passphrase, encryption_config=encryption_config)
+        return LuksManager(**data_fields)
 
     def requires_encryption(self) -> bool:
         """Check if LUKS encryption is active (i.e., passphrase is supplied)."""
