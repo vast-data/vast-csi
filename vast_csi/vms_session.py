@@ -11,7 +11,7 @@ from types import FunctionType
 from contextlib import contextmanager
 from datetime import datetime
 from functools import wraps
-from requests.exceptions import ConnectionError
+from requests.exceptions import ConnectionError, HTTPError
 from requests.utils import default_user_agent
 
 from easypy.bunch import Bunch, bunchify
@@ -417,6 +417,8 @@ class VmsSession(RESTSession, SerializationMixin):
             task_line = len(task.messages)
             if task.state == 'COMPLETED':
                 return task
+            elif task.state == 'FAILED':
+                raise Exception(f"Task {task_id}: {task.messages[-1]}")
             elif task.state != 'RUNNING':
                 raise TaskFailed(task=task, name=task.name, id=task.id, reason=task.messages[-1])
             else:
@@ -828,7 +830,15 @@ class GlobalSnapshotStream(VastResource):
                 logger.debug(f"Stopping snapshot stream {snapshot_stream.id} in state {state}")
                 task = self.stop_snapshot_stream(snapshot_stream.id)
                 self.session.wait_task(task)
-            self.delete_by_id(_id=snapshot_stream.id, data={"remove_dir": True})
+            try:
+                self.delete_by_id(_id=snapshot_stream.id, data={"remove_dir": True})
+            except HTTPError as e:
+                if e.response.status_code == 404:
+                    # Ignore 404 error if snapshot stream is already deleted
+                    # because it might happen if the stream was deleted by another process (csi worker)
+                    logger.warning(f"Snapshot stream {snapshot_stream.id} already deleted")
+                else:
+                    raise
 
 
 class User(VastResource):
