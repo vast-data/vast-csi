@@ -1,0 +1,18 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: vastdata-block
+parameters:
+  csi.storage.k8s.io/controller-expand-secret-name: vast-mgmt
+  csi.storage.k8s.io/controller-expand-secret-namespace: default
+  csi.storage.k8s.io/controller-publish-secret-name: vast-mgmt
+  csi.storage.k8s.io/controller-publish-secret-namespace: default
+  csi.storage.k8s.io/provisioner-secret-name: vast-mgmt
+  csi.storage.k8s.io/provisioner-secret-namespace: default
+  csi.storage.k8s.io/node-stage-secret-name: vast-mgmt
+  csi.storage.k8s.io/node-stage-secret-namespace: default
+  subsystem: myblock
+  vip_pool_name: vippool-1
+  transport_type: TCP
+  host_encryption: '{"luks_type":"luks2","cipher":"aes-xts-plain64"}'
+provisioner: block.csi.vastdata.com

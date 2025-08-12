@@ -30,7 +30,6 @@ def is_native_multipath_enabled():
     except Exception:
         return False
 
-
 def list_nvme_sessions():
     """
     Example output:
@@ -155,18 +154,20 @@ def get_controller_info(device_path):
     return Bunch.from_json(stdout)
 
 
-def connect_nvme_targets(discovery_server, host_nqn):
+def connect_nvme_targets(discovery_server, host_nqn, host_id):
     """
      Connects to all NVMe targets associated with a given Discovery Controller and subsystem.
      Args:
          discovery_server (str): The IP address or hostname of the Discovery Controller.
          host_nqn (str): The Host NQN (NVMe Qualified Name) used to identify the host.
+         host_id (str): User defined Host ID.
      """
     args = [
         "connect-all",
         "-t", "tcp",
         "-a", discovery_server,
         "-q", host_nqn,
+        "-I", host_id,
     ]
     hostcmd.nvme.get_executable(*args) & logger.pipe_info("nvme")
 

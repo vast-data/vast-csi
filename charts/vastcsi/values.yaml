@@ -4,6 +4,9 @@
 # Secret name, which corresponds to a secret containing credentials to login - should be provided by user if secretName is not provided in StorageClass attributes
 # Secret must contain username and password fields
 # Example: kubectl create secret generic vast-mgmt --from-literal=username='< VAST username >' --from-literal=password='< VAST password >'
+# Optionally, you can include:
+# - ssl_cert: SSL certificate for secure communication
+# - tenant: The tenant name for tenant scoped authentication (tenant admin).
 secretName: ""
 
 # API endpoint of VAST appliance - should be provided by user if secretName is not provided in StorageClass attributes
@@ -69,6 +72,7 @@ storageClassDefaults:
   #
   # Optionally, you can include:
   # - ssl_cert: SSL certificate for secure communication
+  # - tenant: The tenant name for tenant scoped authentication (tenant admin).
   # All other fields are ignored.
   secretName: ""
   # Secret namespace. If not specified then secret will be searched in the same namespace as StorageClass is created.
@@ -101,6 +105,14 @@ storageClassDefaults:
   qosPolicy: ""
   # Reclaim policy to use with the storage class.
   reclaimPolicy: "Delete"
+  # If true, the CSI driver will wait for the GSS (global snapshot stream) process to fully complete
+  # before returning from a volume clone operation.
+  # This ensures the volume is fully usable and consistent at the time of provisioning, but may add
+  # significant latency if the underlying GSS operation is long-running.
+  #
+  # If false (default), the driver returns as soon as the clone operation is initiated, allowing
+  # Kubernetes to proceed while the data stream continues in the background.
+  blockingClones: false
 
 # Default storage class to use with CSI DRIVER.
 # The only required value is 'vipPool' name where user should provide name of existing vip pool on
@@ -168,11 +180,13 @@ snapshotClassDefaults:
   # Example: kubectl create secret generic vast-mgmt --from-literal=username='< VAST username >' --from-literal=password='< VAST password >' --from-literal=endpoint='< VAST endpoint >'
   # Optionally you can include CA ssl certificate. Along with verifySsl option enabled it will establish trusted connection per SnapshotClass
   # if you have different certificates per cluster (Otherwise use `sslCertsSecretName` to specify global secret with ssl certificate to be used across all snapshot classes):
+  # You can also include tenant for tenant scoped authentication:
   # Example:
   #     kubectl create secret generic vast-mgmt \
   #    --from-literal=username='<VAST username>' \
   #    --from-literal=password='<VAST password>' \
   #    --from-literal=endpoint='<VAST endpoint>' \
+  #    --from-literal=tenant='<tenant name>' \
   #    --from-file=ssl_cert='<path to sslCert.crt>'
   secretName: ""
   # Secret namespace. If not specified then secret will be searched in the same namespace as SnapshotClass is created.
@@ -199,7 +213,7 @@ snapshotClasses: {}
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.6.2  # the version of the Vast CSI driver
+    tag: v2.6.3  # the version of the Vast CSI driver
     imagePullPolicy: IfNotPresent
   csiAttacher:
     repository: registry.k8s.io/sig-storage/csi-attacher

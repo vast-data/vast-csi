@@ -3,8 +3,6 @@ import re
 import json
 import requests
 import hashlib
-import pickle
-import base64
 import inspect
 from abc import ABC
 from pprint import pformat
@@ -13,15 +11,12 @@ from types import FunctionType
 from contextlib import contextmanager
 from datetime import datetime
 from functools import wraps
-from requests.exceptions import ConnectionError
+from requests.exceptions import ConnectionError, HTTPError
 from requests.utils import default_user_agent
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.backends import default_backend
 
 from easypy.bunch import Bunch, bunchify
 from easypy.caching import cached_property
-from easypy.collections import shuffled, listify
+from easypy.collections import shuffled
 from easypy.semver import SemVer
 from easypy.caching import timecache, locking_cache
 from easypy.units import HOUR, MINUTE
@@ -38,6 +33,7 @@ from .configuration import Config
 from .exceptions import ApiError, MountFailed, OperationNotSupported, LookupFieldError, TaskFailed
 from .utils import generate_ip_range
 from . import csi_types as types
+from .serialization_utils import SerializationMixin
 
 
 class ApiVersion:
@@ -121,23 +117,13 @@ class CannotUseTrashAPI(OperationNotSupported):
     template = "Cannot delete folder via VMS: {reason}"
 
 
-def _derive_key(salt):
-    # Derive a key from the salt
-    if isinstance(salt, str):
-        salt = salt.encode("utf-8")
-
-    kdf = hashes.Hash(hashes.SHA256(), backend=default_backend())
-    kdf.update(salt)
-    return kdf.finalize()
-
-
 @locking_cache
-def get_vms_session(username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name=None):
+def get_vms_session(username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name=None):
     config = Config()
     session_cls = TestVmsSession if config.mock_vast else VmsSession
     return session_cls.create(
         config=config, username=username, password=password, token=token,
-        endpoint=endpoint, ssl_cert=ssl_cert, cluster_name=cluster_name,
+        tenant=tenant, endpoint=endpoint, ssl_cert=ssl_cert, cluster_name=cluster_name,
     )
 
 
@@ -211,18 +197,20 @@ class RESTSession(requests.Session):
         setattr(self, attr, func)
         return func
 
-class VmsSession(RESTSession):
+class VmsSession(RESTSession, SerializationMixin):
     """
     Communication with vms cluster.
     Operations over vip pools, quotas, snapshots etc.
     """
-    def __init__(self, config, username, password, token, endpoint, ssl_cert):
+    def __init__(self, config, username, password, token, tenant, endpoint, ssl_cert, cluster_name):
         super().__init__(config)
         self.username = username
         self.password = password
         self.token = token
+        self.tenant = tenant
         self.endpoint = endpoint
         self.ssl_cert = ssl_cert
+        self.cluster_name = cluster_name  # for serialization
         self.base_url = f"https://{endpoint}/api"
         # Modify the SSL verification CA bundle path established
         # by the underlying Certifi library's defaults if ssl_verify==True.
@@ -243,6 +231,8 @@ class VmsSession(RESTSession):
 
         if self.token:
             self.headers["Authorization"] = f"Api-Token {self.token}"
+        if self.tenant:
+            self.headers["X-Tenant-Name"] = self.tenant
 
         # Sub resources
         self.versions = Version(self)
@@ -261,33 +251,31 @@ class VmsSession(RESTSession):
         self.blockhosts = BlockHost(self)
         self.blockhostmappings = BlockHostMapping(self)
 
-    def serialize(self, salt: str):
-        session_data = pickle.dumps((self.username, self.password, self.endpoint, self.ssl_cert))
-        iv = os.urandom(16)
-        key = _derive_key(salt)
-        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
-        encryptor = cipher.encryptor()
-        ciphertext = encryptor.update(session_data) + encryptor.finalize()
-        # Return IV and ciphertext (both base64 encoded for storage)
-        return base64.b64encode(iv + ciphertext).decode()
+
+    def dump_data(self) -> object:
+        return {
+            "username": self.username,
+            "password": self.password,
+            "token": self.token,
+            "tenant": self.tenant,
+            "endpoint": self.endpoint,
+            "ssl_cert": self.ssl_cert,
+            "cluster_name": self.cluster_name,
+        }
+
+    @staticmethod
+    def load_data(data_fields: dict) -> "VmsSession":
+        """
+        Reconstruct an object from deserialized data fields.
+        Args:
+            data_fields: The result of unpickling the stored internal state.
+        Returns:
+            An instance of the VmsSession class.
+        """
+        return get_vms_session(**data_fields)
 
     @classmethod
-    def deserialize(cls, salt: str, encrypted_data: str):
-        encrypted_data = base64.b64decode(encrypted_data)
-        # Extract IV and ciphertext
-        iv = encrypted_data[:16]
-        ciphertext = encrypted_data[16:]
-        # Create cipher object
-        key = _derive_key(salt)
-        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
-        decryptor = cipher.decryptor()
-        # Decrypt the data
-        plainbytes = decryptor.update(ciphertext) + decryptor.finalize()
-        username, password, endpoint, ssl_cert = pickle.loads(plainbytes)
-        return get_vms_session(username=username, password=password, endpoint=endpoint, ssl_cert=ssl_cert)
-
-    @classmethod
-    def create(cls, config, username, password, token, endpoint, ssl_cert, cluster_name):
+    def create(cls, config, username, password, token, tenant, endpoint, ssl_cert, cluster_name):
         """
         Creates an instance of the session, initializing credentials based on provided arguments or configuration context.
 
@@ -295,6 +283,7 @@ class VmsSession(RESTSession):
         :param username: Optional; the username for authentication. If not provided, it will be sourced from the secret.
         :param password: Optional; the password for authentication. If not provided, it will be sourced from the secret.
         :param token: Optional; the token for authentication.
+        :param tenant: Optional; the tenant name for tenant scoped authentication (tenant admin).
         :param endpoint: Optional; the endpoint URL. If not provided, it will be sourced from the secret or environment.
         :param ssl_cert: SSL certificate for secure connections.
         :param cluster_name: Optional; specifies the cluster name for multi-cluster authentication.
@@ -317,6 +306,7 @@ class VmsSession(RESTSession):
                 cluster2:
                   token: xxxxxxxxxxxxxxxxxxxx
                   endpoint: clstr2.example.com
+                  tenant: csi-tenant
                 ```
 
         3. Global Secret (Deprecated): If neither `cluster_name` nor username/password arguments are provided,
@@ -334,18 +324,20 @@ class VmsSession(RESTSession):
             username = cluster_auth_config.get("username")
             password = cluster_auth_config.get("password")
             token = cluster_auth_config.get("token")
+            tenant = cluster_auth_config.get("tenant")
             endpoint = cluster_auth_config.endpoint
             config_source = f"multi-cluster auth configuration ({cluster_name=})"
         else:
-            # The presence of the name in the arguments already indicates
+            # The presence of the name ot token in the arguments already indicates
             # that we have a StorageClass scope secret at this point.
             # In other words, it's not a globally mounted secret. Other secret fields will be validated below.
-            is_global = not bool(username)
+            is_global = not (username or token)
             config_source = "mounted credentials (global secret)" if is_global else "StorageClass secret"
             if config.vms_credentials_store.exists() and is_global:
                 username = config.vms_user
                 password = config.vms_password
                 token = config.vms_token
+                tenant = config.vms_tenant
                 endpoint = config.vms_host
 
         if not token:
@@ -362,11 +354,14 @@ class VmsSession(RESTSession):
             username=username,
             password=password,
             token=token,
+            tenant=tenant,
             endpoint=endpoint,
             ssl_cert=ssl_cert,
+            cluster_name=cluster_name,
         )
         ssl_verification = "enabled" if session.ssl_verify else "disabled"
-        logger.info(f"VMS session has been instantiated from {config_source}. SSL verification {ssl_verification}.")
+        tenant_scope = f" with tenant scope {tenant=}" if tenant else ""
+        logger.info(f"VMS session has been instantiated from {config_source}{tenant_scope}. SSL verification {ssl_verification}.")
         return session
 
     def refresh_auth_token(self):
@@ -422,6 +417,8 @@ class VmsSession(RESTSession):
             task_line = len(task.messages)
             if task.state == 'COMPLETED':
                 return task
+            elif task.state == 'FAILED':
+                raise Exception(f"Task {task_id}: {task.messages[-1]}")
             elif task.state != 'RUNNING':
                 raise TaskFailed(task=task, name=task.name, id=task.id, reason=task.messages[-1])
             else:
@@ -447,6 +444,9 @@ class VmsSession(RESTSession):
 
 class VastResource(ABC):
     resource_name = NotImplemented
+    TARGET_STATE = NotImplemented
+    FAILED_STATES = NotImplemented
+    RUNNING_STATES = NotImplemented
 
     def __init__(self, session: VmsSession):
         self.session = session
@@ -505,6 +505,33 @@ class VastResource(ABC):
     def get(self, _id, api_ver=None):
         """Get single entry by id"""
         return self.session.get(f"{self.resource_name}/{_id}", api_ver=api_ver)
+
+    def _wait_for_state(self, resource_id):
+        """
+        Wait for a resource to reach a specific state.
+        
+        Args:
+            resource_id: The resource ID to wait for
+        """
+
+        def is_resource_in_target_state():
+            state = self.get(resource_id).state
+            if state == self.TARGET_STATE:
+                logger.info(f"{self.resource_name} {resource_id} reached target state: {state}")
+                return True
+            elif state in self.FAILED_STATES:
+                raise Exception(f"{self.resource_name} {resource_id} failed with state: {state}")
+            elif state in self.RUNNING_STATES:
+                logger.info(f"{self.resource_name} {resource_id} still running (state: {state})")
+                return False
+            else:
+                logger.warning(f"Unknown {self.resource_name} state: {state}")
+                return False
+        
+        timeout = self.session.config.timeout
+        logger.info(f"Waiting for {self.resource_name} {resource_id} to reach state '{self.TARGET_STATE}' (timeout: {timeout}s)...")
+        
+        wait(timeout, is_resource_in_target_state, sleep=5, message=f"{self.resource_name} {resource_id} did not reach state '{self.TARGET_STATE}' within {timeout} seconds")
 
 
 class Version(VastResource):
@@ -578,6 +605,8 @@ class View(VastResource):
                    kwargs[key] = yesno_to_bool(kwargs[key])
             if "SMB" in protocols:
                 kwargs["share"] = os.path.basename(path)
+            if "create_dir" not in kwargs:
+                kwargs["create_dir"] = True
             view = self.create(
                 bucket=bucket_name, bucket_owner=bucket_name, path=path,
                 protocols=protocols, policy_id=policy_id, tenant_id=tenant_id,
@@ -756,12 +785,15 @@ class Snapshot(VastResource):
 
 class GlobalSnapshotStream(VastResource):
     resource_name = "globalsnapstreams"
+    TARGET_STATE = "Completed"
+    FAILED_STATES = ["Suspended"]
+    RUNNING_STATES = ["Initializing", "Syncing", "Finalizing", "Active"]
 
     def stop_snapshot_stream(self, snapshot_stream_id):
         return self.session.patch(f"{self.resource_name}/{snapshot_stream_id}/stop")
 
     @requisite(semver="4.6.0", operation="create_globalsnapshotstream")
-    def ensure(self, name, snapshot_id, tenant_id, destination_path):
+    def ensure(self, name, snapshot_id, tenant_id, destination_path, wait=False):
         if not (snapshot_stream := self.one(name=name)):
             data = dict(
                 loanee_root_path=destination_path,
@@ -770,7 +802,21 @@ class GlobalSnapshotStream(VastResource):
                 loanee_tenant_id=tenant_id, # target tenant_id
             )
             snapshot_stream = self.session.post(f"snapshots/{snapshot_id}/clone/", data)
+        
+        if wait:
+            self._wait_for_state(snapshot_stream.id)
+        
         return snapshot_stream
+
+    @requisite(semver="4.6.0")
+    def wait_by_loanee_path(self, loanee_root_path):
+        """
+        Wait for a global snapshot stream to be created by its loanee root path.
+        This helper is useful for block volumes where GSS stream creation is hidden
+        and gss stream has no meaningful name to query it by.
+        """
+        snapshot_stream = self.one(loanee_root_path__startswith=loanee_root_path, fail_if_missing=True)
+        self._wait_for_state(snapshot_stream.id)
 
     @requisite(semver="4.6.0", ignore=True)
     def ensure_snapshot_stream_deleted(self, **params):
@@ -784,7 +830,15 @@ class GlobalSnapshotStream(VastResource):
                 logger.debug(f"Stopping snapshot stream {snapshot_stream.id} in state {state}")
                 task = self.stop_snapshot_stream(snapshot_stream.id)
                 self.session.wait_task(task)
-            self.delete_by_id(_id=snapshot_stream.id, data={"remove_dir": True})
+            try:
+                self.delete_by_id(_id=snapshot_stream.id, data={"remove_dir": True})
+            except HTTPError as e:
+                if e.response.status_code == 404:
+                    # Ignore 404 error if snapshot stream is already deleted
+                    # because it might happen if the stream was deleted by another process (csi worker)
+                    logger.warning(f"Snapshot stream {snapshot_stream.id} already deleted")
+                else:
+                    raise
 
 
 class User(VastResource):
@@ -880,7 +934,7 @@ class TestVmsSession(RESTSession):
         from unittest.mock import create_autospec, Mock
 
         super().__init__(config)
-        vms_session = VmsSession(config, *[None] * 5)
+        vms_session = VmsSession(config, *[None] * 7)
         own_attributres = dir(self)
         for resource in dir(vms_session):
             if resource.startswith("_"):

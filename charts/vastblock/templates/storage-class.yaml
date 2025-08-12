@@ -39,7 +39,9 @@
 {{- $storage_class_secret_namespace := pluck "secretNamespace" $options $.Values.storageClassDefaults | first | default $.Release.Namespace | quote -}}
 {{- $fstype := pluck "fsType" $options $.Values.storageClassDefaults | first -}}
 {{- $transport_type := pluck "transportType" $options $.Values.storageClassDefaults | first -}}
-
+{{- $qos_policy :=  pluck "qosPolicy" $options $.Values.storageClassDefaults | first | quote -}}
+{{- $host_encryption := pluck "hostEncryption" $options $.Values.storageClassDefaults | first | default dict -}}
+{{- $blocking_clones := pluck "blockingClones" $options $.Values.storageClassDefaults | first | quote -}}
 
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
@@ -53,12 +55,27 @@ metadata:
   {{- include "vastcsi.labels" $ | nindent 4 }}
 reclaimPolicy: {{ $reclaim_policy }}
 parameters:
-  subsystem: {{ $subsystem }}
-{{- range $key, $value := dict "vip_pool_name" $vip_pool_name "vip_pool_fqdn" $vip_pool_fqdn "volume_group" $volume_group "transport_type" $transport_type "fsType" $fstype "tenant_name" $tenant_name "vip_pool_fqdn_random_prefix" $vip_pool_fqdn_random_prefix }}
-  {{- if and $value (ne $value ( quote "" )) }}
-  {{ $key }}: {{ if (kindIs "int" $value) }}{{ $value | quote }}{{ else }}{{ $value }}{{ end }}
-  {{- end }}
+
+{{- include "vastcsi.dictToKeyValParams" (list (dict
+  "subsystem" $subsystem
+  "vip_pool_name" $vip_pool_name
+  "vip_pool_fqdn" $vip_pool_fqdn
+  "volume_group" $volume_group
+  "transport_type" $transport_type
+  "fsType" $fstype
+  "tenant_name" $tenant_name
+  "qos_policy" $qos_policy
+)) | indent 2 }}
+
+{{- include "vastcsi.dictToBoolParams" (list (dict
+  "vip_pool_fqdn_random_prefix" $vip_pool_fqdn_random_prefix
+  "blocking_clones" $blocking_clones
+)) | indent 2 }}
+
+{{- if $host_encryption }}
+{{ include "vastcsi.dictToJsonStringParam" (list $host_encryption "host_encryption") | indent 2 }}
 {{- end }}
+
 {{-  if ne $storage_class_secret ( quote "" ) }}
   csi.storage.k8s.io/provisioner-secret-name: {{ $storage_class_secret }}
   csi.storage.k8s.io/provisioner-secret-namespace: {{ $storage_class_secret_namespace }}
@@ -70,6 +87,8 @@ parameters:
   csi.storage.k8s.io/node-stage-secret-namespace: {{ $storage_class_secret_namespace }}
   csi.storage.k8s.io/controller-expand-secret-name: {{ $storage_class_secret }}
   csi.storage.k8s.io/controller-expand-secret-namespace: {{ $storage_class_secret_namespace }}
+  csi.storage.k8s.io/node-expand-secret-name: {{ $storage_class_secret }}
+  csi.storage.k8s.io/node-expand-secret-namespace: {{ $storage_class_secret_namespace }}
 {{- end }}
 allowVolumeExpansion: {{ $allow_volume_expansion }}
 {{- if kindIs "string" $mount_options -}}

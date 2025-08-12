@@ -10,6 +10,10 @@
 #    --from-literal=username='<VAST username>' \
 #    --from-literal=password='<VAST password>' \
 #    --from-literal=endpoint='<VAST endpoint>'
+#
+# Optionally, you can include:
+# - ssl_cert: SSL certificate for secure communication
+# - tenant: The tenant name for tenant scoped authentication (tenant admin).
 secretName: ""
 
 # Set true to enable certificate validity test
@@ -55,6 +59,7 @@ storageClassDefaults:
   #
   # Optionally, you can include:
   # - ssl_cert: SSL certificate for secure communication
+  # - tenant: The tenant name for tenant scoped authentication (tenant admin).
   # All other fields are ignored.
   secretName: ""
   # Secret namespace. If not specified then secret will be searched in the same namespace as StorageClass is created.
@@ -70,6 +75,20 @@ storageClassDefaults:
   # can represent nested folder structures. For example:
   #   - "folder1/folder2/block-{namespace}-{id}
   volumeGroup: ""
+  # Enables encryption using LUKS on the device on the client side.
+  # If set to true, the CSI driver will expect a passphrase to be provided
+  # with the vast-mgmt secret.
+
+  # Example Kubernetes Secret for host encryption:
+  # kubectl create secret generic vast-mgmt --from-literal=username='' --from-literal=password='' --from-literal=endpoint='' --from-literal=passphrase=''
+
+  # Ensure the StorageClass has the following parameters set when host Encryption is true:
+  # Optional host encryption parameters (will default if not specified):
+  #   cipher: "aes-xts-plain64"           # Encryption cipher
+  #   key_size: "512"                     # Key size in bits (e.g., 256 or 512)
+  #   hash: "sha256"                      # Hashing algorithm
+  #   pbkdf_memory: "65536"               # Memory cost for PBKDF in KB
+  hostEncryption: {}
   # Name of VAST VIP pool to use. Must specify either vipPool or vipPoolFQDN.
   vipPool: ""
   # The FQDN of the VIP pool to use. Must specify either vipPool or vipPoolFQDN.
@@ -86,6 +105,8 @@ storageClassDefaults:
   setDefaultStorageClass: false
   # Add any extra mount NFS options here
   mountOptions: []
+  # Name of QoS policy associates with the volume.
+  qosPolicy: ""
   # Reclaim policy to use with the storage class.
   reclaimPolicy: "Delete"
   # Filesystem type to format the volume during creation.
@@ -99,6 +120,14 @@ storageClassDefaults:
   #   - RDMA
   # Default: TCP
   transportType: "TCP"
+  # If true, the CSI driver will wait for the GSS (global snapshot stream) process to fully complete
+  # before returning from a volume clone operation.
+  # This ensures the volume is fully usable and consistent at the time of provisioning, but may add
+  # significant latency if the underlying GSS operation is long-running.
+  #
+  # If false (default), the driver returns as soon as the clone operation is initiated, allowing
+  # Kubernetes to proceed while the data stream continues in the background.
+  blockingClones: false
 
 # Default storage class to use with CSI DRIVER.
 # The only required value is 'vipPool' name where user should provide name of existing vip pool on
@@ -194,7 +223,7 @@ snapshotClasses: {}
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.6.2  # the version of the Vast CSI driver
+    tag: v2.6.3  # the version of the Vast CSI driver
     imagePullPolicy: IfNotPresent
   csiAttacher:
     repository: registry.k8s.io/sig-storage/csi-attacher

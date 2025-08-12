@@ -1,3 +1,5 @@
+name: "csi.vastdata.com"
+
 # Namespace for csi driver operator installation.
 # If a namespace is not specified during the installation of the CSI driver operator,
 # it will default to the namespace of the Helm release.
@@ -10,7 +12,7 @@ ciPipe: null
 imagePullSecret: null
 
 # Operator manager image
-managerImage: null
+managerImage: registry.connect.redhat.com/vastdataorg/csi-operator@sha256:80f7bb251cf6115811e9c2b5bca8614f0fe549bd568ebe675a501416e7155399
 # Operator proxy image
 # Note: community version fo kube-rbac-proxi: gcr.io/kubebuilder/kube-rbac-proxy:v0.5.0
 proxyImage: registry.redhat.io/openshift4/ose-kube-rbac-proxy@sha256:77df668a9591bbaae675d0553f8dca5423c0f257317bc08fe821d965f44ed019
@@ -19,11 +21,11 @@ proxyImage: registry.redhat.io/openshift4/ose-kube-rbac-proxy@sha256:77df668a959
 suggestedNamespace: "vast-csi"
 
 # Operator documentation link
-operatorDocs: "https://support.vastdata.com/s/article/UUID-1d8ba33a-43fc-ee6d-1331-de1aa54257c7"
+operatorDocs: "https://support.vastdata.com/s/document-item?bundleId=vast-csi-driver-2.6-administrator-s-guide&topicId=deploying-vast-csi-driver/deploying-vast-csi-driver-on-openshift-with-vast-csi-operator.html&_LANG=enus"
 
 overrides:
   csiVastPlugin:
-    repository: vastdataorg/csi@sha256:a18cf994383111b76b56a60aa2d6b4d40d963e6b02ef5746e806fe8c91e4a0c1
+    repository: vastdataorg/csi@sha256:530db94986454042977f1935ac3e09130dd7177bfa37c9fecc40c57dd0b4316f
   csiAttacher:
     repository: registry.k8s.io/sig-storage/csi-attacher@sha256:b4d611100ece2f9bc980d1cb19c2285b8868da261e3b1ee8f45448ab5512ab94
   csiNodeDriverRegistrar:
@@ -47,4 +49,4 @@ installSnapshotCRDS: true
 # Instead, these templates become part of the installation section of the ClusterServiceVersion.
 # This option is intended for clusters with OLM installed, where the intention is to install and manage the operator via OLM.
 olmBuild: false
-maturity: "alpha"
+maturity: "stable"

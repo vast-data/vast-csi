@@ -2,15 +2,21 @@
 # COMMON
 ####################
 
-# Reference to installed VastCluster CRD
+driverType: "nfs" # Supported values: "nfs", "block"
+# Reference to installed VastDriver CRD
+provisioner: ""
+# The name of the Secret that stores the VMS credentials.
+# Note: The Secret must be created manually unless it is generated automatically by creating a VastCluster.
+secretName: ""
+# Secret namespace. If not specified, the Secret will be looked up in the same namespace where the Operator is running.
+secretNamespace: ""
+# Reference to installed VastCluster CRD - One of secretName or clusterName must be provided
 clusterName: ""
 
 ####################
-# VAST CSI STORAGE CLASS OPTIONS
+# VAST CSI STORAGE CLASS OPTIONS (COMMON)
 ####################
 
-# Where volumes will be located on VAST - must be provided by user
-storagePath: ""
 # Name of VAST VIP pool to use - must be provided by user
 vipPool: ""
 # The FQDN of the VIP pool to use. Must specify either vipPool or vipPoolFQDN.
@@ -18,8 +24,9 @@ vipPool: ""
 # NOTE: The driver will prepend the FQDN with a random prefix, which forces the NFS client to resolve into a different VIP,
 # thereby distributing the load across the entire range of the VIP pool.
 vipPoolFQDN: ""
-# VAST policy name to create views - must be provided by user
-viewPolicy: ""
+# vipPoolFQDNRandomPrefix helps distribute load across the entire VIP pool by randomizing the VIP resolved for each volume mount.
+# If set to true, a random prefix will be added to the VIP FQDN, ensuring that each NFS mount request resolves to a different VIP from the VIP pool.
+vipPoolFQDNRandomPrefix: true
 # Allows resizing existing volumes
 allowVolumeExpansion: true
 # If true, sets Vast CSI as the cluster-wide storage class default
@@ -30,11 +37,70 @@ volumeNameFormat: "csi:{namespace}:{name}:{id}"
 ephemeralVolumeNameFormat: "csi:{namespace}:{name}:{id}"
 # Add any extra NFS options desired here
 mountOptions: []
-# Name of QoS policy associates with the view.
-qosPolicy: ""
 # Reclaim policy to use with the storage class.
 reclaimPolicy: "Delete"
 
+
+####################
+# VAST CSI STORAGE CLASS OPTIONS (NFS)
+####################
+
+# Where volumes will be located on VAST - must be provided by user
+storagePath: ""
+# VAST policy name to create views - must be provided by user
+viewPolicy: ""
+# Name of QoS policy associates with the view or volume.
+qosPolicy: ""
+# Enables encryption using LUKS on the device on the client side.
+# If set to true, the CSI driver will expect a passphrase to be provided
+# with the vast-mgmt secret.
+
+# Example Kubernetes Secret for host encryption:
+# kubectl create secret generic vast-mgmt --from-literal=username='' --from-literal=password='' --from-literal=endpoint='' --from-literal=passphrase=''
+
+# Ensure the StorageClass has the following parameters set when host Encryption is true:
+# Optional host encryption parameters (will default if not specified):
+#   cipher: "aes-xts-plain64"           # Encryption cipher
+#   key_size: "512"                     # Key size in bits (e.g., 256 or 512)
+#   hash: "sha256"                      # Hashing algorithm
+#   pbkdf_memory: "65536"               # Memory cost for PBKDF in KB
+hostEncryption: null
+
+####################
+# VAST CSI STORAGE CLASS OPTIONS (BLOCK)
+####################
+
+# Subsystem name - must be provided by user
+subsystem: ""
+# Tenant name – required for additional filtering when multiple subsystems share the same name.
+tenantName: ""
+# Optional template for constructing the volume group name.
+# It supports placeholders for the PVC name, namespace, and ID,
+# which can be used in the format {namespace}, {name}, and {id}.
+# If not provided, a default template will be used. The volume group
+# can represent nested folder structures. For example:
+#   - "folder1/folder2/block-{namespace}-{id}
+volumeGroup: ""
+# Filesystem type to format the volume during creation.
+# Allowed values:
+#   - ext4: Ext4 filesystem
+#   - ext3: Ext3 filesystem
+#   - xfs: XFS filesystem
+fsType: ""
+# Host connectivity type used for block storage.
+# Allowed values:
+#   - TCP
+#   - RDMA
+# Default: TCP
+transportType: "TCP"
+# If true, the CSI driver will wait for the GSS (global snapshot stream) process to fully complete
+# before returning from a volume clone operation.
+# This ensures the volume is fully usable and consistent at the time of provisioning, but may add
+# significant latency if the underlying GSS operation is long-running.
+#
+# If false (default), the driver returns as soon as the clone operation is initiated, allowing
+# Kubernetes to proceed while the data stream continues in the background.
+blockingClones: false
 
 ####################
 # VAST CSI SNAPSHOT CLASS OPTIONS

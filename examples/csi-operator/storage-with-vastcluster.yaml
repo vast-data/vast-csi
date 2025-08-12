@@ -1,0 +1,12 @@
+apiVersion: storage.vastdata.com/v1
+kind: VastStorage
+metadata:
+  name: vastdata-block
+  namespace: vast-csi
+spec:
+  driverType: "block"
+  provisioner: "block.csi.vastdata.com"
+  clusterName: vastcluster
+  subsystem: "myblock"
+  vipPool: "vippool-1"
+  createSnapshotClass: false

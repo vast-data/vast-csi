@@ -1,0 +1,78 @@
+{{- if eq .Values.driverType "block" }}
+
+{{/* Validate storagePath parameter. Parameter should not be an empty string. */}}
+{{- $is_default_class := .Values.setDefaultStorageClass | default false | quote -}}
+{{- $subsystem := .Values.subsystem -}}
+{{- if not $subsystem -}}
+  {{- fail "subsystem is required value. Please specify valid subsystem" -}}
+{{- end }}
+
+{{/* Validate vipPool and vipPoolFQDN parameters. Only one of them should be provided. */}}
+{{- $vip_pool_name := .Values.vipPool -}}
+{{- $vip_pool_fqdn := .Values.vipPoolFQDN -}}
+{{- $vip_pool_fqdn_random_prefix := .Values.vipPoolFQDNRandomPrefix | quote -}}
+{{- if (and $vip_pool_name $vip_pool_fqdn) -}}
+  {{- fail (printf "vipPool and vipPoolFQDN are mutually exclusive in the StorageClass '%s' parameters. Do not set a default value from storageDefaults for either field; choose only one to specify." .Release.Name) -}}
+{{- end }}
+
+{{- $tenant_name := .Values.tenantName -}}
+{{- $volume_group := .Values.volumeGroup -}}
+{{- $fstype := .Values.fsType -}}
+{{- $qos_policy := .Values.qosPolicy -}}
+{{- $transport_type := .Values.transportType -}}
+{{- $blocking_clones := .Values.blockingClones -}}
+{{- $host_encryption := .Values.hostEncryption -}}
+
+{{- $volume_name_fmt := .Values.volumeNameFormat -}}
+{{- $eph_volume_name_fmt := .Values.ephemeralVolumeNameFormat -}}
+{{- $mount_options := .Values.mountOptions -}}
+{{- $reclaim_policy := .Values.reclaimPolicy -}}
+{{- $allow_volume_expansion := .Values.allowVolumeExpansion | quote | mustRegexMatch "true" | ternary true false -}}
+
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+provisioner: {{ include "vastcsi.csiDriver" $ }}
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ include "vastcsi.namespace" $ }}
+  annotations:
+    storageclass.kubernetes.io/is-default-class: {{ $is_default_class }}
+  labels:
+    {{- include "vastcsi.labels" $ | nindent 4 }}
+reclaimPolicy: {{ $reclaim_policy }}
+parameters:
+
+{{- include "vastcsi.dictToKeyValParams" (list (dict
+  "subsystem" $subsystem
+  "vip_pool_name" $vip_pool_name
+  "vip_pool_fqdn" $vip_pool_fqdn
+  "volume_group" $volume_group
+  "transport_type" $transport_type
+  "fsType" $fstype
+  "tenant_name" $tenant_name
+  "volume_name_fmt" $volume_name_fmt
+  "eph_volume_name_fmt" $eph_volume_name_fmt
+  "qos_policy" $qos_policy
+)) | indent 2 }}
+
+{{- include "vastcsi.dictToBoolParams" (list (dict
+  "vip_pool_fqdn_random_prefix" $vip_pool_fqdn_random_prefix
+  "blocking_clones" $blocking_clones
+)) | indent 2 }}
+
+{{- if $host_encryption }}
+{{ include "vastcsi.dictToJsonStringParam" (list $host_encryption "host_encryption") | indent 2 }}
+{{- end }}
+
+{{- include "vastcsi.storageClassSecrets" . | nindent 2 }}
+allowVolumeExpansion: {{ $allow_volume_expansion }}
+{{- if kindIs "string" $mount_options -}}
+{{/* Keep option to specify mountOptions as string for backward compatibility */}}
+mountOptions:
+  - {{ $mount_options | quote }}
+{{- else }}
+mountOptions: {{ toYaml $mount_options | nindent 2 }}
+{{- end }}
+---
+
+{{- end }}

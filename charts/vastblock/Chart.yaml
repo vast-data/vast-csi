@@ -2,7 +2,7 @@ apiVersion: v2
 name: vastblock
 description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
 type: application
-version: "2.6.1" #  will be updated by the release ci
+version: "2.6.3" #  will be updated by the release ci
 keywords:
   - vast
   - csi

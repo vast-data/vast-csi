@@ -64,3 +64,69 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/name: {{ include "vastcsi.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
+
+
+{{/*
+Renders key-value pairs for CSI parameters.
+- Quotes all values except ints.
+- Skips empty values.
+
+Usage: include "vastcsi.dictToKeyValParams" (dict $your_dict)
+*/}}
+{{- define "vastcsi.dictToKeyValParams" -}}
+{{- $input := index . 0 -}}
+  {{- range $key, $value := $input }}
+    {{- if and $value (ne $value (quote "")) }}
+{{ $key }}: {{ if kindIs "int" $value }}{{ $value | quote }}{{ else }}{{ $value }}{{ end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+
+{{/*
+Renders key-value pairs where the value is interpreted as boolean true.
+Truthy values include:
+- bool true
+- strings: "true", "1", "on" (case-insensitive, trims quotes)
+
+Result: key: "true"
+*/}}
+{{- define "vastcsi.dictToBoolParams" -}}
+{{- $input := index . 0 -}}
+{{- range $key, $value := $input }}
+  {{- if kindIs "bool" $value }}
+    {{- if $value }}
+{{ $key }}: "true"
+    {{- end }}
+  {{- else }}
+    {{- $normalized := trimAll "\"" (toString $value) | lower }}
+    {{- if or (eq $normalized "true") (eq $normalized "1") (eq $normalized "on") }}
+{{ $key }}: "true"
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}
+
+
+{{/*
+Renders a key-value pair where the value is the input map serialized to a JSON string.
+
+Inputs:
+- .0: map to serialize (must be of type "map")
+- .1: key to associate with the JSON string
+
+Result:
+<key>: "<JSON-string>"
+
+Fails if the input is not a map.
+*/}}
+{{- define "vastcsi.dictToJsonStringParam" -}}
+{{- $map := index . 0 -}}
+{{- $key := index . 1 -}}
+{{- if not (kindIs "map" $map) }}
+  {{- $errorMsg := printf "Invalid format. Expected a map for JSON serialization but got:\n%s" (toYaml $map) }}
+  {{- fail $errorMsg }}
+{{- else }}
+{{ $key }}: {{ $map | toJson | quote }}
+{{- end }}
+{{- end }}

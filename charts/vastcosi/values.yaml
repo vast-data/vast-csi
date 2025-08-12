@@ -12,6 +12,9 @@
 #     kubectl create secret generic vast-mgmt \
 #     --from-literal=token=< API token > \
 #     --from-literal=endpoint=< VAST endpoint >
+# Optionally, you can include:
+# - ssl_cert: SSL certificate for secure communication
+# - tenant: The tenant name for tenant scoped authentication (tenant admin).
 secretName: ""
 
 # API endpoint of VAST appliance - must be provided by user
@@ -74,7 +77,7 @@ cosiDriverName: csi.vastdata.com
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.6.2  # the version of the Vast COSI driver
+    tag: v2.6.3  # the version of the Vast COSI driver
     imagePullPolicy: IfNotPresent
   objectstorageProvisioner:
     repository: gcr.io/k8s-staging-sig-storage/objectstorage-sidecar/objectstorage-sidecar

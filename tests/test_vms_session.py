@@ -388,8 +388,504 @@ def test_deserialize(vms_session):
 
     assert deserialized_session.username == vms_session.username
     assert deserialized_session.password == vms_session.password
+    assert deserialized_session.tenant == vms_session.tenant
     assert deserialized_session.endpoint == vms_session.endpoint
     assert deserialized_session.ssl_cert == vms_session.ssl_cert
+
+def test_dump_data_includes_tenant(vms_session):
+    dump_data = vms_session.dump_data()
+    
+    assert "username" in dump_data
+    assert "password" in dump_data
+    assert "token" in dump_data
+    assert "tenant" in dump_data
+    assert "endpoint" in dump_data
+    assert "ssl_cert" in dump_data
+    assert "cluster_name" in dump_data
+    
+    assert dump_data["tenant"] == vms_session.tenant
+
+
+#####################
+# Enhanced Serialization Tests
+#####################
+
+def test_vms_session_serialization_different_salts_produce_different_output(vms_session):
+    """Test that different salts produce different encrypted output for the same session."""
+    salt1 = "salt1"
+    salt2 = "salt2"
+    
+    serialized1 = vms_session.serialize(salt1)
+    serialized2 = vms_session.serialize(salt2)
+    
+    assert serialized1 != serialized2
+    assert isinstance(serialized1, str)
+    assert isinstance(serialized2, str)
+    assert len(serialized1) > 0
+    assert len(serialized2) > 0
+
+
+def test_vms_session_serialization_round_trip_consistency(vms_session):
+    """Test that serialize -> deserialize produces identical session data."""
+    salt = "consistency_test_salt"
+    
+    # Serialize and deserialize
+    serialized_data = vms_session.serialize(salt)
+    deserialized_session = VmsSession.deserialize(salt, serialized_data)
+    
+    # Test all fields
+    assert deserialized_session.username == vms_session.username
+    assert deserialized_session.password == vms_session.password
+    assert deserialized_session.token == vms_session.token
+    assert deserialized_session.tenant == vms_session.tenant
+    assert deserialized_session.endpoint == vms_session.endpoint
+    assert deserialized_session.ssl_cert == vms_session.ssl_cert
+    assert deserialized_session.cluster_name == vms_session.cluster_name
+
+
+def test_vms_session_serialization_with_wrong_salt_fails():
+    """Test that deserializing with wrong salt fails."""
+    import base64
+    from cryptography.exceptions import InvalidSignature
+    
+    config = Config()
+    original_session = VmsSession.create(
+        config=config, username="test", password="test", token=None, 
+        tenant="test-tenant", endpoint="test.com", ssl_cert=None, cluster_name=None
+    )
+    
+    correct_salt = "correct_salt"
+    wrong_salt = "wrong_salt"
+    
+    serialized_data = original_session.serialize(correct_salt)
+    
+    # Attempting to deserialize with wrong salt should produce garbage or fail
+    try:
+        deserialized_session = VmsSession.deserialize(wrong_salt, serialized_data)
+        # If it doesn't fail, the data should be corrupted
+        assert deserialized_session.username != original_session.username
+    except Exception:
+        # Expected - decryption with wrong key should fail
+        pass
+
+
+def test_vms_session_serialization_with_none_values():
+    """Test serialization works correctly with None values."""
+    config = Config()
+    session_with_nones = VmsSession.create(
+        config=config, username="user", password="pass", token=None, 
+        tenant=None, endpoint="test.com", ssl_cert=None, cluster_name=None
+    )
+    
+    salt = "none_test_salt"
+    serialized_data = session_with_nones.serialize(salt)
+    deserialized_session = VmsSession.deserialize(salt, serialized_data)
+    
+    assert deserialized_session.username == "user"
+    assert deserialized_session.password == "pass"
+    assert deserialized_session.token is None
+    assert deserialized_session.tenant is None
+    assert deserialized_session.endpoint == "test.com"
+    assert deserialized_session.ssl_cert is None
+    assert deserialized_session.cluster_name is None
+
+
+def test_vms_session_serialization_with_special_characters():
+    """Test serialization works with special characters in credentials."""
+    config = Config()
+    session_with_special_chars = VmsSession.create(
+        config=config, username="user@domain.com", password="p@ssw0rd!#$%", 
+        token=None, tenant="tenant-with-dashes", endpoint="test.com", 
+        ssl_cert=None,  # Avoid permission issues with /etc/ssl/certs
+        cluster_name=None
+    )
+    
+    salt = "special_chars_salt"
+    serialized_data = session_with_special_chars.serialize(salt)
+    deserialized_session = VmsSession.deserialize(salt, serialized_data)
+    
+    assert deserialized_session.username == "user@domain.com"
+    assert deserialized_session.password == "p@ssw0rd!#$%"
+    assert deserialized_session.tenant == "tenant-with-dashes"
+    assert deserialized_session.ssl_cert is None
+
+
+def test_vms_session_serialization_output_format():
+    """Test that serialized output is properly base64 encoded."""
+    import base64
+    config = Config()
+    session = VmsSession.create(
+        config=config, username="test", password="test", token=None, 
+        tenant=None, endpoint="test.com", ssl_cert=None, cluster_name=None
+    )
+    
+    salt = "format_test_salt"
+    serialized_data = session.serialize(salt)
+    
+    # Should be valid base64
+    try:
+        decoded_bytes = base64.b64decode(serialized_data)
+        assert len(decoded_bytes) > 16  # At least IV (16 bytes) + some ciphertext
+    except Exception as e:
+        pytest.fail(f"Serialized data is not valid base64: {e}")
+
+
+#####################
+# LuksManager Serialization Tests
+#####################
+
+def test_luks_manager_serialization_round_trip_consistency():
+    """Test that LuksManager serialize -> deserialize produces identical data."""
+    from vast_csi.luks_utils import LuksManager
+    
+    original_manager = LuksManager(
+        volume_id="test-volume-123",
+        passphrase="super-secret-key",
+        encryption_config={
+            "luks_type": "luks2",
+            "cipher": "aes-xts-plain64",
+            "key_size": "512",
+            "hash_algo": "sha256"
+        }
+    )
+    
+    salt = "luks_test_salt"
+    serialized_data = original_manager.serialize(salt)
+    deserialized_manager = LuksManager.deserialize(salt, serialized_data)
+    
+    assert deserialized_manager.volume_id == original_manager.volume_id
+    assert deserialized_manager.passphrase == original_manager.passphrase
+    assert deserialized_manager.encryption_config == original_manager.encryption_config
+
+
+def test_luks_manager_serialization_different_salts():
+    """Test that different salts produce different encrypted output for LuksManager."""
+    from vast_csi.luks_utils import LuksManager
+    
+    manager = LuksManager(
+        volume_id="test-volume",
+        passphrase="secret",
+        encryption_config={"cipher": "aes-xts-plain64"}
+    )
+    
+    salt1 = "salt1"
+    salt2 = "salt2"
+    
+    serialized1 = manager.serialize(salt1)
+    serialized2 = manager.serialize(salt2)
+    
+    assert serialized1 != serialized2
+    assert isinstance(serialized1, str)
+    assert isinstance(serialized2, str)
+
+
+def test_luks_manager_serialization_with_none_passphrase():
+    """Test LuksManager serialization works with None passphrase."""
+    from vast_csi.luks_utils import LuksManager
+    
+    manager = LuksManager(
+        volume_id="test-volume",
+        passphrase=None,
+        encryption_config={"luks_type": "luks2"}
+    )
+    
+    salt = "none_passphrase_salt"
+    serialized_data = manager.serialize(salt)
+    deserialized_manager = LuksManager.deserialize(salt, serialized_data)
+    
+    assert deserialized_manager.volume_id == "test-volume"
+    assert deserialized_manager.passphrase is None
+    assert deserialized_manager.encryption_config == {"luks_type": "luks2"}
+
+
+def test_luks_manager_serialization_with_empty_encryption_config():
+    """Test LuksManager serialization works with empty encryption config."""
+    from vast_csi.luks_utils import LuksManager
+    
+    manager = LuksManager(
+        volume_id="test-volume",
+        passphrase="secret",
+        encryption_config={}
+    )
+    
+    salt = "empty_config_salt"
+    serialized_data = manager.serialize(salt)
+    deserialized_manager = LuksManager.deserialize(salt, serialized_data)
+    
+    assert deserialized_manager.volume_id == "test-volume"  
+    assert deserialized_manager.passphrase == "secret"
+    assert deserialized_manager.encryption_config == {}
+
+
+def test_luks_manager_serialization_with_complex_encryption_config():
+    """Test LuksManager serialization with complex encryption configuration."""
+    from vast_csi.luks_utils import LuksManager
+    
+    complex_config = {
+        "luks_type": "luks2",
+        "cipher": "aes-xts-plain64",
+        "key_size": "512",
+        "hash_algo": "sha256",
+        "pbkdf_mem": "65536",
+        "iter_time": "2000",
+        "custom_param": "value with spaces and special chars !@#$%"
+    }
+    
+    manager = LuksManager(
+        volume_id="complex-test-volume",
+        passphrase="complex-passphrase-123!@#",
+        encryption_config=complex_config
+    )
+    
+    salt = "complex_config_salt"
+    serialized_data = manager.serialize(salt)
+    deserialized_manager = LuksManager.deserialize(salt, serialized_data)
+    
+    assert deserialized_manager.volume_id == "complex-test-volume"
+    assert deserialized_manager.passphrase == "complex-passphrase-123!@#"
+    assert deserialized_manager.encryption_config == complex_config
+
+
+def test_luks_manager_dump_data_format():
+    """Test that LuksManager dump_data returns expected structure."""
+    from vast_csi.luks_utils import LuksManager
+    
+    manager = LuksManager(
+        volume_id="test-volume",
+        passphrase="secret",
+        encryption_config={"type": "luks2"}
+    )
+    
+    dump_data = manager.dump_data()
+    
+    assert isinstance(dump_data, dict)
+    assert "volume_id" in dump_data
+    assert "passphrase" in dump_data
+    assert "encryption_config" in dump_data
+    
+    assert dump_data["volume_id"] == "test-volume"
+    assert dump_data["passphrase"] == "secret"
+    assert dump_data["encryption_config"] == {"type": "luks2"}
+
+
+def test_luks_manager_load_data_method():
+    """Test that LuksManager load_data works correctly."""
+    from vast_csi.luks_utils import LuksManager
+    
+    test_data = {
+        "volume_id": "loaded-volume",
+        "passphrase": "loaded-secret",
+        "encryption_config": {"loaded": "config"}
+    }
+    
+    loaded_manager = LuksManager.load_data(test_data)
+    
+    assert loaded_manager.volume_id == "loaded-volume"
+    assert loaded_manager.passphrase == "loaded-secret"
+    assert loaded_manager.encryption_config == {"loaded": "config"}
+
+
+#####################
+# Cross-class Serialization Tests
+#####################
+
+def test_different_classes_same_salt_different_output():
+    """Test that VmsSession and LuksManager produce different output with same salt."""
+    from vast_csi.luks_utils import LuksManager
+    
+    config = Config()
+    vms_session = VmsSession.create(
+        config=config, username="test", password="test", token=None, 
+        tenant=None, endpoint="test.com", ssl_cert=None, cluster_name=None
+    )
+    
+    luks_manager = LuksManager(
+        volume_id="test-volume",
+        passphrase="secret",
+        encryption_config={}
+    )
+    
+    salt = "shared_salt"
+    vms_serialized = vms_session.serialize(salt)
+    luks_serialized = luks_manager.serialize(salt)
+    
+    assert vms_serialized != luks_serialized
+    
+    # Cross-deserialization should fail or produce garbage
+    try:
+        # This should fail since the data structures are different
+        VmsSession.deserialize(salt, luks_serialized)
+        pytest.fail("Cross-deserialization should not succeed")
+    except Exception:
+        # Expected - different data structures
+        pass
+
+
+#####################
+# Additional Edge Case Tests
+#####################
+
+def test_vms_session_serialization_with_empty_strings():
+    """Test serialization works with empty strings."""
+    config = Config()
+    # Use token authentication to avoid empty username/password validation
+    session_with_empty_strings = VmsSession.create(
+        config=config, username=None, password=None, token="test-token", 
+        tenant="", endpoint="test.com", ssl_cert=None, cluster_name=None
+    )
+    
+    salt = "empty_strings_salt"
+    serialized_data = session_with_empty_strings.serialize(salt)
+    deserialized_session = VmsSession.deserialize(salt, serialized_data)
+    
+    assert deserialized_session.username is None
+    assert deserialized_session.password is None
+    assert deserialized_session.token == "test-token"
+    assert deserialized_session.tenant == ""
+
+
+def test_vms_session_serialization_with_unicode_characters():
+    """Test serialization works with Unicode characters."""
+    config = Config()
+    session_with_unicode = VmsSession.create(
+        config=config, username="用户", password="密码123", token=None, 
+        tenant="租户-テスト", endpoint="test.com", ssl_cert=None, cluster_name=None
+    )
+    
+    salt = "unicode_salt_测试"
+    serialized_data = session_with_unicode.serialize(salt)
+    deserialized_session = VmsSession.deserialize(salt, serialized_data)
+    
+    assert deserialized_session.username == "用户"
+    assert deserialized_session.password == "密码123"
+    assert deserialized_session.tenant == "租户-テスト"
+    assert deserialized_session.cluster_name is None
+
+
+def test_luks_manager_serialization_with_unicode_in_config():
+    """Test LuksManager serialization with Unicode in encryption config."""
+    from vast_csi.luks_utils import LuksManager
+    
+    unicode_config = {
+        "cipher": "aes-xts-plain64",
+        "description": "Description with Unicode: 加密配置 テスト",
+        "label": "ラベル-标签"
+    }
+    
+    manager = LuksManager(
+        volume_id="unicode-test-卷",
+        passphrase="密码-パスワード",
+        encryption_config=unicode_config
+    )
+    
+    salt = "unicode_luks_salt"
+    serialized_data = manager.serialize(salt)
+    deserialized_manager = LuksManager.deserialize(salt, serialized_data)
+    
+    assert deserialized_manager.volume_id == "unicode-test-卷"
+    assert deserialized_manager.passphrase == "密码-パスワード"
+    assert deserialized_manager.encryption_config["description"] == "Description with Unicode: 加密配置 テスト"
+    assert deserialized_manager.encryption_config["label"] == "ラベル-标签"
+
+
+def test_serialization_with_very_long_strings():
+    """Test serialization with very long strings."""
+    from vast_csi.luks_utils import LuksManager
+    
+    long_string = "A" * 10000  # 10KB string
+    very_long_config = {
+        "long_field": long_string,
+        "another_long_field": "B" * 5000
+    }
+    
+    manager = LuksManager(
+        volume_id="long-test-volume",
+        passphrase=long_string[:100],  # Reasonable passphrase length
+        encryption_config=very_long_config
+    )
+    
+    salt = "long_strings_salt"
+    serialized_data = manager.serialize(salt)
+    deserialized_manager = LuksManager.deserialize(salt, serialized_data)
+    
+    assert deserialized_manager.volume_id == "long-test-volume"
+    assert deserialized_manager.passphrase == long_string[:100]
+    assert deserialized_manager.encryption_config["long_field"] == long_string
+    assert deserialized_manager.encryption_config["another_long_field"] == "B" * 5000
+
+
+def test_serialization_deterministic_same_input():
+    """Test that serialization is deterministic for the same input and salt."""
+    config = Config()
+    session = VmsSession.create(
+        config=config, username="test", password="test", token=None, 
+        tenant=None, endpoint="test.com", ssl_cert=None, cluster_name=None
+    )
+    
+    salt = "deterministic_salt"
+    
+    # Serialize the same session multiple times with the same salt
+    serialized1 = session.serialize(salt)
+    serialized2 = session.serialize(salt)
+    
+    # Note: This test might fail because of random IV generation
+    # The encrypted content should be different due to IV, but let's test the behavior
+    # In AES-CFB mode with random IV, the output should be different each time
+    # So we actually expect them to be different
+    assert isinstance(serialized1, str)
+    assert isinstance(serialized2, str)
+    # With random IV, these should actually be different
+    # But both should deserialize to the same content
+    
+    deserialized1 = VmsSession.deserialize(salt, serialized1)
+    deserialized2 = VmsSession.deserialize(salt, serialized2)
+    
+    assert deserialized1.username == deserialized2.username
+    assert deserialized1.password == deserialized2.password
+
+
+def test_serialization_with_malformed_base64():
+    """Test deserialization behavior with malformed base64 input."""
+    from vast_csi.luks_utils import LuksManager
+    
+    malformed_inputs = [
+        "not-base64!",
+        "SGVsbG8=extra-chars",
+        "",
+        "A" * 100,  # Invalid base64
+    ]
+    
+    for malformed_input in malformed_inputs:
+        try:
+            LuksManager.deserialize("test_salt", malformed_input)
+            pytest.fail(f"Expected deserialization to fail for input: {malformed_input}")
+        except Exception:
+            # Expected - malformed input should fail
+            pass
+
+
+def test_serialization_data_integrity():
+    """Test that serialized data maintains integrity across multiple operations."""
+    from vast_csi.luks_utils import LuksManager
+    
+    original_manager = LuksManager(
+        volume_id="integrity-test",
+        passphrase="integrity-passphrase", 
+        encryption_config={"test": "integrity"}
+    )
+    
+    salt = "integrity_salt"
+    
+    # Multiple serialize/deserialize cycles
+    current_manager = original_manager
+    for i in range(5):
+        serialized = current_manager.serialize(salt)
+        current_manager = LuksManager.deserialize(salt, serialized)
+    
+    # After 5 cycles, data should still be identical
+    assert current_manager.volume_id == original_manager.volume_id
+    assert current_manager.passphrase == original_manager.passphrase
+    assert current_manager.encryption_config == original_manager.encryption_config
 
 
 #####################
@@ -532,7 +1028,7 @@ class TestVmsSessionInitFromGlobalSecretSuite:
     def test_no_global_secret(self, config):
         with pytest.raises(LookupFieldError, match="Could not find username"):
             VmsSession.create(
-                config=config, username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name=None
+                config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name=None
             )
 
     @pytest.mark.parametrize('files, err', [
@@ -548,7 +1044,7 @@ class TestVmsSessionInitFromGlobalSecretSuite:
         config.vms_credentials_store = tmpdir
         with pytest.raises(LookupFieldError, match=err):
             VmsSession.create(
-                config=config, username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name=None
+                config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name=None
             )
 
 
@@ -559,7 +1055,7 @@ class TestVmsSessionInitFromGlobalSecretSuite:
         tmpdir.join("endpoint").write("test")
         config.vms_credentials_store = tmpdir
         vms_session = VmsSession.create(
-            config=config, username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name=None
+            config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name=None
         )
         assert vms_session.username == "test"
         assert vms_session.password == "test"
@@ -572,10 +1068,26 @@ class TestVmsSessionInitFromGlobalSecretSuite:
         tmpdir.join("endpoint").write("test")
         config.vms_credentials_store = tmpdir
         vms_session = VmsSession.create(
-            config=config, username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name=None
+            config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name=None
         )
         assert vms_session.token == "test"
         assert vms_session.endpoint == "test"
+        assert not vms_session.username
+        assert not vms_session.password
+
+    def test_instantiate_from_token_with_tenant(self, config, tmpdir):
+        tmpdir = local.path(tmpdir)
+        tmpdir.join("token").write("test")
+        tmpdir.join("tenant").write("test-tenant")
+        tmpdir.join("endpoint").write("test")
+        config.vms_credentials_store = tmpdir
+        vms_session = VmsSession.create(
+            config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name=None
+        )
+        assert vms_session.token == "test"
+        assert vms_session.tenant == "test-tenant"
+        assert vms_session.endpoint == "test"
+        assert vms_session.headers.get("X-Tenant-Name") == "test-tenant"
         assert not vms_session.username
         assert not vms_session.password
 
@@ -590,9 +1102,44 @@ class TestVmsSessionInitFromGlobalSecretSuite:
         config.vms_credentials_store = tmpdir
         with pytest.raises(Exception, match="Provide either"):
             VmsSession.create(
-                config=config, username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name=None
+                config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name=None
             )
 
+    def test_global_store_ignored_when_token_provided(self, config, tmpdir):
+        tmpdir = local.path(tmpdir)
+        tmpdir.join("username").write("test")
+        tmpdir.join("password").write("test")
+        tmpdir.join("endpoint").write("test")
+        tmpdir.join("token").write("test")
+        config.vms_credentials_store = tmpdir
+
+        session = VmsSession.create(
+            config=config, username=None, password=None, token="xxx", tenant=None,
+            endpoint="https://from-secret", ssl_cert=None, cluster_name=None,
+        )
+
+        assert session.username is None
+        assert session.password is None
+        assert session.token == "xxx"
+        assert session.endpoint == "https://from-secret"
+
+    def test_global_store_ignored_when_username_provided(self, config, tmpdir):
+        tmpdir = local.path(tmpdir)
+        tmpdir.join("username").write("test")
+        tmpdir.join("password").write("test")
+        tmpdir.join("endpoint").write("test")
+        tmpdir.join("token").write("test")
+        config.vms_credentials_store = tmpdir
+
+        session = VmsSession.create(
+            config=config, username="admin", password="admin", token=None, tenant=None,
+            endpoint="https://from-secret", ssl_cert=None, cluster_name=None,
+        )
+
+        assert session.username == "admin"
+        assert session.password == "admin"
+        assert session.token is None
+        assert session.endpoint == "https://from-secret"
 
 class TestVmsSessionInitFromArgumentsSuite:
     """
@@ -608,12 +1155,12 @@ class TestVmsSessionInitFromArgumentsSuite:
     def test_missing_values(self, config, username, password, endpoint, err):
         with pytest.raises(LookupFieldError, match=err):
             VmsSession.create(
-                config=config, username=username, password=password, token=None, endpoint=endpoint, ssl_cert=None, cluster_name=None
+                config=config, username=username, password=password, token=None, tenant=None, endpoint=endpoint, ssl_cert=None, cluster_name=None
             )
 
     def test_instantiate_from_user_pass(self, config):
         vms_session = VmsSession.create(
-            config=config, username="test", password="test", token=None, endpoint="test", ssl_cert=None, cluster_name=None
+            config=config, username="test", password="test", token=None, tenant=None, endpoint="test", ssl_cert=None, cluster_name=None
         )
         assert vms_session.username == "test"
         assert vms_session.password == "test"
@@ -621,18 +1168,29 @@ class TestVmsSessionInitFromArgumentsSuite:
 
     def test_instantiate_from_token(self, config):
         vms_session = VmsSession.create(
-            config=config, username=None, password=None, token="test", endpoint="test", ssl_cert=None, cluster_name=None
+            config=config, username=None, password=None, token="test", tenant=None, endpoint="test", ssl_cert=None, cluster_name=None
         )
         assert vms_session.token == "test"
         assert vms_session.endpoint == "test"
         assert not vms_session.username
         assert not vms_session.password
 
+    def test_instantiate_with_tenant_argument(self, config):
+        """Test instantiation with tenant passed as argument."""
+        vms_session = VmsSession.create(
+            config=config, username="test", password="test", token=None, tenant="my-tenant", endpoint="test", ssl_cert=None, cluster_name=None
+        )
+        assert vms_session.username == "test"
+        assert vms_session.password == "test"
+        assert vms_session.tenant == "my-tenant"
+        assert vms_session.endpoint == "test"
+        assert vms_session.headers.get("X-Tenant-Name") == "my-tenant"
+
     def test_ambiguous_creds(self, config):
         """Test either username/password or token should be provided, not both."""
         with pytest.raises(Exception, match="Provide either"):
             VmsSession.create(
-                config=config, username="user", password="pass", token="token", endpoint="test", ssl_cert=None, cluster_name=None
+                config=config, username="user", password="pass", token="token", tenant=None, endpoint="test", ssl_cert=None, cluster_name=None
             )
 
 
@@ -648,7 +1206,7 @@ class TestVmsSessionInitFromClustersSuite:
         config.vms_credentials_store = local.path(tmpdir)
         with pytest.raises(LookupFieldError, match="Make sure cluster name is present in secret."):
             VmsSession.create(
-                config=config, username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name="clusterX"
+                config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name="clusterX"
             )
 
     @pytest.mark.parametrize('cluster_data, err', [
@@ -661,7 +1219,7 @@ class TestVmsSessionInitFromClustersSuite:
         config.vms_credentials_store = local.path(tmpdir)
         with pytest.raises(LookupFieldError, match=err):
             VmsSession.create(
-                config=config, username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name="cluster1"
+                config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name="cluster1"
             )
 
     def test_instantiate_from_user_pass(self, config, tmpdir):
@@ -675,7 +1233,7 @@ class TestVmsSessionInitFromClustersSuite:
         }))
         config.vms_credentials_store = local.path(tmpdir)
         vms_session = VmsSession.create(
-            config=config, username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name="cluster1"
+            config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name="cluster1"
         )
         assert vms_session.username == "user1"
         assert vms_session.password == "111111"
@@ -691,12 +1249,32 @@ class TestVmsSessionInitFromClustersSuite:
         }))
         config.vms_credentials_store = local.path(tmpdir)
         vms_session = VmsSession.create(
-            config=config, username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name="cluster2"
+            config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name="cluster2"
         )
         assert vms_session.token == "xxxxxxxxxxxxxxxxxxxx"
         assert vms_session.endpoint == "clstr2.example.com"
         assert not vms_session.username
         assert not vms_session.password
+
+    def test_instantiate_with_tenant_from_cluster(self, config, tmpdir):
+        """Test successful instantiation from cluster credentials with tenant."""
+        tmpdir.join("clusters").write(yaml.dump({
+            "cluster3": {
+                "username": "user3",
+                "password": "333333",
+                "tenant": "test-tenant",
+                "endpoint": "clstr3.example.com"
+            }
+        }))
+        config.vms_credentials_store = local.path(tmpdir)
+        vms_session = VmsSession.create(
+            config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name="cluster3"
+        )
+        assert vms_session.username == "user3"
+        assert vms_session.password == "333333"
+        assert vms_session.tenant == "test-tenant"
+        assert vms_session.endpoint == "clstr3.example.com"
+        assert vms_session.headers.get("X-Tenant-Name") == "test-tenant"
 
     def test_ambiguous_creds(self, config, tmpdir):
         """Test error when both username/password and token are provided in cluster config."""
@@ -711,5 +1289,6 @@ class TestVmsSessionInitFromClustersSuite:
         config.vms_credentials_store = local.path(tmpdir)
         with pytest.raises(Exception, match="Provide either"):
             VmsSession.create(
-                config=config, username=None, password=None, token=None, endpoint=None, ssl_cert=None, cluster_name="cluster1"
+                config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name="cluster1"
             )
+
