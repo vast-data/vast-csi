@@ -265,7 +265,11 @@ class TestBlockControllerCleanup:
 
     @pytest.fixture()
     def conf_with_prefix(self, monkeypatch):
-        monkeypatch.setattr("vast_csi.plugins.block.CONF", Bunch(block_nqn_prefix="nqn.2014-08.com.vastcsiblock"))
+        # Enable auto prune for tests that assert deletion
+        monkeypatch.setattr(
+            "vast_csi.plugins.block.CONF",
+            Bunch(block_nqn_prefix="nqn.2014-08.com.vastcsiblock", block_hosts_auto_prune=True),
+        )
 
     def test_unpublish_deletes_host_when_last_volume(self, vms_session_mock, no_op_volume_lock, conf_with_prefix):
         controller = BlockController()
@@ -334,7 +338,10 @@ class TestBlockControllerCleanup:
 
     def test_unpublish_deletes_only_when_host_nqn_has_driver_prefix(self, vms_session_mock, no_op_volume_lock, monkeypatch):
         # Host with matching NQN prefix should be deleted when last volume is unmapped
-        monkeypatch.setattr("vast_csi.plugins.block.CONF", Bunch(block_nqn_prefix="nqn.2014-08.com.vastcsiblock"))
+        monkeypatch.setattr(
+            "vast_csi.plugins.block.CONF",
+            Bunch(block_nqn_prefix="nqn.2014-08.com.vastcsiblock", block_hosts_auto_prune=True),
+        )
         vms_session_mock.blockhosts.one = MagicMock(return_value=Bunch(id=2, mapped_volumes_preview=[], nqn="nqn.2014-08.com.vastcsiblock:default:node-1"))
 
         controller = BlockController()
@@ -349,8 +356,29 @@ class TestBlockControllerCleanup:
 
     def test_unpublish_does_not_delete_when_host_nqn_without_driver_prefix(self, vms_session_mock, no_op_volume_lock, monkeypatch):
         # Host with non-matching NQN prefix should NOT be deleted even if last volume
-        monkeypatch.setattr("vast_csi.plugins.block.CONF", Bunch(block_nqn_prefix="nqn.2014-08.com.vastcsiblock"))
+        monkeypatch.setattr(
+            "vast_csi.plugins.block.CONF",
+            Bunch(block_nqn_prefix="nqn.2014-08.com.vastcsiblock", block_hosts_auto_prune=True),
+        )
         vms_session_mock.blockhosts.one = MagicMock(return_value=Bunch(id=2, mapped_volumes_preview=[], nqn="nqn.2014-08.com.otherstack:default:node-1"))
+
+        controller = BlockController()
+        controller.ControllerUnpublishVolume(
+            vms_session=vms_session_mock,
+            node_id="node-1",
+            volume_id="vol-1",
+            exit_stack=ExitStack(),
+        )
+
+        vms_session_mock.blockhosts.delete_by_id.assert_not_called()
+
+    def test_unpublish_does_not_delete_when_auto_prune_disabled(self, vms_session_mock, no_op_volume_lock, monkeypatch):
+        # Even with matching prefix and last volume, do not delete if auto prune is disabled
+        monkeypatch.setattr(
+            "vast_csi.plugins.block.CONF",
+            Bunch(block_nqn_prefix="nqn.2014-08.com.vastcsiblock", block_hosts_auto_prune=False),
+        )
+        vms_session_mock.blockhosts.one = MagicMock(return_value=Bunch(id=2, mapped_volumes_preview=[], nqn="nqn.2014-08.com.vastcsiblock:default:node-1"))
 
         controller = BlockController()
         controller.ControllerUnpublishVolume(

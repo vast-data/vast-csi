@@ -313,8 +313,9 @@ class BlockController(ControllerBase, Instrumented):
         subsystem = volume_context["subsystem"]
         host_encryption = volume_context.get("host_encryption", False)
 
-        # Ensure map host operations are atomic based on the composite key (node ID + tenant name).
-        exit_stack.enter_context(volume_locked(f"{node_id}:{tenant_name}"))
+        if CONF.block_hosts_auto_prune:
+            # Ensure map host operations are atomic based on the composite key (node ID + tenant name).
+            exit_stack.enter_context(volume_locked(f"{node_id}:{tenant_name}"))
         blockhost = vms_session.blockhosts.ensure(
             node_id=node_id,
             tenant_name=tenant_name,
@@ -373,15 +374,16 @@ class BlockController(ControllerBase, Instrumented):
                 volume__id=volume.id,
                 block_host__name=node_id
             )
-            # Ensure get/delete host operations are atomic based on the composite key (node ID + tenant name).
-            # A race condition may occur if ControllerUnpublishVolume unmaps the last volume from a host
-            # while ControllerPublishVolume simultaneously maps a new volume to the same host.
-            # In such cases, we must either delete and recreate the host, or wait for the new mapping and skip deletion.
-            exit_stack.enter_context(volume_locked(f"{node_id}:{volume.tenant_name}"))
-            if host := vms_session.blockhosts.one(name=node_id, tenant_name=volume.tenant_name):
-                if not host.mapped_volumes_preview and host.nqn.startswith(CONF.block_nqn_prefix):
-                    logger.info(f"Host {node_id!r} has no remaining volumes, removing host")
-                    vms_session.blockhosts.delete_by_id(host.id)
+            if CONF.block_hosts_auto_prune:
+                # Ensure get/delete host operations are atomic based on the composite key (node ID + tenant name).
+                # A race condition may occur if ControllerUnpublishVolume unmaps the last volume from a host
+                # while ControllerPublishVolume simultaneously maps a new volume to the same host.
+                # In such cases, we must either delete and recreate the host, or wait for the new mapping and skip deletion.
+                exit_stack.enter_context(volume_locked(f"{node_id}:{volume.tenant_name}"))
+                if host := vms_session.blockhosts.one(name=node_id, tenant_name=volume.tenant_name):
+                    if not host.mapped_volumes_preview and host.nqn.startswith(CONF.block_nqn_prefix):
+                        logger.info(f"Host {node_id!r} has no remaining volumes, removing host")
+                        vms_session.blockhosts.delete_by_id(host.id)
 
         return types.CtrlUnpublishResp()
 
