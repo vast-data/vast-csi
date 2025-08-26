@@ -1,7 +1,7 @@
 # CHANGELOG
 
 ## Version 2.6.3
-* Added support for host encryption of volumes using LUKS for block csi driver (VCSI-250)
+* Added support for host encryption of volumes using LUKS for block CSI driver (VCSI-250). Thanks to Vishal Varma <vishal1.verma@intel.com> (Intel) for the contribution.
 * Added support for `blockingClones` option in the StorageClass.
   When enabled, the CSI driver waits for the Global Snapshot Stream (GSS) to fully complete
   before returning from a volume clone operation. (VCSI-255)
