@@ -281,7 +281,13 @@ class BlockController(ControllerBase, Instrumented):
         return types.DeleteResp()
 
     def ControllerPublishVolume(
-            self, vms_session, node_id, volume_id, volume_capability, volume_context=None
+            self,
+            vms_session,
+            node_id,
+            volume_id,
+            volume_capability,
+            exit_stack,
+            volume_context=None,
     ):
         volume_context = volume_context or dict()
         volume_capabilities = _validate_capabilities(volume_capability, volume_context)
@@ -306,6 +312,10 @@ class BlockController(ControllerBase, Instrumented):
         tenant_name = volume_context["tenant_name"]
         subsystem = volume_context["subsystem"]
         host_encryption = volume_context.get("host_encryption", False)
+
+        if CONF.block_hosts_auto_prune:
+            # Ensure map host operations are atomic based on the composite key (node ID + tenant name).
+            exit_stack.enter_context(volume_locked(f"{node_id}:{tenant_name}"))
         blockhost = vms_session.blockhosts.ensure(
             node_id=node_id,
             tenant_name=tenant_name,
@@ -345,7 +355,18 @@ class BlockController(ControllerBase, Instrumented):
 
         return types.CtrlPublishResp(publish_context=publish_context)
 
-    def ControllerUnpublishVolume(self, vms_session, node_id, volume_id):
+    def ControllerUnpublishVolume(
+            self,
+            vms_session,
+            node_id,
+            volume_id,
+            exit_stack,
+    ):
+        """
+        Unpublishes a volume from a node and checks if the host has any remaining volumes.
+        If no volumes remain and the host was created by the CSI driver, the host is removed to prevent NQN sprawl.
+        """
+        # Early return if volume not found
         if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
             logger.info(f"Volume not found with name: {volume_id}")
         else:
@@ -353,6 +374,17 @@ class BlockController(ControllerBase, Instrumented):
                 volume__id=volume.id,
                 block_host__name=node_id
             )
+            if CONF.block_hosts_auto_prune:
+                # Ensure get/delete host operations are atomic based on the composite key (node ID + tenant name).
+                # A race condition may occur if ControllerUnpublishVolume unmaps the last volume from a host
+                # while ControllerPublishVolume simultaneously maps a new volume to the same host.
+                # In such cases, we must either delete and recreate the host, or wait for the new mapping and skip deletion.
+                exit_stack.enter_context(volume_locked(f"{node_id}:{volume.tenant_name}"))
+                if host := vms_session.blockhosts.one(name=node_id, tenant_name=volume.tenant_name):
+                    if not host.mapped_volumes_preview and host.nqn.startswith(CONF.block_nqn_prefix):
+                        logger.info(f"Host {node_id!r} has no remaining volumes, removing host")
+                        vms_session.blockhosts.delete_by_id(host.id)
+
         return types.CtrlUnpublishResp()
 
     def ControllerExpandVolume(self, vms_session, volume_id, capacity_range):

@@ -880,7 +880,7 @@ class BlockHost(VastResource):
             os_type="LINUX",
             ana="OPTIMIZED",
             connectivity_type=transport_type,
-            nqn=f"nqn.2014-08.com.vastcsiblock:{tenant_name}:{node_id}",
+            nqn=f"{self.session.config.block_nqn_prefix}{tenant_name}:{node_id}",
         )
         return self.create(**data)
 

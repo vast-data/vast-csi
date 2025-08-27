@@ -27,6 +27,17 @@ sslCert: ""
 # Example: kubectl create secret generic vast-tls --from-file=ca-bundle.crt=< path to sslCert.crt >
 # sslCertsSecretName secret and sslCert option in values.yaml are mutually exclusive. Make sure to use only one of them.
 sslCertsSecretName: ""
+# If set to true, the CSI driver will automatically prune (delete) VAST Host
+# entries (NQNs) when they are no longer in use by any PVCs on the corresponding
+# Kubernetes node. This prevents "host sprawl" from unused auto-generated NQNs.
+#
+# This option is particularly useful in Kubernetes environments where nodes are
+# not static (e.g., clusters with dynamic or ephemeral node pools and changing
+# hostnames), since unused hosts can otherwise accumulate quickly.
+#
+# When disabled (false), hosts remain in VAST even if unused and must be cleaned
+# up manually.
+blockHostsAutoPrune: false
 
 ####################
 # VAST CSI STORAGE CLASS OPTIONS
@@ -223,7 +234,7 @@ snapshotClasses: {}
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.6.3  # the version of the Vast CSI driver
+    tag: v2.6.4  # the version of the Vast CSI driver
     imagePullPolicy: IfNotPresent
   csiAttacher:
     repository: registry.k8s.io/sig-storage/csi-attacher
