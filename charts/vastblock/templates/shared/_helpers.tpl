@@ -43,7 +43,7 @@
 {{ if $.Values.truncateVolumeName -}}
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}
-{{- end -}}
+{{- end }}
 - name: X_CSI_BLOCK_HOSTS_AUTO_PRUNE
   value: {{ $.Values.blockHostsAutoPrune | quote }}
 
