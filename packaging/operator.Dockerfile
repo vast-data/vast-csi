@@ -1,4 +1,4 @@
-FROM registry.redhat.io/openshift4/ose-helm-operator
+FROM registry.redhat.io/openshift4/ose-helm-operator:v4.15
 
 ARG VERSION
 # Required OpenShift Labels
