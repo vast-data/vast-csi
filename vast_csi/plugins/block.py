@@ -440,6 +440,8 @@ class BlockController(ControllerBase, Instrumented):
 
     def DeleteSnapshot(self, vms_session, snapshot_id):
         if vms_session.snapshots.get(snapshot_id):
+            if vms_session.snapshots.has_not_finished_streams(snapshot_id):
+                raise Exception(f"Unable to delete snapshot {snapshot_id!r} with active streams")
             vms_session.snapshots.delete_by_id(snapshot_id)
         return types.DeleteSnapResp()
 
