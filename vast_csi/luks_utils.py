@@ -260,9 +260,25 @@ class LuksManager(SerializationMixin):
         self._require_passphrase()
 
         try:
-            crypt_cmd = hostcmd.cryptsetup.get_executable(
-                "open", device_path, self.luks_device_name
-            )
+            # Build args explicitly (style consistent with luksFormat)
+            cfg = self.encryption_config
+            args = [
+                "open",
+            ]
+            if cfg.get("perf_same_cpu_crypt", True):
+                args += ["--perf-same_cpu_crypt"]
+            if cfg.get("perf_submit_from_crypt_cpus", True):
+                args += ["--perf-submit_from_crypt_cpus"]
+            if cfg.get("perf_no_read_workqueue", True):
+                args += ["--perf-no_read_workqueue"]
+            if cfg.get("perf_no_write_workqueue", True):
+                args += ["--perf-no_write_workqueue"]
+            args += [
+                device_path,
+                self.luks_device_name,
+            ]
+
+            crypt_cmd = hostcmd.cryptsetup.get_executable(*args)
             echo_cmd = cmd.echo["-n", self.passphrase]
             (echo_cmd | crypt_cmd) & FG
         except ProcessExecutionError as e:
