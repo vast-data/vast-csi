@@ -126,6 +126,26 @@ operator-bundle-push: ## Push bundle image to docker repository (specified in de
 	docker push "${IMG}:${OPERATOR_BUNDLE_TAG}"
 	docker push "${IMG}:latest-csi-operator-bundle"
 
+# Lint the generated local bundle directory with the CI yamllint rules
+# Usage: make operator-bundle-lint (expects ./bundle to exist)
+operator-bundle-lint: ## Lint ./bundle YAMLs using yamllint with CI rule-set (line-length is warning)
+	@if [ ! -d "$(CURDIR)/bundle" ]; then \
+		echo "Bundle directory 'bundle' not found. Run 'make operator-bundle-build' first."; \
+		exit 1; \
+	fi; \
+	echo "Linting YAMLs in ./bundle"; \
+	yamllint "$(CURDIR)/bundle" -d '{extends: default, rules: {line-length: {max: 180, level: warning}, indentation: {indent-sequences: whatever}}}'
+
+# Helper to remove trailing spaces (fixes yamllint trailing-spaces errors) from ./bundle
+# Usage: make operator-bundle-fix-trailing-spaces (expects ./bundle to exist)
+operator-bundle-fix-trailing-spaces: ## Strip trailing spaces in ./bundle YAMLs (fix yamllint errors)
+	@if [ ! -d "$(CURDIR)/bundle" ]; then \
+		echo "Bundle directory 'bundle' not found. Run 'make operator-bundle-build' first."; \
+		exit 1; \
+	fi; \
+	find "$(CURDIR)/bundle" -type f -name '*.yaml' -exec sed -i 's/[[:space:]]\+$$//' {} +; \
+	echo "Removed trailing spaces in ./bundle"
+
 ######################
 # OPENSHIFT HELPERS
 ######################

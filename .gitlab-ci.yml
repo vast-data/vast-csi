@@ -6,7 +6,7 @@ stages:
   - redhat
 
 # source: packaging/ci.Dockerfile
-image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:CI-2025-05-16
+image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:CI-2025-09-16
 
 variables:
   PLATFORMS: "linux/amd64,linux/arm64" # comma-separated list of platforms to build multi-arch images
@@ -14,8 +14,9 @@ variables:
   DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
   IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:${CI_PIPELINE_ID}
   # source: packaging/base.Dockerfile
-  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2025-05-16
+  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2025-09-17
   ORION_BRANCH: comet/master
+
 
 build_csi_base:
   stage: build_base
@@ -285,24 +286,35 @@ update_certified_operators:
     echo "Pushing pre-release bundle: ${IMAGE_NAME}-internal-bundle-certified"
     docker push "${IMAGE_NAME}-internal-bundle-certified"
     
+    # Clone and setup repository with upstream sync
     git clone git@github.com:vast-data/certified-operators.git
-    DEST=certified-operators/operators/vast-csi-operator/v${VERSION}
-    # Check if DEST directory exists
-    if [ -d "$DEST" ]; then
-        FORCE_FLAG="--force"
-    else
-        FORCE_FLAG=""
-    fi    
-    rm -rf $DEST && mkdir -p $DEST    
-    cp -r bundle/manifests $DEST
-    cp -r bundle/metadata $DEST
+    cd certified-operators
     
-    cd certified-operators    
+    # Add upstream remote and fetch latest changes
+    git remote add upstream https://github.com/redhat-openshift-ecosystem/certified-operators.git
+    git fetch upstream
+    
+    # Reset to upstream main to get clean base (this handles conflicts automatically)
+    echo "Syncing with upstream certified-operators repository..."
+    git reset --hard upstream/main
+    
+    # Prepare destination directory
+    DEST=operators/vast-csi-operator/v${VERSION}
+    echo "Preparing operator bundle for version ${VERSION}..."
+    
+    # Remove existing version if it exists and create fresh directory
+    rm -rf $DEST && mkdir -p $DEST    
+    cp -r ../bundle/manifests $DEST
+    cp -r ../bundle/metadata $DEST
+    
+    # Commit and push changes
     git add .
-    git commit -sam "VAST CSI Operator - v${VERSION}
-
-      (from $CI_COMMIT_SHA)"    
-    git push origin main $FORCE_FLAG
+    git commit -sam "operator vast-csi-operator (v${VERSION})"    
+    
+    # Force push since we reset to upstream (this is safe since we're the only ones using this fork)
+    git push origin main --force
+    
+    echo "Successfully pushed VAST CSI Operator v${VERSION} to certified-operators"
   when: manual
   tags:
     - vast-dev-builder
