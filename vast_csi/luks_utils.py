@@ -277,6 +277,7 @@ class LuksManager(SerializationMixin):
                 device_path,
                 self.luks_device_name,
             ]
+            logger.info(f"LUKS open args: {args}")
 
             crypt_cmd = hostcmd.cryptsetup.get_executable(*args)
             echo_cmd = cmd.echo["-n", self.passphrase]
@@ -293,8 +294,8 @@ class LuksManager(SerializationMixin):
             "--type", self.encryption_config.get("luks_type", "luks2"),
             "--cipher", self.encryption_config.get("cipher", "aes-xts-plain64"),
             "--key-size", self.encryption_config.get("key_size", "512"),
-            "--hash", self.encryption_config.get("hash_algo", "sha256"),
-            "--pbkdf-memory", self.encryption_config.get("pbkdf_mem", "65536"),
+            "--hash", self.encryption_config.get("hash", "sha256"),
+            "--pbkdf-memory", self.encryption_config.get("pbkdf_memory", "65536"),
             "--batch-mode",
             "--key-file", "-",
             device_path,
