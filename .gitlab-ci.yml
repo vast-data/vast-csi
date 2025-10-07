@@ -4,6 +4,7 @@ stages:
   - test
   - deploy
   - redhat
+  - operatorhub
 
 # source: packaging/ci.Dockerfile
 image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:CI-2025-09-16
@@ -143,9 +144,18 @@ update_dockerhub [prod]: &update_dockerhub
       VERSION=$VERSION-$CI_ENVIRONMENT_NAME-$CI_PIPELINE_ID
     fi
     docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} $DOCKER_HUB
+    docker login -u ${RH_DOCKER_USER} -p ${RH_DOCKER_PASSWORD} registry.redhat.io
+
+    export PUSH_ON_SUCCESS=true
+    
+    # Publish CSI Driver image
     export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}
     export DOCKERFILE=Dockerfile
-    export PUSH_ON_SUCCESS=true
+    make build_image
+    
+    # Publish CSI Operator image
+    export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}-operator
+    export DOCKERFILE=operator.Dockerfile
     make build_image
   after_script:
   - docker logout $DOCKER_HUB
@@ -253,7 +263,7 @@ publish_image_redhat:
     - vast-dev-builder
 
 
-update_certified_operators:
+update_operators_redhat:
   stage: redhat
   before_script: *setup_github_access
   script: |
@@ -281,6 +291,7 @@ update_certified_operators:
     # Push CSI Operator bundle also to the internal ECR registry.
     # We might want to test it before release
     OPERATOR_BUNDLE_TAG=internal-bundle-certified
+    OPERATOR_PROXY_IMG=registry.redhat.io/openshift4/ose-kube-rbac-proxy@sha256:77df668a9591bbaae675d0553f8dca5423c0f257317bc08fe821d965f44ed019"
     make operator-bundle-build
     docker tag "${IMG}:latest-csi-operator-bundle" "${IMAGE_NAME}-internal-bundle-certified"
     echo "Pushing pre-release bundle: ${IMAGE_NAME}-internal-bundle-certified"
@@ -315,6 +326,68 @@ update_certified_operators:
     git push origin main --force
     
     echo "Successfully pushed VAST CSI Operator v${VERSION} to certified-operators"
+  when: manual
+  tags:
+    - vast-dev-builder
+
+
+update_operators_operatorhub:
+  stage: operatorhub
+  before_script: *setup_github_access
+  script: |
+    set -x
+    export VERSION=$(cat version.txt)
+
+    export IMG_PULL_SECRET=null
+    export PIPE=null
+    
+    export IMG=docker.io/vastdataorg/csi
+    export CSI_PLUGIN_IMG=$IMG
+    
+    export OPERATOR_TAG=$(./scripts/img_to_digest.sh "${IMG}:${VERSION}-operator")
+    export CSI_TAG=$(./scripts/img_to_digest.sh "${IMG}:${VERSION}")
+    
+    if [ -z "$OPERATOR_TAG" ]; then
+        echo "Error: OPERATOR_TAG is empty."
+        exit 1
+    fi
+    if [ -z "$CSI_TAG" ]; then
+        echo "Error: CSI_TAG is empty."
+        exit 1
+    fi
+    
+    make operator-bundle-gen
+    
+    # Clone and setup repository with upstream sync
+    git clone git@github.com:vast-data/community-operators.git
+    cd community-operators
+    
+    # Add upstream remote and fetch latest changes
+    git remote add upstream https://github.com/k8s-operatorhub/community-operators.git
+    git fetch upstream
+    
+    # Reset to upstream main to get clean base (this handles conflicts automatically)
+    echo "Syncing with upstream community-operators repository..."
+    git reset --hard upstream/main
+    
+    # Prepare destination directory
+    export VERSION=${VERSION#v}  # Remove the 'v' prefix
+    DEST=operators/vast-csi-operator/${VERSION}
+    echo "Preparing operator bundle for version ${VERSION}..."
+    
+    # Remove existing version if it exists and create fresh directory
+    rm -rf $DEST && mkdir -p $DEST    
+    cp -r ../bundle/manifests $DEST
+    cp -r ../bundle/metadata $DEST
+    
+    # Commit and push changes
+    git add .
+    git commit -sam "operator vast-csi-operator (${VERSION})"    
+    
+    # Force push since we reset to upstream (this is safe since we're the only ones using this fork)
+    git push origin main --force
+    
+    echo "Successfully pushed VAST CSI Operator ${VERSION} to community-operators"
   when: manual
   tags:
     - vast-dev-builder

@@ -1534,24 +1534,20 @@ spec:
         For improved granularity per StorageClass, it's advisable to define the secret as a VastStorage CRD.
       type: string
       default: {{ .Values.secretName }}
-      deprecated: true
     endpoint:
         description: API endpoint of VAST appliance - should be provided by user if "global" secretName is provided.
         type: string
         default: {{ .Values.endpoint }}
-        deprecated: true
     sslCertsSecretName:
       description: |-
         Name of the secret that holds the SSL certificates for the VAST appliance.
         For improved granularity per StorageClass, it's advisable to define the SSL certificate as a part VastStorage CRD.
       type: string
       default: {{ .Values.sslCertsSecretName }}
-      deprecated: true
     sslCert:
       description: Path (absolute or relative) to SSL certificate for verifying the VAST REST API.
       type: string
       default: {{ .Values.sslCert }}
-      deprecated: true
     verifySsl:
       type: boolean
       default: {{ .Values.verifySsl }}
