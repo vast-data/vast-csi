@@ -106,10 +106,11 @@ operator-bundle-gen: ## Generate bundle manifests and metadata, then validate ge
 	@$(call check_required_env,IMG CSI_PLUGIN_IMG OPERATOR_TAG CSI_TAG CHANNEL)
 	@$(call check_non_required_env,IMG_PULL_SECRET PIPE)
 	@$(CURDIR)/packaging/gen-operator-bundle.sh $(CURDIR) $(CHANNEL) \
-          --set olmBuild=true \
+          --set olmBuild=$${USE_OLM:-true} \
           --set installSnapshotCRDS=false \
           --set maturity=$(CHANNEL) \
           --set managerImage="$(shell scripts/concat_img_tag.sh $(IMG) $(OPERATOR_TAG))" \
+          --set proxyImage=$${OPERATOR_PROXY_IMG:-"docker.io/kubebuilder/kube-rbac-proxy@sha256:a2523c532c0c3d51a5396a901d7ded23e402a9a1492c783aae27af6d0c1d2ec5"} \
           --set overrides.csiVastPlugin.repository="$(shell scripts/concat_img_tag.sh $(CSI_PLUGIN_IMG) $(CSI_TAG))" \
           --set imagePullSecret=$(IMG_PULL_SECRET) \
 		  --set ciPipe=$(PIPE)
