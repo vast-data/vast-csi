@@ -16,7 +16,7 @@ parameters:
   csi.storage.k8s.io/provisioner-secret-name: vast-mgmt
   csi.storage.k8s.io/provisioner-secret-namespace: default
   fsType: xfs
-  host_encryption: '{"cipher":"aes-xts-plain64","hash":"sha512","key_size":"256","pbkdf_memory":"32768","perf_no_read_workqueue":false,"perf_no_write_workqueue":false,"perf_same_cpu_crypt":false,"perf_submit_from_crypt_cpus":false}'
+  host_encryption: '{"cipher":"aes-xts-plain64","hash":"sha512","key_size":"256","pbkdf_memory":"32768","perf-no_read_workqueue":false,"perf-no_write_workqueue":false,"perf-same_cpu_crypt":false,"perf-submit_from_crypt_cpus":false}'
   subsystem: myblock
   vip_pool_fqdn_random_prefix: "true"
   vip_pool_name: vippool-1
