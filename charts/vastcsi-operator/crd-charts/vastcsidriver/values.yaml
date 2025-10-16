@@ -163,7 +163,7 @@ controller:
         memory: 20Mi
     csiVastPlugin:
       limits:
-        memory: 400Mi
+        memory: 500Mi
       requests:
         cpu: 100m
         memory: 50Mi
@@ -216,7 +216,7 @@ node:
         memory: 20Mi
     csiVastPlugin:
       limits:
-        memory: 400Mi
+        memory: 500Mi
       requests:
         cpu: 100m
         memory: 50Mi

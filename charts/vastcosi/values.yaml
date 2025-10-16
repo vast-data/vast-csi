@@ -117,7 +117,7 @@ cosiplugin:
         memory: 20Mi
     cosiVastPlugin:
       limits:
-        memory: 400Mi
+        memory: 500Mi
       requests:
         cpu: 100m
         memory: 50Mi
