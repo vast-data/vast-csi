@@ -2,6 +2,8 @@
 
 ## Version 2.6.4
 * Added `blockHostsAutoPrune` option to automatically remove unused VAST Host entries (NQNs), preventing host sprawl in dynamic Kubernetes environments (VCSI-263)
+* Added default performance optimization flags: `--perf-same_cpu_crypt`, `--perf-submit_from_crypt_cpus`, `--perf-no_read_workqueue`, `--perf-no_write_workqueue` for host encryption (VCSI-306)
+* Updated default csi plugin container memory limit to 500Mi
 
 ## Version 2.6.3
 * Added support for host encryption of volumes using LUKS for block CSI driver (VCSI-250). Thanks to Vishal Varma <vishal1.verma@intel.com> (Intel) for the contribution.
