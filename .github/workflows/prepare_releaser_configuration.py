@@ -20,9 +20,7 @@ CHARTS = [
     ROOT / "charts" / "vastcosi" / "Chart.yaml",
 ]
 
-IGNORED_CHARTS = [
-    ROOT / "charts" / "vastcsi-operator"
-]
+IGNORED_CHARTS = []
 
 if __name__ == '__main__':
     if not re.search('[0-9]+\.[0-9]+\.?[0-9]*', BRANCH):

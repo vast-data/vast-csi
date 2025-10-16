@@ -783,6 +783,11 @@ class Snapshot(VastResource):
         data = {"target_subsystem_id": target_subsystem_id, "target_volume_path": target_volume_path}
         return self.session.post(f"{self.resource_name}/{snapshot_id}/clone_volume/", data=data)
 
+    def has_not_finished_streams(self, snapshot_id):
+        """Check if there are any global snapshot streams associated with the given snapshot ID"""
+        resp = self.session.globalsnapstreams.list(loanee_snapshot__id=snapshot_id, page_size=10)
+        return any(s.status.get("state", "").lower() != "finished" for s in resp["results"])
+
 class GlobalSnapshotStream(VastResource):
     resource_name = "globalsnapstreams"
     TARGET_STATE = "Completed"
@@ -880,7 +885,7 @@ class BlockHost(VastResource):
             os_type="LINUX",
             ana="OPTIMIZED",
             connectivity_type=transport_type,
-            nqn=f"nqn.2014-08.com.vastcsiblock:{tenant_name}:{node_id}",
+            nqn=f"{self.session.config.block_nqn_prefix}{tenant_name}:{node_id}",
         )
         return self.create(**data)
 

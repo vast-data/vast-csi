@@ -213,7 +213,7 @@ snapshotClasses: {}
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.6.3  # the version of the Vast CSI driver
+    tag: v2.6.4  # the version of the Vast CSI driver
     imagePullPolicy: IfNotPresent
   csiAttacher:
     repository: registry.k8s.io/sig-storage/csi-attacher
@@ -297,7 +297,7 @@ controller:
         memory: 20Mi
     csiVastPlugin:
       limits:
-        memory: 400Mi
+        memory: 500Mi
       requests:
         cpu: 100m
         memory: 50Mi
@@ -349,7 +349,7 @@ node:
         memory: 20Mi
     csiVastPlugin:
       limits:
-        memory: 400Mi
+        memory: 500Mi
       requests:
         cpu: 100m
         memory: 50Mi

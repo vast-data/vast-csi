@@ -106,10 +106,11 @@ operator-bundle-gen: ## Generate bundle manifests and metadata, then validate ge
 	@$(call check_required_env,IMG CSI_PLUGIN_IMG OPERATOR_TAG CSI_TAG CHANNEL)
 	@$(call check_non_required_env,IMG_PULL_SECRET PIPE)
 	@$(CURDIR)/packaging/gen-operator-bundle.sh $(CURDIR) $(CHANNEL) \
-          --set olmBuild=true \
+          --set olmBuild=$${USE_OLM:-true} \
           --set installSnapshotCRDS=false \
           --set maturity=$(CHANNEL) \
           --set managerImage="$(shell scripts/concat_img_tag.sh $(IMG) $(OPERATOR_TAG))" \
+          --set proxyImage=$${OPERATOR_PROXY_IMG:-"docker.io/kubebuilder/kube-rbac-proxy@sha256:a2523c532c0c3d51a5396a901d7ded23e402a9a1492c783aae27af6d0c1d2ec5"} \
           --set overrides.csiVastPlugin.repository="$(shell scripts/concat_img_tag.sh $(CSI_PLUGIN_IMG) $(CSI_TAG))" \
           --set imagePullSecret=$(IMG_PULL_SECRET) \
 		  --set ciPipe=$(PIPE)
@@ -125,6 +126,26 @@ operator-bundle-push: ## Push bundle image to docker repository (specified in de
 	@$(call check_required_env,IMG OPERATOR_BUNDLE_TAG)
 	docker push "${IMG}:${OPERATOR_BUNDLE_TAG}"
 	docker push "${IMG}:latest-csi-operator-bundle"
+
+# Lint the generated local bundle directory with the CI yamllint rules
+# Usage: make operator-bundle-lint (expects ./bundle to exist)
+operator-bundle-lint: ## Lint ./bundle YAMLs using yamllint with CI rule-set (line-length is warning)
+	@if [ ! -d "$(CURDIR)/bundle" ]; then \
+		echo "Bundle directory 'bundle' not found. Run 'make operator-bundle-build' first."; \
+		exit 1; \
+	fi; \
+	echo "Linting YAMLs in ./bundle"; \
+	yamllint "$(CURDIR)/bundle" -d '{extends: default, rules: {line-length: {max: 180, level: warning}, indentation: {indent-sequences: whatever}}}'
+
+# Helper to remove trailing spaces (fixes yamllint trailing-spaces errors) from ./bundle
+# Usage: make operator-bundle-fix-trailing-spaces (expects ./bundle to exist)
+operator-bundle-fix-trailing-spaces: ## Strip trailing spaces in ./bundle YAMLs (fix yamllint errors)
+	@if [ ! -d "$(CURDIR)/bundle" ]; then \
+		echo "Bundle directory 'bundle' not found. Run 'make operator-bundle-build' first."; \
+		exit 1; \
+	fi; \
+	find "$(CURDIR)/bundle" -type f -name '*.yaml' -exec sed -i 's/[[:space:]]\+$$//' {} +; \
+	echo "Removed trailing spaces in ./bundle"
 
 ######################
 # OPENSHIFT HELPERS

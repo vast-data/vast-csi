@@ -489,6 +489,9 @@ class CsiController(ControllerBase, Instrumented):
             CONF.fake_snapshot_store[snapshot_id].delete()
         else:
             snapshot = vms_session.snapshots.get(snapshot_id)
+            if vms_session.snapshots.has_not_finished_streams(snapshot.id):
+                raise Exception(f"Unable to delete snapshot {snapshot.id!r} with active streams")
+
             vms_session.snapshots.delete_by_id(snapshot_id)
             if vms_session.quotas.one(path=snapshot.path, tenant_id=snapshot.tenant_id):
                 pass  # quotas still exist

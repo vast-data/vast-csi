@@ -30,6 +30,7 @@ MKFS_ARGS = {
     ],
     "xfs": [
         "-f",  # Force overwrite
+        "-K",  # Skip discarding unused blocks (improves provisioning performance)
     ],
 }
 

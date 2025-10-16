@@ -260,9 +260,26 @@ class LuksManager(SerializationMixin):
         self._require_passphrase()
 
         try:
-            crypt_cmd = hostcmd.cryptsetup.get_executable(
-                "open", device_path, self.luks_device_name
-            )
+            # Build args explicitly (style consistent with luksFormat)
+            cfg = self.encryption_config
+            args = [
+                "open",
+            ]
+            if cfg.get("perf-same_cpu_crypt", True):
+                args += ["--perf-same_cpu_crypt"]
+            if cfg.get("perf-submit_from_crypt_cpus", True):
+                args += ["--perf-submit_from_crypt_cpus"]
+            if cfg.get("perf-no_read_workqueue", True):
+                args += ["--perf-no_read_workqueue"]
+            if cfg.get("perf-no_write_workqueue", True):
+                args += ["--perf-no_write_workqueue"]
+            args += [
+                device_path,
+                self.luks_device_name,
+            ]
+            logger.info(f"LUKS open args: {args}")
+
+            crypt_cmd = hostcmd.cryptsetup.get_executable(*args)
             echo_cmd = cmd.echo["-n", self.passphrase]
             (echo_cmd | crypt_cmd) & FG
         except ProcessExecutionError as e:
@@ -277,8 +294,8 @@ class LuksManager(SerializationMixin):
             "--type", self.encryption_config.get("luks_type", "luks2"),
             "--cipher", self.encryption_config.get("cipher", "aes-xts-plain64"),
             "--key-size", self.encryption_config.get("key_size", "512"),
-            "--hash", self.encryption_config.get("hash_algo", "sha256"),
-            "--pbkdf-memory", self.encryption_config.get("pbkdf_mem", "65536"),
+            "--hash", self.encryption_config.get("hash", "sha256"),
+            "--pbkdf-memory", self.encryption_config.get("pbkdf_memory", "65536"),
             "--batch-mode",
             "--key-file", "-",
             device_path,
