@@ -7,4 +7,4 @@ spec:
   driverType: "nfs"
   image:
     csiVastPlugin:
-      repository: docker.io/vastdataorg/csi:v2.6.3
+      repository: docker.io/vastdataorg/csi:v2.6.4

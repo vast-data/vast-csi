@@ -11,4 +11,4 @@ spec:
   description: VAST CSI Operator for Kubernetes
   # For local testing, we'll use a placeholder image
   # In production, this would point to your actual bundle image
-  # image: quay.io/vastdata/vast-csi-operator-bundle:v2.6.3
+  # image: quay.io/vastdata/vast-csi-operator-bundle:v2.6.4
