@@ -163,7 +163,7 @@ class RESTSession(requests.Session):
         ret = super().request(
             verb, url, verify=self.ssl_verify, params=params, **kwargs
         )
-        if not self.token and ret.status_code == 403 and "Token is invalid or expired" in ret.text:
+        if not self.token and ret.status_code == 403:
             self.refresh_auth_token()
             raise retrying.Retry("refresh token")
 
