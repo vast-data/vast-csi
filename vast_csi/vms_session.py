@@ -11,6 +11,7 @@ from types import FunctionType
 from contextlib import contextmanager
 from datetime import datetime
 from functools import wraps
+from requests import cookies
 from requests.exceptions import ConnectionError, HTTPError
 from requests.utils import default_user_agent
 
@@ -127,10 +128,19 @@ def get_vms_session(username=None, password=None, token=None, tenant=None, endpo
     )
 
 
+class NoCookiesJar(cookies.RequestsCookieJar):
+    def set(self, name, value, **kwargs):
+        return None
+
+    def set_cookie(self, cookie, *args, **kwargs):
+        return
+
+
 class RESTSession(requests.Session):
     def __init__(self, config):
         super().__init__()
         self.config = config
+        self.cookies = NoCookiesJar()
         self.headers["Accept"] = "application/json"
         self.headers["Content-Type"] = "application/json"
         self.headers["User-Agent"] = f"VastCSI/{config.plugin_version}.{config.ci_pipe}.{config.git_commit[:10]} ({config._mode.capitalize()}) {default_user_agent()}"
@@ -183,6 +193,10 @@ class RESTSession(requests.Session):
         else:
             ret = None
         logger.info(f"--- [{verb}] {url}: Done")
+        
+        # Opportunistically send usage stats after successful requests
+        self.plugins.usage_report()
+        
         return ret
 
     def __getattr__(self, attr):
@@ -381,7 +395,6 @@ class VmsSession(RESTSession, SerializationMixin):
                          f"cannot be accessed. Please verify the specified endpoint. "
                          f"origin error: {e}"
                 ))
-        self.plugins.usage_report()
 
     def wait_task(self, task, latest=False, start_timeout=0, verbose=True):
         """
@@ -546,9 +559,24 @@ class Version(VastResource):
 class Plugin(VastResource):
     resource_name = "plugins"
 
-    @requisite(semver="5.2.0", ignore=True)
     @resilient.error(msg="failed to report usage to VMS")
     def usage_report(self):
+        """
+        Sends plugin usage statistics to VMS.
+        
+        Called opportunistically after successful requests. Only sends stats if:
+        - Running on controller
+        - Timer has expired (20 minutes since last report)
+        """
+        # Only send from controller, not from node-only pods
+        if not self.session.config.has_running_controller:
+            return
+        
+        # Check if enough time has elapsed since last report
+        if not self.session.config.usage_stats_timer.expired:
+            return
+
+        self.session.config.usage_stats_timer.reset()
         self.session.post(f"{self.resource_name}/usage/",
             data={
                 "vendor": "vastdata",
