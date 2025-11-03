@@ -76,7 +76,6 @@ class TestCosiProvisionerSuite:
         assert 50000 <= ensure_user_kwargs.pop("uid") <= 60000
         assert ensure_user_kwargs == {
             "name": "test-bucket",
-            "allow_create_bucket": True,
             'api_ver': None,
         }
 
