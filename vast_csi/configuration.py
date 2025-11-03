@@ -13,7 +13,7 @@ from .exceptions import LookupFieldError
 
 from easypy.caching import cached_property
 from easypy.timing import Timer
-from easypy.units import HOUR
+from easypy.units import HOUR, MINUTE
 from easypy.bunch import Bunch
 
 
@@ -122,4 +122,10 @@ class Config(TypedEnv):
     def endpoint(self):
         return self._endpoint.strip("tcp://")
 
+    @cached_property
+    def has_running_controller(self):
+        return self.mode in {CONTROLLER_AND_NODE, CONTROLLER}
+
     avoid_trash_api = Timer(now=-1, expiration=HOUR)
+    usage_stats_timer = Timer(now=-1, expiration=20 * MINUTE)
+

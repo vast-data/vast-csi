@@ -279,6 +279,12 @@ def test_request_success(mock_request, monkeypatch, mock_credentials):
     # Ensure credentials are patched
     monkeypatch.setattr(Config, "vms_credentials_store", mock_credentials)
     session = get_vms_session()
+    
+    # Mock the usage_stats_timer to not be expired to prevent usage reporting in this test
+    mock_timer = MagicMock()
+    mock_timer.expired = False
+    session.config.usage_stats_timer = mock_timer
+    
     # Execution
     session.request(
         "GET", "test_method",
