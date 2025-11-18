@@ -351,8 +351,8 @@ node:
       limits:
         memory: 500Mi
       requests:
-        cpu: 100m
-        memory: 50Mi
+        cpu: 200m
+        memory: 300Mi
   # See controller.priorityClassName section for details
   priorityClassName: system-cluster-critical
 

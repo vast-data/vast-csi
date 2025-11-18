@@ -21,7 +21,7 @@ metadata:
     capabilities: Seamless Upgrades
     categories: Storage
     description: |-
-      {{- $operator_spec.description | nindent 6 }}
+      {{- $operator_spec.header | nindent 6 }}
     containerImage: {{ .Values.managerImage }}
     createdAt: "2024-07-01T11:59:59Z"
     support: VastData Infra Team
@@ -137,6 +137,9 @@ spec:
     name: VASTData
     url: https://www.vastdata.com
   version: {{ .Chart.Version }}{{- if .Values.ciPipe }}-{{ .Values.ciPipe }}{{- end }}
+  {{- if .Values.replacesVersion }}
+  replaces: vast-csi-operator.v{{ .Values.replacesVersion }}
+  {{- end }}
   minKubeVersion: 1.18.0
   relatedImages:
     - image: {{ .Values.overrides.csiVastPlugin.repository }}

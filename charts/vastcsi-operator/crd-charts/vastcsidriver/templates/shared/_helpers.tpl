@@ -65,6 +65,8 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- if $.Values.truncateVolumeName }}
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}
+- name: X_CSI_BLOCK_HOSTS_AUTO_PRUNE
+  value: {{ $.Values.blockHostsAutoPrune | quote }}
 {{- end }}
 
 {{- end }}
