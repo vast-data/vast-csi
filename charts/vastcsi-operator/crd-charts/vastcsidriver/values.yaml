@@ -28,6 +28,17 @@ sslCert: ""
 sslCertsSecretName: ""
 # Set true to enable certificate validity test
 verifySsl: false
+# (Block driver only) If set to true, the CSI driver will automatically prune (delete) VAST host
+# entries (NQNs) when they are no longer in use by any PVCs on the corresponding
+# Kubernetes node. This prevents "host sprawl" from unused auto-generated NQNs.
+#
+# This option is particularly useful in Kubernetes environments where nodes are
+# not static (e.g., clusters with dynamic or ephemeral node pools and changing
+# hostnames), since unused hosts can otherwise accumulate quickly.
+#
+# When disabled (false), hosts remain in VAST even if unused and must be cleaned
+# up manually.
+blockHostsAutoPrune: false
 
 ####################
 # DELETE VOLUMES
@@ -218,8 +229,8 @@ node:
       limits:
         memory: 500Mi
       requests:
-        cpu: 100m
-        memory: 50Mi
+        cpu: 200m
+        memory: 300Mi
   # See controller.priorityClassName section for details
   priorityClassName: system-cluster-critical
 

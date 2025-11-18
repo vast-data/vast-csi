@@ -1,3 +1,5 @@
+header: |-
+    Kubernetes operator for automated deployment and lifecycle management of VAST Data CSI drivers.
 description: |-
     VAST CSI Operator supports seamless installation and upgrade of VAST Data's CSI Driver.
     The VAST CSI Driver allows container orchestration frameworks such as Kubernetes to dynamically provision, manage and scale volumes on the [VAST Data Platform](https://www.vastdata.com/platform/overview). VAST provides scalable, reliable, and fast persistent storage that can be accessed remotely by any Kubernetes application container.

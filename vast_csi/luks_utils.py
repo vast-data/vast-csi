@@ -2,11 +2,17 @@ import json
 from pathlib import Path
 from vast_csi.filesystem_utils import hostcmd
 from plumbum import cmd, ProcessExecutionError, FG
+from plumbum.commands.processes import ProcessTimedOut
 from vast_csi.logging import logger
 from vast_csi.exceptions import Abort, LookupFieldError
 from vast_csi.csi_types import ABORTED, INVALID_ARGUMENT
 from vast_csi.serialization_utils import SerializationMixin
 from vast_csi.configuration import Config
+
+# Timeout for LUKS operations (in seconds)
+# luksFormat with high pbkdf_memory can take a long time, but should not hang forever
+LUKS_FORMAT_TIMEOUT = 600  # 10 minutes
+LUKS_OPEN_TIMEOUT = 180     # 3 minutes
 
 
 def get_luks_manager(
@@ -281,7 +287,10 @@ class LuksManager(SerializationMixin):
 
             crypt_cmd = hostcmd.cryptsetup.get_executable(*args)
             echo_cmd = cmd.echo["-n", self.passphrase]
-            (echo_cmd | crypt_cmd) & FG
+            # Add timeout protection to prevent hanging on OOM/killed processes
+            (echo_cmd | crypt_cmd).run(timeout=LUKS_OPEN_TIMEOUT)
+        except ProcessTimedOut:
+            raise Abort(ABORTED, f"LUKS open timed out after {LUKS_OPEN_TIMEOUT}s for {device_path}")
         except ProcessExecutionError as e:
             raise Abort(ABORTED, f"Failed to open LUKS device {device_path}: {e.stderr}")
 
@@ -304,7 +313,11 @@ class LuksManager(SerializationMixin):
         try:
             crypt_cmd = hostcmd.cryptsetup.get_executable(*args)
             echo_cmd = cmd.echo["-n", self.passphrase]
-            (echo_cmd | crypt_cmd) & FG
+            # Add timeout protection to prevent hanging on OOM/killed processes
+            (echo_cmd | crypt_cmd).run(timeout=LUKS_FORMAT_TIMEOUT)
+        except ProcessTimedOut:
+            raise Abort(ABORTED, f"LUKS format timed out after {LUKS_FORMAT_TIMEOUT}s for {device_path}. "
+                        f"This may indicate insufficient memory for pbkdf_memory setting.")
         except ProcessExecutionError as e:
             raise Abort(ABORTED, f"LUKS format failed for {device_path}: {e.stderr}")
 

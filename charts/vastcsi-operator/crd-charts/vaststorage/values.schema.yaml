@@ -103,6 +103,26 @@ spec:
           type: integer
           nullable: true
           description: Memory cost for PBKDF in kilobytes.
+        perf-same_cpu_crypt:
+          type: boolean
+          nullable: true
+          default: true
+          description: Use same CPU for encryption work. Improves performance by keeping encryption on the same CPU core.
+        perf-submit_from_crypt_cpus:
+          type: boolean
+          nullable: true
+          default: true
+          description: Submit IO from crypt CPUs. Optimizes IO submission path for encrypted devices.
+        perf-no_read_workqueue:
+          type: boolean
+          nullable: true
+          default: true
+          description: Bypass read workqueue. Reduces latency by avoiding workqueue overhead for read operations.
+        perf-no_write_workqueue:
+          type: boolean
+          nullable: true
+          default: true
+          description: Bypass write workqueue. Reduces latency by avoiding workqueue overhead for write operations.
     subsystem:
       description: VAST subsystem for volume creation.
       type: string
@@ -336,6 +356,38 @@ specDescriptors:
     path: hostEncryption.pbkdf_memory
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:number'
+      - *block-driver-dep
+  - description: >
+      Use same CPU for encryption work. Improves performance by keeping encryption on the same CPU core.
+      Enabled by default for optimal performance.
+    displayName: Same CPU Crypt
+    path: hostEncryption.perf-same_cpu_crypt
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - *block-driver-dep
+  - description: >
+      Submit IO from crypt CPUs. Optimizes IO submission path for encrypted devices.
+      Enabled by default for optimal performance.
+    displayName: Submit From Crypt CPUs
+    path: hostEncryption.perf-submit_from_crypt_cpus
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - *block-driver-dep
+  - description: >
+      Bypass read workqueue. Reduces latency by avoiding workqueue overhead for read operations.
+      Enabled by default for optimal performance.
+    displayName: No Read Workqueue
+    path: hostEncryption.perf-no_read_workqueue
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - *block-driver-dep
+  - description: >
+      Bypass write workqueue. Reduces latency by avoiding workqueue overhead for write operations.
+      Enabled by default for optimal performance.
+    displayName: No Write Workqueue
+    path: hostEncryption.perf-no_write_workqueue
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
       - *block-driver-dep
 
 
