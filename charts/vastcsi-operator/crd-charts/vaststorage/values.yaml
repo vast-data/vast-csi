@@ -64,6 +64,28 @@ qosPolicy: ""
 #   key_size: "512"                     # Key size in bits (e.g., 256 or 512)
 #   hash: "sha256"                      # Hashing algorithm
 #   pbkdf_memory: "65536"               # Memory cost for PBKDF in KB
+#
+# Optional LUKS performance flags for cryptsetup open (defaults are enabled):
+#   perf-same_cpu_crypt: true            # Use same CPU for encryption work (set to false to disable)
+#   perf-submit_from_crypt_cpus: true    # Submit IO from crypt CPUs (set to false to disable)
+#   perf-no_read_workqueue: true         # Bypass read workqueue (set to false to disable)
+#   perf-no_write_workqueue: true        # Bypass write workqueue (set to false to disable)
+#
+# Disable read/write workqueues while keeping other perf flags on:
+#   hostEncryption:
+#     perf-no_read_workqueue: false
+#     perf-no_write_workqueue: false
+#
+# Fully explicit configuration with defaults shown (override as needed):
+#   hostEncryption:
+#     cipher: "aes-xts-plain64"
+#     key_size: "512"
+#     hash: "sha256"
+#     pbkdf_memory: "65536"
+#     perf-same_cpu_crypt: true
+#     perf-submit_from_crypt_cpus: true
+#     perf-no_read_workqueue: true
+#     perf-no_write_workqueue: true
 hostEncryption: null
 
 ####################

@@ -158,20 +158,14 @@ create-secret: create-csi-namespace ## Create secret for pulling images from the
 	  --docker-password=$$(aws ecr get-login-password) \
 	  --namespace=${NAMESPACE} -o yaml | kubectl apply -f -;
 
-operator-bundle-run: ## Deploy bundle against the configured Kubernetes cluster in ~/.kube/config
+operator-bundle-run: create-secret ## Deploy bundle against the configured Kubernetes cluster in ~/.kube/config (auto-refreshes ECR credentials)
 	@$(call check_required_env,IMG OPERATOR_BUNDLE_TAG NAMESPACE IMG_PULL_SECRET)
-	@if ! kubectl get secret "${IMG_PULL_SECRET}" -n "${NAMESPACE}" > /dev/null 2>&1; then \
-		echo "${IMG_PULL_SECRET} secret does not exist in namespace ${NAMESPACE}. Run 'make create-secret' target first."; \
-		exit 1; \
-	fi
+	@echo "ECR credentials refreshed, deploying operator bundle..."
 	operator-sdk run bundle "${IMG}:${OPERATOR_BUNDLE_TAG}" --timeout 10m --namespace ${NAMESPACE} --install-mode OwnNamespace --pull-secret-name ${IMG_PULL_SECRET}
 
-operator-bundle-upgrade-run: ##  Upgrade an Operator previously installed in the bundle format with OLM
+operator-bundle-upgrade-run: create-secret ##  Upgrade an Operator previously installed in the bundle format with OLM (auto-refreshes ECR credentials)
 	@$(call check_required_env,IMG OPERATOR_BUNDLE_TAG NAMESPACE IMG_PULL_SECRET)
-	@if ! kubectl get secret "${IMG_PULL_SECRET}" -n "${NAMESPACE}" > /dev/null 2>&1; then \
-		echo "${IMG_PULL_SECRET} secret does not exist in namespace ${NAMESPACE}. Run 'make create-secret' target first."; \
-		exit 1; \
-	fi
+	@echo "ECR credentials refreshed, upgrading operator bundle..."
 	operator-sdk run bundle-upgrade "${IMG}:${OPERATOR_BUNDLE_TAG}" --timeout 10m --namespace ${NAMESPACE} --pull-secret-name ${IMG_PULL_SECRET}
 
 operator-bundle-clean: ## Cleanup bundle from the configured Kubernetes cluster in ~/.kube/config

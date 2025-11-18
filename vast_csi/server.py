@@ -12,6 +12,7 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+import os
 import importlib
 from concurrent import futures
 import grpc
@@ -23,6 +24,9 @@ from .configuration import Config
 
 def serve(plugin: str):
     assert plugin in {"csi", "cosi", "block"}, f"Invalid plugin type: {plugin}"
+
+    # Suppress gRPC fork warnings when using subprocess (known gRPC issue #24917)
+    os.environ.setdefault('GRPC_ENABLE_FORK_SUPPORT', '0')
 
     plugin_module = importlib.import_module(f"vast_csi.plugins.{plugin}")
     patch_traceback_format()

@@ -554,6 +554,7 @@ class BlockNode(NodeBase, Instrumented):
                     resize_device(device=device_path, target_mount=temp_mount, fs_type=fs_type)
 
         logger.info(f"Binding device at {device_path} to {device_bind_path}.")
+        staging_target_path.mkdir()
         device_bind_path.open("a").close()
         mount(src=device_path, tgt=device_bind_path, bind=True)
         return types.StageResp()

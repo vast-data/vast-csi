@@ -267,10 +267,10 @@ template:
         resources:
           limits:
             cpu: 500m
-            memory: 300Mi
+            memory: 600Mi
           requests:
             cpu: 10m
-            memory: 64Mi
+            memory: 500Mi
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
