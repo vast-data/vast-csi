@@ -46,6 +46,11 @@ class MountFailed(TException):
     template = "Mounting {src} failed"
 
 
+class UmountTimedOut(Exception):
+    """Raised when umount command times out."""
+    pass
+
+
 class BuilderFailed(Exception):
 
     @property
