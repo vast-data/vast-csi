@@ -54,6 +54,7 @@ class Config(TypedEnv):
     _vms_host = TypedEnv.Str("X_CSI_VMS_HOST", default="")
     name_fmt = "csi:{namespace}:{name}:{id}"
     block_nqn_prefix = "nqn.2014-08.com.vastcsiblock:"
+    max_cache_control_seconds = TypedEnv.Int("X_CSI_CACHE_MAX_AGE", default=0)
 
     fake_quota_store = local.path("/tmp/volumes")
     fake_snapshot_store = local.path("/tmp/snapshots")

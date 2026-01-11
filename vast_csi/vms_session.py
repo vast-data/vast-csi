@@ -247,6 +247,8 @@ class VmsSession(RESTSession, SerializationMixin):
             self.headers["Authorization"] = f"Api-Token {self.token}"
         if self.tenant:
             self.headers["X-Tenant-Name"] = self.tenant
+        if config.max_cache_control_seconds:
+            self.headers["Cache-Control"] = f"max-age={config.max_cache_control_seconds}"
 
         # Sub resources
         self.versions = Version(self)
