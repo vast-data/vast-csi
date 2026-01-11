@@ -62,6 +62,10 @@ bucketClasses: {}
 # The number of worker threads the COSI plugin use to serve requests simultaneously.
 numWorkers: 10
 
+# Disable sending usage statistics to VAST cluster.
+# When set to true, the COSI driver will not report plugin usage metrics to VMS.
+disableUsageStats: false
+
 # Cache-Control max-age header value in seconds for VMS API requests.
 # When set to a value greater than 0, the COSI driver will add a Cache-Control header
 # to VMS API requests, allowing intermediate caches (like Nginx) to cache responses.

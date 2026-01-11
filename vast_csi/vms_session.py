@@ -649,6 +649,7 @@ class Plugin(VastResource):
         
         Called opportunistically after successful requests. Only sends stats if:
         - Running on controller
+        - Usage stats not disabled via configuration
         - Timer has expired (20 minutes since last report)
 
         Protected by a lock to prevent multiple gRPC workers from sending
@@ -656,6 +657,10 @@ class Plugin(VastResource):
         """
         # Only send it from controller, not from node-only pods
         if not self.session.config.has_running_controller:
+            return
+
+        # Check if usage stats are disabled
+        if self.session.config.disable_usage_stats:
             return
 
         with self.session._usage_report_lock:

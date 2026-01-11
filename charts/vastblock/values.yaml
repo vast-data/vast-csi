@@ -194,6 +194,9 @@ storageClasses: {}
 numWorkers: 10
 # Timeout of all calls to CSI driver.
 operationTimeout: 60
+# Disable sending usage statistics to VAST cluster.
+# When set to true, the CSI driver will not report plugin usage metrics to VMS.
+disableUsageStats: false
 # Cache-Control max-age header value in seconds for VMS API requests.
 # When set to a value greater than 0, the CSI driver will add a Cache-Control header
 # to VMS API requests, allowing intermediate caches (like Nginx) to cache responses.

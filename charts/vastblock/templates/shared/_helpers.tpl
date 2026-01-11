@@ -42,6 +42,8 @@
   value: {{ $.Values.operationTimeout | quote }}
 - name: X_CSI_CACHE_MAX_AGE
   value: {{ $.Values.cacheMaxAgeSeconds | default 0 | quote }}
+- name: X_CSI_DISABLE_USAGE_STATS
+  value: {{ $.Values.disableUsageStats | quote }}
 {{ if $.Values.truncateVolumeName -}}
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}
