@@ -264,6 +264,9 @@ def test_refresh_auth_token_failure(mock_request, monkeypatch, mock_credentials)
     monkeypatch.setattr(Config, "vms_credentials_store", mock_credentials)
 
     session = get_vms_session()
+    # Reset token to force refresh attempt (in case session was cached from previous test)
+    session.headers['authorization'] = 'Bearer #'
+    # With the mock, ConnectionError bubbles up before being caught and wrapped in ApiError
     with pytest.raises(ConnectionError):
         session.refresh_auth_token()
 

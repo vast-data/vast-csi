@@ -4,6 +4,7 @@ import json
 import requests
 import hashlib
 import inspect
+import threading
 from abc import ABC
 from pprint import pformat
 from uuid import uuid4
@@ -226,6 +227,13 @@ class VmsSession(RESTSession, SerializationMixin):
         self.ssl_cert = ssl_cert
         self.cluster_name = cluster_name  # for serialization
         self.base_url = f"https://{endpoint}/api"
+
+        # Thread-safe locks for shared operations across gRPC workers
+        self._token_refresh_lock = threading.RLock()
+        self._token_refresh_cond = threading.Condition(self._token_refresh_lock)
+        self._authorizing = False
+        self._usage_report_lock = threading.RLock()
+
         # Modify the SSL verification CA bundle path established
         # by the underlying Certifi library's defaults if ssl_verify==True.
         certs_base_dir = "/etc/ssl/certs"
@@ -381,6 +389,71 @@ class VmsSession(RESTSession, SerializationMixin):
         return session
 
     def refresh_auth_token(self):
+        """
+        Refreshes the authentication token.
+
+        This method implements a thread-safe, single-authorization-at-a-time pattern
+        to prevent the "thundering herd" problem where multiple gRPC workers would all
+        attempt to refresh tokens simultaneously, causing redundant API calls.
+
+        Concurrency Strategy:
+
+        1. Authorization In Progress Flag (self._authorizing):
+           - Acts as a signal that one worker is currently refreshing the token
+           - Protected by self._token_refresh_lock for thread-safe access
+
+        2. Condition Variable (self._token_refresh_cond):
+           - Coordinates workers waiting for token refresh to complete
+           - wait() atomically: releases lock → sleeps → re-acquires lock when signaled
+           - notify_all() wakes all waiting workers when refresh completes
+
+        3. Token Clearing Strategy:
+           - Before attempting refresh, we clear the authorization header
+           - This ensures waiting workers won't use stale/invalid tokens if refresh fails
+           - If refresh succeeds, the new token is written; if it fails, header stays empty
+
+        Flow for Concurrent Calls:
+
+        Worker 1 (first to arrive):
+          → Acquires lock
+          → Sets self._authorizing = True
+          → Clears authorization header (invalidate old token)
+          → Releases lock
+          → Makes HTTP call to refresh token
+          → Sets self._authorizing = False, notify_all() to wake waiters
+
+        Workers 2-N (arrive while Worker 1 is working):
+          → Acquire lock
+          → See self._authorizing = True
+          → Call self._token_refresh_cond.wait() - releases lock and sleeps
+          → Woken by notify_all() when Worker 1 completes
+          → Re-acquire lock and check if token is now available:
+             - If token exists → return (use Worker 1's token)
+             - If token is empty → Worker 2 tries refresh (Worker 1 failed)
+
+        This design ensures:
+          - Only 1 HTTP call per refresh attempt (no thundering herd)
+          - Automatic retry on transient failures (next waiting worker tries)
+          - Thread-safe access to shared self.headers state
+        """
+        with self._token_refresh_lock:
+            # Wait while another worker is authorizing
+            if self._authorizing:
+                while self._authorizing:
+                    self._token_refresh_cond.wait()  # Releases lock and waits, re-acquires when signaled
+
+                # We were waiting - check if token is now available
+                if self.headers.get("authorization"):
+                    return
+
+            # We're the first - set authorizing flag
+            self._authorizing = True
+
+            # Clear the authorization header before attempting refresh
+            # This ensures waiting workers won't use stale token if refresh fails
+            self.headers["authorization"] = ""
+
+        # Now make HTTP call without holding the lock
         try:
             resp = super(RESTSession, self).request(
                 "POST", f"{self.base_url}/v1/token/", verify=self.ssl_verify, timeout=5,
@@ -388,7 +461,10 @@ class VmsSession(RESTSession, SerializationMixin):
             )
             resp.raise_for_status()
             token = resp.json()["access"]
-            self.headers['authorization'] = f"Bearer {token}"
+
+            with self._token_refresh_lock:
+                self.headers["authorization"] = f"Bearer {token}"
+                logger.info("Successfully refreshed auth token")
         except ConnectionError as e:
             raise ApiError(
                 response=Bunch(
@@ -397,6 +473,11 @@ class VmsSession(RESTSession, SerializationMixin):
                          f"cannot be accessed. Please verify the specified endpoint. "
                          f"origin error: {e}"
                 ))
+        finally:
+            # Clear authorizing flag and notify waiting workers
+            with self._token_refresh_lock:
+                self._authorizing = False
+                self._token_refresh_cond.notify_all()  # Wake up all waiting workers
 
     def wait_task(self, task, latest=False, start_timeout=0, verbose=True):
         """
@@ -569,23 +650,27 @@ class Plugin(VastResource):
         Called opportunistically after successful requests. Only sends stats if:
         - Running on controller
         - Timer has expired (20 minutes since last report)
+
+        Protected by a lock to prevent multiple gRPC workers from sending
+        usage reports simultaneously.
         """
-        # Only send from controller, not from node-only pods
+        # Only send it from controller, not from node-only pods
         if not self.session.config.has_running_controller:
             return
-        
-        # Check if enough time has elapsed since last report
-        if not self.session.config.usage_stats_timer.expired:
-            return
 
-        self.session.config.usage_stats_timer.reset()
-        self.session.post(f"{self.resource_name}/usage/",
-            data={
-                "vendor": "vastdata",
-                "name": "vast-csi",
-                "version": self.session.config.plugin_version,
-                "build": self.session.config.git_commit[:10]
-            })
+        with self.session._usage_report_lock:
+            # Check if enough time has elapsed since the last report
+            if not self.session.config.usage_stats_timer.expired:
+                return
+
+            self.session.config.usage_stats_timer.reset()
+            self.session.post(f"{self.resource_name}/usage/",
+                data={
+                    "vendor": "vastdata",
+                    "name": "vast-csi",
+                    "version": self.session.config.plugin_version,
+                    "build": self.session.config.git_commit[:10]
+                })
 
 class ViewPolicy(VastResource):
     resource_name = "viewpolicies"
