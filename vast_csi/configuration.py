@@ -130,5 +130,4 @@ class Config(TypedEnv):
         return self.mode in {CONTROLLER_AND_NODE, CONTROLLER}
 
     avoid_trash_api = Timer(now=-1, expiration=HOUR)
-    usage_stats_timer = Timer(now=-1, expiration=20 * MINUTE)
 

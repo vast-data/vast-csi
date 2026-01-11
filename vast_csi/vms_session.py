@@ -20,11 +20,13 @@ from easypy.bunch import Bunch, bunchify
 from easypy.caching import cached_property
 from easypy.collections import shuffled
 from easypy.semver import SemVer
-from easypy.caching import timecache, locking_cache
+from easypy.caching import locking_cache
 from easypy.units import HOUR, MINUTE
 from easypy.sync import wait
 from easypy.resilience import retrying, resilient
 from easypy.humanize import yesno_to_bool
+from dogpile.cache import make_region
+from dogpile.cache.util import kwarg_function_key_generator
 from plumbum import cmd
 from plumbum import local, ProcessExecutionError
 from urllib3.exceptions import MaxRetryError, ReadTimeoutError, TimeoutError
@@ -115,6 +117,26 @@ def requisite(semver: str, operation: str = None, ignore: bool = False):
     return dec
 
 
+# Create dogpile.cache region for method caching
+_cache_region = make_region().configure(
+    'dogpile.cache.memory',
+    arguments={
+        'lock_timeout': MINUTE,
+    }
+)
+
+
+def cache_on_arguments(expiration_time: int):
+    """
+    Wrapper for cache_region.cache_on_arguments that uses kwarg_function_key_generator by default.
+    This allows caching methods with **kwargs without specifying the key generator each time.
+    """
+    return _cache_region.cache_on_arguments(
+        expiration_time=expiration_time,
+        function_key_generator=kwarg_function_key_generator
+    )
+
+
 class CannotUseTrashAPI(OperationNotSupported):
     template = "Cannot delete folder via VMS: {reason}"
 
@@ -194,9 +216,10 @@ class RESTSession(requests.Session):
         else:
             ret = None
         logger.info(f"--- [{verb}] {url}: Done")
-        
-        # Opportunistically send usage stats after successful requests
-        self.plugins.usage_report()
+
+        if not self.config.disable_usage_stats:
+            # Opportunistically send usage stats after successful requests
+            self.plugins.usage_report()
         
         return ret
 
@@ -232,7 +255,6 @@ class VmsSession(RESTSession, SerializationMixin):
         self._token_refresh_lock = threading.RLock()
         self._token_refresh_cond = threading.Condition(self._token_refresh_lock)
         self._authorizing = False
-        self._usage_report_lock = threading.RLock()
 
         # Modify the SSL verification CA bundle path established
         # by the underlying Certifi library's defaults if ssl_verify==True.
@@ -633,7 +655,7 @@ class VastResource(ABC):
 class Version(VastResource):
     resource_name = "versions"
 
-    @timecache(HOUR)
+    @cache_on_arguments(expiration_time=HOUR)
     def get_sw_version(self) -> SemVer:
         """Get VMS software version."""
         versions = self.list(status="success")[0].sys_version
@@ -643,6 +665,7 @@ class Plugin(VastResource):
     resource_name = "plugins"
 
     @resilient.error(msg="failed to report usage to VMS")
+    @cache_on_arguments(expiration_time=20 * MINUTE)
     def usage_report(self):
         """
         Sends plugin usage statistics to VMS.
@@ -659,23 +682,13 @@ class Plugin(VastResource):
         if not self.session.config.has_running_controller:
             return
 
-        # Check if usage stats are disabled
-        if self.session.config.disable_usage_stats:
-            return
-
-        with self.session._usage_report_lock:
-            # Check if enough time has elapsed since the last report
-            if not self.session.config.usage_stats_timer.expired:
-                return
-
-            self.session.config.usage_stats_timer.reset()
-            self.session.post(f"{self.resource_name}/usage/",
-                data={
-                    "vendor": "vastdata",
-                    "name": "vast-csi",
-                    "version": self.session.config.plugin_version,
-                    "build": self.session.config.git_commit[:10]
-                })
+        self.session.post(f"{self.resource_name}/usage/",
+            data={
+                "vendor": "vastdata",
+                "name": "vast-csi",
+                "version": self.session.config.plugin_version,
+                "build": self.session.config.git_commit[:10]
+            })
 
 class ViewPolicy(VastResource):
     resource_name = "viewpolicies"
@@ -746,7 +759,7 @@ class View(VastResource):
             self.delete_by_id(view.id)
 
     @requisite(semver="5.3.0")
-    @timecache(5 * MINUTE)
+    @cache_on_arguments(expiration_time=5 * MINUTE)
     @apiver.v5
     def get_subsystem(self, subsystem, **params):
         """Get BLOCK type view by provided name."""
@@ -755,7 +768,7 @@ class View(VastResource):
         return view
 
     @requisite(semver="5.3.0")
-    @timecache(5 * MINUTE)
+    @cache_on_arguments(expiration_time=5 * MINUTE)
     @apiver.v5
     def get_subsystem_by_id(self, _id, **params):
         """Get BLOCK type view by provided id."""
@@ -789,7 +802,7 @@ class Folder(VastResource):
 class VipPool(VastResource):
     resource_name = "vippools"
 
-    @timecache(5 * MINUTE)
+    @cache_on_arguments(expiration_time=5 * MINUTE)
     def one(self, **params):
         return super().one(**params)
 
