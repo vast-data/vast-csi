@@ -670,18 +670,10 @@ class Plugin(VastResource):
         """
         Sends plugin usage statistics to VMS.
         
-        Called opportunistically after successful requests. Only sends stats if:
-        - Running on controller
+        Called opportunistically after successful requests.
         - Usage stats not disabled via configuration
         - Timer has expired (20 minutes since last report)
-
-        Protected by a lock to prevent multiple gRPC workers from sending
-        usage reports simultaneously.
         """
-        # Only send it from controller, not from node-only pods
-        if not self.session.config.has_running_controller:
-            return
-
         self.session.post(f"{self.resource_name}/usage/",
             data={
                 "vendor": "vastdata",
@@ -693,13 +685,25 @@ class Plugin(VastResource):
 class ViewPolicy(VastResource):
     resource_name = "viewpolicies"
 
+    @cache_on_arguments(expiration_time=5 * MINUTE)
+    def one(self, **params):
+        return super().one(**params)
+
 
 class QosPolicy(VastResource):
     resource_name = "qospolicies"
 
+    @cache_on_arguments(expiration_time=5 * MINUTE)
+    def one(self, **params):
+        return super().one(**params)
+
 
 class Tenant(VastResource):
     resource_name = "tenants"
+
+    @cache_on_arguments(expiration_time=5 * MINUTE)
+    def one(self, **params):
+        return super().one(**params)
 
 
 class View(VastResource):

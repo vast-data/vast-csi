@@ -402,6 +402,7 @@ class StaticVolumeBuilder(BaseVolumeBuilder):
         volume_context = self.volume_context
         volume_context["volume_name"] = volume_name
 
+        view = None
         if self.create_view:
             # Check if view with expected system path already exists.
             view = self.vms_session.views.ensure(
@@ -411,13 +412,12 @@ class StaticVolumeBuilder(BaseVolumeBuilder):
                 qos_policy=self.qos_policy,
                 qos_policy_id=self.qos_policy_id,
             )
-        else:
-            if not (view := self.vms_session.views.one(path=self.view_path)):
-                raise SourceNotFound(f"View {self.view_path} does not exist but claimed as existing.")
-
-        volume_context.update(view_id=str(view.id), tenant_id=str(view.tenant_id))
 
         if self.create_quota:
+            if not view:
+                if not (view := self.vms_session.views.one(path=self.view_path)):
+                    raise SourceNotFound(f"View {self.view_path} does not exist but claimed as existing.")
+
             quota = self.vms_session.quotas.ensure(
                 volume_id=volume_name,
                 view_path=self.view_path,
@@ -425,4 +425,8 @@ class StaticVolumeBuilder(BaseVolumeBuilder):
                 requested_capacity=self.get_requested_capacity(),
             )
             volume_context.update(quota_id=str(quota.id))
+
+        if view:
+            volume_context.update(view_id=str(view.id), tenant_id=str(view.tenant_id))
+
         return volume_context
