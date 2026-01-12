@@ -322,10 +322,10 @@ class BlockController(ControllerBase, Instrumented):
             # Ensure map host operations are atomic based on the composite key (node ID + tenant name).
             exit_stack.enter_context(volume_locked(f"{node_id}:{tenant_name}"))
         blockhost = vms_session.blockhosts.ensure(
-            name=f"{CONF.block_hosts_prefix}{node_id}",
+            node_id=f"{CONF.block_hosts_prefix}{node_id}",
+            transport_type=transport_type,
             tenant_name=tenant_name,
             subsystem=subsystem,
-            transport_type=transport_type,
         )
         vms_session.blockhostmappings.ensure_map(
             volume_id=vol_id,
@@ -504,6 +504,7 @@ class BlockNode(NodeBase, Instrumented):
                 volume_id=volume_id,
                 volume_capability=volume_capability,
                 volume_context=volume_context,
+                exit_stack=exit_stack,
             )
         subsystem_nqn = publish_context["subsystem_nqn"]
         host_nqn = publish_context["host_nqn"]
@@ -635,6 +636,7 @@ class BlockNode(NodeBase, Instrumented):
                 volume_id=volume_id,
                 vms_session=vms_session,
                 volume_capability=volume_capability,
+                exit_stack=exit_stack,
             )
             self.NodeStageVolume.__wrapped__(
                 self,

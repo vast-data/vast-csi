@@ -52,6 +52,17 @@ def cache_on_arguments(expiration_time: int):
     Wrapper for cache_region.cache_on_arguments that uses kwarg_function_key_generator by default.
     This allows caching methods with **kwargs without specifying the key generator each time.
     
+    IMPORTANT: This decorator must be the INNERMOST (closest to the function definition)
+    when used with other decorators like @requisite, @apiver, etc. Otherwise the key
+    generator cannot properly inspect the function signature.
+    
+    Correct order:
+        @requisite(semver="5.3.0")
+        @apiver.v5
+        @cache_on_arguments(expiration_time=5 * MINUTE)  # ← Innermost
+        def get_subsystem(self, subsystem, **params):
+            ...
+    
     Args:
         expiration_time: Cache expiration time in seconds
         

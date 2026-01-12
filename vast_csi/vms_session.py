@@ -764,8 +764,8 @@ class View(VastResource):
             self.delete_by_id(view.id)
 
     @requisite(semver="5.3.0")
-    @cache_on_arguments(expiration_time=5 * MINUTE)
     @apiver.v5
+    @cache_on_arguments(expiration_time=5 * MINUTE)
     def get_subsystem(self, subsystem, **params):
         """Get BLOCK type view by provided name."""
         view = self.one(name=subsystem, fail_if_missing=True, **params)
@@ -773,8 +773,8 @@ class View(VastResource):
         return view
 
     @requisite(semver="5.3.0")
-    @cache_on_arguments(expiration_time=5 * MINUTE)
     @apiver.v5
+    @cache_on_arguments(expiration_time=5 * MINUTE)
     def get_subsystem_by_id(self, _id, **params):
         """Get BLOCK type view by provided id."""
         view = self.get(_id, **params)

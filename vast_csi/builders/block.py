@@ -401,13 +401,14 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
         return context
 
     def build_volume(self) -> types.Volume:
+        name = self.name.lstrip("/")
         volume_context = self.volume_context
         view = self.vms_session.views.get_subsystem(
             subsystem=self.subsystem,
             tenant_name=self.tenant_name,
         )
-        if not (volume := self.vms_session.volumes.one_cached(name=self.name)):
-            raise SourceNotFound(f"Volume {self.name} does not exist but claimed as existing.")
+        if not (volume := self.vms_session.volumes.one_cached(name=name)):
+            raise SourceNotFound(f"Volume {name} does not exist but claimed as existing.")
         volume_context.update(
             nguid=volume.nguid,
             volume_id=str(volume.id),
