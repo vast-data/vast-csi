@@ -48,6 +48,7 @@ class Config(TypedEnv):
     attach_required = TypedEnv.Bool("X_CSI_ATTACH_REQUIRED", default=True)
     block_hosts_auto_prune = TypedEnv.Bool("X_CSI_BLOCK_HOSTS_AUTO_PRUNE", default=False)
     disable_usage_stats = TypedEnv.Bool("X_CSI_DISABLE_USAGE_STATS", default=False)
+    block_hosts_prefix = TypedEnv.Str("X_CSI_BLOCK_HOSTS_PREFIX", default="")
 
     _mode = TypedEnv.Str("X_CSI_MODE", default="controller_and_node")
     _endpoint = TypedEnv.Str("CSI_ENDPOINT", default="unix:///var/run/csi.sock")

@@ -43,7 +43,6 @@ from vast_csi.exceptions import (
     VolumeAlreadyExists,
     SourceNotFound,
     MountFailed,
-    TaskFailed,
     NVMEConnectionFailed,
 )
 from vast_csi.block_utils import (
@@ -91,9 +90,15 @@ ServiceCapabilities = cap_lib.ServiceCapabilities(
 #
 ################################################################
 
-def nvme_connect(host_nqn, discovery_server, host_id):
+def nvme_connect(host_nqn, discovery_server, host_id, subsystem_nqn):
+    """Connects to NVMe targets and returns the connected session."""
     try:
-        connect_nvme_targets(discovery_server=discovery_server, host_nqn=host_nqn, host_id=host_id)
+        return connect_nvme_targets(
+            discovery_server=discovery_server,
+            host_nqn=host_nqn,
+            host_id=host_id,
+            subsystem_nqn=subsystem_nqn,
+        )
     except ProcessExecutionError as exc:
         raise NVMEConnectionFailed(detail=exc.stderr, host_nqn=host_nqn, discovery_server=discovery_server)
 
@@ -317,7 +322,7 @@ class BlockController(ControllerBase, Instrumented):
             # Ensure map host operations are atomic based on the composite key (node ID + tenant name).
             exit_stack.enter_context(volume_locked(f"{node_id}:{tenant_name}"))
         blockhost = vms_session.blockhosts.ensure(
-            node_id=node_id,
+            name=f"{CONF.block_hosts_prefix}{node_id}",
             tenant_name=tenant_name,
             subsystem=subsystem,
             transport_type=transport_type,
@@ -342,6 +347,11 @@ class BlockController(ControllerBase, Instrumented):
 
         subsystem_nqn = volume_context["subsystem_nqn"]
         nguid = volume_context["nguid"]
+        host_nqn = blockhost.nqn
+        if not host_nqn.startswith(CONF.block_nqn_prefix):
+            logger.warning(
+                f"Host {host_nqn} is not CSI-managed (expected prefix: {CONF.block_nqn_prefix})"
+            )
         publish_context = dict(
                 subsystem_nqn=subsystem_nqn,
                 host_nqn=blockhost.nqn,
@@ -370,9 +380,10 @@ class BlockController(ControllerBase, Instrumented):
         if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
             logger.info(f"Volume not found with name: {volume_id}")
         else:
+            block_host_name = f"{CONF.block_hosts_prefix}{node_id}"
             vms_session.blockhostmappings.ensure_unmap(
                 volume__id=volume.id,
-                block_host__name=node_id
+                block_host__name=block_host_name
             )
             if CONF.block_hosts_auto_prune:
                 # Ensure get/delete host operations are atomic based on the composite key (node ID + tenant name).
@@ -380,9 +391,9 @@ class BlockController(ControllerBase, Instrumented):
                 # while ControllerPublishVolume simultaneously maps a new volume to the same host.
                 # In such cases, we must either delete and recreate the host, or wait for the new mapping and skip deletion.
                 exit_stack.enter_context(volume_locked(f"{node_id}:{volume.tenant_name}"))
-                if host := vms_session.blockhosts.one(name=node_id, tenant_name=volume.tenant_name):
+                if host := vms_session.blockhosts.one(name=block_host_name, tenant_name=volume.tenant_name):
                     if not host.mapped_volumes_preview and host.nqn.startswith(CONF.block_nqn_prefix):
-                        logger.info(f"Host {node_id!r} has no remaining volumes, removing host")
+                        logger.info(f"Host {block_host_name!r} has no remaining volumes, removing host")
                         vms_session.blockhosts.delete_by_id(host.id)
 
         return types.CtrlUnpublishResp()
@@ -500,7 +511,7 @@ class BlockNode(NodeBase, Instrumented):
         discovery_server = publish_context["discovery_server"]  # Either vip pool ip or fqdn
         need_resize = volume_context.get("need_resize", False)
 
-        if nvme_session := get_connected_session(host_nqn=host_nqn, sybsystem_nqn=subsystem_nqn):
+        if nvme_session := get_connected_session(host_nqn=host_nqn, subsystem_nqn=subsystem_nqn):
             # Nvme subsystem controllers already connected. No need to connect again.
             logger.info(f"{subsystem_nqn!r} already connected:")
             for line in stringify_dict(nvme_session.to_dict()):
@@ -516,7 +527,16 @@ class BlockNode(NodeBase, Instrumented):
             logger.info(
                 f"Connecting to NVMe targets for subsystem {subsystem_nqn} at {discovery_server} (host_id={host_id})"
             )
-            nvme_connect(discovery_server=discovery_server, host_nqn=host_nqn, host_id=host_id)
+            if not (nvme_session := nvme_connect(
+                discovery_server=discovery_server,
+                host_nqn=host_nqn,
+                host_id=host_id,
+                subsystem_nqn=subsystem_nqn,
+            )):
+                raise Abort(
+                    FAILED_PRECONDITION,
+                    f"Failed to get NVMe session after connecting to {subsystem_nqn}"
+                )
 
         if not (device := get_nvme_device_by_nguid(nguid=nguid)):
             raise Abort(
