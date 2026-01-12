@@ -118,12 +118,7 @@ def requisite(semver: str, operation: str = None, ignore: bool = False):
 
 
 # Create dogpile.cache region for method caching
-_cache_region = make_region().configure(
-    'dogpile.cache.memory',
-    arguments={
-        'lock_timeout': MINUTE,
-    }
-)
+_cache_region = make_region().configure("dogpile.cache.memory")
 
 
 def cache_on_arguments(expiration_time: int):
@@ -217,8 +212,8 @@ class RESTSession(requests.Session):
             ret = None
         logger.info(f"--- [{verb}] {url}: Done")
 
-        if not self.config.disable_usage_stats:
-            # Opportunistically send usage stats after successful requests
+        # Opportunistically send usage stats after successful requests
+        if not self.config.disable_usage_stats and not url.endswith('/plugins/usage/'):
             self.plugins.usage_report()
         
         return ret
@@ -255,6 +250,10 @@ class VmsSession(RESTSession, SerializationMixin):
         self._token_refresh_lock = threading.RLock()
         self._token_refresh_cond = threading.Condition(self._token_refresh_lock)
         self._authorizing = False
+        
+        # Thread-safe lock and timer for usage reporting
+        self._usage_report_lock = threading.RLock()
+        self._last_usage_report_time = 0  # timestamp of last successful report
 
         # Modify the SSL verification CA bundle path established
         # by the underlying Certifi library's defaults if ssl_verify==True.
@@ -665,22 +664,35 @@ class Plugin(VastResource):
     resource_name = "plugins"
 
     @resilient.error(msg="failed to report usage to VMS")
-    @cache_on_arguments(expiration_time=20 * MINUTE)
     def usage_report(self):
         """
         Sends plugin usage statistics to VMS.
         
         Called opportunistically after successful requests.
-        - Usage stats not disabled via configuration
-        - Timer has expired (20 minutes since last report)
+        Rate limited to once every 20 minutes using timestamp check.
+        Thread-safe: only one worker will send the report when timer expires.
         """
-        self.session.post(f"{self.resource_name}/usage/",
-            data={
-                "vendor": "vastdata",
-                "name": "vast-csi",
-                "version": self.session.config.plugin_version,
-                "build": self.session.config.git_commit[:10]
-            })
+        import time
+        
+        with self.session._usage_report_lock:
+            current_time = time.time()
+            time_since_last_report = current_time - self.session._last_usage_report_time
+            
+            # Skip if report was sent less than 20 minutes ago
+            if time_since_last_report < 20 * MINUTE:
+                return
+            
+            # Send the report
+            self.session.post(f"{self.resource_name}/usage/",
+                data={
+                    "vendor": "vastdata",
+                    "name": "vast-csi",
+                    "version": self.session.config.plugin_version,
+                    "build": self.session.config.git_commit[:10]
+                })
+            
+            # Update timestamp only after successful send
+            self.session._last_usage_report_time = current_time
 
 class ViewPolicy(VastResource):
     resource_name = "viewpolicies"
