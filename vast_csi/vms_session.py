@@ -25,8 +25,6 @@ from easypy.units import HOUR, MINUTE
 from easypy.sync import wait
 from easypy.resilience import retrying, resilient
 from easypy.humanize import yesno_to_bool
-from dogpile.cache import make_region
-from dogpile.cache.util import kwarg_function_key_generator
 from plumbum import cmd
 from plumbum import local, ProcessExecutionError
 from urllib3.exceptions import MaxRetryError, ReadTimeoutError, TimeoutError
@@ -38,6 +36,7 @@ from .exceptions import ApiError, MountFailed, OperationNotSupported, LookupFiel
 from .utils import generate_ip_range
 from . import csi_types as types
 from .serialization_utils import SerializationMixin
+from .lru_cache import cache_on_arguments
 
 
 class ApiVersion:
@@ -115,21 +114,6 @@ def requisite(semver: str, operation: str = None, ignore: bool = False):
         return _args_wrapper
 
     return dec
-
-
-# Create dogpile.cache region for method caching
-_cache_region = make_region().configure("dogpile.cache.memory")
-
-
-def cache_on_arguments(expiration_time: int):
-    """
-    Wrapper for cache_region.cache_on_arguments that uses kwarg_function_key_generator by default.
-    This allows caching methods with **kwargs without specifying the key generator each time.
-    """
-    return _cache_region.cache_on_arguments(
-        expiration_time=expiration_time,
-        function_key_generator=kwarg_function_key_generator
-    )
 
 
 class CannotUseTrashAPI(OperationNotSupported):
@@ -721,6 +705,11 @@ class Tenant(VastResource):
 class View(VastResource):
     resource_name = "views"
 
+    @cache_on_arguments(expiration_time=5 * MINUTE)
+    def one_cached(self, **params):
+        """Cached version of one() method."""
+        return VastResource.one(self, **params)
+
     def ensure(self, path, protocols, view_policy, qos_policy, create_dir=True, qos_policy_id=None):
         if not (view := self.one(path=str(path), policy__name=view_policy)):
             view_policy = self.session.viewpolicies.one(name=view_policy, fail_if_missing=True)
@@ -1008,6 +997,11 @@ class User(VastResource):
 @apiver.v5
 class Volume(VastResource):
     resource_name = "volumes"
+
+    @cache_on_arguments(expiration_time=MINUTE)
+    def one_cached(self, **params):
+        """Cached version of one() method."""
+        return VastResource.one(self, **params)
 
     @requisite(semver="5.3.0")
     def delete_by_id(self, _id, **params):
