@@ -38,6 +38,8 @@ sslCertsSecretName: ""
 # When disabled (false), hosts remain in VAST even if unused and must be cleaned
 # up manually.
 blockHostsAutoPrune: false
+# Prefix used when naming CSI block hosts (e.g. csi-<node-id>)
+hostNamePrefix: ""
 
 ####################
 # VAST CSI STORAGE CLASS OPTIONS
