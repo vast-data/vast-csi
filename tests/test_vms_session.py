@@ -287,6 +287,9 @@ def test_request_success(mock_request, monkeypatch, mock_credentials):
     import time
     session._last_usage_report_time = time.time()
     
+    # Set authorization header to bypass automatic token refresh
+    session.headers["authorization"] = "Bearer test-token"
+    
     # Execution
     session.request(
         "GET", "test_method",

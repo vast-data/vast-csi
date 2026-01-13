@@ -146,10 +146,13 @@ class RESTSession(requests.Session):
         self.headers["Accept"] = "application/json"
         self.headers["Content-Type"] = "application/json"
         self.headers["User-Agent"] = f"VastCSI/{config.plugin_version}.{config.ci_pipe}.{config.git_commit[:10]} ({config._mode.capitalize()}) {default_user_agent()}"
-        self.headers['authorization'] = f"Bearer #"  # will be updated on first request
+        self.headers['authorization'] = ""  # will be set on first request
 
     @retrying.debug(times=3, acceptable=retrying.Retry)
     def request(self, verb, api_method, *args, params=None, log_result=True, api_ver=None, **kwargs):
+        if not self.headers.get("authorization"):
+            self.refresh_auth_token()
+
         verb = verb.upper()
         api_method = api_method.strip("/")
         api_ver = api_ver or "v1"
@@ -195,7 +198,7 @@ class RESTSession(requests.Session):
         else:
             ret = None
         logger.info(f"--- [{verb}] {url}: Done")
-
+        
         # Opportunistically send usage stats after successful requests
         if not self.config.disable_usage_stats and not url.endswith('/plugins/usage/'):
             self.plugins.usage_report()
@@ -446,7 +449,7 @@ class VmsSession(RESTSession, SerializationMixin):
             if self._authorizing:
                 while self._authorizing:
                     self._token_refresh_cond.wait()  # Releases lock and waits, re-acquires when signaled
-
+                
                 # We were waiting - check if token is now available
                 if self.headers.get("authorization"):
                     return
@@ -665,7 +668,7 @@ class Plugin(VastResource):
             # Skip if report was sent less than 20 minutes ago
             if time_since_last_report < 20 * MINUTE:
                 return
-            
+
             # Send the report
             self.session.post(f"{self.resource_name}/usage/",
                 data={
