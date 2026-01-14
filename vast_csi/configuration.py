@@ -13,7 +13,7 @@ from .exceptions import LookupFieldError
 
 from easypy.caching import cached_property
 from easypy.timing import Timer
-from easypy.units import HOUR
+from easypy.units import HOUR, MINUTE
 from easypy.bunch import Bunch
 
 
@@ -47,6 +47,8 @@ class Config(TypedEnv):
     use_local_ip_for_mount = TypedEnv.Str("X_CSI_USE_LOCALIP_FOR_MOUNT", default="")
     attach_required = TypedEnv.Bool("X_CSI_ATTACH_REQUIRED", default=True)
     block_hosts_auto_prune = TypedEnv.Bool("X_CSI_BLOCK_HOSTS_AUTO_PRUNE", default=False)
+    disable_usage_stats = TypedEnv.Bool("X_CSI_DISABLE_USAGE_STATS", default=False)
+    block_hosts_prefix = TypedEnv.Str("X_CSI_BLOCK_HOSTS_PREFIX", default="")
 
     _mode = TypedEnv.Str("X_CSI_MODE", default="controller_and_node")
     _endpoint = TypedEnv.Str("CSI_ENDPOINT", default="unix:///var/run/csi.sock")
@@ -54,6 +56,7 @@ class Config(TypedEnv):
     _vms_host = TypedEnv.Str("X_CSI_VMS_HOST", default="")
     name_fmt = "csi:{namespace}:{name}:{id}"
     block_nqn_prefix = "nqn.2014-08.com.vastcsiblock:"
+    max_cache_control_seconds = TypedEnv.Int("X_CSI_CACHE_MAX_AGE", default=0)
 
     fake_quota_store = local.path("/tmp/volumes")
     fake_snapshot_store = local.path("/tmp/snapshots")
@@ -122,4 +125,9 @@ class Config(TypedEnv):
     def endpoint(self):
         return self._endpoint.strip("tcp://")
 
+    @cached_property
+    def has_running_controller(self):
+        return self.mode in {CONTROLLER_AND_NODE, CONTROLLER}
+
     avoid_trash_api = Timer(now=-1, expiration=HOUR)
+
