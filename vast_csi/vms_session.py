@@ -237,10 +237,6 @@ class VmsSession(RESTSession, SerializationMixin):
         self._token_refresh_lock = threading.RLock()
         self._token_refresh_cond = threading.Condition(self._token_refresh_lock)
         self._authorizing = False
-        
-        # Thread-safe lock and timer for usage reporting
-        self._usage_report_lock = threading.RLock()
-        self._last_usage_report_time = 0  # timestamp of last successful report
 
         # Modify the SSL verification CA bundle path established
         # by the underlying Certifi library's defaults if ssl_verify==True.
@@ -651,35 +647,22 @@ class Plugin(VastResource):
     resource_name = "plugins"
 
     @resilient.error(msg="failed to report usage to VMS")
+    @cache_on_arguments(expiration_time=20 * MINUTE)
     def usage_report(self):
         """
         Sends plugin usage statistics to VMS.
         
         Called opportunistically after successful requests.
-        Rate limited to once every 20 minutes using timestamp check.
-        Thread-safe: only one worker will send the report when timer expires.
+        Rate-limited to once every 20 minutes via caching.
+        Thread-safe: dogpile.cache handles locking internally.
         """
-        import time
-        
-        with self.session._usage_report_lock:
-            current_time = time.time()
-            time_since_last_report = current_time - self.session._last_usage_report_time
-            
-            # Skip if report was sent less than 20 minutes ago
-            if time_since_last_report < 20 * MINUTE:
-                return
-
-            # Send the report
-            self.session.post(f"{self.resource_name}/usage/",
-                data={
-                    "vendor": "vastdata",
-                    "name": "vast-csi",
-                    "version": self.session.config.plugin_version,
-                    "build": self.session.config.git_commit[:10]
-                })
-            
-            # Update timestamp only after successful send
-            self.session._last_usage_report_time = current_time
+        self.session.post(f"{self.resource_name}/usage/",
+            data={
+                "vendor": "vastdata",
+                "name": "vast-csi",
+                "version": self.session.config.plugin_version,
+                "build": self.session.config.git_commit[:10]
+            })
 
 class ViewPolicy(VastResource):
     resource_name = "viewpolicies"

@@ -283,12 +283,11 @@ def test_request_success(mock_request, monkeypatch, mock_credentials):
     monkeypatch.setattr(Config, "vms_credentials_store", mock_credentials)
     session = get_vms_session()
     
-    # Prevent usage reporting in this test by setting last report time to now
-    import time
-    session._last_usage_report_time = time.time()
-    
     # Set authorization header to bypass automatic token refresh
     session.headers["authorization"] = "Bearer test-token"
+    
+    # Mock usage_report to prevent it from being called during this test
+    session.plugins.usage_report = MagicMock()
     
     # Execution
     session.request(
