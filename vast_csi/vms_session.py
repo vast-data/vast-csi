@@ -443,15 +443,18 @@ class VmsSession(RESTSession, SerializationMixin):
         with self._token_refresh_lock:
             # Wait while another worker is authorizing
             if self._authorizing:
+                logger.info("Token refresh already in progress by another worker, waiting...")
                 while self._authorizing:
                     self._token_refresh_cond.wait()  # Releases lock and waits, re-acquires when signaled
                 
                 # We were waiting - check if token is now available
                 if self.headers.get("authorization"):
+                    logger.info("Token refresh completed by another worker, using existing token")
                     return
 
             # We're the first - set authorizing flag
             self._authorizing = True
+            logger.info("Starting token refresh request to VMS")
 
             # Clear the authorization header before attempting refresh
             # This ensures waiting workers won't use stale token if refresh fails
@@ -460,7 +463,7 @@ class VmsSession(RESTSession, SerializationMixin):
         # Now make HTTP call without holding the lock
         try:
             resp = super(RESTSession, self).request(
-                "POST", f"{self.base_url}/v1/token/", verify=self.ssl_verify, timeout=5,
+                "POST", f"{self.base_url}/v1/token/", verify=self.ssl_verify, timeout=30,
                 json={"username": self.username, "password": self.password}
             )
             resp.raise_for_status()
@@ -468,7 +471,7 @@ class VmsSession(RESTSession, SerializationMixin):
 
             with self._token_refresh_lock:
                 self.headers["authorization"] = f"Bearer {token}"
-                logger.info("Successfully refreshed auth token")
+                logger.info("Successfully refreshed auth token from VMS")
         except ConnectionError as e:
             raise ApiError(
                 response=Bunch(
