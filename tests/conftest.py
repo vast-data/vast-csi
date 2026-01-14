@@ -101,6 +101,10 @@ def vms_session_with_mocked_resources_factory(vms_session):
             # If mocking "one" method, also mock "one_cached" for resources that have it
             if method == "one" and hasattr(resource_val, "one_cached"):
                 setattr(resource_val, "one_cached", mock)
+            
+            # If mocking "ensure" method, also mock "ensure_cached" for resources that have it
+            if method == "ensure" and hasattr(resource_val, "ensure_cached"):
+                setattr(resource_val, "ensure_cached", mock)
         return vms_session
 
     return __wrapped

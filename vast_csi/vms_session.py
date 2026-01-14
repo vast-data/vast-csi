@@ -711,6 +711,21 @@ class View(VastResource):
             )
         return view
 
+    def ensure_cached(self, path, protocols, view_policy, qos_policy, create_dir=True, qos_policy_id=None):
+        if not (view := self.one_cached(path=str(path), policy__name=view_policy)):
+            view_policy = self.session.viewpolicies.one(name=view_policy, fail_if_missing=True)
+            if qos_policy:
+                qos_policy_id = self.session.quospolicies.one(name=qos_policy, fail_if_missing=True).id
+            view = self.create(
+                path=str(path),
+                protocols=protocols,
+                policy_id=view_policy.id,
+                qos_policy_id=qos_policy_id,
+                tenant_id=view_policy.tenant_id,
+                create_dir=create_dir,
+            )
+        return view
+
     def ensure_s3view(self, bucket_name, root_export, **kwargs):
         if not (view := self.one(bucket=bucket_name)):
             view_policy = kwargs.pop("view_policy", "s3_default_policy")

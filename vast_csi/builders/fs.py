@@ -404,7 +404,7 @@ class StaticVolumeBuilder(BaseVolumeBuilder):
 
         if self.create_view:
             # Check if view with expected system path already exists.
-            view = self.vms_session.views.ensure(
+            view = self.vms_session.views.ensure_cached(
                 path=self.view_path,
                 protocols=[self.mount_protocol],
                 view_policy=self.view_policy,
