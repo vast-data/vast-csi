@@ -19,6 +19,7 @@ VERSION = ROOT.joinpath("version.txt").read_text().strip().lstrip("v")
 CHARTS = [
     ROOT / "charts" / "vastcsi" / "Chart.yaml",
     ROOT / "charts" / "vastcosi" / "Chart.yaml",
+    ROOT / "charts" / "vastblock" / "Chart.yaml",
 ]
 
 IGNORED_CHARTS = []
