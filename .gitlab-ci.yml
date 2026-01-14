@@ -169,6 +169,32 @@ update_dockerhub [beta]:
   environment: beta
 
 
+update_dockerhub [hotfix]:
+  stage: deploy
+  environment: prod
+  only:
+    - /^v?[\d]+\.[\d]+\.[\d]+-hf[\d]+$/
+  script: |
+    set -x
+    # Extract version from branch name (e.g., 2.6.4-hf1 or v2.6.4-hf1)
+    VERSION=${CI_COMMIT_REF_NAME#v}  # Remove 'v' prefix if present
+    echo "Building hotfix version: ${VERSION}"
+    
+    docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} $DOCKER_HUB
+    export PUSH_ON_SUCCESS=true
+    
+    # Publish CSI Driver image
+    export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}
+    export DOCKERFILE=Dockerfile
+    make build_image
+
+  after_script:
+  - docker logout $DOCKER_HUB
+  when: manual
+  tags:
+    - vast-dev-builder
+
+
 update_dockerhub_operator_only [prod]: &update_dockerhub_operator_only
   stage: deploy
   environment: prod
@@ -251,6 +277,44 @@ update_github [beta]:
   <<: *update_github
   variables:
     BETA: "true"
+
+
+update_github [hotfix]:
+  stage: deploy
+  only:
+    - /^v?[\d]+\.[\d]+\.[\d]+-hf[\d]+$/
+  before_script: *setup_github_access
+  script: |
+    set -x
+    # Extract version from branch name (e.g., 2.6.4-hf1 or v2.6.4-hf1)
+    VERSION=${CI_COMMIT_REF_NAME#v}  # Remove 'v' prefix if present
+    TARGET_BRANCH=$CI_COMMIT_REF_NAME
+    echo "Publishing hotfix version: ${VERSION} to branch: ${TARGET_BRANCH}"
+    
+    git remote -v
+    git remote add github git@github.com:vast-data/vast-csi.git || true
+    git fetch github $TARGET_BRANCH || true  # Fetch if branch exists, ignore if it doesn't
+    
+    # Check if remote branch exists
+    if git ls-remote --heads github $TARGET_BRANCH | grep -q $TARGET_BRANCH; then
+      git checkout -B $TARGET_BRANCH FETCH_HEAD
+    else
+      # Create new branch from current commit
+      git checkout -B $TARGET_BRANCH
+    fi
+    
+    git checkout $CI_COMMIT_SHA -- .
+    git commit -am "VAST Data CSI Plugin - Hotfix $VERSION
+
+      (from $CI_COMMIT_SHA)"
+
+    git tag -f $VERSION
+    git push -f --tags github HEAD:$TARGET_BRANCH
+    
+    echo "Successfully published hotfix ${VERSION}"
+  when: manual
+  tags:
+    - vast-dev-builder
 
 
 mark_stable:
