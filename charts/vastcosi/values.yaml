@@ -62,6 +62,17 @@ bucketClasses: {}
 # The number of worker threads the COSI plugin use to serve requests simultaneously.
 numWorkers: 10
 
+# Disable sending usage statistics to VAST cluster.
+# When set to true, the COSI driver will not report plugin usage metrics to VMS.
+disableUsageStats: false
+
+# Cache-Control max-age header value in seconds for VMS API requests.
+# When set to a value greater than 0, the COSI driver will add a Cache-Control header
+# to VMS API requests, allowing intermediate caches (like Nginx) to cache responses.
+# This is useful for handling burst traffic patterns and reducing load on the VMS.
+# Set to 0 to disable caching (default).
+cacheMaxAgeSeconds: 0
+
 # Truncate VAST bucket name if name length is greater than this number.
 # set `truncateVolumeName: null` to disable truncation.
 truncateVolumeName: 64
@@ -77,7 +88,7 @@ cosiDriverName: csi.vastdata.com
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.6.4  # the version of the Vast COSI driver
+    tag: v2.6.4-hf1  # the version of the Vast COSI driver
     imagePullPolicy: IfNotPresent
   objectstorageProvisioner:
     repository: gcr.io/k8s-staging-sig-storage/objectstorage-sidecar/objectstorage-sidecar

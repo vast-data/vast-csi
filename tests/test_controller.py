@@ -268,7 +268,7 @@ class TestBlockControllerCleanup:
         # Enable auto prune for tests that assert deletion
         monkeypatch.setattr(
             "vast_csi.plugins.block.CONF",
-            Bunch(block_nqn_prefix="nqn.2014-08.com.vastcsiblock", block_hosts_auto_prune=True),
+            Bunch(block_nqn_prefix="nqn.2014-08.com.vastcsiblock", block_hosts_auto_prune=True, block_hosts_prefix=""),
         )
 
     def test_unpublish_deletes_host_when_last_volume(self, vms_session_mock, no_op_volume_lock, conf_with_prefix):
@@ -340,7 +340,7 @@ class TestBlockControllerCleanup:
         # Host with matching NQN prefix should be deleted when last volume is unmapped
         monkeypatch.setattr(
             "vast_csi.plugins.block.CONF",
-            Bunch(block_nqn_prefix="nqn.2014-08.com.vastcsiblock", block_hosts_auto_prune=True),
+            Bunch(block_nqn_prefix="nqn.2014-08.com.vastcsiblock", block_hosts_auto_prune=True, block_hosts_prefix=""),
         )
         vms_session_mock.blockhosts.one = MagicMock(return_value=Bunch(id=2, mapped_volumes_preview=[], nqn="nqn.2014-08.com.vastcsiblock:default:node-1"))
 
@@ -358,7 +358,7 @@ class TestBlockControllerCleanup:
         # Host with non-matching NQN prefix should NOT be deleted even if last volume
         monkeypatch.setattr(
             "vast_csi.plugins.block.CONF",
-            Bunch(block_nqn_prefix="nqn.2014-08.com.vastcsiblock", block_hosts_auto_prune=True),
+            Bunch(block_nqn_prefix="nqn.2014-08.com.vastcsiblock", block_hosts_auto_prune=True, block_hosts_prefix=""),
         )
         vms_session_mock.blockhosts.one = MagicMock(return_value=Bunch(id=2, mapped_volumes_preview=[], nqn="nqn.2014-08.com.otherstack:default:node-1"))
 
@@ -376,7 +376,7 @@ class TestBlockControllerCleanup:
         # Even with matching prefix and last volume, do not delete if auto prune is disabled
         monkeypatch.setattr(
             "vast_csi.plugins.block.CONF",
-            Bunch(block_nqn_prefix="nqn.2014-08.com.vastcsiblock", block_hosts_auto_prune=False),
+            Bunch(block_nqn_prefix="nqn.2014-08.com.vastcsiblock", block_hosts_auto_prune=False, block_hosts_prefix=""),
         )
         vms_session_mock.blockhosts.one = MagicMock(return_value=Bunch(id=2, mapped_volumes_preview=[], nqn="nqn.2014-08.com.vastcsiblock:default:node-1"))
 

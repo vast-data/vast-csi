@@ -317,7 +317,7 @@ class CsiController(ControllerBase, Instrumented):
         return types.DeleteResp()
 
     def ControllerPublishVolume(
-        self, vms_session, node_id, volume_id, volume_capability, volume_context=None
+        self, vms_session, node_id, volume_id, volume_capability, volume_context=None, exit_stack=None
     ):
         volume_context = dict(volume_context or dict())
         volume_capabilities = _validate_capabilities(volume_capability)
@@ -530,6 +530,7 @@ class CsiNode(NodeBase, Instrumented):
         self,
         volume_id,
         target_path,
+        exit_stack,
         vms_session=None,
         volume_capability=None,
         publish_context=None,
@@ -560,6 +561,7 @@ class CsiNode(NodeBase, Instrumented):
                 vms_session=vms_session,
                 volume_capability=volume_capability,
                 ephemeral_volume_name=eph_volume_name,
+                exit_stack=exit_stack,
             )
         elif not volume_capability:
             raise Abort(INVALID_ARGUMENT, "missing 'volume_capability'")
@@ -571,6 +573,7 @@ class CsiNode(NodeBase, Instrumented):
                 volume_id=volume_id,
                 volume_capability=volume_capability,
                 volume_context=volume_context,
+                exit_stack=exit_stack,
             )
 
         nfs_server_ip = publish_context["nfs_server_ip"]
