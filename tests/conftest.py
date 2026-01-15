@@ -70,6 +70,20 @@ def vms_session(monkeypatch, mock_credentials):
         yield get_vms_session()
 
 
+@pytest.fixture(autouse=True)
+def clear_lru_cache():
+    """
+    Clear the LRU cache before each test to prevent stale cached values
+    from interfering with mocked methods.
+    """
+    from vast_csi.lru_cache import _cache_region
+    # Clear the cache before each test
+    _cache_region.backend._cache.clear()
+    yield
+    # Optionally clear after test as well
+    _cache_region.backend._cache.clear()
+
+
 @pytest.fixture
 def vms_session_with_mocked_resources_factory(vms_session):
     """Factory vms session with mocked sub resources."""
@@ -81,7 +95,16 @@ def vms_session_with_mocked_resources_factory(vms_session):
         """
         for resource, method, retvalue in args:
             resource_val = getattr(vms_session, resource)
-            setattr(resource_val, method, MagicMock(return_value=retvalue))
+            mock = MagicMock(return_value=retvalue)
+            setattr(resource_val, method, mock)
+            
+            # If mocking "one" method, also mock "one_cached" for resources that have it
+            if method == "one" and hasattr(resource_val, "one_cached"):
+                setattr(resource_val, "one_cached", mock)
+            
+            # If mocking "ensure" method, also mock "ensure_cached" for resources that have it
+            if method == "ensure" and hasattr(resource_val, "ensure_cached"):
+                setattr(resource_val, "ensure_cached", mock)
         return vms_session
 
     return __wrapped
