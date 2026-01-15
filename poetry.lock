@@ -37,6 +37,18 @@ tests = ["cloudpickle ; platform_python_implementation == \"CPython\"", "hypothe
 tests-mypy = ["mypy (>=1.11.1) ; platform_python_implementation == \"CPython\" and python_version >= \"3.9\"", "pytest-mypy-plugins ; platform_python_implementation == \"CPython\" and python_version >= \"3.9\" and python_version < \"3.13\""]
 
 [[package]]
+name = "cachetools"
+version = "6.2.4"
+description = "Extensible memoizing collections and decorators"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "cachetools-6.2.4-py3-none-any.whl", hash = "sha256:69a7a52634fed8b8bf6e24a050fb60bff1c9bd8f6d24572b99c32d4e71e62a51"},
+    {file = "cachetools-6.2.4.tar.gz", hash = "sha256:82c5c05585e70b6ba2d3ae09ea60b79548872185d2f24ae1f2709d37299fd607"},
+]
+
+[[package]]
 name = "certifi"
 version = "2024.8.30"
 description = "Python package for providing Mozilla's CA Bundle."
@@ -303,6 +315,32 @@ files = [
     {file = "decorator-5.1.1-py3-none-any.whl", hash = "sha256:b8c3f85900b9dc423225913c5aace94729fe1fa9763b38939a95226f02d37186"},
     {file = "decorator-5.1.1.tar.gz", hash = "sha256:637996211036b6385ef91435e4fae22989472f9d571faba8927ba8253acbc330"},
 ]
+
+[[package]]
+name = "dogpile-cache"
+version = "1.4.1"
+description = "A caching front-end based on the Dogpile lock."
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "dogpile_cache-1.4.1-py3-none-any.whl", hash = "sha256:99130ce990800c8d89c26a5a8d9923cbe1b78c8a9972c2aaa0abf3d2ef2984ad"},
+    {file = "dogpile_cache-1.4.1.tar.gz", hash = "sha256:e25c60e677a5e28ff86124765fbf18c53257bcd7830749cd5ba350ace2a12989"},
+]
+
+[package.dependencies]
+decorator = ">=4.0.0"
+stevedore = ">=3.0.0"
+typing_extensions = {version = ">=4.0.1", markers = "python_version < \"3.11\""}
+
+[package.extras]
+bmemcached = ["python-binary-memcached"]
+memcached = ["python-memcached"]
+pifpaf = ["pifpaf (>=3.2.0)"]
+pylibmc = ["pylibmc"]
+pymemcache = ["pymemcache"]
+redis = ["redis"]
+valkey = ["valkey"]
 
 [[package]]
 name = "exceptiongroup"
@@ -1000,6 +1038,18 @@ pure-eval = "*"
 tests = ["cython", "littleutils", "pygments", "pytest", "typeguard"]
 
 [[package]]
+name = "stevedore"
+version = "5.5.0"
+description = "Manage dynamic plugins for Python applications"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "stevedore-5.5.0-py3-none-any.whl", hash = "sha256:18363d4d268181e8e8452e71a38cd77630f345b2ef6b4a8d5614dac5ee0d18cf"},
+    {file = "stevedore-5.5.0.tar.gz", hash = "sha256:d31496a4f4df9825e1a1e4f1f74d19abb0154aff311c3b376fcc89dae8fccd73"},
+]
+
+[[package]]
 name = "tomli"
 version = "2.0.1"
 description = "A lil' TOML parser"
@@ -1035,7 +1085,7 @@ description = "Backported and Experimental Type Hints for Python 3.9+"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "python_version == \"3.9\""
+markers = "python_version < \"3.11\""
 files = [
     {file = "typing_extensions-4.15.0-py3-none-any.whl", hash = "sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548"},
     {file = "typing_extensions-4.15.0.tar.gz", hash = "sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466"},
@@ -1074,4 +1124,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.9"
-content-hash = "18da2708796683d580e5ea544bb8757e9eeddf4873568f8c1cdae47b00120b70"
+content-hash = "775c5e24b116e2b5a6c5ee6217b6d6629c389973d8f4bf53db7b07e8d399fdaa"
