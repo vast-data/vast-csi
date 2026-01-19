@@ -20,8 +20,10 @@ from tempfile import mkdtemp
 from json import JSONDecodeError
 from plumbum import cmd
 from plumbum import local, ProcessExecutionError
+from plumbum.commands.processes import ProcessTimedOut
 import grpc
 
+from easypy.timing import timing
 from easypy.tokens import CONTROLLER_AND_NODE, CONTROLLER, NODE
 from easypy.caching import cached_property
 from easypy.humanize import yesno_to_bool
@@ -61,6 +63,7 @@ from vast_csi.exceptions import (
     VolumeAlreadyExists,
     SourceNotFound,
     OperationNotSupported,
+    UmountTimedOut,
 )
 from vast_csi.configuration import Config
 import vast_csi.capabilities as cap_lib
@@ -92,10 +95,39 @@ def mount(src, tgt, flags=""):
     flags = list(filter(None, flags))
     if flags:
         executable = executable["-o", ",".join(flags)]
-    try:
-        executable['-v', src, tgt] & logger.pipe_info("mount >>")
-    except ProcessExecutionError as exc:
-        raise MountFailed(detail=exc.stderr, src=src, tgt=tgt, mount_options=flags)
+    timeout = CONF.mount_umount_timeout
+    flags_str = ",".join(flags) if flags else "(none)"
+    logger.info(f"Mounting {src!r} -> {tgt!r} with flags: {flags_str}, timeout: {timeout}s")
+    with timing() as timer:
+        try:
+            executable['-v', src, tgt].run(timeout=timeout)
+        except ProcessTimedOut:
+            raise MountFailed(detail=f"mount timed out after {timeout}s", src=src, tgt=tgt, mount_options=flags)
+        except ProcessExecutionError as exc:
+            raise MountFailed(detail=exc.stderr, src=src, tgt=tgt, mount_options=flags)
+    logger.info(f"Mount succeeded in {timer.elapsed}: {src!r} -> {tgt!r}")
+
+
+def umount(path, ignore_not_mounted=False):
+    """Unmount a path with logging"""
+
+    timeout = CONF.mount_umount_timeout
+    logger.info(f"Unmounting {path!r}")
+    with timing() as timer:
+        try:
+            cmd.umount['-v', path].run(timeout=timeout)
+        except ProcessTimedOut:
+            raise UmountTimedOut(f"umount timed out after {timeout}s for path: {path}")
+        except ProcessExecutionError as exc:
+            if "not mounted" in exc.stderr:
+                if ignore_not_mounted:
+                    logger.info(f"Umount: {path!r} is not mounted (ignored)")
+                    return False
+                logger.warning(f"Umount failed - {path!r} is not mounted (race?)")
+                return False
+            raise
+    logger.info(f"Umount succeeded in {timer.elapsed}: {path!r}")
+    return True
 
 
 def _validate_capabilities(capabilities):
@@ -284,7 +316,7 @@ class CsiController(ControllerBase, Instrumented):
                 raise
             finally:
                 if mounted:
-                    cmd.umount['-v', tmpdir] & logger.pipe_info("umount >>", retcode=None)  # don't fail if not mounted
+                    umount(tmpdir, ignore_not_mounted=True)
                 os.remove(tmpdir['.csi-unmounted'])  # will fail if still mounted somehow
                 os.rmdir(tmpdir)  # will fail if not empty directory
 
@@ -646,7 +678,9 @@ class CsiNode(NodeBase, Instrumented):
                     logger.info(f"{target_path} is not mounted")
                     break
                 try:
-                    local.cmd.umount(target_path)
+                    umount(target_path)
+                except UmountTimedOut as exc:
+                    raise Abort(UNKNOWN, str(exc))
                 except ProcessExecutionError as exc:
                     if "not mounted" in exc.stderr:
                         logger.info(f"umount failed - {target_path} is not mounted (race?)")

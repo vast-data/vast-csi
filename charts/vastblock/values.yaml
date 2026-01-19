@@ -40,6 +40,11 @@ sslCertsSecretName: ""
 blockHostsAutoPrune: false
 # Prefix used when naming CSI block hosts (e.g. csi-<node-id>)
 hostNamePrefix: ""
+# Timeout in seconds for mount/umount operations.
+# If a mount or umount command does not complete within this time, it will be terminated
+# and an error will be returned. This prevents the driver from getting stuck indefinitely
+# due to network issues or unresponsive storage.
+mountUmountTimeout: 30
 
 ####################
 # VAST CSI STORAGE CLASS OPTIONS
@@ -267,7 +272,7 @@ snapshotClasses: {}
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.6.4-hf1  # the version of the Vast CSI driver
+    tag: v2.6.5  # the version of the Vast CSI driver
     imagePullPolicy: IfNotPresent
   csiAttacher:
     repository: registry.k8s.io/sig-storage/csi-attacher
