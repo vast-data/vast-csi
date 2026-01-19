@@ -62,6 +62,7 @@ class Config(TypedEnv):
     fake_snapshot_store = local.path("/tmp/snapshots")
 
     timeout = TypedEnv.Int("X_CSI_VMS_TIMEOUT", default=30)
+    mount_umount_timeout = TypedEnv.Int("X_CSI_MOUNT_UMOUNT_TIMEOUT", default=30)
 
     @cached_property
     def vms_user(self):

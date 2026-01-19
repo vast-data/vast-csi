@@ -17,8 +17,10 @@ from contextlib import contextmanager
 from tempfile import TemporaryDirectory
 
 from plumbum import local, cmd, ProcessExecutionError
+from plumbum.commands.processes import ProcessTimedOut
 import grpc
 
+from easypy.timing import timing
 from easypy.tokens import CONTROLLER_AND_NODE, CONTROLLER, NODE
 from easypy.caching import cached_property
 
@@ -44,6 +46,7 @@ from vast_csi.exceptions import (
     SourceNotFound,
     MountFailed,
     NVMEConnectionFailed,
+    UmountTimedOut,
 )
 from vast_csi.block_utils import (
     connect_nvme_targets,
@@ -122,10 +125,40 @@ def mount(src, tgt, flags=None, bind=False, fs_type=None):
         executable = cmd.mount
     if flags:
         executable = executable["-o", ",".join(flags)]
-    try:
-        executable['-v', src, tgt] & logger.pipe_info("mount >>")
-    except ProcessExecutionError as exc:
-        raise MountFailed(detail=exc.stderr, src=src, tgt=tgt, mount_options=flags)
+    timeout = CONF.mount_umount_timeout
+    flags_str = ",".join(flags) if flags else "(none)"
+    mount_type = "bind" if bind else (f"fs_type={fs_type}" if fs_type else "default")
+    logger.info(f"Mounting {src!r} -> {tgt!r} ({mount_type}) with flags: {flags_str}")
+    with timing() as timer:
+        try:
+            executable['-v', src, tgt].run(timeout=timeout)
+        except ProcessTimedOut:
+            raise MountFailed(detail=f"mount timed out after {timeout}s", src=src, tgt=tgt, mount_options=flags)
+        except ProcessExecutionError as exc:
+            raise MountFailed(detail=exc.stderr, src=src, tgt=tgt, mount_options=flags)
+    logger.info(f"Mount succeeded in {timer.elapsed}: {src!r} -> {tgt!r}")
+
+
+def umount(path, ignore_not_mounted=False):
+    """Unmount a path with logging."""
+
+    timeout = CONF.mount_umount_timeout
+    logger.info(f"Unmounting {path!r}")
+    with timing() as timer:
+        try:
+            cmd.umount['-v', path].run(timeout=timeout)
+        except ProcessTimedOut:
+            raise UmountTimedOut(f"umount timed out after {timeout}s for path: {path}")
+        except ProcessExecutionError as exc:
+            if "not mounted" in exc.stderr:
+                if ignore_not_mounted:
+                    logger.info(f"Umount: {path!r} is not mounted (ignored)")
+                    return False
+                logger.warning(f"Umount failed - {path!r} is not mounted (race?)")
+                return False
+            raise
+    logger.info(f"Umount succeeded in {timer.elapsed}: {path!r}")
+    return True
 
 
 @contextmanager
@@ -154,18 +187,12 @@ def temporary_mount(src, tgt_dir, fs_type):
         try:
             yield temp_mount_point
         finally:
-            cmd.umount(temp_mount_point)
+            umount(temp_mount_point, ignore_not_mounted=True)
 
 
 def umount_safe(path):
-    """Unmounts a path if it is mounted."""
-    try:
-        cmd.umount(path)
-    except ProcessExecutionError as exc:
-        if "not mounted" in exc.stderr:
-            logger.info(f"umount failed - {path} is not mounted (race?)")
-        else:
-            raise
+    """Unmounts a path if it is mounted (legacy wrapper for umount)."""
+    umount(path, ignore_not_mounted=True)
 
 def remove_path_if_not_mounted(path):
     path = local.path(path)
@@ -589,7 +616,6 @@ class BlockNode(NodeBase, Instrumented):
             targets_mount_points = ", ".join(mount.mount_point for mount in target_mounts)
             logger.info(f"Staging path {device_bind_path} is being used by {targets_mount_points} targets.")
         if staging_mount:
-            logger.info(f"Unmounting {staging_mount}")
             umount_safe(device_bind_path)
         else:
             logger.info(f"Device not found at {device_bind_path}")
@@ -707,8 +733,7 @@ class BlockNode(NodeBase, Instrumented):
     def NodeUnpublishVolume(self, volume_id, target_path, luks_manager, vms_session=None):
         target_path = local.path(target_path)
         meta_file = target_path[".vast-csi-meta"]
-        if target_mount := MountInfo.get_mount_by_destination(dest_path=target_path):
-            logger.info(f"Unmounting {target_mount}")
+        if MountInfo.get_mount_by_destination(dest_path=target_path):
             umount_safe(target_path)
         else:
             logger.info(f"Device not found at {target_path}")

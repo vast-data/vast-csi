@@ -36,6 +36,8 @@
   value: {{ $.Values.dontUseTrashApi | quote }}
 - name: X_CSI_USE_LOCALIP_FOR_MOUNT
   value: {{ $.Values.useLocalIpForMount | quote }}
+- name: X_CSI_MOUNT_UMOUNT_TIMEOUT
+  value: {{ $.Values.mountUmountTimeout | quote }}
 - name: X_CSI_ATTACH_REQUIRED
   value: {{ $.Values.attachRequired | quote }}
 - name: X_CSI_VMS_TIMEOUT
