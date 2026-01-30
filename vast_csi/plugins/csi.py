@@ -551,6 +551,7 @@ class CsiController(ControllerBase, Instrumented):
 class CsiNode(NodeBase, Instrumented):
 
     CAPABILITIES = [
+        types.NodeCapabilityType.EXPAND_VOLUME,
         types.NodeCapabilityType.GET_VOLUME_STATS,
     ]
 
@@ -702,6 +703,21 @@ class CsiNode(NodeBase, Instrumented):
             os.rmdir(target_path)  # don't use plumbum's .delete to avoid the dangerous rmtree
             logger.info(f"{target_path} removed successfully")
         return types.NodeUnpublishResp()
+
+    def NodeExpandVolume(
+            self,
+            volume_id,
+            volume_path,
+            capacity_range=None,
+            staging_target_path=None,
+            volume_capability=None,
+    ):
+        """No-op for NFS volumes."""
+        if not os.path.ismount(volume_path):
+            raise Abort(NOT_FOUND, f"{volume_path} is not a mountpoint")
+        
+        requested_capacity = capacity_range.required_bytes if capacity_range else 0
+        return types.NodeExpandResp(capacity_bytes=requested_capacity)
 
     def NodeGetVolumeStats(self, volume_id, volume_path):
         if not os.path.ismount(volume_path):
