@@ -29,6 +29,7 @@ from easypy.caching import cached_property
 from easypy.humanize import yesno_to_bool
 
 from vast_csi.logging import logger
+from vast_csi import metrics
 from vast_csi.utils import (
     get_mount,
     normalize_mount_options,
@@ -119,7 +120,7 @@ def umount(path, ignore_not_mounted=False):
 
     def do_umount():
         return cmd.umount['-v', path].run()
-    
+
     with timing() as timer:
         try:
             if timeout:

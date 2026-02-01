@@ -25,6 +25,7 @@ from easypy.tokens import CONTROLLER_AND_NODE, CONTROLLER, NODE
 from easypy.caching import cached_property
 
 from vast_csi.logging import logger
+from vast_csi import metrics
 from vast_csi.proto import csi_pb2_grpc as csi_grpc
 from vast_csi import csi_types as types
 from vast_csi.csi_types import (
@@ -97,15 +98,26 @@ ServiceCapabilities = cap_lib.ServiceCapabilities(
 
 def nvme_connect(host_nqn, discovery_server, host_id, subsystem_nqn):
     """Connects to NVMe targets and returns the connected session."""
-    try:
-        return connect_nvme_targets(
-            discovery_server=discovery_server,
-            host_nqn=host_nqn,
-            host_id=host_id,
-            subsystem_nqn=subsystem_nqn,
-        )
-    except ProcessExecutionError as exc:
-        raise NVMEConnectionFailed(detail=exc.stderr, host_nqn=host_nqn, discovery_server=discovery_server)
+    operation_type = "block"
+
+    with timing() as timer:
+        try:
+            result = connect_nvme_targets(
+                discovery_server=discovery_server,
+                host_nqn=host_nqn,
+                host_id=host_id,
+                subsystem_nqn=subsystem_nqn,
+            )
+            # Record successful connect (equivalent to mount for block storage)
+            metrics.mount_operations_total.labels(operation_type=operation_type, status='success').inc()
+            return result
+        except ProcessExecutionError as exc:
+            # Record failure
+            metrics.mount_operations_total.labels(operation_type=operation_type, status='failure').inc()
+            raise NVMEConnectionFailed(detail=exc.stderr, host_nqn=host_nqn, discovery_server=discovery_server)
+        finally:
+            # Always record duration for all outcomes (success, failure)
+            metrics.mount_duration_seconds.labels(operation_type=operation_type).observe(timer.elapsed.total_seconds())
 
 
 def mount(src, tgt, flags=None, bind=False, fs_type=None):
@@ -596,7 +608,7 @@ class BlockNode(NodeBase, Instrumented):
         device_path = device.DevicePath
         logger.info(f"Setting I/O policy to round-robin for device {device.Name}")
         change_io_policy(device_name=device.Name, io_policy="round-robin")
-        
+
         # Disable NVMe controller timeout to prevent removal on temporary network issues
         disable_nvme_timeout(nvme_session)
 
