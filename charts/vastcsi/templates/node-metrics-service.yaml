@@ -1,0 +1,23 @@
+{{- if .Values.node.metrics.enabled }}
+{{/* Vast CSI Node Metrics Service */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-vast-node-metrics
+  namespace: {{ include "vastcsi.namespace" . }}
+  labels:
+{{- include "vastcsi.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/csi-role: "node"
+spec:
+  type: ClusterIP
+  clusterIP: None  # Headless service for DaemonSet
+  selector:
+    app: csi-vast-node
+{{- include "vastcsi.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.node.metrics.port }}
+      targetPort: metrics
+      protocol: TCP
+{{- end }}

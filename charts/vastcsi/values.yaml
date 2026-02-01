@@ -374,6 +374,25 @@ node:
         memory: 300Mi
   # See controller.priorityClassName section for details
   priorityClassName: system-cluster-critical
+  # Metrics configuration for CSI node
+  metrics:
+    # Enable Prometheus metrics endpoint
+    enabled: true
+    # Port for metrics HTTP server
+    # Note: Uses 9090 (vastblock uses 9091) to avoid conflicts when both charts are deployed
+    port: 9090
+    # ServiceMonitor configuration (requires Prometheus Operator)
+    serviceMonitor:
+      # Enable ServiceMonitor creation
+      enabled: false
+      # Scrape interval
+      interval: 30s
+      # Additional labels for ServiceMonitor
+      labels: {}
+      # Relabelings to apply to samples before ingestion
+      relabelings: []
+      # MetricRelabelings to apply to samples before ingestion
+      metricRelabelings: []
 
 # The path to the kubelet root dir. must be provided when Kubernetes is not installed in its default directory.
 kubeletPath: "/var/lib/kubelet"

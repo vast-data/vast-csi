@@ -81,6 +81,16 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: spec.nodeName
+            - name: X_CSI_METRICS_ENABLED
+              value: "{{ .Values.node.metrics.enabled }}"
+            - name: X_CSI_METRICS_PORT
+              value: "{{ .Values.node.metrics.port }}"
+{{- if .Values.node.metrics.enabled }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.node.metrics.port }}
+              protocol: TCP
+{{- end }}
           securityContext:
             privileged: true
             capabilities:
