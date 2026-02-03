@@ -86,6 +86,9 @@ class TestControllerSuite:
         capabilities = volume_capabilities(fs_type="ext4", mount_flags="", mode=types.AccessModeType.SINGLE_NODE_WRITER)
         vms_session.views.ensure = MagicMock()
         vms_session.quotas.one = MagicMock(return_value=Bunch(tenant_id=1, hard_limit=999))
+        vms_session.viewpolicies.one = MagicMock(return_value=Bunch(
+            name="default", nfs_enforce_tls=False, nfs_enforce_tls_relaxed=False, nfs_enforce_mtls=False
+        ))
 
         # Execution
         with pytest.raises(Exception) as ex_context:
@@ -181,6 +184,7 @@ class TestControllerSuite:
         )
         view = Bunch(path="/test/view", id=1, tenant_id=1, tenant_name="default")
         quota = Bunch(id=1, hard_limit=1000, tenant_id=1, tenant_name="test")
+        viewpolicy = Bunch(name="default", nfs_enforce_tls=False, nfs_enforce_tls_relaxed=False, nfs_enforce_mtls=False)
         cont = CsiController()
         session = vms_session_with_mocked_resources_factory(
             ("views", "one", view),
@@ -188,6 +192,7 @@ class TestControllerSuite:
             ("quotas", "one", quota),
             ("quotas", "ensure", quota),
             ("vippools", "get_vip", "127.0.0.1"),
+            ("viewpolicies", "one", viewpolicy),
         )
         resp = cont.ControllerPublishVolume(session, node_id, volume_id, capabilities[0], volume_context)
 
@@ -222,10 +227,12 @@ class TestControllerSuite:
         capabilities = volume_capabilities(
             fs_type="ext4", mount_flags=["test"], mode=types.AccessModeType.SINGLE_NODE_WRITER
         )
+        viewpolicy = Bunch(name="default", nfs_enforce_tls=False, nfs_enforce_tls_relaxed=False, nfs_enforce_mtls=False)
         session = vms_session_with_mocked_resources_factory(
             ("views", "one", Bunch(path=volume_id, id=1, tenant_id=5, tenant_name="default")),
             ("quotas", "one", Bunch(tenant_id=1, hard_limit=999, tenant_name="test")),
             ("vippools", "get_vip", "127.0.0.1"),
+            ("viewpolicies", "one", viewpolicy),
         )
         cont = CsiController()
         with pytest.raises(Exception) as ex_context:

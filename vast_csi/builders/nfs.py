@@ -10,6 +10,7 @@ from vast_csi.quantity import parse_quantity
 from vast_csi.capabilities import Capabilities
 from vast_csi.exceptions import SourceNotFound, MissingParameter
 from vast_csi.builders.base import BaseVolumeBuilder, parse_volume_id
+from vast_csi.mtls_utils import validate_xprtsec_settings
 
 
 __all__ = [
@@ -96,6 +97,8 @@ class FileSystemProvisionBase(BaseVolumeBuilder):
             qos_policy_id = int(parameters.get("qos_policy_id"))
         else:
             qos_policy_id = None
+
+        validate_xprtsec_settings(volume_capabilities.mount_flags_str, vms_session, view_policy)
 
         return cls(
             vms_session=vms_session,
@@ -352,6 +355,8 @@ class StaticVolumeBuilder(BaseVolumeBuilder):
             qos_policy_id = int(parameters.get("qos_policy_id"))
         else:
             qos_policy_id = None
+
+        validate_xprtsec_settings(volume_capabilities.mount_flags_str, vms_session, view_policy)
 
         return cls(
             vms_session=vms_session,

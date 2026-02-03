@@ -41,6 +41,7 @@ from vast_csi.exceptions import Abort, LookupFieldError
 from vast_csi.session import instantiate_session_from_secret, VmsSession
 from vast_csi.luks_utils import get_luks_manager, LuksManager
 from vast_csi.metrics import get_metrics_registry
+from vast_csi.mtls_utils import get_mtls_manager
 from vast_csi.quantity import parse_quantity
 from vast_csi.logging import logger
 
@@ -86,7 +87,7 @@ class Instrumented:
             params = {fld.name: value for fld, value in request.ListFields()}
             # secrets are not logged and not the part of function signature.
             secrets = params.pop("secrets", {})
-            missing_params = required_params - {"request", "context", "vms_session", "secondary_vms_session", "exit_stack", "luks_manager", "metrics_registry"} - set(params)
+            missing_params = required_params - {"request", "context", "vms_session", "secondary_vms_session", "exit_stack", "luks_manager", "metrics_registry", "mtls_manager"} - set(params)
 
             # Get cluster_name from volume_id, snapshot_id or source_volume_id in case of id identifier with metadata
             cluster_names = set()
@@ -130,11 +131,25 @@ class Instrumented:
                     params["secondary_vms_session"] = None
 
             if "luks_manager" in required_params:
-                # If method signature requires `luks_manager`
+                # If method signature requires `luks_manager` parameter
                 params["luks_manager"] = get_luks_manager(
                     volume_id=params["volume_id"],
                     passphrase=secrets.get("passphrase", None),
                     volume_context=params.get("volume_context", {}),
+                    cluster_name=secrets.get("cluster_name", None),
+                )
+
+            if "mtls_manager" in required_params:
+                # If method signature requires `mtls_manager` parameter
+                # Extract mount_flags from volume_capability (xprtsec comes from mount options)
+                mount_flags = ""
+                volume_capability = params.get("volume_capability")
+                if volume_capability and hasattr(volume_capability, "mount"):
+                    mount_flags = ",".join(volume_capability.mount.mount_flags or [])
+                params["mtls_manager"] = get_mtls_manager(
+                    mtls_client_cert=secrets.get("mtls_client_cert", None),
+                    mtls_client_privkey=secrets.get("mtls_client_privkey", None),
+                    mount_flags=mount_flags,
                     cluster_name=secrets.get("cluster_name", None),
                 )
 
