@@ -613,6 +613,7 @@ class CsiNode(NodeBase, Instrumented):
         volume_id,
         target_path,
         exit_stack,
+        mtls_manager,
         vms_session=None,
         volume_capability=None,
         publish_context=None,
@@ -697,7 +698,8 @@ class CsiNode(NodeBase, Instrumented):
             meta_file=meta_file,
             volume_id=volume_id,
             is_ephemeral=is_ephemeral,
-            vms_session=vms_session
+            vms_session=vms_session,
+            mtls_manager=mtls_manager,
         )
         logger.info(f"created: {target_path}")
 
@@ -708,6 +710,17 @@ class CsiNode(NodeBase, Instrumented):
             flags += normalize_mount_options(
                 volume_context.get("mount_options", publish_context.get("mount_options", ""))
             )
+        
+        # Add mTLS mount flags if enabled
+        try:
+            flags += mtls_manager.to_mount_flags(volume_id=volume_id)
+        except Exception as e:
+            meta_file.delete()
+            raise Abort(
+                FAILED_PRECONDITION,
+                f"Failed to load mTLS credentials: {e}"
+            )
+        
         try:
             mount(
                 mount_spec,
@@ -718,6 +731,10 @@ class CsiNode(NodeBase, Instrumented):
             logger.info(f"mounted: {target_path} flags: {flags}")
         except Exception:
             meta_file.delete()
+            # Clean up mTLS credentials on mount failure
+            if mtls_manager.requires_mtls():
+                mtls_manager.delete_credentials(volume_id)
+
             raise
 
         return types.NodePublishResp()
