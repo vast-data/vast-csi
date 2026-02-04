@@ -31,13 +31,13 @@ from vast_csi.logging import logger
 mount_operations_total = Counter(
     'csi_node_mount_operations_total',
     'Total number of mount operations',
-    ['operation_type', 'status']  # operation_type: nfs|block, status: success|failure|timeout
+    ['operation_type', 'status']  # operation_type: nfs|nvme_connect|block_mount, status: success|failure|timeout
 )
 
 mount_duration_seconds = Histogram(
     'csi_node_mount_duration_seconds',
     'Duration of mount operations in seconds',
-    ['operation_type'],  # operation_type: nfs|block
+    ['operation_type'],  # operation_type: nfs|nvme_connect|block_mount
     buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, float('inf'))
 )
 
@@ -45,13 +45,13 @@ mount_duration_seconds = Histogram(
 umount_operations_total = Counter(
     'csi_node_umount_operations_total',
     'Total number of unmount operations',
-    ['operation_type', 'status']  # operation_type: nfs|block, status: success|failure|timeout
+    ['operation_type', 'status']  # operation_type: nfs|block_mount, status: success|failure|timeout
 )
 
 umount_duration_seconds = Histogram(
     'csi_node_umount_duration_seconds',
     'Duration of unmount operations in seconds',
-    ['operation_type'],  # operation_type: nfs|block
+    ['operation_type'],  # operation_type: nfs|block_mount
     buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, float('inf'))
 )
 
