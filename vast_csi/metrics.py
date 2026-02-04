@@ -24,8 +24,8 @@ in the CSI driver, including:
 - NFS transport (xprt) statistics
 
 Endpoints:
-- /metrics - Prometheus metrics (mount/unmount + xprt aggregates)
-- /xprt-stats - Detailed NFS transport statistics (JSON)
+- /metrics - Prometheus metrics (mount/unmount + NFS transport stats)
+- /health  - Health check endpoint
 """
 
 import json
@@ -313,7 +313,7 @@ def update_xprt_metrics():
 # ================================================================
 
 class MetricsHTTPHandler(BaseHTTPRequestHandler):
-    """HTTP handler for /metrics and /xprt-stats endpoints."""
+    """HTTP handler for /metrics and /health endpoints."""
     
     def log_message(self, format, *args):
         """Use our logger instead of stderr."""
@@ -323,8 +323,6 @@ class MetricsHTTPHandler(BaseHTTPRequestHandler):
         """Handle GET requests."""
         if self.path == '/metrics':
             self._serve_prometheus_metrics()
-        elif self.path == '/xprt-stats':
-            self._serve_xprt_stats()
         elif self.path in ['/health', '/healthz']:
             self._serve_health()
         else:
@@ -346,28 +344,6 @@ class MetricsHTTPHandler(BaseHTTPRequestHandler):
             logger.error(f"Failed to serve metrics: {e}")
             self.send_error(500, str(e))
     
-    def _serve_xprt_stats(self):
-        """Serve detailed xprt statistics as JSON."""
-        try:
-            stats = collect_xprt_stats()
-            
-            # Add unhealthy transports list for convenience
-            unhealthy = [t for t in stats["transports"] if not t["healthy"]]
-            stats["unhealthy_transports"] = unhealthy
-            
-            response = json.dumps(stats, indent=2)
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            self.wfile.write(response.encode('utf-8'))
-        except Exception as e:
-            logger.error(f"Failed to serve xprt stats: {e}")
-            error = json.dumps({"error": str(e)})
-            self.send_response(500)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            self.wfile.write(error.encode('utf-8'))
-    
     def _serve_health(self):
         """Serve health check endpoint."""
         response = json.dumps({"status": "ok"})
@@ -379,7 +355,7 @@ class MetricsHTTPHandler(BaseHTTPRequestHandler):
 
 def start_metrics_server(port=9090, addr='0.0.0.0'):
     """
-    Start the metrics HTTP server with Prometheus and xprt endpoints.
+    Start the metrics HTTP server with Prometheus endpoints.
     
     Args:
         port (int): Port to expose metrics on (default: 9090)
@@ -389,15 +365,14 @@ def start_metrics_server(port=9090, addr='0.0.0.0'):
         bool: True if server started successfully, False otherwise
     
     Endpoints:
-        /metrics    - Prometheus metrics (mount/unmount + xprt aggregates)
-        /xprt-stats - Detailed NFS transport statistics (JSON)
-        /health     - Health check
+        /metrics - Prometheus metrics (mount/unmount + NFS transport stats)
+        /health  - Health check
     
     Note:
         If port is already in use, logs a warning and returns False.
         CSI driver continues without metrics in this case.
         
-        xprt metrics are parsed on-demand when /metrics is scraped.
+        NFS transport (xprt) metrics are parsed on-demand when /metrics is scraped.
     """
     try:
         import threading
@@ -414,7 +389,7 @@ def start_metrics_server(port=9090, addr='0.0.0.0'):
         
         logger.info(f"Metrics server started on {addr}:{port}")
         logger.info(f"  - Prometheus: http://{addr}:{port}/metrics")
-        logger.info(f"  - xprt stats: http://{addr}:{port}/xprt-stats")
+        logger.info(f"  - Health: http://{addr}:{port}/health")
         return True
         
     except OSError as e:
