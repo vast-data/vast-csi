@@ -14,6 +14,8 @@
 #    under the License.
 import os
 import json
+import random
+import threading
 from functools import wraps
 from pprint import pformat
 import inspect
@@ -44,6 +46,20 @@ from vast_csi.quantity import parse_quantity
 CONF = None
 
 
+# Request ID counter for unique request tracking
+# Initialized with a random value in the lower half of uint32 range to avoid predictable sequences
+_req_id_counter = random.randint(0, 0x7FFFFFFF)  # [0, max/2]
+_req_id_lock = threading.Lock()
+
+
+def _get_next_uid():
+    """Generate a unique request ID with zero-padded hex format (e.g., 0x0000abcd)."""
+    global _req_id_counter
+    with _req_id_lock:
+        _req_id_counter = (_req_id_counter + 1) & 0xFFFFFFFF  # Wrap at uint32 max
+        return f"0x{_req_id_counter:08x}"
+
+
 class Instrumented:
 
     SILENCED = ["Probe", "NodeGetCapabilities"]
@@ -65,6 +81,7 @@ class Instrumented:
 
         @wraps(func)
         def wrapper(self, request, context):
+            uid = _get_next_uid()
             peer = context.peer()
             params = {fld.name: value for fld, value in request.ListFields()}
             # secrets are not logged and not the part of function signature.
@@ -88,7 +105,7 @@ class Instrumented:
             else:
                 raise Exception(f"too many cluster names specified: {', '.join(cluster_names)}")
 
-            log(f"{peer} >>> {method} ({cluster_name or '-'}):")
+            log(f"{peer} >>> [{uid}] {method} ({cluster_name or '-'}):")
 
             if params:
                 for line in stringify_dict(params):
@@ -121,14 +138,14 @@ class Instrumented:
             try:
                 if missing_params:
                     msg = f'Missing required fields: {", ".join(sorted(missing_params))}'
-                    logger.error(f"{peer} <<< {method}: {msg}")
+                    logger.error(f"{peer} <<< [{uid}] {method}: {msg}")
                     raise Abort(INVALID_ARGUMENT, msg)
 
                 with exit_stack:
                     ret = func(self, request=request, context=context, **params)
             except Abort as exc:
                 logger.info(
-                    f'{peer} <<< {method} ABORTED with {exc.code} ("{exc.message}")'
+                    f'{peer} <<< [{uid}] {method} ABORTED with {exc.code} ("{exc.message}")'
                 )
                 logger.debug("Traceback", exc_info=True)
                 context.abort(exc.code, exc.message)
@@ -137,24 +154,24 @@ class Instrumented:
                 status_code = exc.response.status_code
                 text = exc.response.text.splitlines()[0]
                 resource = exc.request.path_url
-                logger.exception(f"Exception during {method}\n{exc.response.text}")
+                logger.exception(f"[{uid}] Exception during {method}\n{exc.response.text}")
                 context.abort(
                     UNKNOWN,
                     f"[{method}]. Unable to accomplish request to {resource}. {text}, <{reason}({status_code})>"
                 )
             except TException as exc:
                 # Any exception inherited from TException
-                logger.exception(f"Exception during {method}")
+                logger.exception(f"[{uid}] Exception during {method}")
                 context.abort(UNKNOWN, f"[{method}]. {exc.render(color=False)}")
             except Exception as exc:
-                logger.exception(f"Exception during {method}")
+                logger.exception(f"[{uid}] Exception during {method}")
                 text = str(exc)
                 context.abort(UNKNOWN, f"[{method}]: {text}")
             if ret:
                 log(f"{peer} <<< {method}:")
                 for line in pformat(ret).splitlines():
                     log(f"    {line}")
-            log(f"{peer} --- {method}: Done")
+            log(f"[{uid}] {peer} --- {method}: Done")
             return ret
 
         return wrapper
