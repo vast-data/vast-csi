@@ -54,6 +54,7 @@ from vast_csi.block_utils import (
     get_nvme_device_by_nguid,
     try_nvme_probes,
     change_io_policy,
+    disable_nvme_timeout,
     is_native_multipath_enabled,
 )
 from vast_csi.utils import (
@@ -585,6 +586,9 @@ class BlockNode(NodeBase, Instrumented):
         device_path = device.DevicePath
         logger.info(f"Setting I/O policy to round-robin for device {device.Name}")
         change_io_policy(device_name=device.Name, io_policy="round-robin")
+        
+        # Disable NVMe controller timeout to prevent removal on temporary network issues
+        disable_nvme_timeout(nvme_session)
 
         # Host encryption handling
         if luks_manager.requires_encryption():
