@@ -277,3 +277,28 @@ def change_io_policy(device_name, io_policy):
     """
     with BLOCK_DEVICE_INFO_PATH[device_name]["device/iopolicy"].open("w") as f:
         f.write(io_policy)
+
+
+def disable_nvme_timeout(subsystem):
+    """
+    Disables the NVMe controller loss timeout by setting ctrl_loss_tmo to -1 for all
+    controllers in the subsystem.
+
+    Args:
+        subsystem: Subsystem object with Paths containing controller names
+    """
+    if not subsystem.Paths:
+        logger.warning(f"Subsystem {subsystem.Name} has no paths")
+        return
+
+    # Disable timeout for all controllers in the subsystem
+    for path in subsystem.Paths:
+        ctrl_name = path.Name
+        ctrl_loss_tmo_path = NVME_CLASS_PATH / ctrl_name / "ctrl_loss_tmo"
+
+        if ctrl_loss_tmo_path.exists():
+            with ctrl_loss_tmo_path.open("w") as f:
+                f.write("-1")
+            logger.info(f"Disabled timeout for NVMe controller {ctrl_name!r}")
+        else:
+            logger.warning(f"ctrl_loss_tmo not found for controller {ctrl_name!r}")
