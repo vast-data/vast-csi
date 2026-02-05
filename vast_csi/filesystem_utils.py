@@ -5,6 +5,7 @@ from threading import RLock
 from collections import defaultdict
 from contextlib import contextmanager
 
+from easypy.units import MINUTE
 from requests.exceptions import HTTPError  # noqa
 from plumbum import local, cmd, ProcessExecutionError
 from vast_csi.logging import logger
@@ -268,7 +269,7 @@ def format_device(requested_fs: str, device: str, format_args: str = None):
         args += split(format_args)
     args.append(str(device))
     logger.info(f"{requested_fs} fs type has been requested with {args=}. Formatting device.")
-    local[f"mkfs.{requested_fs}"][args] & logger.pipe_info(f"{requested_fs}: ")
+    local[f"mkfs.{requested_fs}"][args] & logger.pipe_info(f"{requested_fs}: ", line_timeout=10 * MINUTE)
     return True
 
 
