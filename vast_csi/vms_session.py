@@ -649,7 +649,6 @@ class Version(VastResource):
 class Plugin(VastResource):
     resource_name = "plugins"
 
-    @resilient.error(msg="failed to report usage to VMS")
     @cache_on_arguments(expiration_time=20 * MINUTE)
     def usage_report(self):
         """
@@ -659,13 +658,16 @@ class Plugin(VastResource):
         Rate-limited to once every 20 minutes via caching.
         Thread-safe: dogpile.cache handles locking internally.
         """
-        self.session.post(f"{self.resource_name}/usage/",
-            data={
-                "vendor": "vastdata",
-                "name": "vast-csi",
-                "version": self.session.config.plugin_version,
-                "build": self.session.config.git_commit[:10]
-            })
+        data={
+            "vendor": "vastdata",
+            "name": "vast-csi",
+            "version": self.session.config.plugin_version,
+            "build": self.session.config.git_commit[:10]
+        }
+        try:
+            self.session.post(f"{self.resource_name}/usage/", data=data)
+        except ApiError as e:
+            logger.warning(f"Failed to report usage to VMS: {e}")
 
 class ViewPolicy(VastResource):
     resource_name = "viewpolicies"
