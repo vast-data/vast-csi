@@ -71,6 +71,7 @@ from vast_csi.filesystem_utils import (
     get_device_size,
     check_fs_integrity,
     volume_locked,
+    run_with_timeout,
 )
 from vast_csi.configuration import Config
 import vast_csi.capabilities as cap_lib
@@ -144,11 +145,18 @@ def umount(path, ignore_not_mounted=False):
     """Unmount a path with logging."""
 
     timeout = CONF.mount_umount_timeout
-    logger.info(f"Unmounting {path!r}")
+    logger.info(f"Unmounting {path!r} with timeout: {timeout}s")
+
+    def do_umount():
+        return cmd.umount['-v', path].run()
+    
     with timing() as timer:
         try:
-            cmd.umount['-v', path].run(timeout=timeout)
-        except ProcessTimedOut:
+            if timeout:
+                run_with_timeout(do_umount, timeout)
+            else:
+                do_umount()
+        except (TimeoutError, ProcessTimedOut):
             raise UmountTimedOut(f"umount timed out after {timeout}s for path: {path}")
         except ProcessExecutionError as exc:
             if "not mounted" in exc.stderr:
