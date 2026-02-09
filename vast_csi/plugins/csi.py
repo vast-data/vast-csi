@@ -36,7 +36,10 @@ from vast_csi.utils import (
     get_random_fqdn_prefix,
     wrap_ipv6,
     string_to_static_uuid,
+    path_exists,
+    run_with_timeout,
 )
+from vast_csi.filesystem_utils import volume_locked
 from vast_csi.proto import csi_pb2_grpc as csi_grpc
 from vast_csi import csi_types as types
 from vast_csi.csi_types import (
@@ -112,11 +115,18 @@ def umount(path, ignore_not_mounted=False):
     """Unmount a path with logging"""
 
     timeout = CONF.mount_umount_timeout
-    logger.info(f"Unmounting {path!r}")
+    logger.info(f"Unmounting {path!r} with timeout: {timeout}s")
+
+    def do_umount():
+        return cmd.umount['-v', path].run()
+    
     with timing() as timer:
         try:
-            cmd.umount['-v', path].run(timeout=timeout)
-        except ProcessTimedOut:
+            if timeout:
+                run_with_timeout(do_umount, timeout)
+            else:
+                do_umount()
+        except (TimeoutError, ProcessTimedOut):
             raise UmountTimedOut(f"umount timed out after {timeout}s for path: {path}")
         except ProcessExecutionError as exc:
             if "not mounted" in exc.stderr:
@@ -570,6 +580,7 @@ class CsiNode(NodeBase, Instrumented):
         readonly=False,
         volume_context=None,
     ):
+        exit_stack.enter_context(volume_locked(volume_id))
         volume_context = volume_context or dict()
         if (
             is_ephemeral := volume_context
@@ -666,27 +677,31 @@ class CsiNode(NodeBase, Instrumented):
 
         return types.NodePublishResp()
 
-    def NodeUnpublishVolume(self, volume_id, target_path, vms_session=None):
+    def NodeUnpublishVolume(
+            self,
+            volume_id,
+            target_path,
+            exit_stack,
+            vms_session=None,
+    ):
+        exit_stack.enter_context(volume_locked(volume_id))
         target_path = local.path(target_path)
         meta_file = target_path[".vast-csi-meta"]
 
-        if not target_path.exists():
+        if not path_exists(target_path, timeout=CONF.mount_umount_timeout):
             logger.info(f"{target_path} does not exist - no need to remove")
         else:
             # make sure we're really unmounted before we delete anything
             for i in range(CONF.unmount_attempts):
-                if not get_mount(target_path):
+                mount_info = get_mount(target_path, timeout=CONF.mount_umount_timeout)
+                if not mount_info:
                     logger.info(f"{target_path} is not mounted")
                     break
                 try:
-                    umount(target_path)
+                    umount(target_path, ignore_not_mounted=True)
+                    break
                 except UmountTimedOut as exc:
                     raise Abort(UNKNOWN, str(exc))
-                except ProcessExecutionError as exc:
-                    if "not mounted" in exc.stderr:
-                        logger.info(f"umount failed - {target_path} is not mounted (race?)")
-                        break
-                    raise
             else:
                 raise Abort(
                     UNKNOWN,

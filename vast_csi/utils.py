@@ -1,5 +1,8 @@
+import os
 import re
 import uuid
+import psutil
+import threading
 from pprint import pformat
 from datetime import datetime
 from ipaddress import summarize_address_range, ip_address
@@ -32,11 +35,100 @@ def clean_path(path):
     return path
 
 
-def get_mount(target_path):
-    import psutil
-    for m in psutil.disk_partitions(all=True):
-        if m.mountpoint == target_path:
-            return m
+def run_with_timeout(func, timeout, *args, **kwargs):
+    """
+    Run a function with a timeout using a daemon thread.
+    
+    Args:
+        func: Function to execute
+        timeout: Timeout in seconds
+        *args: Positional arguments to pass to func
+        **kwargs: Keyword arguments to pass to func
+    
+    Returns:
+        The return value of func
+    
+    Raises:
+        TimeoutError: If func takes longer than timeout
+        Exception: Any exception raised by func
+    """
+    result = {'value': None, 'error': None, 'completed': False}
+    
+    def worker():
+        try:
+            result['value'] = func(*args, **kwargs)
+            result['completed'] = True
+        except Exception as e:
+            result['error'] = e
+            result['completed'] = True
+    
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout)
+    
+    if not result['completed']:
+        raise TimeoutError(f"Operation timed out after {timeout}s")
+    
+    if result['error']:
+        raise result['error']
+    
+    return result['value']
+
+
+def get_mount(target_path, timeout=5):
+    """
+    Get mount information for the target path.
+    
+    Args:
+        target_path: Path to check for mount
+        timeout: Timeout in seconds (default: 5). If psutil.disk_partitions()
+                 takes longer than this (e.g., due to unreachable NFS mount),
+                 a TimeoutError will be raised.
+    """
+
+    def check_mount():
+        partitions = psutil.disk_partitions(all=True)
+        for m in partitions:
+            if m.mountpoint == target_path:
+                return m
+        return None
+    
+    try:
+        return run_with_timeout(check_mount, timeout)
+    except TimeoutError:
+        error_msg = (
+            f"get_mount() timed out after {timeout}s while checking {target_path}. "
+            f"This usually indicates an unreachable NFS mount. "
+            f"Check network connectivity to NFS server."
+        )
+        raise TimeoutError(error_msg)
+
+
+def path_exists(path, timeout=5):
+    """
+    Check if a path exists with a timeout.
+    
+    Args:
+        path: Path to check (can be string or plumbum path object)
+        timeout: Timeout in seconds (default: 5). If the exists check
+                 takes longer than this (e.g., due to unreachable NFS mount),
+                 a TimeoutError will be raised.
+    """
+
+    def check_exists():
+        # Convert plumbum path to string if needed
+        path_str = str(path)
+        return os.path.exists(path_str)
+    
+    try:
+        return run_with_timeout(check_exists, timeout)
+    except TimeoutError:
+        error_msg = (
+            f"path_exists() timed out after {timeout}s while checking {path}. "
+            f"This usually indicates an unreachable NFS mount. "
+            f"Check network connectivity to NFS server."
+        )
+        raise TimeoutError(error_msg)
 
 
 def nice_format_traceback(self):

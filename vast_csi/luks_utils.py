@@ -13,6 +13,7 @@ from vast_csi.configuration import Config
 # luksFormat with high pbkdf_memory can take a long time, but should not hang forever
 LUKS_FORMAT_TIMEOUT = 600  # 10 minutes
 LUKS_OPEN_TIMEOUT = 180     # 3 minutes
+LUKS_READ_TIMEOUT = 20
 
 
 def get_luks_manager(
@@ -226,7 +227,7 @@ class LuksManager(SerializationMixin):
     def _is_luks_device(self, device_path: str) -> bool:
         """Check if the raw device is LUKS-encrypted."""
         try:
-            hostcmd.cryptsetup("isLuks", device_path)
+            hostcmd.cryptsetup("isLuks", device_path, timeout=LUKS_READ_TIMEOUT)
             return True
         except ProcessExecutionError:
             return False
@@ -238,7 +239,7 @@ class LuksManager(SerializationMixin):
             bool: True if the LUKS mapping is active, False otherwise.
         """
         try:
-            output = hostcmd.cryptsetup("status", self.luks_device_name)
+            output = hostcmd.cryptsetup("status", self.luks_device_name, timeout=LUKS_READ_TIMEOUT)
             return "LUKS2" in output.strip()
         except ProcessExecutionError:
             return False
@@ -254,7 +255,7 @@ class LuksManager(SerializationMixin):
             return False
 
         try:
-            hostcmd.cryptsetup("luksClose", self.luks_device_name)
+            hostcmd.cryptsetup("luksClose", self.luks_device_name, timeout=LUKS_READ_TIMEOUT)
             logger.info(f"LUKS device {self.luks_device_name} closed successfully.")
             return True
         except ProcessExecutionError as e:

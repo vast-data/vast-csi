@@ -1,5 +1,14 @@
 import pytest
-from vast_csi.utils import is_ver_nfs4_present, generate_ip_range, wrap_ipv6, string_to_static_uuid
+from unittest.mock import Mock, patch
+import threading
+import time
+from vast_csi.utils import (
+    is_ver_nfs4_present, 
+    generate_ip_range, 
+    wrap_ipv6, 
+    string_to_static_uuid,
+    get_mount
+)
 
 
 @pytest.mark.parametrize(
@@ -95,3 +104,162 @@ def test_wrap_ipv6(addr, expected):
 def test_string_to_static_uuid_is_deterministic(input_value, expected):
     """Ensure UUID is deterministic and correctly computed."""
     assert string_to_static_uuid(input_value) == expected
+
+
+class TestGetMount:
+    """Tests for get_mount() function with timeout functionality."""
+    
+    def test_get_mount_found(self):
+        """Test get_mount() returns mount when target path is found."""
+        target_path = "/mnt/test"
+        mock_mount = Mock()
+        mock_mount.mountpoint = target_path
+        mock_mount.device = "/dev/sda1"
+        mock_mount.fstype = "ext4"
+        
+        with patch('psutil.disk_partitions') as mock_partitions:
+            mock_partitions.return_value = [
+                Mock(mountpoint="/", device="/dev/sda1", fstype="ext4"),
+                mock_mount,
+                Mock(mountpoint="/home", device="/dev/sda2", fstype="ext4"),
+            ]
+            
+            result = get_mount(target_path, timeout=5)
+            
+            assert result is not None
+            assert result.mountpoint == target_path
+            assert result.device == "/dev/sda1"
+            mock_partitions.assert_called_once_with(all=True)
+    
+    def test_get_mount_not_found(self):
+        """Test get_mount() returns None when target path is not found."""
+        target_path = "/mnt/nonexistent"
+        
+        with patch('psutil.disk_partitions') as mock_partitions:
+            mock_partitions.return_value = [
+                Mock(mountpoint="/", device="/dev/sda1", fstype="ext4"),
+                Mock(mountpoint="/home", device="/dev/sda2", fstype="ext4"),
+            ]
+            
+            result = get_mount(target_path, timeout=5)
+            
+            assert result is None
+            mock_partitions.assert_called_once_with(all=True)
+    
+    def test_get_mount_timeout(self):
+        """Test get_mount() raises TimeoutError when operation hangs."""
+        target_path = "/mnt/hung"
+        
+        def slow_disk_partitions(all=True):
+            # Simulate hung operation (unreachable NFS)
+            time.sleep(10)
+            return []
+        
+        with patch('psutil.disk_partitions', side_effect=slow_disk_partitions):
+            with pytest.raises(TimeoutError) as exc_info:
+                get_mount(target_path, timeout=2)
+            
+            assert "timed out after 2s" in str(exc_info.value)
+            assert target_path in str(exc_info.value)
+            assert "unreachable NFS" in str(exc_info.value)
+    
+    def test_get_mount_timeout_fast(self):
+        """Test get_mount() timeout with very short timeout."""
+        target_path = "/mnt/test"
+        
+        def slow_disk_partitions(all=True):
+            time.sleep(5)
+            return []
+        
+        with patch('psutil.disk_partitions', side_effect=slow_disk_partitions):
+            with pytest.raises(TimeoutError) as exc_info:
+                get_mount(target_path, timeout=1)
+            
+            assert "timed out after 1s" in str(exc_info.value)
+    
+    def test_get_mount_exception_propagation(self):
+        """Test get_mount() propagates exceptions from psutil."""
+        target_path = "/mnt/test"
+        
+        with patch('psutil.disk_partitions') as mock_partitions:
+            mock_partitions.side_effect = PermissionError("Access denied")
+            
+            with pytest.raises(PermissionError) as exc_info:
+                get_mount(target_path, timeout=5)
+            
+            assert "Access denied" in str(exc_info.value)
+    
+    def test_get_mount_thread_safety_multiple_calls(self):
+        """Test get_mount() is thread-safe when called from multiple threads."""
+        results = {}
+        errors = {}
+        
+        def call_get_mount(thread_id, target_path, timeout):
+            try:
+                with patch('psutil.disk_partitions') as mock_partitions:
+                    # Each thread gets different mock data
+                    mock_mount = Mock()
+                    mock_mount.mountpoint = target_path
+                    mock_mount.device = f"/dev/sd{thread_id}"
+                    mock_partitions.return_value = [mock_mount]
+                    
+                    result = get_mount(target_path, timeout=timeout)
+                    results[thread_id] = result
+            except Exception as e:
+                errors[thread_id] = e
+        
+        # Create multiple threads calling get_mount() simultaneously
+        threads = []
+        for i in range(5):
+            thread = threading.Thread(
+                target=call_get_mount,
+                args=(i, f"/mnt/test{i}", 5)
+            )
+            threads.append(thread)
+            thread.start()
+        
+        # Wait for all threads
+        for thread in threads:
+            thread.join()
+        
+        # All threads should succeed without errors
+        assert len(errors) == 0, f"Errors occurred: {errors}"
+        assert len(results) == 5
+    
+    def test_get_mount_empty_partitions(self):
+        """Test get_mount() handles empty partition list."""
+        with patch('psutil.disk_partitions') as mock_partitions:
+            mock_partitions.return_value = []
+            
+            result = get_mount("/any/path", timeout=5)
+            
+            assert result is None
+    
+    def test_get_mount_matches_exact_path(self):
+        """Test get_mount() matches exact path, not partial."""
+        target_path = "/mnt/test"
+        
+        with patch('psutil.disk_partitions') as mock_partitions:
+            mock_partitions.return_value = [
+                Mock(mountpoint="/mnt", device="/dev/sda1"),
+                Mock(mountpoint="/mnt/test123", device="/dev/sda2"),
+                Mock(mountpoint="/mnt/testing", device="/dev/sda3"),
+            ]
+            
+            result = get_mount(target_path, timeout=5)
+            
+            assert result is None  # None of the mounts match exactly
+    
+    def test_get_mount_daemon_thread_cleanup(self):
+        """Test that daemon threads don't prevent process exit."""
+        target_path = "/mnt/test"
+        
+        def slow_disk_partitions(all=True):
+            time.sleep(100)  # Very long sleep
+            return []
+        
+        with patch('psutil.disk_partitions', side_effect=slow_disk_partitions):
+            try:
+                get_mount(target_path, timeout=0.5)
+            except TimeoutError:
+                pass
