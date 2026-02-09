@@ -1,4 +1,4 @@
-# Copyright 2024 VAST Data Inc.
+# Copyright 2026 VAST Data Inc.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -28,25 +28,40 @@ Endpoints:
 - /health  - Health check endpoint
 """
 
-import json
+import json  
 import re
+import time
+from contextlib import contextmanager
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 from vast_csi.logging import logger
 
 
-# Mount operation metrics
 mount_operations_total = Counter(
     'csi_node_mount_operations_total',
     'Total number of mount operations',
-    ['operation_type', 'status']  # operation_type: nfs|nvme_connect|block_mount, status: success|failure|timeout
+    ['operation_type', 'status']  # operation_type: nfs|block_mount, status: success|failure|timeout
 )
 
 mount_duration_seconds = Histogram(
     'csi_node_mount_duration_seconds',
     'Duration of mount operations in seconds',
-    ['operation_type'],  # operation_type: nfs|nvme_connect|block_mount
+    ['operation_type'],  # operation_type: nfs|block_mount
+    buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, float('inf'))
+)
+
+# NVMe-oF connect metrics (separate from mount; connect is not a mount operation)
+nvme_connect_operations_total = Counter(
+    'csi_node_nvme_connect_operations_total',
+    'Total number of NVMe-oF connect operations',
+    ['status']  # status: success|failure
+)
+
+nvme_connect_duration_seconds = Histogram(
+    'csi_node_nvme_connect_duration_seconds',
+    'Duration of NVMe-oF connect operations in seconds',
+    [],
     buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, float('inf'))
 )
 
@@ -63,6 +78,130 @@ umount_duration_seconds = Histogram(
     ['operation_type'],  # operation_type: nfs|block_mount
     buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, float('inf'))
 )
+
+
+# ---------------------------------------------------------------------------
+# Context managers to record operation metrics (reduces boilerplate at call sites)
+# ---------------------------------------------------------------------------
+
+class _MountRecorder:
+    """Records outcome and duration for a single mount operation."""
+
+    def __init__(self, operation_type, start_time):
+        self._operation_type = operation_type
+        self._start_time = start_time
+        self._status = None  # success | timeout | failure
+
+    def success(self):
+        self._status = "success"
+        mount_operations_total.labels(operation_type=self._operation_type, status="success").inc()
+
+    def timeout(self):
+        self._status = "timeout"
+        mount_operations_total.labels(operation_type=self._operation_type, status="timeout").inc()
+
+    def failure(self):
+        self._status = "failure"
+        mount_operations_total.labels(operation_type=self._operation_type, status="failure").inc()
+
+    def observe_duration(self):
+        if self._status is not None:
+            mount_duration_seconds.labels(operation_type=self._operation_type).observe(
+                time.monotonic() - self._start_time
+            )
+
+
+class _UmountRecorder:
+    """Records outcome and duration for a single umount operation."""
+
+    def __init__(self, operation_type, start_time):
+        self._operation_type = operation_type
+        self._start_time = start_time
+        self._status = None  # success | timeout | failure | skip (no-op, e.g. not mounted)
+
+    def success(self):
+        self._status = "success"
+        umount_operations_total.labels(operation_type=self._operation_type, status="success").inc()
+
+    def timeout(self):
+        self._status = "timeout"
+        umount_operations_total.labels(operation_type=self._operation_type, status="timeout").inc()
+
+    def failure(self):
+        self._status = "failure"
+        umount_operations_total.labels(operation_type=self._operation_type, status="failure").inc()
+
+    def skip(self):
+        """No-op outcome (e.g. path not mounted); do not record duration."""
+        self._status = "skip"
+
+    def observe_duration(self):
+        if self._status not in (None, "skip"):
+            umount_duration_seconds.labels(operation_type=self._operation_type).observe(
+                time.monotonic() - self._start_time
+            )
+
+
+@contextmanager
+def record_mount(operation_type):
+    """
+    Context manager to record mount operation metrics.
+    Call rec.success(), rec.timeout(), or rec.failure() in the appropriate branch.
+    Duration is observed on exit.
+    """
+    rec = _MountRecorder(operation_type, time.monotonic())
+    try:
+        yield rec
+    finally:
+        rec.observe_duration()
+
+
+@contextmanager
+def record_umount(operation_type):
+    """
+    Context manager to record umount operation metrics.
+    Call rec.success(), rec.timeout(), rec.failure(), or rec.skip() (for not-mounted no-op).
+    Duration is observed on exit unless rec.skip() was used.
+    """
+    rec = _UmountRecorder(operation_type, time.monotonic())
+    try:
+        yield rec
+    finally:
+        rec.observe_duration()
+
+
+class _NVMeConnectRecorder:
+    """Records outcome and duration for a single NVMe-oF connect operation."""
+
+    def __init__(self, start_time):
+        self._start_time = start_time
+        self._status = None  # success | failure
+
+    def success(self):
+        self._status = "success"
+        nvme_connect_operations_total.labels(status="success").inc()
+
+    def failure(self):
+        self._status = "failure"
+        nvme_connect_operations_total.labels(status="failure").inc()
+
+    def observe_duration(self):
+        if self._status is not None:
+            nvme_connect_duration_seconds.observe(time.monotonic() - self._start_time)
+
+
+@contextmanager
+def record_nvme_connect():
+    """
+    Context manager to record NVMe-oF connect operation metrics.
+    Call rec.success() or rec.failure(). Duration is observed on exit.
+    """
+    rec = _NVMeConnectRecorder(time.monotonic())
+    try:
+        yield rec
+    finally:
+        rec.observe_duration()
+
 
 # NFS transport (xprt) metrics
 xprt_total = Gauge(
@@ -129,9 +268,20 @@ xprt_backlog_depth = Gauge(
 def _read_file_safe(path):
     """Read file safely, return None on error."""
     try:
-        return Path(path).read_text().strip() if Path(path).exists() else None
-    except Exception:
+        p = Path(path)
+        return p.read_text().strip() if p.exists() else None
+    except OSError:
         return None
+
+
+def _parse_info_keyval(content):
+    """Parse key=value lines (e.g. from xprt info file) into a dict."""
+    result = {}
+    for line in (content or "").split("\n"):
+        if "=" in line:
+            key, val = line.split("=", 1)
+            result[key.strip()] = val.strip()
+    return result
 
 
 def _parse_state_flags(state_str):
@@ -170,48 +320,52 @@ def _is_transport_healthy(state_flags, pending, backlog):
     return True
 
 
+def _read_xprt_state_and_flags(xprt_dir):
+    """Read state file and return (raw_string, set of flags)."""
+    state_raw = _read_file_safe(xprt_dir / "state") or "UNKNOWN"
+    return state_raw, _parse_state_flags(state_raw)
+
+
+def _read_xprt_info(xprt_dir):
+    """Read info file and return dict (srcaddr, dstaddr, etc.)."""
+    info_raw = _read_file_safe(xprt_dir / "info") or ""
+    return _parse_info_keyval(info_raw)
+
+
+def _read_xprt_queues(xprt_dir):
+    """Read pending and backlog files; return (pending, backlog)."""
+    pending_raw = _read_file_safe(xprt_dir / "pending") or "0"
+    backlog_raw = _read_file_safe(xprt_dir / "backlog") or "0"
+    return int(pending_raw), int(backlog_raw)
+
+
 def _parse_single_xprt(xprt_dir):
-    """Parse a single xprt directory and return stats dict."""
-    try:
-        # Extract xprt info
-        match = re.match(r'xprt-(\d+)-(\w+)', xprt_dir.name)
-        if not match:
-            return None
-        
-        xprt_id, protocol = match.groups()
-        
-        # Read state
-        state_raw = _read_file_safe(xprt_dir / "state") or "UNKNOWN"
-        state_flags = _parse_state_flags(state_raw)
-        
-        # Read info for addresses
-        info_raw = _read_file_safe(xprt_dir / "info") or ""
-        info = {}
-        for line in info_raw.split('\n'):
-            if '=' in line:
-                key, val = line.split('=', 1)
-                info[key.strip()] = val.strip()
-        
-        # Read queue depths
-        pending = int(_read_file_safe(xprt_dir / "pending") or "0")
-        backlog = int(_read_file_safe(xprt_dir / "backlog") or "0")
-        
-        is_healthy = _is_transport_healthy(state_flags, pending, backlog)
-        
-        return {
-            "id": f"{xprt_dir.parent.name}/{xprt_dir.name}",
-            "protocol": protocol,
-            "local_addr": info.get("srcaddr", "unknown"),
-            "remote_addr": info.get("dstaddr", "unknown"),
-            "state": state_raw,
-            "state_flags": list(state_flags),
-            "pending": pending,
-            "backlog": backlog,
-            "healthy": is_healthy
-        }
-    except Exception as e:
-        logger.debug(f"Failed to parse xprt {xprt_dir}: {e}")
+    """Parse a single xprt directory and return stats dict, or None on skip/error."""
+    match = re.match(r"xprt-(\d+)-(\w+)", xprt_dir.name)
+    if not match:
         return None
+
+    try:
+        _xprt_id, protocol = match.groups()
+        state_raw, state_flags = _read_xprt_state_and_flags(xprt_dir)
+        info = _read_xprt_info(xprt_dir)
+        pending, backlog = _read_xprt_queues(xprt_dir)
+    except (OSError, ValueError) as e:
+        logger.info("Failed to parse xprt %s: %s", xprt_dir, e)
+        return None
+
+    is_healthy = _is_transport_healthy(state_flags, pending, backlog)
+    return {
+        "id": f"{xprt_dir.parent.name}/{xprt_dir.name}",
+        "protocol": protocol,
+        "local_addr": info.get("srcaddr", "unknown"),
+        "remote_addr": info.get("dstaddr", "unknown"),
+        "state": state_raw,
+        "state_flags": list(state_flags),
+        "pending": pending,
+        "backlog": backlog,
+        "healthy": is_healthy,
+    }
 
 
 def collect_xprt_stats():
@@ -345,7 +499,7 @@ class MetricsHTTPHandler(BaseHTTPRequestHandler):
             self.send_error(500, str(e))
     
     def _serve_health(self):
-        """Serve health check endpoint."""
+        """Serve health check endpoint (e.g. for Kubernetes liveness/readiness probes)."""
         response = json.dumps({"status": "ok"})
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
@@ -356,48 +510,32 @@ class MetricsHTTPHandler(BaseHTTPRequestHandler):
 def start_metrics_server(port=9090, addr='0.0.0.0'):
     """
     Start the metrics HTTP server with Prometheus endpoints.
-    
+
+    When metrics are enabled, failure to start the server is fatal: the error
+    is propagated so the process (e.g. CSI node pod) does not run with metrics
+    disabled unexpectedly.
+
     Args:
         port (int): Port to expose metrics on (default: 9090)
-        addr (str): Address to bind to (default: 0.0.0.0)
-    
-    Returns:
-        bool: True if server started successfully, False otherwise
-    
+        addr (str): Address to bind to (default: 0.0.0.0, all interfaces)
+
+    Raises:
+        OSError: If the server cannot bind (e.g. port in use).
+
     Endpoints:
         /metrics - Prometheus metrics (mount/unmount + NFS transport stats)
-        /health  - Health check
-    
-    Note:
-        If port is already in use, logs a warning and returns False.
-        CSI driver continues without metrics in this case.
-        
-        NFS transport (xprt) metrics are parsed on-demand when /metrics is scraped.
+        /health  - Health check (Kubernetes liveness/readiness)
     """
-    try:
-        import threading
-        
-        server = HTTPServer((addr, port), MetricsHTTPHandler)
-        
-        # Run server in background daemon thread
-        server_thread = threading.Thread(
-            target=server.serve_forever,
-            daemon=True,
-            name="metrics-server"
-        )
-        server_thread.start()
-        
-        logger.info(f"Metrics server started on {addr}:{port}")
-        logger.info(f"  - Prometheus: http://{addr}:{port}/metrics")
-        logger.info(f"  - Health: http://{addr}:{port}/health")
-        return True
-        
-    except OSError as e:
-        if "Address already in use" in str(e) or "address already in use" in str(e).lower():
-            logger.warning(f"Metrics port {port} already in use. Metrics will not be available. Error: {e}")
-            return False
-        logger.error(f"Failed to start metrics server due to OS error: {e}")
-        return False
-    except Exception as e:
-        logger.error(f"Failed to start metrics server: {e}")
-        return False
+    import threading
+
+    server = HTTPServer((addr, port), MetricsHTTPHandler)
+    server_thread = threading.Thread(
+        target=server.serve_forever,
+        daemon=True,
+        name="metrics-server",
+    )
+    server_thread.start()
+
+    logger.info("Metrics server started on %s:%s", addr, port)
+    logger.info("  - Prometheus: http://%s:%s/metrics", addr, port)
+    logger.info("  - Health: http://%s:%s/health", addr, port)

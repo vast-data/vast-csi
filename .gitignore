@@ -171,3 +171,6 @@ __pycache__/*
 /artifacts/
 
 .cursor/*
+
+# Local test scripts (not for repo)
+local_tests/
