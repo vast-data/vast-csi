@@ -41,13 +41,13 @@ from vast_csi.logging import logger
 mount_operations_total = Counter(
     'csi_node_mount_operations_total',
     'Total number of mount operations',
-    ['operation_type', 'status']  # operation_type: nfs|block_mount, status: success|failure|timeout
+    ['operation_type', 'status', 'node_name', 'pvc_namespace']  # Phase 1: safe labels
 )
 
 mount_duration_seconds = Histogram(
     'csi_node_mount_duration_seconds',
     'Duration of mount operations in seconds',
-    ['operation_type'],  # operation_type: nfs|block_mount
+    ['operation_type', 'node_name', 'pvc_namespace'],  # Phase 1: safe labels
     buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, float('inf'))
 )
 
@@ -55,13 +55,13 @@ mount_duration_seconds = Histogram(
 nvme_connect_operations_total = Counter(
     'csi_node_nvme_connect_operations_total',
     'Total number of NVMe-oF connect operations',
-    ['status']  # status: success|failure
+    ['status', 'node_name']  # NVMe happens before NodePublishVolume (no PVC info yet)
 )
 
 nvme_connect_duration_seconds = Histogram(
     'csi_node_nvme_connect_duration_seconds',
     'Duration of NVMe-oF connect operations in seconds',
-    [],
+    ['node_name'],  # NVMe happens before NodePublishVolume (no PVC info yet)
     buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, float('inf'))
 )
 
@@ -69,138 +69,268 @@ nvme_connect_duration_seconds = Histogram(
 umount_operations_total = Counter(
     'csi_node_umount_operations_total',
     'Total number of unmount operations',
-    ['operation_type', 'status']  # operation_type: nfs|block_mount, status: success|failure|timeout
+    ['operation_type', 'status', 'node_name', 'pvc_namespace']  # Phase 1: safe labels
 )
 
 umount_duration_seconds = Histogram(
     'csi_node_umount_duration_seconds',
     'Duration of unmount operations in seconds',
-    ['operation_type'],  # operation_type: nfs|block_mount
+    ['operation_type', 'node_name', 'pvc_namespace'],  # Phase 1: safe labels
     buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, float('inf'))
 )
 
 
 # ---------------------------------------------------------------------------
-# Context managers to record operation metrics (reduces boilerplate at call sites)
+# Metrics Registry with Auto Exception Handling and Label Injection
 # ---------------------------------------------------------------------------
 
-class _MountRecorder:
-    """Records outcome and duration for a single mount operation."""
+class MetricsRegistry:
+    """
+    Metrics registry that auto-injects labels and handles exceptions.
+    
+    Inspired by syncengine pattern - automatic exception-to-status mapping,
+    automatic timing, and automatic label injection.
+    
+    Example:
+        registry = MetricsRegistry(
+            node_name="worker-1",
+            pvc_namespace="prod"
+        )
+        
+        # Automatically records success/failure/timeout + duration + labels
+        with registry.mount("nfs"):
+            cmd.mount[src, tgt].run(timeout=60)
+    """
+    
+    def __init__(self, **context_labels):
+        """
+        Initialize registry with context labels.
+        
+        Args:
+            **context_labels: Labels to inject into all metrics
+                - node_name: Kubernetes node name
+                - pvc_namespace: PVC namespace
+                - (future: pvc_name, volume_id, etc. - opt-in)
+        
+        All labels default to "unknown" if not provided.
+        """
+        self.context_labels = {
+            'node_name': 'unknown',
+            'pvc_namespace': 'unknown',
+            **context_labels
+        }
+    
+    @contextmanager
+    def mount(self, operation_type):
+        """
+        Context manager for mount operations with auto exception handling.
+        
+        Automatically:
+        - Records counter with status label (success/failure/timeout)
+        - Records duration histogram
+        - Injects all context labels
+        - Maps plumbum exceptions to status labels
+        - Re-raises exceptions for CSI error handling
+        
+        Args:
+            operation_type (str): Type of mount operation (nfs, block_mount, etc.)
+        
+        Raises:
+            ProcessTimedOut: If mount times out
+            ProcessExecutionError: If mount fails
+        
+        Usage:
+            with registry.mount("nfs"):
+                cmd.mount['-t', 'nfs', src, tgt].run(timeout=60)
+        """
+        from plumbum.commands.processes import ProcessTimedOut
+        from plumbum import ProcessExecutionError
+        
+        start_time = time.monotonic()
+        labels = {
+            'operation_type': operation_type,
+            **self.context_labels
+        }
+        
+        try:
+            yield  # Execute the mount operation
+            
+            # Success path (no exception raised)
+            mount_operations_total.labels(**labels, status='success').inc()
+            
+        except ProcessTimedOut:
+            # Timeout path
+            mount_operations_total.labels(**labels, status='timeout').inc()
+            raise  # Re-raise for CSI error handling
+            
+        except ProcessExecutionError:
+            # Failure path (non-timeout error)
+            mount_operations_total.labels(**labels, status='failure').inc()
+            raise
+            
+        finally:
+            # Always record duration for all outcomes (success, timeout, failure)
+            duration = time.monotonic() - start_time
+            mount_duration_seconds.labels(**labels).observe(duration)
+    
+    @contextmanager
+    def umount(self, operation_type):
+        """
+        Context manager for unmount operations with auto exception handling.
+        
+        Note: Does NOT auto-suppress "not mounted" errors.
+        Caller must handle "not mounted" in their own except block if needed.
+        This ensures metrics are not recorded for no-op cases.
+        
+        Args:
+            operation_type (str): Type of unmount operation (nfs, block_mount, etc.)
+        
+        Raises:
+            ProcessTimedOut: If unmount times out
+            ProcessExecutionError: If unmount fails (including "not mounted")
+        
+        Usage:
+            try:
+                with registry.umount("nfs"):
+                    cmd.umount[path].run(timeout=60)
+            except ProcessExecutionError as exc:
+                if "not mounted" in exc.stderr:
+                    # Handle "not mounted" without recording metrics
+                    return False
+                raise
+        """
+        from plumbum.commands.processes import ProcessTimedOut
+        from plumbum import ProcessExecutionError
+        
+        start_time = time.monotonic()
+        labels = {
+            'operation_type': operation_type,
+            **self.context_labels
+        }
+        
+        try:
+            yield
+            
+            # Success path
+            umount_operations_total.labels(**labels, status='success').inc()
+            
+            # Record duration for successful operation
+            duration = time.monotonic() - start_time
+            umount_duration_seconds.labels(**labels).observe(duration)
+            
+        except ProcessTimedOut:
+            # Timeout path
+            umount_operations_total.labels(**labels, status='timeout').inc()
+            
+            # Record duration for timeout
+            duration = time.monotonic() - start_time
+            umount_duration_seconds.labels(**labels).observe(duration)
+            raise
+            
+        except ProcessExecutionError as exc:
+            # Check if "not mounted" error (no-op, don't record metrics)
+            if "not mounted" in exc.stderr:
+                raise  # Re-raise without recording metrics
+            
+            # Actual failure (not "not mounted")
+            umount_operations_total.labels(**labels, status='failure').inc()
+            
+            # Record duration for failure
+            duration = time.monotonic() - start_time
+            umount_duration_seconds.labels(**labels).observe(duration)
+            raise
+    
+    @contextmanager
+    def nvme_connect(self):
+        """
+        Context manager for NVMe-oF connect operations.
+        
+        Note: NVMe connect happens during NodeStageVolume, before NodePublishVolume,
+        so PVC name/namespace may not be available yet.
+        
+        Usage:
+            with registry.nvme_connect():
+                connect_nvme_targets(discovery_server=..., host_nqn=...)
+        """
+        from plumbum import ProcessExecutionError
+        
+        start_time = time.monotonic()
+        labels = {
+            'node_name': self.context_labels.get('node_name', 'unknown'),
+        }
+        
+        try:
+            yield
+            
+            # Success path
+            nvme_connect_operations_total.labels(**labels, status='success').inc()
+            
+        except ProcessExecutionError:
+            # Failure path
+            nvme_connect_operations_total.labels(**labels, status='failure').inc()
+            raise
+            
+        finally:
+            # Always record duration
+            duration = time.monotonic() - start_time
+            nvme_connect_duration_seconds.labels(**labels).observe(duration)
 
-    def __init__(self, operation_type, start_time):
-        self._operation_type = operation_type
-        self._start_time = start_time
-        self._status = None  # success | timeout | failure
 
-    def success(self):
-        self._status = "success"
-        mount_operations_total.labels(operation_type=self._operation_type, status="success").inc()
+# ---------------------------------------------------------------------------
+# Helper: Extract Labels from CSI Request (for future use)
+# ---------------------------------------------------------------------------
 
-    def timeout(self):
-        self._status = "timeout"
-        mount_operations_total.labels(operation_type=self._operation_type, status="timeout").inc()
-
-    def failure(self):
-        self._status = "failure"
-        mount_operations_total.labels(operation_type=self._operation_type, status="failure").inc()
-
-    def observe_duration(self):
-        if self._status is not None:
-            mount_duration_seconds.labels(operation_type=self._operation_type).observe(
-                time.monotonic() - self._start_time
+def get_metrics_registry(volume_id=None, volume_context=None):
+    """
+    Create a MetricsRegistry with labels extracted from CSI gRPC request context.
+    
+    This helper function extracts PVC namespace and other contextual
+    information from the CSI request and creates a MetricsRegistry instance
+    with all labels pre-configured.
+    
+    Args:
+        volume_id (str): CSI volume ID (optional, for future use)
+        volume_context (dict): Volume metadata from gRPC request (optional)
+            Keys injected by Kubernetes CSI:
+            - "csi.storage.k8s.io/pvc/namespace": PVC namespace
+            - "csi.storage.k8s.io/pvc/name": PVC name (future: opt-in)
+    
+    Returns:
+        MetricsRegistry: Instance with pre-configured labels
+    
+    Usage (in CSI gRPC method):
+        def NodePublishVolume(self, request, context):
+            # Extract labels and create registry
+            registry = get_metrics_registry(
+                volume_id=request.volume_id,
+                volume_context=request.volume_context
             )
-
-
-class _UmountRecorder:
-    """Records outcome and duration for a single umount operation."""
-
-    def __init__(self, operation_type, start_time):
-        self._operation_type = operation_type
-        self._start_time = start_time
-        self._status = None  # success | timeout | failure | skip (no-op, e.g. not mounted)
-
-    def success(self):
-        self._status = "success"
-        umount_operations_total.labels(operation_type=self._operation_type, status="success").inc()
-
-    def timeout(self):
-        self._status = "timeout"
-        umount_operations_total.labels(operation_type=self._operation_type, status="timeout").inc()
-
-    def failure(self):
-        self._status = "failure"
-        umount_operations_total.labels(operation_type=self._operation_type, status="failure").inc()
-
-    def skip(self):
-        """No-op outcome (e.g. path not mounted); do not record duration."""
-        self._status = "skip"
-
-    def observe_duration(self):
-        if self._status not in (None, "skip"):
-            umount_duration_seconds.labels(operation_type=self._operation_type).observe(
-                time.monotonic() - self._start_time
-            )
-
-
-@contextmanager
-def record_mount(operation_type):
+            
+            # Use it with automatic label injection
+            with registry.mount("nfs"):
+                mount(src, tgt, ...)
+    
+    References:
+    - CSI volume_context:
+      https://kubernetes-csi.github.io/docs/volume-attributes.html
     """
-    Context manager to record mount operation metrics.
-    Call rec.success(), rec.timeout(), or rec.failure() in the appropriate branch.
-    Duration is observed on exit.
-    """
-    rec = _MountRecorder(operation_type, time.monotonic())
-    try:
-        yield rec
-    finally:
-        rec.observe_duration()
-
-
-@contextmanager
-def record_umount(operation_type):
-    """
-    Context manager to record umount operation metrics.
-    Call rec.success(), rec.timeout(), rec.failure(), or rec.skip() (for not-mounted no-op).
-    Duration is observed on exit unless rec.skip() was used.
-    """
-    rec = _UmountRecorder(operation_type, time.monotonic())
-    try:
-        yield rec
-    finally:
-        rec.observe_duration()
-
-
-class _NVMeConnectRecorder:
-    """Records outcome and duration for a single NVMe-oF connect operation."""
-
-    def __init__(self, start_time):
-        self._start_time = start_time
-        self._status = None  # success | failure
-
-    def success(self):
-        self._status = "success"
-        nvme_connect_operations_total.labels(status="success").inc()
-
-    def failure(self):
-        self._status = "failure"
-        nvme_connect_operations_total.labels(status="failure").inc()
-
-    def observe_duration(self):
-        if self._status is not None:
-            nvme_connect_duration_seconds.observe(time.monotonic() - self._start_time)
-
-
-@contextmanager
-def record_nvme_connect():
-    """
-    Context manager to record NVMe-oF connect operation metrics.
-    Call rec.success() or rec.failure(). Duration is observed on exit.
-    """
-    rec = _NVMeConnectRecorder(time.monotonic())
-    try:
-        yield rec
-    finally:
-        rec.observe_duration()
+    import os
+    volume_context = volume_context or {}
+    
+    # Extract PVC namespace from volume_context (Kubernetes injects this automatically)
+    pvc_namespace = volume_context.get("csi.storage.k8s.io/pvc/namespace", "unknown")
+    
+    # Node name from environment variable (injected by Helm chart)
+    # See: charts/vastcsi/templates/node.yaml
+    node_name = os.getenv("NODE_NAME", "unknown")
+    
+    return MetricsRegistry(
+        node_name=node_name,
+        pvc_namespace=pvc_namespace,
+        # Future: Add opt-in labels behind feature flag
+        # pvc_name=volume_context.get("csi.storage.k8s.io/pvc/name", "unknown"),
+        # volume_id=volume_id or "unknown",
+    )
 
 
 # NFS transport (xprt) metrics
