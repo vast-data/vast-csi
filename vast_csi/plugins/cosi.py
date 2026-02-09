@@ -90,7 +90,9 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented):
 
 def serve(server: grpc.Server, conf: Config):
     global CONF
-    CONF = conf
+    import vast_csi.plugins.base
+
+    vast_csi.plugins.base.CONF = CONF = conf
     cosi_identity = CosiIdentity()
     cosi_grpc.add_IdentityServicer_to_server(cosi_identity, server)
 

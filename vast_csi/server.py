@@ -20,6 +20,7 @@ import grpc
 from .logging import logger, init_logging
 from .utils import patch_traceback_format
 from .configuration import Config
+from . import metrics
 
 
 def serve(plugin: str):
@@ -39,7 +40,16 @@ def serve(plugin: str):
 
         urllib3.disable_warnings()
 
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=CONF.worker_threads))
+    if CONF.metrics_enabled:
+        metrics.start_metrics_server(
+            port=CONF.metrics_port,
+            is_node_service=CONF.has_running_node
+        )
+
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=CONF.worker_threads)
+    )
+    
     plugin_module.serve(server, CONF)
     server.add_insecure_port(CONF.endpoint)
     server.start()

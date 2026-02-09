@@ -40,6 +40,7 @@ from vast_csi.builders import  parse_volume_id
 from vast_csi.exceptions import Abort, LookupFieldError
 from vast_csi.vms_session import get_vms_session, VmsSession
 from vast_csi.luks_utils import get_luks_manager, LuksManager
+from vast_csi.metrics import get_metrics_registry
 from vast_csi.quantity import parse_quantity
 
 
@@ -86,7 +87,7 @@ class Instrumented:
             params = {fld.name: value for fld, value in request.ListFields()}
             # secrets are not logged and not the part of function signature.
             secrets = params.pop("secrets", {})
-            missing_params = required_params - {"request", "context", "vms_session", "exit_stack", "luks_manager"} - set(params)
+            missing_params = required_params - {"request", "context", "vms_session", "exit_stack", "luks_manager", "metrics_registry"} - set(params)
 
             # Get cluster_name from volume_id, snapshot_id or source_volume_id in case of id identifier with metadata
             cluster_names = set()
@@ -132,6 +133,20 @@ class Instrumented:
                 )
 
             exit_stack = ExitStack()
+            
+            if CONF.metrics_enabled:
+                metrics_registry = get_metrics_registry(
+                    params, hostname=CONF.node_id, driver_name=CONF.plugin_name
+                )
+                
+                if "metrics_registry" in required_params or "metrics_registry" in non_required_params:
+                    params["metrics_registry"] = metrics_registry
+                
+                # Track CSI operation metrics (execution time + status code)
+                exit_stack.enter_context(
+                    metrics_registry.csi_operation(method)
+                )
+
             if "exit_stack" in required_params:
                 params["exit_stack"] = exit_stack
 

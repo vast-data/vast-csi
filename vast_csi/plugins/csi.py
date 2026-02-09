@@ -16,6 +16,7 @@
 import os
 from datetime import datetime
 from tempfile import mkdtemp
+from contextlib import nullcontext
 
 from json import JSONDecodeError
 from plumbum import cmd
@@ -29,7 +30,6 @@ from easypy.caching import cached_property
 from easypy.humanize import yesno_to_bool
 
 from vast_csi.logging import logger
-from vast_csi import metrics
 from vast_csi.utils import (
     get_mount,
     normalize_mount_options,
@@ -91,7 +91,16 @@ ServiceCapabilities = cap_lib.ServiceCapabilities(
 ################################################################
 
 
-def mount(src, tgt, flags=""):
+def mount(src, tgt, flags="", metrics_registry=None):
+    """
+    Mount NFS volume with auto-instrumented metrics.
+
+    Args:
+        src: Source path (NFS export)
+        tgt: Target path (mount point)
+        flags: Mount options
+        metrics_registry: Optional MetricsRegistry instance
+    """
     executable = cmd.mount
     flags = [f.strip() for f in flags.split(",")]
     if CONF.mock_vast:
@@ -102,41 +111,70 @@ def mount(src, tgt, flags=""):
     timeout = CONF.mount_umount_timeout
     flags_str = ",".join(flags) if flags else "(none)"
     logger.info(f"Mounting {src!r} -> {tgt!r} with flags: {flags_str}, timeout: {timeout}s")
-    with timing() as timer:
-        try:
+    
+    if metrics_registry:
+        metrics_manager = metrics_registry.mount("nfs")
+    else:
+        metrics_manager = nullcontext()
+
+    try:
+        with (
+            metrics_manager,
+            timing() as timer,
+        ):
             executable['-v', src, tgt].run(timeout=timeout)
-        except ProcessTimedOut:
-            raise MountFailed(detail=f"mount timed out after {timeout}s", src=src, tgt=tgt, mount_options=flags)
-        except ProcessExecutionError as exc:
-            raise MountFailed(detail=exc.stderr, src=src, tgt=tgt, mount_options=flags)
+    except ProcessTimedOut:
+        raise MountFailed(detail=f"mount timed out after {timeout}s", src=src, tgt=tgt, mount_options=flags)
+    except ProcessExecutionError as exc:
+        raise MountFailed(detail=exc.stderr, src=src, tgt=tgt, mount_options=flags)
+    
     logger.info(f"Mount succeeded in {timer.elapsed}: {src!r} -> {tgt!r}")
 
 
-def umount(path, ignore_not_mounted=False):
-    """Unmount a path with logging"""
+def umount(path, ignore_not_mounted=False, metrics_registry=None):
+    """
+    Unmount volume with auto-instrumented metrics.
 
+    Args:
+        path: Path to unmount
+        ignore_not_mounted: If True, ignore "not mounted" errors
+        metrics_registry: Optional MetricsRegistry instance (injected by framework if metrics enabled)
+    
+    Returns:
+        True if unmounted, False if not mounted (when ignore_not_mounted=True)
+    """
     timeout = CONF.mount_umount_timeout
     logger.info(f"Unmounting {path!r} with timeout: {timeout}s")
 
     def do_umount():
         return cmd.umount['-v', path].run()
 
-    with timing() as timer:
-        try:
+    if metrics_registry:
+        metrics_manager = metrics_registry.umount("nfs")
+    else:
+        metrics_manager = nullcontext()
+
+    try:
+        with (
+            metrics_manager,
+            timing() as timer,
+        ):
             if timeout:
                 run_with_timeout(do_umount, timeout)
             else:
                 do_umount()
-        except (TimeoutError, ProcessTimedOut):
-            raise UmountTimedOut(f"umount timed out after {timeout}s for path: {path}")
-        except ProcessExecutionError as exc:
-            if "not mounted" in exc.stderr:
-                if ignore_not_mounted:
-                    logger.info(f"Umount: {path!r} is not mounted (ignored)")
-                    return False
-                logger.warning(f"Umount failed - {path!r} is not mounted (race?)")
+    except (TimeoutError, ProcessTimedOut):
+        raise UmountTimedOut(f"umount timed out after {timeout}s for path: {path}")
+    except ProcessExecutionError as exc:
+        # Handle "not mounted" without recording metrics
+        if "not mounted" in exc.stderr:
+            if ignore_not_mounted:
+                logger.info(f"Umount: {path!r} is not mounted (ignored)")
                 return False
-            raise
+            logger.warning(f"Umount failed - {path!r} is not mounted (race?)")
+            return False
+        raise  # Re-raise actual failures
+
     logger.info(f"Umount succeeded in {timer.elapsed}: {path!r}")
     return True
 
@@ -580,6 +618,7 @@ class CsiNode(NodeBase, Instrumented):
         publish_context=None,
         readonly=False,
         volume_context=None,
+        metrics_registry=None
     ):
         exit_stack.enter_context(volume_locked(volume_id))
         volume_context = volume_context or dict()
@@ -670,7 +709,12 @@ class CsiNode(NodeBase, Instrumented):
                 volume_context.get("mount_options", publish_context.get("mount_options", ""))
             )
         try:
-            mount(mount_spec, target_path, flags=",".join(flags))
+            mount(
+                mount_spec,
+                target_path,
+                flags=",".join(flags),
+                metrics_registry=metrics_registry,
+            )
             logger.info(f"mounted: {target_path} flags: {flags}")
         except Exception:
             meta_file.delete()
@@ -684,6 +728,7 @@ class CsiNode(NodeBase, Instrumented):
             target_path,
             exit_stack,
             vms_session=None,
+            metrics_registry=None,
     ):
         exit_stack.enter_context(volume_locked(volume_id))
         target_path = local.path(target_path)
@@ -699,8 +744,11 @@ class CsiNode(NodeBase, Instrumented):
                     logger.info(f"{target_path} is not mounted")
                     break
                 try:
-                    umount(target_path, ignore_not_mounted=True)
-                    break
+                    umount(
+                        target_path,
+                        ignore_not_mounted=False,
+                        metrics_registry=metrics_registry,
+                    )
                 except UmountTimedOut as exc:
                     raise Abort(UNKNOWN, str(exc))
             else:

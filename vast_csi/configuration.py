@@ -45,7 +45,7 @@ class Config(TypedEnv):
     worker_threads = TypedEnv.Int("X_CSI_WORKER_THREADS", default=10)
 
     metrics_port = TypedEnv.Int("X_CSI_METRICS_PORT", default=9090)
-    metrics_enabled = TypedEnv.Bool("X_CSI_METRICS_ENABLED", default=True)
+    metrics_enabled = TypedEnv.Bool("X_CSI_METRICS_ENABLED", default=False)
     
     dont_use_trash_api = TypedEnv.Bool("X_CSI_DONT_USE_TRASH_API", default=False)
     use_local_ip_for_mount = TypedEnv.Str("X_CSI_USE_LOCALIP_FOR_MOUNT", default="")
@@ -134,6 +134,10 @@ class Config(TypedEnv):
     @cached_property
     def has_running_controller(self):
         return self.mode in {CONTROLLER_AND_NODE, CONTROLLER}
+
+    @cached_property
+    def has_running_node(self):
+        return self.mode in {CONTROLLER_AND_NODE, NODE}
 
     avoid_trash_api = Timer(now=-1, expiration=HOUR)
 
