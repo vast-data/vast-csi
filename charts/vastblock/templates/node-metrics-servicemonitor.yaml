@@ -2,7 +2,7 @@
 {{/*
   ServiceMonitor (Prometheus Operator CRD): tells Prometheus to scrape this Service's /metrics.
   Only has effect when Prometheus Operator is installed. See:
-  https://prometheus-operator.dev/docs/operator/api/#servicemonitor
+  https://prometheus-operator.dev/docs/getting-started/introduction/
 */}}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor

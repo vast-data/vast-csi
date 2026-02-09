@@ -416,6 +416,7 @@ node:
   # See controller.priorityClassName section for details
   priorityClassName: system-cluster-critical
   # Metrics configuration for CSI node
+  # Usage: see docs/METRICS_GUIDE.md (Prometheus Operator vs manual Prometheus)
   metrics:
     # Enable Prometheus metrics endpoint (disabled by default; not common to run driver with metrics)
     # See also: https://prometheus.io/docs/concepts/metric_types/
@@ -427,9 +428,11 @@ node:
     # Release name differs per install (e.g. block vs nfs), so DNS names do not collide.
     port: 9091
     # ServiceMonitor configuration (Prometheus Operator CRD)
-    # Ref: https://prometheus-operator.dev/docs/operator/api/#servicemonitor
+    # Ref: https://prometheus-operator.dev/docs/getting-started/introduction/
+    # Note: This is ONLY for users with Prometheus Operator installed.
+    #       If you use vanilla Prometheus, configure scrape targets manually instead.
     serviceMonitor:
-      # Enable ServiceMonitor creation (requires Prometheus Operator)
+      # Enable ServiceMonitor creation (requires Prometheus Operator installed in cluster)
       enabled: false
       # Scrape interval
       interval: 30s
