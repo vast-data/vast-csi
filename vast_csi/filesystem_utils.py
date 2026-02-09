@@ -5,9 +5,12 @@ from threading import RLock
 from collections import defaultdict
 from contextlib import contextmanager
 
+from easypy.units import MINUTE
 from requests.exceptions import HTTPError  # noqa
 from plumbum import local, cmd, ProcessExecutionError
+from plumbum.commands.processes import ProcessTimedOut
 from vast_csi.logging import logger
+from vast_csi.utils import run_with_timeout
 
 
 PROC_MOUNT_INFO = "/proc/self/mountinfo"
@@ -73,8 +76,19 @@ class HostCommand:
             *args: Positional arguments to pass to the command.
             timeout (float or None, optional): Timeout for the command execution in seconds. Defaults to None.
         """
-        executable = self.get_executable(*args)
-        retcode, stdout, stderr = executable.run(retcode=None, timeout=timeout)
+
+        def _execute_command():
+            return self.get_executable(*args).run(retcode=None)
+
+        if timeout is not None:
+            try:
+                retcode, stdout, stderr = run_with_timeout(_execute_command, timeout)
+            except TimeoutError:
+                cmd_str = self._get_cmd_chain(*args)
+                raise ProcessTimedOut(f"Command timed out after {timeout}s: {cmd_str}", None)
+        else:
+            retcode, stdout, stderr = _execute_command()
+
         if retcode != 0:
             # Avoid using cmd.formulate() or any kind of cmd resolving within docker system context.
             # Because such commands as 'nvme' are available only on the host system.
@@ -234,7 +248,7 @@ class MountInfo:
 
 def get_filesystem_type(path: str):
     """Determine the filesystem type of given path using the `blkid` command."""
-    retcode, stdout, stderr = cmd.blkid[path, "-s", "TYPE", "-o", "value"].run(retcode=None)
+    retcode, stdout, stderr = cmd.blkid[path, "-s", "TYPE", "-o", "value"].run(retcode=None, timeout=10)
     if retcode not in (0, 2):
         # Disk device is unformatted.
         # For `blkid`, if the specified token (TYPE/PTTYPE, etc) was
@@ -268,7 +282,7 @@ def format_device(requested_fs: str, device: str, format_args: str = None):
         args += split(format_args)
     args.append(str(device))
     logger.info(f"{requested_fs} fs type has been requested with {args=}. Formatting device.")
-    local[f"mkfs.{requested_fs}"][args] & logger.pipe_info(f"{requested_fs}: ")
+    local[f"mkfs.{requested_fs}"][args] & logger.pipe_info(f"{requested_fs}: ", line_timeout=10 * MINUTE)
     return True
 
 
