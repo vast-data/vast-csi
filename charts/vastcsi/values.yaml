@@ -376,14 +376,18 @@ node:
   priorityClassName: system-cluster-critical
   # Metrics configuration for CSI node
   metrics:
-    # Enable Prometheus metrics endpoint
-    enabled: true
+    # Enable Prometheus metrics endpoint (disabled by default; not common to run driver with metrics)
+    enabled: false
     # Port for metrics HTTP server
-    # Note: Uses 9090 (vastblock uses 9091) to avoid conflicts when both charts are deployed
+    # When both vastcsi (NFS) and vastblock are installed, each driver has its own Service and port:
+    # - vastcsi:   <release>-vast-node-metrics.<namespace>.svc.cluster.local:9090
+    # - vastblock: <release>-vast-node-metrics.<namespace>.svc.cluster.local:9091
+    # Release name differs per install, so DNS names do not collide.
     port: 9090
-    # ServiceMonitor configuration (requires Prometheus Operator)
+    # ServiceMonitor configuration (Prometheus Operator CRD)
+    # Ref: https://prometheus-operator.dev/docs/operator/api/#servicemonitor
     serviceMonitor:
-      # Enable ServiceMonitor creation
+      # Enable ServiceMonitor creation (requires Prometheus Operator)
       enabled: false
       # Scrape interval
       interval: 30s

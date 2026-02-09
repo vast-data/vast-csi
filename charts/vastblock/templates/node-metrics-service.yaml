@@ -1,5 +1,5 @@
 {{- if .Values.node.metrics.enabled }}
-{{/* Vast CSI Node Metrics Service */}}
+{{/* Vast CSI Node Metrics Service - selects only this chart's node pods (block driver) */}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -14,6 +14,7 @@ spec:
   clusterIP: None  # Headless service for DaemonSet
   selector:
     app: csi-vast-node
+    csi.vastdata.com/driver: block
 {{- include "vastcsi.selectorLabels" . | nindent 4 }}
   ports:
     - name: metrics

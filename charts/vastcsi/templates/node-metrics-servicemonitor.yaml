@@ -1,5 +1,9 @@
 {{- if and .Values.node.metrics.enabled .Values.node.metrics.serviceMonitor.enabled }}
-{{/* Vast CSI Node ServiceMonitor */}}
+{{/*
+  ServiceMonitor (Prometheus Operator CRD): tells Prometheus to scrape this Service's /metrics.
+  Only has effect when Prometheus Operator is installed. See:
+  https://prometheus-operator.dev/docs/operator/api/#servicemonitor
+*/}}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:

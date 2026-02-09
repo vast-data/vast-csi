@@ -18,12 +18,14 @@ spec:
   selector:
     matchLabels:
       app: "csi-vast-node"
+      csi.vastdata.com/driver: block
 {{- include "vastcsi.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
         app: csi-vast-node
         role: csi-vast
+        csi.vastdata.com/driver: block
 {{- include "vastcsi.labels" . | nindent 8 }}
       annotations:
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
