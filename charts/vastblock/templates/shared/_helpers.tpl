@@ -52,6 +52,10 @@
   value: {{ $.Values.blockHostsAutoPrune | quote }}
 - name: X_CSI_MOUNT_UMOUNT_TIMEOUT
   value: {{ $.Values.mountUmountTimeout | quote }}
+{{ if $.Values.resolveMountSymlinks -}}
+- name: X_CSI_RESOLVE_MOUNT_SYMLINKS
+  value: {{ $.Values.resolveMountSymlinks | quote }}
+{{- end }}
 
 {{- end }}
 
