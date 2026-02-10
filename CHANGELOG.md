@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## Version 2.6.6
+* Enable ReadOnlyMany (ROX) for Block Filesystem Volumes via `allowROManyBlockFsMode` Flag (VCSI-372)
+
 ## Version 2.6.5
 * Additional logging and timeout for mount/unmount operations (VCSI-343)
 * Added `EXPAND_VOLUME` node capability and implemented `NodeExpandVolume` as a no-op for NFS filesystem volumes. (VCSI-345)
