@@ -137,6 +137,16 @@ spec:
               value: unix://{{ $plugin_proxy_sock }}
             - name: X_CSI_MODE
               value: controller
+            - name: X_CSI_METRICS_ENABLED
+              value: "{{ .Values.controller.metrics.enabled }}"
+            - name: X_CSI_METRICS_PORT
+              value: "{{ .Values.controller.metrics.port }}"
+{{- if .Values.controller.metrics.enabled }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.controller.metrics.port }}
+              protocol: TCP
+{{- end }}
           volumeMounts:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}

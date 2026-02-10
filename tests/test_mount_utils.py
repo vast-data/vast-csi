@@ -406,7 +406,7 @@ class TestDurationLogging:
     """Tests to verify duration is properly logged using easypy timing."""
 
     def test_mount_duration_logged(self, mock_conf):
-        """Test that mount duration is logged on success using Duration format."""
+        """Test that mount success is logged (duration is recorded in Prometheus metrics)."""
         with patch("vast_csi.plugins.csi.CONF", mock_conf):
             from vast_csi.plugins import csi
 
@@ -422,11 +422,10 @@ class TestDurationLogging:
             ):
                 csi.mount("/dev/sda1", "/mnt/test")
 
-                # Check that duration was logged with Duration format (e.g., "100ms", "1.5s")
+                # Success is logged (duration is in csi_node_mount_duration_seconds metric)
                 last_call = mock_log_info.call_args_list[-1][0][0]
-                assert "succeeded in" in last_call
-                # Duration uses units like 'ms', 's', 'm' - check for common patterns
-                assert any(unit in last_call for unit in ["ms", "us", "ns", "s:"])
+                assert "Mount succeeded" in last_call
+                assert "/dev/sda1" in last_call and "/mnt/test" in last_call
 
     def test_umount_timeout_exception_message(self, mock_conf):
         """Test that umount timeout exception contains proper message."""
