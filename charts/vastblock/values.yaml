@@ -45,6 +45,11 @@ hostNamePrefix: ""
 # and an error will be returned. This prevents the driver from getting stuck indefinitely
 # due to network issues or unresponsive storage.
 mountUmountTimeout: 30
+# Enable symlink resolution when querying mount information.
+# When enabled, mount paths containing symlinks (e.g., /dev/disk/by-uuid/*) will be
+# resolved to their canonical paths before comparison.
+# Default: false (skip symlink resolution for maximum performance)
+resolveMountSymlinks: false
 
 ####################
 # VAST CSI STORAGE CLASS OPTIONS

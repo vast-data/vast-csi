@@ -180,28 +180,34 @@ class MountInfo:
 
     @classmethod
     def from_host(cls):
-        """Return a list of MountInfo objects from the host's mount info."""
-        return [
-            MountInfo(line) for line in hostcmd.cat(PROC_MOUNT_INFO).split("\n") if line
-        ]
+        """
+        Return a list of MountInfo objects from the host's mount info.
+        Host mounts are visible due to mountPropagation: Bidirectional on /var/lib/kubelet.
+        """
+        with open("/proc/self/mountinfo") as f:
+            return [MountInfo(line) for line in f if line.strip()]
 
     @classmethod
-    def get_mount_by_destination(cls, dest_path):
+    def get_mount_by_destination(cls, dest_path, resolve_symlink=False):
         """Return the source device for a path.
         The source of a mounted path will either be the mount source of the
         mount point or the root if it's a bind mount.
-        This method  resolves symlinks to support real mounts.
+        
+        Args:
+            dest_path: Path to search for in mount points
+            resolve_symlink: If True, resolve symlinks via get_host_realpath (slower).
+                           If False (default), use paths as-is for better performance.
         """
-        dest_path_resolved = get_host_realpath(dest_path)
+        dest_path_resolved = get_host_realpath(dest_path) if resolve_symlink else dest_path
         mount_info = cls.from_host()
         for mount in mount_info:
-            mount_point_resolved = get_host_realpath(mount.mount_point)
+            mount_point_resolved = get_host_realpath(mount.mount_point) if resolve_symlink else mount.mount_point
             if mount_point_resolved == dest_path_resolved:
                 return mount
         return None
 
     @classmethod
-    def get_mounts_by_source(cls, src):
+    def get_mounts_by_source(cls, src, resolve_symlink=False):
         """
         Retrieve a list of mounts associated with a given source.
         This method behaves differently for bind mounts, depending
@@ -210,6 +216,12 @@ class MountInfo:
            The search is performed by matching the device.
          - For bind mounts to directories, the source is the directory.
            The search establishes a relationship between the source and its mount point.
+        
+        Args:
+            src: Source path to search for
+            resolve_symlink: If True, resolve symlinks via get_host_realpath (slower).
+                           If False (default), use paths as-is for better performance.
+        
         Returns:
            A tuple containing:
            - The mount object corresponding to the given source, if found.
@@ -217,14 +229,14 @@ class MountInfo:
         """
         src_mount = None
         target_mounts = []
-        src_resolved = get_host_realpath(src)
+        src_resolved = get_host_realpath(src) if resolve_symlink else src
 
         mounts_by_source = defaultdict(list)
         mount_info = cls.from_host()
 
         for mount in mount_info:
-            mount_point_resolved = get_host_realpath(mount.mount_point)
-            mount_source_resolved = get_host_realpath(mount.source)
+            mount_point_resolved = get_host_realpath(mount.mount_point) if resolve_symlink else mount.mount_point
+            mount_source_resolved = get_host_realpath(mount.source) if resolve_symlink else mount.source
 
             if not src_mount and mount_point_resolved == src_resolved:
                 src_mount = mount
@@ -232,8 +244,8 @@ class MountInfo:
                 mounts_by_source[mount_source_resolved].append(mount)
 
         if src_mount:
-            resolved_src = get_host_realpath(src_mount.source)
-            resolved_mount_point = get_host_realpath(src_mount.mount_point)
+            resolved_src = get_host_realpath(src_mount.source) if resolve_symlink else src_mount.source
+            resolved_mount_point = get_host_realpath(src_mount.mount_point) if resolve_symlink else src_mount.mount_point
             target_mounts = mounts_by_source[resolved_src] + mounts_by_source[resolved_mount_point]
 
         return src_mount, target_mounts
