@@ -149,7 +149,7 @@ def umount(path, ignore_not_mounted=False):
 
     def do_umount():
         return cmd.umount['-v', path].run()
-    
+
     with timing() as timer:
         try:
             if timeout:
@@ -205,7 +205,9 @@ def umount_safe(path):
 
 def remove_path_if_not_mounted(path):
     path = local.path(path)
-    if MountInfo.get_mount_by_destination(dest_path=path):
+    if MountInfo.get_mount_by_destination(
+            dest_path=path, resolve_symlink=CONF.resolve_mount_symlinks,
+    ):
         raise Exception(f"Path {path} is mounted. Cannot remove.")
     path.delete()
 
@@ -530,12 +532,13 @@ class BlockNode(NodeBase, Instrumented):
         device_bind_path = get_device_bind_path(staging_target_path)
 
         logger.info("Checking if volume is already staged...")
-        if MountInfo.get_mount_by_destination(dest_path=device_bind_path):
+        if MountInfo.get_mount_by_destination(
+                dest_path=device_bind_path, resolve_symlink=CONF.resolve_mount_symlinks,
+        ):
             logger.info(f"Volume {volume_id} already staged")
             return types.StageResp()  # idempotent
 
         if not publish_context:
-            logger.info("Retrieving publish context from VMS...")
             publish_context = self._get_publish_context_for_non_attach_required(
                 vms_session=vms_session,
                 node_id=CONF.node_id,
@@ -544,7 +547,6 @@ class BlockNode(NodeBase, Instrumented):
                 volume_context=volume_context,
                 exit_stack=exit_stack,
             )
-            logger.info("Publish context retrieved successfully")
         subsystem_nqn = publish_context["subsystem_nqn"]
         host_nqn = publish_context["host_nqn"]
         nguid = publish_context["nguid"]
@@ -604,7 +606,7 @@ class BlockNode(NodeBase, Instrumented):
 
         if volume_capabilities.is_filesystem:
             fs_type = volume_capabilities.fs_type
-
+            logger.info(f"Formatting device {device_path} with {fs_type} filesystem (this may take several minutes for large volumes)...")
             with timing() as timer:
                 formatted = format_device(requested_fs=fs_type, device=device_path)
             if formatted:
@@ -614,48 +616,47 @@ class BlockNode(NodeBase, Instrumented):
             #   - fs_type is not xfs. xfs does not require fsck.
             elif not fs_type == "xfs":
                 check_fs_integrity(device=device_path)
+                logger.info(f"Filesystem integrity check completed for {device_path}")
             # The source PVC may have a different size but was never attached and, therefore, never formatted.
             # In this case, the cloned PVC will be formatted as if it were a brand-new PVC,
             # eliminating the need for resizing.
             if need_resize and not formatted:
+                logger.info(f"Resizing filesystem on device {device_path} (this may take several minutes)...")
                 with temporary_mount(
                         src=device_path, tgt_dir=staging_target_path, fs_type=fs_type
                 ) as temp_mount:
                     if luks_manager.requires_encryption():
                         luks_manager.luks_resize_device(device_path=device_path)
                     resize_device(device=device_path, target_mount=temp_mount, fs_type=fs_type)
+                logger.info(f"Filesystem resize completed for {device_path}")
 
         logger.info(f"Binding device at {device_path} to {device_bind_path}.")
         staging_target_path.mkdir()
         device_bind_path.open("a").close()
-        logger.info(f"Staring mount of device at {device_path} to {device_bind_path}.")
         mount(src=device_path, tgt=device_bind_path, bind=True)
-        logger.info(f"Volume {volume_id} staged successfully")
         return types.StageResp()
 
     def NodeUnstageVolume(self, volume_id, staging_target_path, luks_manager):
         staging_target_path = local.path(staging_target_path)
         device_bind_path = get_device_bind_path(staging_target_path)
-        logger.info(f"Device bind path: {device_bind_path}")
-        
+
         logger.info("Checking for existing mounts...")
-        staging_mount, target_mounts = MountInfo.get_mounts_by_source(src=device_bind_path)
+        staging_mount, target_mounts = MountInfo.get_mounts_by_source(
+            src=device_bind_path, resolve_symlink=CONF.resolve_mount_symlinks,
+        )
 
         if target_mounts:
             targets_mount_points = ", ".join(mount.mount_point for mount in target_mounts)
             logger.info(f"Staging path {device_bind_path} is being used by {len(target_mounts)} target(s): {targets_mount_points}")
-        
+
         if staging_mount:
-            logger.info(f"Unmounting device at {device_bind_path}...")
             umount_safe(device_bind_path)
-            logger.info(f"Device unmounted successfully")
         else:
             logger.info(f"Device not found at {device_bind_path}")
 
         # If device is encrypted teardown accordingly
         luks_manager.luks_close_device()
         remove_path_if_not_mounted(device_bind_path)
-        logger.info(f"Volume {volume_id} unstaged successfully")
         return types.UnstageResp()
 
     def NodePublishVolume(
@@ -673,10 +674,11 @@ class BlockNode(NodeBase, Instrumented):
     ):
         volume_context = volume_context or dict()
         target_path = local.path(target_path)
-        logger.info(f"Target path: {target_path}, Readonly: {readonly}")
 
         logger.info("Checking if volume is already published...")
-        if MountInfo.get_mount_by_destination(dest_path=target_path):
+        if MountInfo.get_mount_by_destination(
+                dest_path=target_path, resolve_symlink=CONF.resolve_mount_symlinks,
+        ):
             logger.info(f"Volume already published at {target_path}")
             return types.NodePublishResp()  # idempotent
 
@@ -684,7 +686,6 @@ class BlockNode(NodeBase, Instrumented):
         is_ephemeral = volume_context.get("csi.storage.k8s.io/ephemeral") == "true"
         logger.info(f"Volume type: {'Ephemeral' if is_ephemeral else 'Persistent'}")
         if is_ephemeral:
-            logger.info("Handling ephemeral volume...")
             if not vms_session:
                 raise Exception(
                     "Ephemeral Volume provisioning requires "
@@ -702,7 +703,6 @@ class BlockNode(NodeBase, Instrumented):
                 volume_capability=volume_capability,
                 exit_stack=exit_stack,
             )
-            logger.info("Staging ephemeral volume...")
             self.NodeStageVolume.__wrapped__(
                 self,
                 volume_id=volume_id,
@@ -714,7 +714,6 @@ class BlockNode(NodeBase, Instrumented):
                 publish_context=publish_context,
                 volume_context=volume_context
             )
-            logger.info("Ephemeral volume staged successfully")
         assert staging_target_path
         device_bind_path = get_device_bind_path(staging_target_path)
         logger.info(f"Device bind path: {device_bind_path}")
@@ -743,7 +742,6 @@ class BlockNode(NodeBase, Instrumented):
             # treats them as a hierarchical storage structure.
             target_path.mkdir()
             meta_file = target_path[".vast-csi-meta"]
-            logger.info("Storing metadata file...")
             self._store_meta_file(
                 meta_file=meta_file,
                 volume_id=volume_id,
@@ -762,12 +760,12 @@ class BlockNode(NodeBase, Instrumented):
             )
             # Block devices are raw storage devices that are accessed as single files by the operating system.
             target_path.open("a").close()
-            logger.info(f"Bind mounting block device from {device_bind_path} to {target_path}")
             mount(src=device_bind_path, tgt=target_path, flags=mount_flags, bind=True)
-            logger.info("Block device mounted successfully")
 
         logger.info("Verifying mount...")
-        if not MountInfo.get_mount_by_destination(dest_path=target_path):
+        if not MountInfo.get_mount_by_destination(
+                dest_path=target_path, resolve_symlink=CONF.resolve_mount_symlinks,
+        ):
             err_msg = (
                 f"An unexpected error occurred while attempting to mount"
                 f" {device_bind_path} to {target_path}."
@@ -775,31 +773,27 @@ class BlockNode(NodeBase, Instrumented):
             if is_file_system:
                 err_msg += f" Check if mount options {mount_flags} are correct for chosen filesystem {fs_type}."
             raise Abort(NOT_FOUND, err_msg)
-        logger.info(f"Volume {volume_id} published successfully")
         return types.NodePublishResp()
 
     def NodeUnpublishVolume(self, volume_id, target_path, luks_manager, vms_session=None):
         target_path = local.path(target_path)
         logger.info(f"Target path: {target_path}")
         meta_file = target_path[".vast-csi-meta"]
-        
+
         logger.info("Checking if volume is mounted...")
-        if MountInfo.get_mount_by_destination(dest_path=target_path):
-            logger.info(f"Unmounting volume from {target_path}...")
+        if MountInfo.get_mount_by_destination(
+                dest_path=target_path, resolve_symlink=CONF.resolve_mount_symlinks,
+        ):
             umount_safe(target_path)
-            logger.info("Volume unmounted successfully")
         else:
             logger.info(f"Device not found at {target_path}")
-        
         if meta_file.exists():
-            logger.info("Processing metadata file...")
             meta = self._read_and_process_meta_file(
                 meta_file=meta_file,
                 volume_id=volume_id,
                 vms_session=vms_session,
             )
             if meta.get("is_ephemeral"):
-                logger.info("Ephemeral volume detected, unstaging...")
                 # EV volumes doesn't have staging path. Use target path as staging path.
                 self.NodeUnstageVolume.__wrapped__(
                     self,
@@ -807,13 +801,10 @@ class BlockNode(NodeBase, Instrumented):
                     luks_manager=luks_manager,
                     staging_target_path=target_path
                 )
-                logger.info("Ephemeral volume unstaged successfully")
             logger.info("Removing metadata file...")
             os.remove(meta_file)
-        
-        logger.info("Removing target path...")
+
         remove_path_if_not_mounted(target_path)
-        logger.info(f"Volume {volume_id} unpublished successfully")
         return types.NodeUnpublishResp()
 
     def NodeExpandVolume(
@@ -832,7 +823,9 @@ class BlockNode(NodeBase, Instrumented):
         requested_capacity = capacity_range.required_bytes
 
         logger.info(f"Requested capacity for volume {volume_id}: {requested_capacity} bytes")
-        staging_mount = MountInfo.get_mount_by_destination(dest_path=device_bind_path)
+        staging_mount = MountInfo.get_mount_by_destination(
+            dest_path=device_bind_path, resolve_symlink=CONF.resolve_mount_symlinks,
+        )
         if not staging_mount:
             raise Abort(NOT_FOUND, f"Mount information not found for staging path: {device_bind_path}")
 
@@ -858,7 +851,9 @@ class BlockNode(NodeBase, Instrumented):
 
         if volume_capabilities.is_filesystem:
             fs_type = get_filesystem_type(device_bind_path)
-            if not MountInfo.get_mount_by_destination(dest_path=volume_path):
+            if not MountInfo.get_mount_by_destination(
+                    dest_path=volume_path, resolve_symlink=CONF.resolve_mount_symlinks,
+            ):
                 logger.info(f"Volume path {volume_path} is not mounted. Create tmp mount.")
                 # It is possible that NodeExpandVolume can be triggered before NodePublishVolume
                 # in scenario when:
@@ -890,7 +885,9 @@ class BlockNode(NodeBase, Instrumented):
             # If the volume is encrypted, we need to get stats from the backing block device
             return self._get_block_stats(luks_manager.get_backing_block_device())
 
-        target_mount = MountInfo.get_mount_by_destination(dest_path=volume_path)
+        target_mount = MountInfo.get_mount_by_destination(
+            dest_path=volume_path, resolve_symlink=CONF.resolve_mount_symlinks,
+        )
         if not target_mount:
             raise Abort(NOT_FOUND, f"Mount information not found for volume path: {volume_path}")
         if target_mount.has_blockdev_root:

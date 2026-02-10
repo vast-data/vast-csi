@@ -38,6 +38,10 @@
   value: {{ $.Values.useLocalIpForMount | quote }}
 - name: X_CSI_MOUNT_UMOUNT_TIMEOUT
   value: {{ $.Values.mountUmountTimeout | quote }}
+{{ if $.Values.resolveMountSymlinks -}}
+- name: X_CSI_RESOLVE_MOUNT_SYMLINKS
+  value: {{ $.Values.resolveMountSymlinks | quote }}
+{{- end }}
 - name: X_CSI_ATTACH_REQUIRED
   value: {{ $.Values.attachRequired | quote }}
 - name: X_CSI_VMS_TIMEOUT
