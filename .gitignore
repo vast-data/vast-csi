@@ -169,3 +169,8 @@ cython_debug/
 __pycache__/*
 /bundle/
 /artifacts/
+
+.cursor/*
+
+# Local test scripts (not for repo)
+local_tests/
