@@ -676,7 +676,7 @@ class BlockNode(NodeBase, Instrumented):
             src=device_path,
             tgt=device_bind_path,
             bind=True,
-            metrics_registry=metrics_registry,
+            metrics_registry=None,  # Don't count staging as mount operation
         )
         return types.StageResp()
 
@@ -695,7 +695,7 @@ class BlockNode(NodeBase, Instrumented):
         if staging_mount:
             umount_safe(
                 device_bind_path,
-                metrics_registry=metrics_registry,
+                metrics_registry=None,  # Don't count unstaging as unmount operation
             )
         else:
             logger.info(f"Device not found at {device_bind_path}")

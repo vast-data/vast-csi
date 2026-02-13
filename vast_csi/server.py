@@ -41,9 +41,13 @@ def serve(plugin: str):
         urllib3.disable_warnings()
 
     if CONF.metrics_enabled:
+        # Automatically enable xprt metrics only for NFS driver (plugin="csi")
+        # Block driver doesn't use NFS so no xprt metrics needed
+        collect_nfs_xprt = (plugin == "csi")
         metrics.start_metrics_server(
             port=CONF.metrics_port,
-            is_node_service=CONF.has_running_node
+            is_node_service=CONF.has_running_node,
+            collect_nfs_xprt=collect_nfs_xprt
         )
 
     server = grpc.server(
