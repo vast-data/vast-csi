@@ -73,13 +73,24 @@ controller:
 node:
   metrics:
     enabled: true
-    port: 9090   # default (unified with vastcsi)
+    port: 9092   # different from vastcsi to avoid port conflicts
 
 controller:
   metrics:
     enabled: true  # optional, separate from node metrics
-    port: 9091     # default (unified with vastcsi)
+    port: 9093     # different from vastcsi to avoid port conflicts
 ```
+
+### NFS Transport Metrics
+
+**NFS transport (xprt) metrics are automatically enabled only for the NFS driver (`vastcsi`) and disabled for the block driver (`vastblock`)**, since the block driver uses NVMe-oF instead of NFS.
+
+This behavior is determined automatically by the driver at startup and cannot be overridden.
+
+- **vastcsi (NFS driver)**: NFS xprt metrics are **enabled**
+- **vastblock (block driver)**: NFS xprt metrics are **disabled**
+
+**Note:** The `csi_node_nfs_xprt_*` metrics family is only collected when using the NFS driver. All other node metrics (mount/umount operations, NVMe connect, CSI RPCs) are available for both drivers.
 
 **Helm install example:**
 
@@ -100,8 +111,14 @@ helm install vastblock ./charts/vastblock -n vast-csi --create-namespace \
 ```
 
 After this:
-- The CSI node DaemonSet pods expose the node metrics port (9090), and a **headless Service** is created for discovery
-- The CSI controller Deployment/StatefulSet pods expose the controller metrics port (9091), and a **headless Service** is created for discovery
+- The CSI node DaemonSet pods expose the node metrics port, and a **headless Service** is created for discovery
+  - vastcsi: port **9090**
+  - vastblock: port **9092**
+- The CSI controller Deployment/StatefulSet pods expose the controller metrics port, and a **headless Service** is created for discovery
+  - vastcsi: port **9091**
+  - vastblock: port **9093**
+
+**Note:** Different ports prevent conflicts when running both drivers on the same node.
 
 ---
 
@@ -144,7 +161,7 @@ controller:
 node:
   metrics:
     enabled: true
-    port: 9090
+    port: 9092  # different from vastcsi (9090) to avoid conflicts
     serviceMonitor:
       enabled: true
       interval: 30s
@@ -152,7 +169,7 @@ node:
 controller:
   metrics:
     enabled: true  # optional
-    port: 9091
+    port: 9093  # different from vastcsi (9091) to avoid conflicts
     serviceMonitor:
       enabled: true
       interval: 30s
@@ -220,7 +237,7 @@ scrape_configs:
         action: keep
       - source_labels: [__meta_kubernetes_pod_ip]
         target_label: __address__
-        replacement: ${1}:9090
+        replacement: ${1}:9090  # vastcsi node port
       - source_labels: [__meta_kubernetes_namespace]
         target_label: namespace
       - source_labels: [__meta_kubernetes_pod_name]
@@ -245,7 +262,53 @@ scrape_configs:
         action: keep
       - source_labels: [__meta_kubernetes_pod_ip]
         target_label: __address__
-        replacement: ${1}:9091
+        replacement: ${1}:9091  # vastcsi controller port
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+    metric_relabel_configs: []
+
+  # Node metrics (vastblock)
+  - job_name: 'csi-node-metrics-vastblock'
+    kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names: [vast-csi]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_service_name]
+        regex: .+-vastblock-node-metrics
+        action: keep
+      - source_labels: [__meta_kubernetes_endpoint_port_name]
+        regex: metrics
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_ip]
+        target_label: __address__
+        replacement: ${1}:9092  # vastblock node port (different from vastcsi)
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [__meta_kubernetes_pod_node_name]
+        target_label: node
+    metric_relabel_configs: []
+
+  # Controller metrics (vastblock)
+  - job_name: 'csi-controller-metrics-vastblock'
+    kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names: [vast-csi]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_service_name]
+        regex: .+-vastblock-controller-metrics
+        action: keep
+      - source_labels: [__meta_kubernetes_endpoint_port_name]
+        regex: metrics
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_ip]
+        target_label: __address__
+        replacement: ${1}:9093  # vastblock controller port (different from vastcsi)
       - source_labels: [__meta_kubernetes_namespace]
         target_label: namespace
       - source_labels: [__meta_kubernetes_pod_name]
@@ -253,14 +316,13 @@ scrape_configs:
     metric_relabel_configs: []
 ```
 
-For **vastblock**, use the same idea with separate jobs (or combine using more sophisticated relabeling).
-
 **Pattern 2: Static list (if you have a fixed set of nodes or FQDN)**
 
 If you prefer a static list of targets (e.g. you know the Service DNS names):
 
 ```yaml
 scrape_configs:
+  # vastcsi (NFS driver)
   - job_name: 'csi-node-metrics-vastcsi'
     static_configs:
       - targets:
@@ -270,6 +332,17 @@ scrape_configs:
     static_configs:
       - targets:
           - 'release-name-vast-controller-metrics.vast-csi.svc.cluster.local:9091'
+
+  # vastblock (Block driver)
+  - job_name: 'csi-node-metrics-vastblock'
+    static_configs:
+      - targets:
+          - 'release-name-vastblock-node-metrics.vast-csi.svc.cluster.local:9092'
+
+  - job_name: 'csi-controller-metrics-vastblock'
+    static_configs:
+      - targets:
+          - 'release-name-vastblock-controller-metrics.vast-csi.svc.cluster.local:9093'
 ```
 
 For **vanilla Prometheus in Kubernetes**, `kubernetes_sd_configs` (pattern 1) is usually the right approach so all node pods are scraped.
@@ -287,17 +360,29 @@ For **vanilla Prometheus in Kubernetes**, `kubernetes_sd_configs` (pattern 1) is
 To confirm the metrics endpoints work from inside the cluster:
 
 ```bash
-# For node metrics
-kubectl get pods -n vast-csi -l app.kubernetes.io/component=csi-node
-kubectl port-forward -n vast-csi pod/<csi-node-pod-name> 9090:9090
+# vastcsi (NFS) - Node metrics
+kubectl get pods -n vast-csi -l app=vastcsi-node
+kubectl port-forward -n vast-csi pod/<vastcsi-node-pod-name> 9090:9090
 curl -s http://localhost:9090/metrics | head -50
 curl -s http://localhost:9090/health
 
-# For controller metrics
-kubectl get pods -n vast-csi -l app.kubernetes.io/component=csi-controller
-kubectl port-forward -n vast-csi pod/<csi-controller-pod-name> 9091:9091
+# vastcsi (NFS) - Controller metrics
+kubectl get pods -n vast-csi -l app=vastcsi-controller
+kubectl port-forward -n vast-csi pod/<vastcsi-controller-pod-name> 9091:9091
 curl -s http://localhost:9091/metrics | head -50
 curl -s http://localhost:9091/health
+
+# vastblock (Block) - Node metrics
+kubectl get pods -n vast-csi -l app=vastblock-node
+kubectl port-forward -n vast-csi pod/<vastblock-node-pod-name> 9092:9092
+curl -s http://localhost:9092/metrics | head -50
+curl -s http://localhost:9092/health
+
+# vastblock (Block) - Controller metrics
+kubectl get pods -n vast-csi -l app=vastblock-controller
+kubectl port-forward -n vast-csi pod/<vastblock-controller-pod-name> 9093:9093
+curl -s http://localhost:9093/metrics | head -50
+curl -s http://localhost:9093/health
 ```
 
 ---
@@ -358,8 +443,8 @@ histogram_quantile(0.99,
   sum(rate(csi_plugin_operations_seconds_bucket[5m])) by (method_name, le)
 )
 
-# Slow CSI operations (>10 seconds)
-sum(rate(csi_plugin_operations_seconds_bucket{le="10.0"}[5m])) by (method_name)
+# Slow CSI operations (>5 seconds)
+sum(rate(csi_plugin_operations_seconds_bucket{le="20.0"}[5m])) by (method_name)
 - sum(rate(csi_plugin_operations_seconds_bucket{le="5.0"}[5m])) by (method_name)
 
 # Controller-specific: Volume creation rate
