@@ -392,8 +392,9 @@ controller:
     # Enable Prometheus metrics endpoint (disabled by default)
     enabled: false
     # Port for metrics HTTP server
-    # Service DNS: <release>-vast-controller-metrics.<namespace>.svc.cluster.local:9091
-    port: 9091
+    # Note: Using 9093 to avoid conflict with vastcsi controller metrics (9091)
+    # Service DNS: <release>-vast-controller-metrics.<namespace>.svc.cluster.local:9093
+    port: 9093
     # ServiceMonitor configuration (Prometheus Operator CRD)
     # Ref: https://prometheus-operator.dev/docs/getting-started/introduction/
     # Note: This is ONLY for users with Prometheus Operator installed.
@@ -445,8 +446,9 @@ node:
     # See also: https://prometheus.io/docs/concepts/metric_types/
     enabled: false
     # Port for metrics HTTP server
-    # Service DNS: <release>-vast-node-metrics.<namespace>.svc.cluster.local:9090
-    port: 9090
+    # Note: Using 9092 to avoid conflict with vastcsi node metrics (9090)
+    # Service DNS: <release>-vast-node-metrics.<namespace>.svc.cluster.local:9092
+    port: 9092
     # ServiceMonitor configuration (Prometheus Operator CRD)
     # Ref: https://prometheus-operator.dev/docs/getting-started/introduction/
     # Note: This is ONLY for users with Prometheus Operator installed.

@@ -95,37 +95,21 @@ from vast_csi.csi_types import (
 # Constants
 # ================================================================
 
-# Default histogram buckets for CSI operations (optimized for sub-second to multi-minute operations)
+# Default histogram buckets for CSI operations
+# Buckets: 0-1s, 1-5s, 5-20s, 20s+
 DEFAULT_CSI_BUCKETS = (
-    0.1,
-    0.25,
-    0.5,
     1.0,
-    2.5,
     5.0,
-    10.0,
-    15.0,
-    25.0,
-    50.0,
-    120.0,
-    300.0,
-    600.0,
+    20.0,
     float("inf"),
 )
 
 # Default histogram buckets for mount/unmount/NVMe operations
+# Buckets: 0-1s, 1-5s, 5-20s, 20s+
 DEFAULT_MOUNT_BUCKETS = (
-    0.1,
-    0.5,
     1.0,
-    2.0,
     5.0,
-    10.0,
-    30.0,
-    60.0,
-    120.0,
-    300.0,
-    600.0,
+    20.0,
     float("inf"),
 )
 
@@ -321,6 +305,17 @@ class MetricFactory:
             raise RuntimeError("xprt metrics are only available for node services")
         return Gauge(
             "csi_node_nfs_xprt_unhealthy", "Number of transports with potential issues"
+        )
+
+    @cached_property
+    def xprt_connected_per_dest(self):
+        """Get or create xprt connected state gauge per destination (node service only)."""
+        if not self.is_node_service:
+            raise RuntimeError("xprt metrics are only available for node services")
+        return Gauge(
+            "csi_node_nfs_xprt_connected_state",
+            "Transport is connected (CONNECTED and BOUND flags set)",
+            ["destination"],
         )
 
     @cached_property
@@ -651,6 +646,59 @@ def _parse_state_flags(state_str):
     return flags
 
 
+def _is_local_address(addr):
+    """
+    Check if address is localhost/loopback (should not be counted as CSI mount).
+    
+    Local transports can appear for:
+    - System NFS mounts to localhost
+    - Debugging/testing scenarios
+    - Non-CSI mounts
+    
+    Args:
+        addr: IP address or hostname (may include port)
+            IPv4: "127.0.0.1" or "127.0.0.1:2049"
+            IPv6: "::1" (no bracket notation in kernel xprt info)
+            Note: kernel reports IPv6 as "::1" without brackets, even with port
+    
+    Returns:
+        bool: True if address is local/loopback
+    
+    Note:
+        Callers should filter out "unknown" addresses before calling this function.
+        The check below is defensive only (prevents crashes if called incorrectly).
+    """
+    # Defensive check: unknown/empty addresses should be filtered earlier
+    # If we get here, treat as non-local (but this shouldn't happen in normal flow)
+    if not addr or addr == "unknown":
+        return False
+    
+    # Strip port if present
+    # IPv4: "127.0.0.1:2049" -> "127.0.0.1"
+    # IPv6 is tricky: kernel may report "::1" without port, or "::1:2049" which is ambiguous
+    # For safety, check before stripping
+    clean_addr = addr
+    if ':' in addr:
+        # Check if it's a full IPv6 address (multiple colons)
+        colon_count = addr.count(':')
+        if colon_count == 1:
+            # Single colon: likely "IP:port" (IPv4 or hostname)
+            clean_addr = addr.rsplit(':', 1)[0]
+        # else: multiple colons = IPv6 address, keep as-is (e.g., "::1")
+    
+    # Check common loopback addresses
+    loopback_addrs = {
+        '127.0.0.1',      # IPv4 loopback
+        'localhost',      # hostname
+        '::1',            # IPv6 loopback
+        '0.0.0.0',        # Any/all interfaces (shouldn't appear in dstaddr, but check)
+        '::',             # IPv6 any
+    }
+    
+    # Case-insensitive check for hostname (handles "localhost", "LOCALHOST", "LocalHost", etc.)
+    return clean_addr.lower() in loopback_addrs or clean_addr.startswith('127.')
+
+
 def _is_transport_healthy(state_flags, pending, backlog):
     """Check if transport is healthy based on state and queue depths."""
     if "CONNECTED" not in state_flags:
@@ -669,22 +717,110 @@ def _is_transport_healthy(state_flags, pending, backlog):
 
 
 def _read_xprt_state_and_flags(xprt_dir):
-    """Read state file and return (raw_string, set of flags)."""
-    state_raw = _read_file_safe(xprt_dir / "state") or "UNKNOWN"
+    """Read state file and return (raw_string, set of flags).
+    
+    Supports both kernel naming conventions:
+    - Newer: 'state' file
+    - Older: 'xprt_state' file
+    """
+    # Try newer kernel naming first
+    state_raw = _read_file_safe(xprt_dir / "state")
+    
+    # Fallback to older kernel naming
+    if not state_raw:
+        state_raw = _read_file_safe(xprt_dir / "xprt_state")
+    
+    if not state_raw:
+        state_raw = "UNKNOWN"
+    
     return state_raw, _parse_state_flags(state_raw)
 
 
 def _read_xprt_info(xprt_dir):
-    """Read info file and return dict (srcaddr, dstaddr, etc.)."""
-    info_raw = _read_file_safe(xprt_dir / "info") or ""
-    return _parse_info_keyval(info_raw)
+    """Read info file and return dict (srcaddr, dstaddr, etc.).
+    
+    Supports both kernel naming conventions:
+    - Newer: 'info' file with key=value format
+    - Older: Separate 'dstaddr', 'srcaddr', 'xprt_info' files
+    
+    Note: On older kernels, pending/backlog are in xprt_info as
+    'pending_q_len' and 'backlog_q_len' instead of separate files.
+    """
+    # Try newer kernel naming: single 'info' file with key=value pairs
+    info_raw = _read_file_safe(xprt_dir / "info")
+    if info_raw:
+        return _parse_info_keyval(info_raw)
+    
+    # Fallback to older kernel naming: separate files for each field
+    info = {}
+    
+    # Read destination address
+    dstaddr = _read_file_safe(xprt_dir / "dstaddr")
+    if dstaddr:
+        info["dstaddr"] = dstaddr.strip()
+    
+    # Read source address
+    srcaddr = _read_file_safe(xprt_dir / "srcaddr")
+    if srcaddr:
+        info["srcaddr"] = srcaddr.strip()
+    
+    # Read xprt_info file (contains key=value pairs including pending_q_len, backlog_q_len)
+    xprt_info_raw = _read_file_safe(xprt_dir / "xprt_info")
+    if xprt_info_raw:
+        info.update(_parse_info_keyval(xprt_info_raw))
+    
+    return info
 
 
-def _read_xprt_queues(xprt_dir):
-    """Read pending and backlog files; return (pending, backlog)."""
-    pending_raw = _read_file_safe(xprt_dir / "pending") or "0"
-    backlog_raw = _read_file_safe(xprt_dir / "backlog") or "0"
-    return int(pending_raw), int(backlog_raw)
+def _read_xprt_queues(xprt_dir, info_dict=None):
+    """Read pending and backlog queue depths.
+    
+    Supports both kernel naming conventions:
+    - Newer: Separate 'pending' and 'backlog' files
+    - Older: Values in xprt_info as 'pending_q_len' and 'backlog_q_len'
+    
+    Args:
+        xprt_dir: Path to xprt directory
+        info_dict: Optional dict from _read_xprt_info() to check for queue values
+    
+    Returns:
+        Tuple of (pending, backlog)
+    """
+    pending = 0
+    backlog = 0
+    
+    # Try newer kernel: separate files
+    pending_raw = _read_file_safe(xprt_dir / "pending")
+    backlog_raw = _read_file_safe(xprt_dir / "backlog")
+    
+    if pending_raw:
+        try:
+            pending = int(pending_raw.strip())
+        except (ValueError, AttributeError):
+            pending = 0
+    
+    if backlog_raw:
+        try:
+            backlog = int(backlog_raw.strip())
+        except (ValueError, AttributeError):
+            backlog = 0
+    
+    # If files don't exist, try older kernel: check info_dict for queue values
+    if pending == 0 and backlog == 0 and info_dict:
+        # Older kernels have these in xprt_info file
+        if "pending_q_len" in info_dict:
+            try:
+                pending = int(info_dict["pending_q_len"])
+            except (ValueError, TypeError):
+                pass
+        
+        if "backlog_q_len" in info_dict:
+            try:
+                backlog = int(info_dict["backlog_q_len"])
+            except (ValueError, TypeError):
+                pass
+    
+    return pending, backlog
 
 
 def _parse_single_xprt(xprt_dir):
@@ -697,9 +833,34 @@ def _parse_single_xprt(xprt_dir):
         _xprt_id, protocol = match.groups()
         state_raw, state_flags = _read_xprt_state_and_flags(xprt_dir)
         info = _read_xprt_info(xprt_dir)
-        pending, backlog = _read_xprt_queues(xprt_dir)
+        pending, backlog = _read_xprt_queues(xprt_dir, info)  # Pass info dict for older kernels
+        
+        logger.debug(
+            "Parsed xprt %s: state=%s, dstaddr=%s, pending=%d, backlog=%d",
+            xprt_dir.name,
+            state_raw,
+            info.get("dstaddr", "unknown"),
+            pending,
+            backlog,
+        )
     except (OSError, ValueError) as e:
         logger.info("Failed to parse xprt %s: %s", xprt_dir, e)
+        return None
+
+    # After unmount, kernel keeps xprt entries in CLOSED state for a while
+    # We don't want to show metrics for these dead transports
+    if "CLOSED" in state_flags:
+        logger.debug("Skipping CLOSED transport: %s", xprt_dir.name)
+        return None
+
+    remote_addr = info.get("dstaddr", "unknown")
+    
+    if not remote_addr or remote_addr == "unknown":
+        logger.debug("Skipping transport with unknown destination: %s", xprt_dir.name)
+        return None
+    
+    if _is_local_address(remote_addr):
+        logger.debug("Skipping local transport: %s -> %s", xprt_dir.name, remote_addr)
         return None
 
     is_healthy = _is_transport_healthy(state_flags, pending, backlog)
@@ -707,7 +868,7 @@ def _parse_single_xprt(xprt_dir):
         "id": f"{xprt_dir.parent.name}/{xprt_dir.name}",
         "protocol": protocol,
         "local_addr": info.get("srcaddr", "unknown"),
-        "remote_addr": info.get("dstaddr", "unknown"),
+        "remote_addr": remote_addr,
         "state": state_raw,
         "state_flags": list(state_flags),
         "pending": pending,
@@ -768,18 +929,27 @@ def collect_xprt_stats():
     }
 
 
+# Track active destinations to detect removed transports
+_xprt_previous_destinations = set()
+
+
 def update_xprt_metrics():
     """Update Prometheus xprt metrics from current sysfs state."""
+    global _xprt_previous_destinations
+    
     try:
         stats = collect_xprt_stats()
         summary = stats["summary"]
 
-        # Update aggregate metrics
+        # Update aggregate metrics (always visible, even when 0)
         METRIC_FACTORY.xprt_total.set(summary["total"])
         METRIC_FACTORY.xprt_connected.set(summary["connected"])
         METRIC_FACTORY.xprt_pending_total.set(summary["pending_total"])
         METRIC_FACTORY.xprt_backlog_total.set(summary["backlog_total"])
         METRIC_FACTORY.xprt_unhealthy.set(summary["unhealthy"])
+
+        # Track current destinations
+        current_destinations = set()
 
         # Update per-transport metrics with VIP label
         for transport in stats["transports"]:
@@ -788,7 +958,15 @@ def update_xprt_metrics():
             if ":" in dest:
                 dest = dest.rsplit(":", 1)[0]  # Remove port, keep IPv6 safe
 
+            current_destinations.add(dest)
+
             state_flags = set(transport["state_flags"])
+
+            # Connected state: both CONNECTED and BOUND flags must be set
+            is_connected = "CONNECTED" in state_flags and "BOUND" in state_flags
+            METRIC_FACTORY.xprt_connected_per_dest.labels(destination=dest).set(
+                1 if is_connected else 0
+            )
 
             # Congested state: either CONGESTED or CWND_WAIT
             is_congested = "CONGESTED" in state_flags or "CWND_WAIT" in state_flags
@@ -809,6 +987,25 @@ def update_xprt_metrics():
             METRIC_FACTORY.xprt_backlog_depth.labels(destination=dest).set(
                 transport["backlog"]
             )
+
+        # When a transport is removed, completely remove its metric label combinations
+        removed_destinations = _xprt_previous_destinations - current_destinations
+        for dest in removed_destinations:
+            try:
+                # Access internal _metrics dict to remove label combinations
+                # Label values must be passed as a tuple
+                METRIC_FACTORY.xprt_connected_per_dest._metrics.pop((dest,))
+                METRIC_FACTORY.xprt_congested._metrics.pop((dest,))
+                METRIC_FACTORY.xprt_locked._metrics.pop((dest,))
+                METRIC_FACTORY.xprt_pending_requests._metrics.pop((dest,))
+                METRIC_FACTORY.xprt_backlog_depth._metrics.pop((dest,))
+                logger.debug("Removed metrics for disappeared destination: %s", dest)
+            except KeyError:
+                # Label combination may not exist (e.g., first run after restart)
+                pass
+
+        # Update tracking set for next iteration
+        _xprt_previous_destinations = current_destinations
 
     except Exception as e:
         logger.warning(f"Failed to update xprt metrics: {e}")
@@ -864,7 +1061,7 @@ class MetricsHTTPHandler(BaseHTTPRequestHandler):
         self.wfile.write(response.encode("utf-8"))
 
 
-def start_metrics_server(port=9090, addr="0.0.0.0", is_node_service=False):
+def start_metrics_server(port=9090, addr="0.0.0.0", is_node_service=False, collect_nfs_xprt=True):
     """
     Start the metrics HTTP server with Prometheus endpoints.
 
@@ -876,6 +1073,8 @@ def start_metrics_server(port=9090, addr="0.0.0.0", is_node_service=False):
         port (int): Port to expose metrics on (default: 9090)
         addr (str): Address to bind to (default: 0.0.0.0, all interfaces)
         is_node_service (bool): True for node service (DaemonSet), False for controller
+        collect_nfs_xprt (bool): True to collect NFS transport metrics, False to disable
+                                 (default: True for NFS driver, set False for block driver)
                                 Determines which metrics are registered and whether xprt stats are collected
 
     Raises:
@@ -890,8 +1089,9 @@ def start_metrics_server(port=9090, addr="0.0.0.0", is_node_service=False):
     global METRIC_FACTORY
     METRIC_FACTORY = MetricFactory(is_node_service)
 
-    # Configure xprt metrics collection (only for node services)
-    MetricsHTTPHandler.collect_xprt_metrics = is_node_service
+    # Configure xprt metrics collection (only for node services with NFS)
+    # Block driver should set collect_nfs_xprt=False since it doesn't use NFS
+    MetricsHTTPHandler.collect_xprt_metrics = is_node_service and collect_nfs_xprt
 
     server = HTTPServer((addr, port), MetricsHTTPHandler)
     server_thread = threading.Thread(
