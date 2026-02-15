@@ -101,6 +101,10 @@ from vast_csi.filesystem_utils import MountInfo, hostcmd
 
 XPRT_WORKERS = 3
 
+# CSI volume mounts are always under this kubelet subdirectory.
+# This distinguishes them from non-CSI NFS mounts e.g. manual mounts
+_CSI_MOUNT_MARKER = "volumes/kubernetes.io~csi"
+
 # Default histogram buckets for CSI operations
 # Buckets: 0-1s, 1-5s, 5-20s, 20s+
 DEFAULT_CSI_BUCKETS = (
@@ -906,22 +910,13 @@ def collect_xprt_stats():
     concurrency keeps overall latency low).
 
     Returns:
-        dict: Summary and detailed statistics
+        list: Per-transport dicts with keys like remote_addr, state_flags, pending, backlog, healthy, etc.
     """
     base_path = Path("/sys/kernel/sunrpc/xprt-switches")
 
     if not base_path.exists():
         # Not on Linux or NFS not loaded
-        return {
-            "summary": {
-                "total": 0,
-                "connected": 0,
-                "unhealthy": 0,
-                "pending_total": 0,
-                "backlog_total": 0,
-            },
-            "transports": [],
-        }
+        return []
 
     all_transports = []
     lock = threading.Lock()
@@ -962,23 +957,7 @@ def collect_xprt_stats():
     for _ in workers:
         work_queue.put(None, timeout=2)
 
-    # Calculate summary
-    total = len(all_transports)
-    connected = sum(1 for x in all_transports if "CONNECTED" in x["state_flags"])
-    unhealthy = sum(1 for x in all_transports if not x["healthy"])
-    pending_total = sum(x["pending"] for x in all_transports)
-    backlog_total = sum(x["backlog"] for x in all_transports)
-
-    return {
-        "summary": {
-            "total": total,
-            "connected": connected,
-            "unhealthy": unhealthy,
-            "pending_total": pending_total,
-            "backlog_total": backlog_total,
-        },
-        "transports": all_transports,
-    }
+    return all_transports
 
 
 # Track active destinations to detect removed transports
@@ -999,11 +978,15 @@ def _count_nfs_mounts_per_destination():
     counts = CollCounter()
     try:
         for mount in MountInfo.from_host():
-            # NFS mounts have fs_type "nfs", "nfs4", etc. and mount_source like "172.21.112.4:/path"
-            if mount.fs_type.startswith("nfs") and mount.server_ip:
-                if mount.mount_point.startswith(str(hostcmd.HOST_MOUNT)):
-                    continue
-                counts[mount.server_ip] += 1
+            if not mount.fs_type.startswith("nfs") or not mount.server_ip:
+                continue
+            # Skip /host/ prefix duplicates
+            if mount.mount_point.startswith(str(hostcmd.HOST_MOUNT)):
+                continue
+            # Only count CSI-managed mounts, not manual or non-CSI NFS mounts
+            if _CSI_MOUNT_MARKER not in mount.mount_point:
+                continue
+            counts[mount.server_ip] += 1
     except Exception as e:
         logger.warning(f"Failed to count NFS mounts: {e}")
 
@@ -1015,26 +998,44 @@ def update_xprt_metrics():
     global _xprt_previous_destinations
     
     try:
-        stats = collect_xprt_stats()
-        summary = stats["summary"]
+        all_transports = collect_xprt_stats()
 
-        # Update aggregate metrics (always visible, even when 0)
-        METRIC_FACTORY.xprt_total.set(summary["total"])
-        METRIC_FACTORY.xprt_connected.set(summary["connected"])
-        METRIC_FACTORY.xprt_pending_total.set(summary["pending_total"])
-        METRIC_FACTORY.xprt_backlog_total.set(summary["backlog_total"])
-        METRIC_FACTORY.xprt_unhealthy.set(summary["unhealthy"])
+        # Count CSI NFS mounts per destination IP — this is the source of truth
+        # for which destinations belong to this CSI driver.
+        mount_counts = _count_nfs_mounts_per_destination()
+        csi_ips = set(mount_counts)
 
-        # Track current destinations
-        current_destinations = set()
-
-        # Update per-transport metrics with VIP label
-        for transport in stats["transports"]:
-            # Extract destination IP (strip port if present)
+        # Filter transports to only those serving CSI mounts
+        csi_transports = []
+        for transport in all_transports:
             dest = transport["remote_addr"]
             if ":" in dest:
                 dest = dest.rsplit(":", 1)[0]  # Remove port, keep IPv6 safe
+            if dest in csi_ips:
+                transport["_dest"] = dest  # stash stripped IP for reuse below
+                csi_transports.append(transport)
 
+        # Update aggregate metrics from CSI-relevant transports only
+        METRIC_FACTORY.xprt_total.set(len(csi_transports))
+        METRIC_FACTORY.xprt_connected.set(
+            sum(1 for x in csi_transports if "CONNECTED" in x["state_flags"])
+        )
+        METRIC_FACTORY.xprt_pending_total.set(
+            sum(x["pending"] for x in csi_transports)
+        )
+        METRIC_FACTORY.xprt_backlog_total.set(
+            sum(x["backlog"] for x in csi_transports)
+        )
+        METRIC_FACTORY.xprt_unhealthy.set(
+            sum(1 for x in csi_transports if not x["healthy"])
+        )
+
+        # Track current destinations (only those with CSI mounts)
+        current_destinations = set()
+
+        # Update per-transport metrics with VIP label
+        for transport in csi_transports:
+            dest = transport["_dest"]
             current_destinations.add(dest)
 
             state_flags = set(transport["state_flags"])
@@ -1065,11 +1066,10 @@ def update_xprt_metrics():
                 transport["backlog"]
             )
 
-        # Count NFS mounts per destination IP from /proc/self/mountinfo
-        mount_counts = _count_nfs_mounts_per_destination()
+        # Set mount counts for CSI destinations
         for dest in current_destinations:
             METRIC_FACTORY.xprt_mounts.labels(destination=dest).set(
-                mount_counts.get(dest, 0)
+                mount_counts[dest]
             )
 
         # When a transport is removed, completely remove its metric label combinations
