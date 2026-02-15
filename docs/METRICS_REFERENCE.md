@@ -588,6 +588,48 @@ csi_node_nfs_xprt_backlog_depth{destination="192.168.1.20"} 0.0
 
 ---
 
+#### `csi_node_nfs_xprt_mounts`
+
+**Type:** Gauge  
+**Description:** Number of active NFS mounts using this transport destination.  
+**When you see it:** Only when at least one transport exists to this destination.
+
+**Example Metrics:**
+
+```promql
+# Single mount to each VIP
+csi_node_nfs_xprt_mounts{destination="192.168.1.10"} 1.0
+csi_node_nfs_xprt_mounts{destination="192.168.1.20"} 1.0
+
+# Multiple mounts to 192.168.1.10 (good transport multiplexing)
+csi_node_nfs_xprt_mounts{destination="192.168.1.10"} 5.0
+csi_node_nfs_xprt_mounts{destination="192.168.1.20"} 2.0
+
+# No mounts (transport exists but not actively used)
+csi_node_nfs_xprt_mounts{destination="192.168.1.10"} 0.0
+```
+
+**What it means:**
+- Number of NFS volumes currently mounted from this VIP
+- Shows transport utilization (one transport can serve multiple mounts)
+- Value of 0 indicates transport exists but no active mounts (e.g., during unmount)
+
+**Typical values:**
+- 0 = No active mounts (transport idle or being cleaned up)
+- 1-10 = Normal (typical pod count per node)
+- 10+ = High utilization (many pods with NFS volumes)
+
+**When to investigate:**
+- If mount count is 0 but transport still exists (cleanup delay)
+- If mount count is unexpectedly high (pod sprawl, resource exhaustion)
+
+**Use cases:**
+- Capacity planning: understand how many mounts per transport
+- Transport efficiency: higher values = better multiplexing
+- Debugging: correlate mount count with transport health
+
+---
+
 ## Understanding Labels
 
 ### How Labels Work
