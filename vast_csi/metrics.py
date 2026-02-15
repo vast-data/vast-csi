@@ -950,18 +950,16 @@ def collect_xprt_stats():
         t.start()
         workers.append(t)
 
-    enqueued = 0
     # Producer: enumerate xprt directories and feed the queue
     for switch_dir in sorted(base_path.glob("switch-*")):
         for xprt_dir in sorted(switch_dir.glob("xprt-*")):
             work_queue.put(xprt_dir)
-            enqueued += 1
 
     # Wait for all items to be processed
     work_queue.join()
-    # Signal workers to exit
+    # Send poison pill (None) to each worker to signal graceful shutdown
+    # Timeout prevents hanging if queue is somehow blocked (should never happen in practice)
     for _ in workers:
-        # the timeout here indicates that the worker thread is blocked.
         work_queue.put(None, timeout=2)
 
     # Calculate summary
