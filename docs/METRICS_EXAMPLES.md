@@ -163,6 +163,10 @@ csi_node_nfs_xprt_pending_requests{destination="192.168.1.10"} 0.0
 # HELP csi_node_nfs_xprt_backlog_depth Backlog queue depth for this transport
 # TYPE csi_node_nfs_xprt_backlog_depth gauge
 csi_node_nfs_xprt_backlog_depth{destination="192.168.1.10"} 0.0
+
+# HELP csi_node_nfs_xprt_mounts Number of NFS mounts using this transport
+# TYPE csi_node_nfs_xprt_mounts gauge
+csi_node_nfs_xprt_mounts{destination="192.168.1.10"} 1.0
 ```
 
 **Key Points:**
@@ -170,6 +174,7 @@ csi_node_nfs_xprt_backlog_depth{destination="192.168.1.10"} 0.0
 - Mount took 0.823 seconds (shown in `le="1.0"` bucket)
 - 1 NFS transport appeared for `destination="192.168.1.10"`
 - Transport is connected (`xprt_connected_state=1.0`)
+- 1 mount is using this transport (`xprt_mounts=1.0`)
 - No congestion or pending requests (healthy state)
 
 ---
@@ -216,12 +221,15 @@ csi_node_nfs_xprt_pending_requests{destination="192.168.1.10"} 0.0
 csi_node_nfs_xprt_pending_requests{destination="192.168.1.20"} 0.0
 csi_node_nfs_xprt_backlog_depth{destination="192.168.1.10"} 0.0
 csi_node_nfs_xprt_backlog_depth{destination="192.168.1.20"} 0.0
+csi_node_nfs_xprt_mounts{destination="192.168.1.10"} 2.0
+csi_node_nfs_xprt_mounts{destination="192.168.1.20"} 1.0
 ```
 
 **Key Points:**
 - 3 mounts total: 2 in `prod`, 1 in `dev`
 - 3 transports total (kernel may create 1 per mount or share transports)
 - 2 unique destinations: `192.168.1.10` and `192.168.1.20`
+- Mount distribution: 2 mounts to `192.168.1.10`, 1 mount to `192.168.1.20`
 - Average mount time in prod: 1.654/2 = 0.827 seconds
 - Average mount time in dev: 0.912/1 = 0.912 seconds
 
@@ -270,6 +278,8 @@ csi_node_nfs_xprt_pending_requests{destination="192.168.1.10"} 0.0
 csi_node_nfs_xprt_pending_requests{destination="192.168.1.20"} 0.0
 csi_node_nfs_xprt_backlog_depth{destination="192.168.1.10"} 0.0
 csi_node_nfs_xprt_backlog_depth{destination="192.168.1.20"} 0.0
+csi_node_nfs_xprt_mounts{destination="192.168.1.10"} 2.0
+csi_node_nfs_xprt_mounts{destination="192.168.1.20"} 0.0
 ```
 
 **Key Points:**
@@ -277,6 +287,7 @@ csi_node_nfs_xprt_backlog_depth{destination="192.168.1.20"} 0.0
 - Unmount took 0.341 seconds (faster than mount)
 - Transport count decreased from 3 to 2
 - Both destinations still have transports (prod PVCs still mounted)
+- Mount count: `192.168.1.10` still has 2 mounts, `192.168.1.20` has 0 (transport lingers after unmount)
 
 ---
 
@@ -308,6 +319,7 @@ csi_node_nfs_xprt_unhealthy 0.0
 # No csi_node_nfs_xprt_locked_state metrics
 # No csi_node_nfs_xprt_pending_requests metrics
 # No csi_node_nfs_xprt_backlog_depth metrics
+# No csi_node_nfs_xprt_mounts metrics
 ```
 
 **Key Points:**
@@ -387,12 +399,17 @@ csi_node_nfs_xprt_pending_requests{destination="192.168.1.20"} 85.0
 # Backlog accumulating
 csi_node_nfs_xprt_backlog_depth{destination="192.168.1.10"} 18.0
 csi_node_nfs_xprt_backlog_depth{destination="192.168.1.20"} 17.0
+
+# Active mounts (multiple mounts per transport during congestion)
+csi_node_nfs_xprt_mounts{destination="192.168.1.10"} 3.0
+csi_node_nfs_xprt_mounts{destination="192.168.1.20"} 2.0
 ```
 
 **Key Points:**
 - `xprt_congested_state=1.0` indicates flow control active
 - High pending requests (>100 total across transports)
 - `xprt_unhealthy=2.0` (all transports unhealthy due to congestion)
+- 5 active mounts sharing these congested transports
 - This indicates storage performance issue or network bottleneck
 
 ---

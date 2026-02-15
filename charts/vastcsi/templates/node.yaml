@@ -106,6 +106,11 @@ spec:
               mountPropagation: "Bidirectional"
             - name: device-dir
               mountPath: /dev
+          {{- if .Values.node.metrics.enabled }}
+            - name: host
+              mountPath: /host
+              mountPropagation: "Bidirectional"
+          {{- end }}
           {{- if .Values.node.propagateHostMountOptions }}
             - name: host-nfsmount-conf-d
               mountPath: /etc/nfsmount.conf.d
@@ -137,6 +142,12 @@ spec:
         - name: device-dir
           hostPath:
             path: /dev
+      {{- if .Values.node.metrics.enabled }}
+        - name: host
+          hostPath:
+            path: /
+            type: Directory
+      {{- end }}
 {{- include "vastcsi.vmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}
        {{- if .Values.node.propagateHostMountOptions }}
         - hostPath:

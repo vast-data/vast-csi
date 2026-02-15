@@ -61,6 +61,10 @@ Endpoints:
 import json
 import re
 import time
+import queue
+import threading
+from collections import Counter as CollCounter
+
 from enum import Enum
 from contextlib import contextmanager
 from pathlib import Path
@@ -89,11 +93,17 @@ from vast_csi.csi_types import (
     INTERNAL,
     UNKNOWN,
 )
-
+from vast_csi.filesystem_utils import MountInfo, hostcmd
 
 # ================================================================
 # Constants
 # ================================================================
+
+XPRT_WORKERS = 3
+
+# CSI volume mounts are always under this kubelet subdirectory.
+# This distinguishes them from non-CSI NFS mounts e.g. manual mounts
+_CSI_MOUNT_MARKER = "volumes/kubernetes.io~csi"
 
 # Default histogram buckets for CSI operations
 # Buckets: 0-1s, 1-5s, 5-20s, 20s+
@@ -362,6 +372,17 @@ class MetricFactory:
             ["destination"],
         )
 
+    @cached_property
+    def xprt_mounts(self):
+        """Get or create xprt mount count gauge per destination (node service only)."""
+        if not self.is_node_service:
+            raise RuntimeError("xprt metrics are only available for node services")
+        return Gauge(
+            "csi_node_nfs_xprt_mounts",
+            "Number of NFS mounts using this transport",
+            ["destination"],
+        )
+
 
 # Global metric factory instance (initialized during server startup)
 METRIC_FACTORY: MetricFactory = None
@@ -604,12 +625,21 @@ def get_metrics_registry(params, hostname, driver_name):
 # ================================================================
 
 
-def _read_file_safe(path):
-    """Read file safely, return None on error."""
+def _read_file_safe(path, timeout=1):
+    """Read sysfs file safely using hostcmd.cat with timeout."""
+
     try:
         p = Path(path)
-        return p.read_text().strip() if p.exists() else None
-    except OSError:
+        if not p.exists():
+            return None
+
+        content = hostcmd.cat(str(p), timeout=timeout)
+        # strip trailing whitespace and null bytes
+        content = content.strip().rstrip('\x00').strip()
+        return content if content else None
+
+    except (ProcessTimedOut, ProcessExecutionError) as exc:
+        logger.warning(f"Failed to read file {path}: {exc}")
         return None
 
 
@@ -750,7 +780,7 @@ def _read_xprt_info(xprt_dir):
     info_raw = _read_file_safe(xprt_dir / "info")
     if info_raw:
         return _parse_info_keyval(info_raw)
-    
+
     # Fallback to older kernel naming: separate files for each field
     info = {}
     
@@ -758,17 +788,17 @@ def _read_xprt_info(xprt_dir):
     dstaddr = _read_file_safe(xprt_dir / "dstaddr")
     if dstaddr:
         info["dstaddr"] = dstaddr.strip()
-    
+
     # Read source address
     srcaddr = _read_file_safe(xprt_dir / "srcaddr")
     if srcaddr:
         info["srcaddr"] = srcaddr.strip()
-    
+
     # Read xprt_info file (contains key=value pairs including pending_q_len, backlog_q_len)
     xprt_info_raw = _read_file_safe(xprt_dir / "xprt_info")
     if xprt_info_raw:
         info.update(_parse_info_keyval(xprt_info_raw))
-    
+
     return info
 
 
@@ -831,36 +861,30 @@ def _parse_single_xprt(xprt_dir):
 
     try:
         _xprt_id, protocol = match.groups()
+
+        #  Check state first - if CLOSED, skip immediately without reading other files
         state_raw, state_flags = _read_xprt_state_and_flags(xprt_dir)
+        if "CLOSED" in state_flags:
+            return None
+
+        # read dstaddr early to check for loopback before reading other files
+        dstaddr = _read_file_safe(xprt_dir / "dstaddr")
+        if dstaddr:
+            dstaddr = dstaddr.strip()
+
+        if not dstaddr:
+            return None
+
+        if _is_local_address(dstaddr):
+            return None
+
+        # continue: non-closed, non-loopback transports
         info = _read_xprt_info(xprt_dir)
-        pending, backlog = _read_xprt_queues(xprt_dir, info)  # Pass info dict for older kernels
-        
-        logger.debug(
-            "Parsed xprt %s: state=%s, dstaddr=%s, pending=%d, backlog=%d",
-            xprt_dir.name,
-            state_raw,
-            info.get("dstaddr", "unknown"),
-            pending,
-            backlog,
-        )
+        info["dstaddr"] = dstaddr
+
+        pending, backlog = _read_xprt_queues(xprt_dir, info)
     except (OSError, ValueError) as e:
-        logger.info("Failed to parse xprt %s: %s", xprt_dir, e)
-        return None
-
-    # After unmount, kernel keeps xprt entries in CLOSED state for a while
-    # We don't want to show metrics for these dead transports
-    if "CLOSED" in state_flags:
-        logger.debug("Skipping CLOSED transport: %s", xprt_dir.name)
-        return None
-
-    remote_addr = info.get("dstaddr", "unknown")
-    
-    if not remote_addr or remote_addr == "unknown":
-        logger.debug("Skipping transport with unknown destination: %s", xprt_dir.name)
-        return None
-    
-    if _is_local_address(remote_addr):
-        logger.debug("Skipping local transport: %s -> %s", xprt_dir.name, remote_addr)
+        logger.warning(f"Failed to parse {xprt_dir.name}: {e}")
         return None
 
     is_healthy = _is_transport_healthy(state_flags, pending, backlog)
@@ -868,7 +892,7 @@ def _parse_single_xprt(xprt_dir):
         "id": f"{xprt_dir.parent.name}/{xprt_dir.name}",
         "protocol": protocol,
         "local_addr": info.get("srcaddr", "unknown"),
-        "remote_addr": remote_addr,
+        "remote_addr": dstaddr,
         "state": state_raw,
         "state_flags": list(state_flags),
         "pending": pending,
@@ -880,57 +904,93 @@ def _parse_single_xprt(xprt_dir):
 def collect_xprt_stats():
     """Collect all xprt statistics from sysfs.
 
+    Uses a producer/consumer: the producer enumerates xprt
+    directories and feeds them into a queue; worker threads parse each
+    xprt in parallel (sysfs reads can block on kernel locks, so
+    concurrency keeps overall latency low).
+
     Returns:
-        dict: Summary and detailed statistics
+        list: Per-transport dicts with keys like remote_addr, state_flags, pending, backlog, healthy, etc.
     """
     base_path = Path("/sys/kernel/sunrpc/xprt-switches")
 
     if not base_path.exists():
         # Not on Linux or NFS not loaded
-        return {
-            "summary": {
-                "total": 0,
-                "connected": 0,
-                "unhealthy": 0,
-                "pending_total": 0,
-                "backlog_total": 0,
-            },
-            "transports": [],
-        }
+        return []
 
     all_transports = []
+    lock = threading.Lock()
+    work_queue = queue.Queue()
 
-    try:
-        # Iterate switches and xprts
-        for switch_dir in sorted(base_path.glob("switch-*")):
-            for xprt_dir in sorted(switch_dir.glob("xprt-*")):
+    def worker(worker_id):
+        """Consumer: pull xprt dirs from the queue and parse them."""
+        while True:
+            xprt_dir = work_queue.get()
+            if xprt_dir is None:
+                break
+            try:
                 xprt_data = _parse_single_xprt(xprt_dir)
                 if xprt_data:
-                    all_transports.append(xprt_data)
-    except Exception as e:
-        logger.warning(f"Failed to collect xprt stats: {e}")
+                    with lock:
+                        all_transports.append(xprt_data)
+            except Exception as e:
+                logger.warning(f"Worker-{worker_id} failed on {xprt_dir}: {e}")
+            finally:
+                work_queue.task_done()
 
-    # Calculate summary
-    total = len(all_transports)
-    connected = sum(1 for x in all_transports if "CONNECTED" in x["state_flags"])
-    unhealthy = sum(1 for x in all_transports if not x["healthy"])
-    pending_total = sum(x["pending"] for x in all_transports)
-    backlog_total = sum(x["backlog"] for x in all_transports)
+    # Start worker threads
+    workers = []
+    for i in range(XPRT_WORKERS):
+        t = threading.Thread(target=worker, args=(i,), daemon=True)
+        t.start()
+        workers.append(t)
 
-    return {
-        "summary": {
-            "total": total,
-            "connected": connected,
-            "unhealthy": unhealthy,
-            "pending_total": pending_total,
-            "backlog_total": backlog_total,
-        },
-        "transports": all_transports,
-    }
+    # Producer: enumerate xprt directories and feed the queue
+    for switch_dir in sorted(base_path.glob("switch-*")):
+        for xprt_dir in sorted(switch_dir.glob("xprt-*")):
+            work_queue.put(xprt_dir)
+
+    # Wait for all items to be processed
+    work_queue.join()
+    # Send poison pill (None) to each worker to signal graceful shutdown
+    # Timeout prevents hanging if queue is somehow blocked (should never happen in practice)
+    for _ in workers:
+        work_queue.put(None, timeout=2)
+
+    return all_transports
 
 
 # Track active destinations to detect removed transports
 _xprt_previous_destinations = set()
+
+
+def _count_nfs_mounts_per_destination():
+    """Count NFS mounts per destination IP from /proc/self/mountinfo.
+
+    Parses mount info to find NFS mounts and counts how many mounts
+    each NFS server IP is handling. This provides visibility into
+    transport utilization (one transport can serve multiple mounts).
+
+    Returns:
+        dict: Mapping of destination IP to mount count, e.g. {"172.21.112.4": 2, "172.21.112.3": 1}
+    """
+
+    counts = CollCounter()
+    try:
+        for mount in MountInfo.from_host():
+            if not mount.fs_type.startswith("nfs") or not mount.server_ip:
+                continue
+            # Skip /host/ prefix duplicates
+            if mount.mount_point.startswith(str(hostcmd.HOST_MOUNT)):
+                continue
+            # Only count CSI-managed mounts, not manual or non-CSI NFS mounts
+            if _CSI_MOUNT_MARKER not in mount.mount_point:
+                continue
+            counts[mount.server_ip] += 1
+    except Exception as e:
+        logger.warning(f"Failed to count NFS mounts: {e}")
+
+    return dict(counts)
 
 
 def update_xprt_metrics():
@@ -938,26 +998,44 @@ def update_xprt_metrics():
     global _xprt_previous_destinations
     
     try:
-        stats = collect_xprt_stats()
-        summary = stats["summary"]
+        all_transports = collect_xprt_stats()
 
-        # Update aggregate metrics (always visible, even when 0)
-        METRIC_FACTORY.xprt_total.set(summary["total"])
-        METRIC_FACTORY.xprt_connected.set(summary["connected"])
-        METRIC_FACTORY.xprt_pending_total.set(summary["pending_total"])
-        METRIC_FACTORY.xprt_backlog_total.set(summary["backlog_total"])
-        METRIC_FACTORY.xprt_unhealthy.set(summary["unhealthy"])
+        # Count CSI NFS mounts per destination IP — this is the source of truth
+        # for which destinations belong to this CSI driver.
+        mount_counts = _count_nfs_mounts_per_destination()
+        csi_ips = set(mount_counts)
 
-        # Track current destinations
-        current_destinations = set()
-
-        # Update per-transport metrics with VIP label
-        for transport in stats["transports"]:
-            # Extract destination IP (strip port if present)
+        # Filter transports to only those serving CSI mounts
+        csi_transports = []
+        for transport in all_transports:
             dest = transport["remote_addr"]
             if ":" in dest:
                 dest = dest.rsplit(":", 1)[0]  # Remove port, keep IPv6 safe
+            if dest in csi_ips:
+                transport["_dest"] = dest  # stash stripped IP for reuse below
+                csi_transports.append(transport)
 
+        # Update aggregate metrics from CSI-relevant transports only
+        METRIC_FACTORY.xprt_total.set(len(csi_transports))
+        METRIC_FACTORY.xprt_connected.set(
+            sum(1 for x in csi_transports if "CONNECTED" in x["state_flags"])
+        )
+        METRIC_FACTORY.xprt_pending_total.set(
+            sum(x["pending"] for x in csi_transports)
+        )
+        METRIC_FACTORY.xprt_backlog_total.set(
+            sum(x["backlog"] for x in csi_transports)
+        )
+        METRIC_FACTORY.xprt_unhealthy.set(
+            sum(1 for x in csi_transports if not x["healthy"])
+        )
+
+        # Track current destinations (only those with CSI mounts)
+        current_destinations = set()
+
+        # Update per-transport metrics with VIP label
+        for transport in csi_transports:
+            dest = transport["_dest"]
             current_destinations.add(dest)
 
             state_flags = set(transport["state_flags"])
@@ -988,6 +1066,12 @@ def update_xprt_metrics():
                 transport["backlog"]
             )
 
+        # Set mount counts for CSI destinations
+        for dest in current_destinations:
+            METRIC_FACTORY.xprt_mounts.labels(destination=dest).set(
+                mount_counts[dest]
+            )
+
         # When a transport is removed, completely remove its metric label combinations
         removed_destinations = _xprt_previous_destinations - current_destinations
         for dest in removed_destinations:
@@ -999,6 +1083,7 @@ def update_xprt_metrics():
                 METRIC_FACTORY.xprt_locked._metrics.pop((dest,))
                 METRIC_FACTORY.xprt_pending_requests._metrics.pop((dest,))
                 METRIC_FACTORY.xprt_backlog_depth._metrics.pop((dest,))
+                METRIC_FACTORY.xprt_mounts._metrics.pop((dest,))
                 logger.debug("Removed metrics for disappeared destination: %s", dest)
             except KeyError:
                 # Label combination may not exist (e.g., first run after restart)
@@ -1038,6 +1123,7 @@ class MetricsHTTPHandler(BaseHTTPRequestHandler):
     def _serve_prometheus_metrics(self):
         """Serve Prometheus metrics."""
         try:
+            logger.info("HTTP request for /metrics received")
             # Update xprt metrics only on CSI node (not controller-only)
             if self.collect_xprt_metrics:
                 update_xprt_metrics()
@@ -1048,6 +1134,7 @@ class MetricsHTTPHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", CONTENT_TYPE_LATEST)
             self.end_headers()
             self.wfile.write(metrics)
+            logger.info("Metrics sent successfully")
         except Exception as e:
             logger.error(f"Failed to serve metrics: {e}")
             self.send_error(500, str(e))
@@ -1084,7 +1171,6 @@ def start_metrics_server(port=9090, addr="0.0.0.0", is_node_service=False, colle
         /metrics - Prometheus metrics (mount/unmount + NFS transport stats)
         /health  - Health check (Kubernetes liveness/readiness)
     """
-    import threading
 
     global METRIC_FACTORY
     METRIC_FACTORY = MetricFactory(is_node_service)
