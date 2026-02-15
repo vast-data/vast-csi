@@ -2,15 +2,6 @@
 
 ## Version 2.6.5
 * Additional logging and timeout for mount/unmount operations (VCSI-343)
-* Added `EXPAND_VOLUME` node capability and implemented `NodeExpandVolume` as a no-op for NFS filesystem volumes. (VCSI-345)
-* Disabled NVMe controller timeout (`ctrl_loss_tmo=-1`) to prevent premature disconnection during temporary network issues. (VCSI-346)
-* Added `resolveMountSymlinks` configuration option to enable symlink resolution when querying mount information. When enabled, mount paths containing symlinks (e.g., `/dev/disk/by-uuid/*`) are resolved to their canonical paths before comparison. (VCSI-367)
-* Optimized mount info parsing by using `hostPid` and Python standard library instead of `chroot + cat` for reading `/proc/self/mountinfo`. This improves performance and prevents `DeadlineExceeded` timeouts during volume re-attachment operations. (VCSI-367)
-* Fixed VMS API caching to prevent concurrent requests for token acquisition and cluster version retrieval, improving performance and reducing API load
-* Added `cacheMaxAgeSeconds` configuration option to enable HTTP caching for VMS API requests via Cache-Control headers. When set to a value greater than 0, allows VMS to cache responses, useful for handling burst traffic patterns and reducing VMS load
-* Added `disableUsageStats` configuration option to disable sending plugin usage statistics to VAST cluster. When set to true, the CSI driver will not report plugin usage metrics to VMS
-* Added Prometheus metrics support for CSI controller with configurable metrics endpoint exposing CSI RPC operation metrics (`csi_plugin_operations_total`, `csi_plugin_operations_seconds`). Includes optional ServiceMonitor CRD support for Prometheus Operator integration (VCSI-342)
-* Added Prometheus metrics support for CSI node with configurable metrics endpoint exposing CSI RPC operations, mount/umount operations, NVMe connect operations, and NFS transport statistics. Includes optional ServiceMonitor CRD support for Prometheus Operator integration (VCSI-342)
 
 ## Version 2.6.4
 * Added `blockHostsAutoPrune` option to automatically remove unused VAST Host entries (NQNs), preventing host sprawl in dynamic Kubernetes environments (VCSI-263)

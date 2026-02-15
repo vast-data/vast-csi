@@ -162,6 +162,13 @@ class MountInfo:
         return self.root
 
     @property
+    def server_ip(self):
+        """Return the server IP for NFS mounts (e.g. '172.21.112.4' from '172.21.112.4:/path')."""
+        if ":" in self.mount_source:
+            return self.mount_source.split(":", 1)[0]
+        return None
+
+    @property
     def has_blockdev_root(self):
         """Return True if the root is a block device."""
         return bool(DEVICE_NAME_RGX.match(self.root))
@@ -184,7 +191,7 @@ class MountInfo:
         Return a list of MountInfo objects from the host's mount info.
         Host mounts are visible due to mountPropagation: Bidirectional on /var/lib/kubelet.
         """
-        with open("/proc/self/mountinfo") as f:
+        with open(PROC_MOUNT_INFO) as f:
             return [MountInfo(line) for line in f if line.strip()]
 
     @classmethod
