@@ -6,6 +6,8 @@ This module provides:
 - cache_on_arguments: Wrapper for caching methods with **kwargs support
 """
 
+from typing import Callable
+
 from dogpile.cache import make_region
 from dogpile.cache.util import kwarg_function_key_generator
 from dogpile.cache.backends.memory import MemoryBackend
@@ -52,6 +54,9 @@ def cache_on_arguments(expiration_time: int):
     Wrapper for cache_region.cache_on_arguments that uses kwarg_function_key_generator by default.
     This allows caching methods with **kwargs without specifying the key generator each time.
     
+    Uses fn.__qualname__ as the cache namespace to prevent key collisions between
+    different classes with the same method name (e.g. ViewPolicy.one vs VipPool.one).
+    
     IMPORTANT: This decorator must be the INNERMOST (closest to the function definition)
     when used with other decorators like @requisite, @apiver, etc. Otherwise the key
     generator cannot properly inspect the function signature.
@@ -74,7 +79,14 @@ def cache_on_arguments(expiration_time: int):
         def get_subsystem(self, subsystem, **params):
             return self.one(name=subsystem, **params)
     """
-    return _cache_region.cache_on_arguments(
-        expiration_time=expiration_time,
-        function_key_generator=kwarg_function_key_generator
-    )
+
+    def wrapper(fn: Callable):
+        namespace = fn.__qualname__
+
+        return _cache_region.cache_on_arguments(
+            namespace=namespace,
+            expiration_time=expiration_time,
+            function_key_generator=kwarg_function_key_generator
+        )(fn)
+
+    return wrapper
