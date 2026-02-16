@@ -9,12 +9,12 @@ set -e
 if [ -z "$1" ]; then
     echo "Error: Bundle image is required as first argument"
     echo "Usage: $0 <BUNDLE_IMAGE> [VERSION]"
-    echo "Example: $0 quay.io/vastdata/vast-csi-operator-bundle:v2.6.4 v2.6.4"
+    echo "Example: $0 quay.io/vastdata/vast-csi-operator-bundle:v2.6.5 v2.6.5"
     exit 1
 fi
 
 BUNDLE_IMAGE="$1"
-VERSION="${2:-v2.6.4}"
+VERSION="${2:-v2.6.5}"
 
 echo "Installing VAST CSI Operator from bundle image: $BUNDLE_IMAGE (version: $VERSION)"
 
