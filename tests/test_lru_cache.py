@@ -417,3 +417,108 @@ class TestCacheOnArgumentsFunction:
 
         # Verify time difference
         assert execution_times[1] - execution_times[0] >= 0.5
+
+    def test_no_collision_same_method_name_different_classes(self):
+        """Test that different classes with the same method name don't share cache.
+
+        Regression test: ViewPolicy.one(name='x') and VipPool.one(name='x')
+        were returning each other's cached results because dogpile skips `self`
+        when generating keys, and the function name + module was identical.
+        """
+        call_count_a = [0]
+        call_count_b = [0]
+
+        class ClassA:
+            @cache_on_arguments(expiration_time=60)
+            def one(self, **params):
+                call_count_a[0] += 1
+                return {"class": "A", "params": params}
+
+        class ClassB:
+            @cache_on_arguments(expiration_time=60)
+            def one(self, **params):
+                call_count_b[0] += 1
+                return {"class": "B", "params": params}
+
+        a = ClassA()
+        b = ClassB()
+
+        # Call ClassA.one with name='shared'
+        result_a = a.one(name="shared")
+        assert result_a["class"] == "A"
+        assert call_count_a[0] == 1
+
+        # Call ClassB.one with the same args — must NOT return ClassA's cached result
+        result_b = b.one(name="shared")
+        assert result_b["class"] == "B", (
+            f"ClassB.one returned ClassA's cached result! Got: {result_b}"
+        )
+        assert call_count_b[0] == 1
+
+        # Verify caching still works within each class
+        result_a2 = a.one(name="shared")
+        assert result_a2["class"] == "A"
+        assert call_count_a[0] == 1  # still cached
+
+        result_b2 = b.one(name="shared")
+        assert result_b2["class"] == "B"
+        assert call_count_b[0] == 1  # still cached
+
+    def test_no_collision_multiple_classes_same_method(self):
+        """Test that cache isolation holds across many classes with identical method signatures."""
+        results = {}
+
+        class ViewPolicy:
+            @cache_on_arguments(expiration_time=60)
+            def one(self, **params):
+                return "viewpolicy"
+
+        class VipPool:
+            @cache_on_arguments(expiration_time=60)
+            def one(self, **params):
+                return "vippool"
+
+        class QosPolicy:
+            @cache_on_arguments(expiration_time=60)
+            def one(self, **params):
+                return "qospolicy"
+
+        class Tenant:
+            @cache_on_arguments(expiration_time=60)
+            def one(self, **params):
+                return "tenant"
+
+        # All called with identical arguments
+        results["viewpolicy"] = ViewPolicy().one(name="shared-name")
+        results["vippool"] = VipPool().one(name="shared-name")
+        results["qospolicy"] = QosPolicy().one(name="shared-name")
+        results["tenant"] = Tenant().one(name="shared-name")
+
+        # Each must return its own value, not another class's cached value
+        assert results["viewpolicy"] == "viewpolicy"
+        assert results["vippool"] == "vippool"
+        assert results["qospolicy"] == "qospolicy"
+        assert results["tenant"] == "tenant"
+
+    def test_same_class_different_args_no_collision(self):
+        """Test that cache distinguishes different args within the same class."""
+        call_count = [0]
+
+        class MyResource:
+            @cache_on_arguments(expiration_time=60)
+            def one(self, **params):
+                call_count[0] += 1
+                return params
+
+        r = MyResource()
+
+        r.one(name="alpha")
+        assert call_count[0] == 1
+
+        r.one(name="beta")
+        assert call_count[0] == 2
+
+        # Repeated calls should be cached
+        r.one(name="alpha")
+        r.one(name="beta")
+        assert call_count[0] == 2
