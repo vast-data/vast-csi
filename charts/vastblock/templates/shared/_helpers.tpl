@@ -40,12 +40,22 @@
   value: {{ $.Values.attachRequired | quote }}
 - name: X_CSI_VMS_TIMEOUT
   value: {{ $.Values.operationTimeout | quote }}
+- name: X_CSI_CACHE_MAX_AGE
+  value: {{ $.Values.cacheMaxAgeSeconds | default 0 | quote }}
+- name: X_CSI_DISABLE_USAGE_STATS
+  value: {{ $.Values.disableUsageStats | quote }}
 {{ if $.Values.truncateVolumeName -}}
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}
 {{- end }}
 - name: X_CSI_BLOCK_HOSTS_AUTO_PRUNE
   value: {{ $.Values.blockHostsAutoPrune | quote }}
+- name: X_CSI_MOUNT_UMOUNT_TIMEOUT
+  value: {{ $.Values.mountUmountTimeout | quote }}
+{{ if $.Values.resolveMountSymlinks -}}
+- name: X_CSI_RESOLVE_MOUNT_SYMLINKS
+  value: {{ $.Values.resolveMountSymlinks | quote }}
+{{- end }}
 
 {{- end }}
 

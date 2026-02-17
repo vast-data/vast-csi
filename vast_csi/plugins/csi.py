@@ -16,12 +16,15 @@
 import os
 from datetime import datetime
 from tempfile import mkdtemp
+from contextlib import nullcontext
 
 from json import JSONDecodeError
 from plumbum import cmd
 from plumbum import local, ProcessExecutionError
+from plumbum.commands.processes import ProcessTimedOut
 import grpc
 
+from easypy.timing import timing
 from easypy.tokens import CONTROLLER_AND_NODE, CONTROLLER, NODE
 from easypy.caching import cached_property
 from easypy.humanize import yesno_to_bool
@@ -34,7 +37,10 @@ from vast_csi.utils import (
     get_random_fqdn_prefix,
     wrap_ipv6,
     string_to_static_uuid,
+    path_exists,
+    run_with_timeout,
 )
+from vast_csi.filesystem_utils import volume_locked
 from vast_csi.proto import csi_pb2_grpc as csi_grpc
 from vast_csi import csi_types as types
 from vast_csi.csi_types import (
@@ -61,6 +67,7 @@ from vast_csi.exceptions import (
     VolumeAlreadyExists,
     SourceNotFound,
     OperationNotSupported,
+    UmountTimedOut,
 )
 from vast_csi.configuration import Config
 import vast_csi.capabilities as cap_lib
@@ -84,7 +91,16 @@ ServiceCapabilities = cap_lib.ServiceCapabilities(
 ################################################################
 
 
-def mount(src, tgt, flags=""):
+def mount(src, tgt, flags="", metrics_registry=None):
+    """
+    Mount NFS volume with auto-instrumented metrics.
+
+    Args:
+        src: Source path (NFS export)
+        tgt: Target path (mount point)
+        flags: Mount options
+        metrics_registry: Optional MetricsRegistry instance
+    """
     executable = cmd.mount
     flags = [f.strip() for f in flags.split(",")]
     if CONF.mock_vast:
@@ -92,10 +108,75 @@ def mount(src, tgt, flags=""):
     flags = list(filter(None, flags))
     if flags:
         executable = executable["-o", ",".join(flags)]
+    timeout = CONF.mount_umount_timeout
+    flags_str = ",".join(flags) if flags else "(none)"
+    logger.info(f"Mounting {src!r} -> {tgt!r} with flags: {flags_str}, timeout: {timeout}s")
+    
+    if metrics_registry:
+        metrics_manager = metrics_registry.mount("nfs")
+    else:
+        metrics_manager = nullcontext()
+
     try:
-        executable['-v', src, tgt] & logger.pipe_info("mount >>")
+        with (
+            metrics_manager,
+            timing() as timer,
+        ):
+            executable['-v', src, tgt].run(timeout=timeout)
+    except ProcessTimedOut:
+        raise MountFailed(detail=f"mount timed out after {timeout}s", src=src, tgt=tgt, mount_options=flags)
     except ProcessExecutionError as exc:
         raise MountFailed(detail=exc.stderr, src=src, tgt=tgt, mount_options=flags)
+    
+    logger.info(f"Mount succeeded in {timer.elapsed}: {src!r} -> {tgt!r}")
+
+
+def umount(path, ignore_not_mounted=False, metrics_registry=None):
+    """
+    Unmount volume with auto-instrumented metrics.
+
+    Args:
+        path: Path to unmount
+        ignore_not_mounted: If True, ignore "not mounted" errors
+        metrics_registry: Optional MetricsRegistry instance (injected by framework if metrics enabled)
+    
+    Returns:
+        True if unmounted, False if not mounted (when ignore_not_mounted=True)
+    """
+    timeout = CONF.mount_umount_timeout
+    logger.info(f"Unmounting {path!r} with timeout: {timeout}s")
+
+    def do_umount():
+        return cmd.umount['-v', path].run()
+
+    if metrics_registry:
+        metrics_manager = metrics_registry.umount("nfs")
+    else:
+        metrics_manager = nullcontext()
+
+    try:
+        with (
+            metrics_manager,
+            timing() as timer,
+        ):
+            if timeout:
+                run_with_timeout(do_umount, timeout)
+            else:
+                do_umount()
+    except (TimeoutError, ProcessTimedOut):
+        raise UmountTimedOut(f"umount timed out after {timeout}s for path: {path}")
+    except ProcessExecutionError as exc:
+        # Handle "not mounted" without recording metrics
+        if "not mounted" in exc.stderr:
+            if ignore_not_mounted:
+                logger.info(f"Umount: {path!r} is not mounted (ignored)")
+                return False
+            logger.warning(f"Umount failed - {path!r} is not mounted (race?)")
+            return False
+        raise  # Re-raise actual failures
+
+    logger.info(f"Umount succeeded in {timer.elapsed}: {path!r}")
+    return True
 
 
 def _validate_capabilities(capabilities):
@@ -284,7 +365,7 @@ class CsiController(ControllerBase, Instrumented):
                 raise
             finally:
                 if mounted:
-                    cmd.umount['-v', tmpdir] & logger.pipe_info("umount >>", retcode=None)  # don't fail if not mounted
+                    umount(tmpdir, ignore_not_mounted=True)
                 os.remove(tmpdir['.csi-unmounted'])  # will fail if still mounted somehow
                 os.rmdir(tmpdir)  # will fail if not empty directory
 
@@ -317,7 +398,7 @@ class CsiController(ControllerBase, Instrumented):
         return types.DeleteResp()
 
     def ControllerPublishVolume(
-        self, vms_session, node_id, volume_id, volume_capability, volume_context=None
+        self, vms_session, node_id, volume_id, volume_capability, volume_context=None, exit_stack=None
     ):
         volume_context = dict(volume_context or dict())
         volume_capabilities = _validate_capabilities(volume_capability)
@@ -519,6 +600,7 @@ class CsiController(ControllerBase, Instrumented):
 class CsiNode(NodeBase, Instrumented):
 
     CAPABILITIES = [
+        types.NodeCapabilityType.EXPAND_VOLUME,
         types.NodeCapabilityType.GET_VOLUME_STATS,
     ]
 
@@ -530,12 +612,15 @@ class CsiNode(NodeBase, Instrumented):
         self,
         volume_id,
         target_path,
+        exit_stack,
         vms_session=None,
         volume_capability=None,
         publish_context=None,
         readonly=False,
         volume_context=None,
+        metrics_registry=None
     ):
+        exit_stack.enter_context(volume_locked(volume_id))
         volume_context = volume_context or dict()
         if (
             is_ephemeral := volume_context
@@ -560,6 +645,7 @@ class CsiNode(NodeBase, Instrumented):
                 vms_session=vms_session,
                 volume_capability=volume_capability,
                 ephemeral_volume_name=eph_volume_name,
+                exit_stack=exit_stack,
             )
         elif not volume_capability:
             raise Abort(INVALID_ARGUMENT, "missing 'volume_capability'")
@@ -571,6 +657,7 @@ class CsiNode(NodeBase, Instrumented):
                 volume_id=volume_id,
                 volume_capability=volume_capability,
                 volume_context=volume_context,
+                exit_stack=exit_stack,
             )
 
         nfs_server_ip = publish_context["nfs_server_ip"]
@@ -622,7 +709,12 @@ class CsiNode(NodeBase, Instrumented):
                 volume_context.get("mount_options", publish_context.get("mount_options", ""))
             )
         try:
-            mount(mount_spec, target_path, flags=",".join(flags))
+            mount(
+                mount_spec,
+                target_path,
+                flags=",".join(flags),
+                metrics_registry=metrics_registry,
+            )
             logger.info(f"mounted: {target_path} flags: {flags}")
         except Exception:
             meta_file.delete()
@@ -630,25 +722,35 @@ class CsiNode(NodeBase, Instrumented):
 
         return types.NodePublishResp()
 
-    def NodeUnpublishVolume(self, volume_id, target_path, vms_session=None):
+    def NodeUnpublishVolume(
+            self,
+            volume_id,
+            target_path,
+            exit_stack,
+            vms_session=None,
+            metrics_registry=None,
+    ):
+        exit_stack.enter_context(volume_locked(volume_id))
         target_path = local.path(target_path)
         meta_file = target_path[".vast-csi-meta"]
 
-        if not target_path.exists():
+        if not path_exists(target_path, timeout=CONF.mount_umount_timeout):
             logger.info(f"{target_path} does not exist - no need to remove")
         else:
             # make sure we're really unmounted before we delete anything
             for i in range(CONF.unmount_attempts):
-                if not get_mount(target_path):
+                mount_info = get_mount(target_path, timeout=CONF.mount_umount_timeout)
+                if not mount_info:
                     logger.info(f"{target_path} is not mounted")
                     break
                 try:
-                    local.cmd.umount(target_path)
-                except ProcessExecutionError as exc:
-                    if "not mounted" in exc.stderr:
-                        logger.info(f"umount failed - {target_path} is not mounted (race?)")
-                        break
-                    raise
+                    umount(
+                        target_path,
+                        ignore_not_mounted=False,
+                        metrics_registry=metrics_registry,
+                    )
+                except UmountTimedOut as exc:
+                    raise Abort(UNKNOWN, str(exc))
             else:
                 raise Abort(
                     UNKNOWN,
@@ -665,6 +767,21 @@ class CsiNode(NodeBase, Instrumented):
             os.rmdir(target_path)  # don't use plumbum's .delete to avoid the dangerous rmtree
             logger.info(f"{target_path} removed successfully")
         return types.NodeUnpublishResp()
+
+    def NodeExpandVolume(
+            self,
+            volume_id,
+            volume_path,
+            capacity_range=None,
+            staging_target_path=None,
+            volume_capability=None,
+    ):
+        """No-op for NFS volumes."""
+        if not os.path.ismount(volume_path):
+            raise Abort(NOT_FOUND, f"{volume_path} is not a mountpoint")
+        
+        requested_capacity = capacity_range.required_bytes if capacity_range else 0
+        return types.NodeExpandResp(capacity_bytes=requested_capacity)
 
     def NodeGetVolumeStats(self, volume_id, volume_path):
         if not os.path.ismount(volume_path):

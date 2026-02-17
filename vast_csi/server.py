@@ -12,6 +12,7 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+import os
 import importlib
 from concurrent import futures
 import grpc
@@ -19,10 +20,14 @@ import grpc
 from .logging import logger, init_logging
 from .utils import patch_traceback_format
 from .configuration import Config
+from . import metrics
 
 
 def serve(plugin: str):
     assert plugin in {"csi", "cosi", "block"}, f"Invalid plugin type: {plugin}"
+
+    # Suppress gRPC fork warnings when using subprocess (known gRPC issue #24917)
+    os.environ.setdefault('GRPC_ENABLE_FORK_SUPPORT', '0')
 
     plugin_module = importlib.import_module(f"vast_csi.plugins.{plugin}")
     patch_traceback_format()
@@ -35,7 +40,20 @@ def serve(plugin: str):
 
         urllib3.disable_warnings()
 
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=CONF.worker_threads))
+    if CONF.metrics_enabled:
+        # Automatically enable xprt metrics only for NFS driver (plugin="csi")
+        # Block driver doesn't use NFS so no xprt metrics needed
+        collect_nfs_xprt = (plugin == "csi")
+        metrics.start_metrics_server(
+            port=CONF.metrics_port,
+            is_node_service=CONF.has_running_node,
+            collect_nfs_xprt=collect_nfs_xprt
+        )
+
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=CONF.worker_threads)
+    )
+    
     plugin_module.serve(server, CONF)
     server.add_insecure_port(CONF.endpoint)
     server.start()

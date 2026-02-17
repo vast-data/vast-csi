@@ -14,6 +14,8 @@
 #    under the License.
 import os
 import json
+import random
+import threading
 from functools import wraps
 from pprint import pformat
 import inspect
@@ -38,10 +40,25 @@ from vast_csi.builders import  parse_volume_id
 from vast_csi.exceptions import Abort, LookupFieldError
 from vast_csi.vms_session import get_vms_session, VmsSession
 from vast_csi.luks_utils import get_luks_manager, LuksManager
+from vast_csi.metrics import get_metrics_registry
 from vast_csi.quantity import parse_quantity
 
 
 CONF = None
+
+
+# Request ID counter for unique request tracking
+# Initialized with a random value in the lower half of uint32 range to avoid predictable sequences
+_req_id_counter = random.randint(0, 0x7FFFFFFF)  # [0, max/2]
+_req_id_lock = threading.Lock()
+
+
+def _get_next_uid():
+    """Generate a unique request ID with zero-padded hex format (e.g., 0x0000abcd)."""
+    global _req_id_counter
+    with _req_id_lock:
+        _req_id_counter = (_req_id_counter + 1) & 0xFFFFFFFF  # Wrap at uint32 max
+        return f"0x{_req_id_counter:08x}"
 
 
 class Instrumented:
@@ -65,11 +82,12 @@ class Instrumented:
 
         @wraps(func)
         def wrapper(self, request, context):
+            uid = _get_next_uid()
             peer = context.peer()
             params = {fld.name: value for fld, value in request.ListFields()}
             # secrets are not logged and not the part of function signature.
             secrets = params.pop("secrets", {})
-            missing_params = required_params - {"request", "context", "vms_session", "exit_stack", "luks_manager"} - set(params)
+            missing_params = required_params - {"request", "context", "vms_session", "exit_stack", "luks_manager", "metrics_registry"} - set(params)
 
             # Get cluster_name from volume_id, snapshot_id or source_volume_id in case of id identifier with metadata
             cluster_names = set()
@@ -88,7 +106,7 @@ class Instrumented:
             else:
                 raise Exception(f"too many cluster names specified: {', '.join(cluster_names)}")
 
-            log(f"{peer} >>> {method} ({cluster_name or '-'}):")
+            log(f"{peer} >>> [{uid}] {method} ({cluster_name or '-'}):")
 
             if params:
                 for line in stringify_dict(params):
@@ -115,20 +133,34 @@ class Instrumented:
                 )
 
             exit_stack = ExitStack()
+            
+            if CONF.metrics_enabled:
+                metrics_registry = get_metrics_registry(
+                    params, hostname=CONF.node_id, driver_name=CONF.plugin_name
+                )
+                
+                if "metrics_registry" in required_params or "metrics_registry" in non_required_params:
+                    params["metrics_registry"] = metrics_registry
+                
+                # Track CSI operation metrics (execution time + status code)
+                exit_stack.enter_context(
+                    metrics_registry.csi_operation(method)
+                )
+
             if "exit_stack" in required_params:
                 params["exit_stack"] = exit_stack
 
             try:
                 if missing_params:
                     msg = f'Missing required fields: {", ".join(sorted(missing_params))}'
-                    logger.error(f"{peer} <<< {method}: {msg}")
+                    logger.error(f"{peer} <<< [{uid}] {method}: {msg}")
                     raise Abort(INVALID_ARGUMENT, msg)
 
                 with exit_stack:
                     ret = func(self, request=request, context=context, **params)
             except Abort as exc:
                 logger.info(
-                    f'{peer} <<< {method} ABORTED with {exc.code} ("{exc.message}")'
+                    f'{peer} <<< [{uid}] {method} ABORTED with {exc.code} ("{exc.message}")'
                 )
                 logger.debug("Traceback", exc_info=True)
                 context.abort(exc.code, exc.message)
@@ -137,24 +169,24 @@ class Instrumented:
                 status_code = exc.response.status_code
                 text = exc.response.text.splitlines()[0]
                 resource = exc.request.path_url
-                logger.exception(f"Exception during {method}\n{exc.response.text}")
+                logger.exception(f"[{uid}] Exception during {method}\n{exc.response.text}")
                 context.abort(
                     UNKNOWN,
                     f"[{method}]. Unable to accomplish request to {resource}. {text}, <{reason}({status_code})>"
                 )
             except TException as exc:
                 # Any exception inherited from TException
-                logger.exception(f"Exception during {method}")
+                logger.exception(f"[{uid}] Exception during {method}")
                 context.abort(UNKNOWN, f"[{method}]. {exc.render(color=False)}")
             except Exception as exc:
-                logger.exception(f"Exception during {method}")
+                logger.exception(f"[{uid}] Exception during {method}")
                 text = str(exc)
                 context.abort(UNKNOWN, f"[{method}]: {text}")
             if ret:
                 log(f"{peer} <<< {method}:")
                 for line in pformat(ret).splitlines():
                     log(f"    {line}")
-            log(f"{peer} --- {method}: Done")
+            log(f"[{uid}] {peer} --- {method}: Done")
             return ret
 
         return wrapper
@@ -308,7 +340,7 @@ class NodeBase(csi_grpc.NodeServicer):
             )
 
     def _get_publish_context_for_ev_volumes(
-            self, volume_context, volume_id, volume_capability, vms_session, **create_vol_kwargs
+            self, volume_context, volume_id, volume_capability, vms_session, exit_stack, **create_vol_kwargs
     ):
         """
         This method implements the logic of a mixin that creates the publish context for ephemeral (EV) volumes.
@@ -336,12 +368,13 @@ class NodeBase(csi_grpc.NodeServicer):
             volume_id=volume_id,
             volume_capability=volume_capability,
             volume_context=volume_context,
+            exit_stack=exit_stack,
         )
         return resp.publish_context
 
 
     def _get_publish_context_for_non_attach_required(
-            self, vms_session, node_id, volume_id, volume_capability, volume_context
+            self, vms_session, node_id, volume_id, volume_capability, volume_context, exit_stack
     ):
         """
         This method implements the logic of a mixin that creates
@@ -357,6 +390,7 @@ class NodeBase(csi_grpc.NodeServicer):
             node_id=node_id,
             volume_id=volume_id,
             volume_capability=volume_capability,
+            exit_stack=exit_stack,
             volume_context=volume_context,
         )
         return resp.publish_context

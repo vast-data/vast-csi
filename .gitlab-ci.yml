@@ -15,7 +15,7 @@ variables:
   DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
   IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:${CI_PIPELINE_ID}
   # source: packaging/base.Dockerfile
-  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2025-09-17
+  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2026-02-02
   ORION_BRANCH: comet/master
 
 
@@ -169,6 +169,63 @@ update_dockerhub [beta]:
   environment: beta
 
 
+update_dockerhub [hotfix]:
+  stage: deploy
+  environment: prod
+  only:
+    - /^v?[\d]+\.[\d]+\.[\d]+-hf[\d]+$/
+  script: |
+    set -x
+    # Extract version from branch name (e.g., 2.6.4-hf1 or v2.6.4-hf1)
+    VERSION=${CI_COMMIT_REF_NAME#v}  # Remove 'v' prefix if present
+    echo "Building hotfix version: ${VERSION}"
+    
+    docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} $DOCKER_HUB
+    export PUSH_ON_SUCCESS=true
+    
+    # Publish CSI Driver image
+    export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}
+    export DOCKERFILE=Dockerfile
+    make build_image
+
+  after_script:
+  - docker logout $DOCKER_HUB
+  when: manual
+  tags:
+    - vast-dev-builder
+
+
+update_dockerhub_operator_only [prod]: &update_dockerhub_operator_only
+  stage: deploy
+  environment: prod
+  only:
+    - /v[\d]\.[\d]+/
+  script: |
+    set -x
+    VERSION=$(cat version.txt)
+    if [[ "$CI_ENVIRONMENT_NAME" != "prod" ]]; then
+      VERSION=$VERSION-$CI_ENVIRONMENT_NAME-$CI_PIPELINE_ID
+    fi
+    docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} $DOCKER_HUB
+    docker login -u ${RH_DOCKER_USER} -p ${RH_DOCKER_PASSWORD} registry.redhat.io
+
+    export PUSH_ON_SUCCESS=true
+        
+    # Publish CSI Operator image
+    export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}-operator
+    export DOCKERFILE=operator.Dockerfile
+    make build_image
+  after_script:
+  - docker logout $DOCKER_HUB
+  when: manual
+  tags:
+    - vast-dev-builder
+
+update_dockerhub_operator_only [beta]:
+  <<: *update_dockerhub_operator_only
+  environment: beta
+
+
 update_github [prod]:  &update_github
   stage: deploy
   variables:
@@ -220,6 +277,44 @@ update_github [beta]:
   <<: *update_github
   variables:
     BETA: "true"
+
+
+update_github [hotfix]:
+  stage: deploy
+  only:
+    - /^v?[\d]+\.[\d]+\.[\d]+-hf[\d]+$/
+  before_script: *setup_github_access
+  script: |
+    set -x
+    # Extract version from branch name (e.g., 2.6.4-hf1 or v2.6.4-hf1)
+    VERSION=${CI_COMMIT_REF_NAME#v}  # Remove 'v' prefix if present
+    TARGET_BRANCH=$CI_COMMIT_REF_NAME
+    echo "Publishing hotfix version: ${VERSION} to branch: ${TARGET_BRANCH}"
+    
+    git remote -v
+    git remote add github git@github.com:vast-data/vast-csi.git || true
+    git fetch github $TARGET_BRANCH || true  # Fetch if branch exists, ignore if it doesn't
+    
+    # Check if remote branch exists
+    if git ls-remote --heads github $TARGET_BRANCH | grep -q $TARGET_BRANCH; then
+      git checkout -B $TARGET_BRANCH FETCH_HEAD
+    else
+      # Create new branch from current commit
+      git checkout -B $TARGET_BRANCH
+    fi
+    
+    git checkout $CI_COMMIT_SHA -- .
+    git commit -am "VAST Data CSI Plugin - Hotfix $VERSION
+
+      (from $CI_COMMIT_SHA)"
+
+    git tag -f $VERSION
+    git push -f --tags github HEAD:$TARGET_BRANCH
+    
+    echo "Successfully published hotfix ${VERSION}"
+  when: manual
+  tags:
+    - vast-dev-builder
 
 
 mark_stable:
@@ -291,7 +386,7 @@ update_operators_redhat:
     # Push CSI Operator bundle also to the internal ECR registry.
     # We might want to test it before release
     OPERATOR_BUNDLE_TAG=internal-bundle-certified
-    OPERATOR_PROXY_IMG=registry.redhat.io/openshift4/ose-kube-rbac-proxy@sha256:77df668a9591bbaae675d0553f8dca5423c0f257317bc08fe821d965f44ed019"
+    OPERATOR_PROXY_IMG=registry.redhat.io/openshift4/ose-kube-rbac-proxy@sha256:77df668a9591bbaae675d0553f8dca5423c0f257317bc08fe821d965f44ed019
     make operator-bundle-build
     docker tag "${IMG}:latest-csi-operator-bundle" "${IMAGE_NAME}-internal-bundle-certified"
     echo "Pushing pre-release bundle: ${IMAGE_NAME}-internal-bundle-certified"
@@ -337,6 +432,9 @@ update_operators_operatorhub:
   script: |
     set -x
     export VERSION=$(cat version.txt)
+    
+    # Login to Docker Hub to pull public images
+    docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} docker.io
 
     export IMG_PULL_SECRET=null
     export PIPE=null
@@ -379,6 +477,16 @@ update_operators_operatorhub:
     rm -rf $DEST && mkdir -p $DEST    
     cp -r ../bundle/manifests $DEST
     cp -r ../bundle/metadata $DEST
+    
+    # Create ci.yaml file at operator level (not version level) for automatic PR merging
+    CI_YAML_FILE=operators/vast-csi-operator/ci.yaml
+    echo "---" > $CI_YAML_FILE
+    echo "# CI configuration for vast-csi-operator" >> $CI_YAML_FILE
+    echo "# See: https://github.com/operator-framework/community-operators/blob/master/docs/operator-ci-yaml.md" >> $CI_YAML_FILE
+    echo "updateGraph: replaces-mode" >> $CI_YAML_FILE
+    echo "reviewers:" >> $CI_YAML_FILE
+    echo "  - volodymyr-boiko" >> $CI_YAML_FILE
+    echo "  - vast-data" >> $CI_YAML_FILE
     
     # Commit and push changes
     git add .

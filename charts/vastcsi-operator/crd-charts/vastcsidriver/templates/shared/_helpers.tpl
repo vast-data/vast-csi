@@ -62,9 +62,13 @@ app.kubernetes.io/instance: {{ .Release.Name }}
   value: {{ $.Values.useLocalIpForMount | quote }}
 - name: X_CSI_ATTACH_REQUIRED
   value: {{ $.Values.attachRequired | quote }}
+- name: X_CSI_DISABLE_USAGE_STATS
+  value: {{ $.Values.disableUsageStats | default false | quote }}
 {{- if $.Values.truncateVolumeName }}
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}
+- name: X_CSI_BLOCK_HOSTS_AUTO_PRUNE
+  value: {{ $.Values.blockHostsAutoPrune | quote }}
 {{- end }}
 
 {{- end }}

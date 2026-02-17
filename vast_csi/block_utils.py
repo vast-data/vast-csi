@@ -9,6 +9,7 @@ from vast_csi.logging import logger
 
 DEVICE_NAME_RGX = re.compile(r"nvme\d+n\d+")
 BLOCK_DEVICE_INFO_PATH = local.path("/sys/block")
+NVME_CLASS_PATH = local.path("/sys/class/nvme")
 
 
 def try_nvme_probes():
@@ -29,6 +30,33 @@ def is_native_multipath_enabled():
             return f.read().strip() == "Y"
     except Exception:
         return False
+
+def get_hostnqn_from_sysfs(subsystem):
+    """
+    Read HostNQN from sysfs for a given NVMe subsystem.
+
+    This is a fallback for older nvme-cli versions (1.x) that don't report
+    HostNQN in the `nvme list-subsys` output.
+
+    Args:
+        subsystem: Subsystem object with Paths containing controller names
+
+    Returns:
+        str: The HostNQN read from sysfs, or None if not found
+    """
+    # Pick the first controller from the subsystem's paths
+    if not subsystem.Paths:
+        logger.warning(f"Subsystem {subsystem.Name} has no paths")
+        return None
+
+    controller_name = subsystem.Paths[0].Name
+    hostnqn_path = NVME_CLASS_PATH / controller_name / "hostnqn"
+
+    if hostnqn_path.exists():
+        return hostnqn_path.read().strip()
+
+    logger.warning(f"hostnqn not found for controller {controller_name}")
+    return None
 
 def list_nvme_sessions():
     """
@@ -51,14 +79,74 @@ def list_nvme_sessions():
     return []
 
 
-def get_connected_session(host_nqn, sybsystem_nqn):
-    """Checks if the host is connected to the subsystem."""
+def get_connected_session(host_nqn: str, subsystem_nqn: str):
+    """
+    Checks if the host is connected to the subsystem.
+
+    This function handles compatibility with both old (1.x) and new (2.x) nvme-cli versions:
+    - nvme-cli 1.x: Does not return the HostNQN field in `nvme list-subsys` output
+    - nvme-cli 2.x: Returns the HostNQN field
+
+    For nvme-cli 1.x, we fall back to reading HostNQN from sysfs to properly verify
+    that the connected subsystem matches the expected host NQN.
+
+    Contract:
+      - list_nvme_sessions() -> Iterable[Session]
+      - Session.HostNQN: str | None   (None for nvme-cli 1.x parsing)
+      - Session.HostID: str
+      - Session.Subsystems: list[Subsystem]
+      - Subsystem.NQN: str
+      - Subsystem.Name: str
+
+    Args:
+        host_nqn: Expected host NQN that CSI wants to use
+        subsystem_nqn: The subsystem NQN to check for connection
+
+    Returns:
+        Subsystem object if connected with matching host NQN, None otherwise
+    """
+    host_nqn = host_nqn.strip()
+    subsystem_nqn = subsystem_nqn.strip()
+
+    warned_no_hostnqn = False
+
     for session in list_nvme_sessions():
-        # `nvme-cli` version 1.x does not return the `HostNQN` field.
-        if session.get("HostNQN", host_nqn) == host_nqn:
-            for subsys in session.Subsystems:
-                if subsys.NQN == sybsystem_nqn:
-                    return subsys
+        # 1. Find the target subsystem first (so sysfs fallback is tied to the right subsys)
+        target = None
+        for subsys in session.Subsystems:
+            if subsys.NQN.strip() == subsystem_nqn:
+                target = subsys
+                break
+        if target is None:
+            continue
+
+        # 2. Resolve HostNQN
+        reported_host_nqn = session.get("HostNQN", "").strip()
+        if not reported_host_nqn:
+            if not warned_no_hostnqn:
+                logger.warning(
+                    "nvme-cli output did not include HostNQN; attempting sysfs fallback for matching session(s)."
+                )
+                warned_no_hostnqn = True
+
+            actual_host_nqn = get_hostnqn_from_sysfs(target)
+            if actual_host_nqn is None:
+                logger.error(
+                    f"Cannot determine actual HostNQN for session host_id={session.get('HostID', 'unknown')}. "
+                    f"Expected host_nqn={host_nqn}. Will NOT assume match."
+                )
+                continue
+
+            reported_host_nqn = actual_host_nqn.strip()
+            logger.info(f"Read HostNQN from sysfs: {reported_host_nqn}")
+
+        # 3. Verify
+        if reported_host_nqn == host_nqn:
+            return target
+
+        logger.debug(
+            f"Subsystem NQN matched but HostNQN mismatch: expected={host_nqn}, actual={reported_host_nqn}"
+        )
 
 
 def list_nvme_devices():
@@ -154,14 +242,19 @@ def get_controller_info(device_path):
     return Bunch.from_json(stdout)
 
 
-def connect_nvme_targets(discovery_server, host_nqn, host_id):
+def connect_nvme_targets(discovery_server, host_nqn, host_id, subsystem_nqn):
     """
-     Connects to all NVMe targets associated with a given Discovery Controller and subsystem.
-     Args:
-         discovery_server (str): The IP address or hostname of the Discovery Controller.
-         host_nqn (str): The Host NQN (NVMe Qualified Name) used to identify the host.
-         host_id (str): User defined Host ID.
-     """
+    Connects to all NVMe targets associated with a given Discovery Controller and subsystem.
+
+    Args:
+        discovery_server (str): The IP address or hostname of the Discovery Controller.
+        host_nqn (str): The Host NQN (NVMe Qualified Name) used to identify the host.
+        host_id (str): User defined Host ID.
+        subsystem_nqn (str): The subsystem NQN to verify connection.
+
+    Returns:
+        Subsystem object if connected successfully, None otherwise.
+    """
     args = [
         "connect-all",
         "-t", "tcp",
@@ -170,6 +263,9 @@ def connect_nvme_targets(discovery_server, host_nqn, host_id):
         "-I", host_id,
     ]
     hostcmd.nvme.get_executable(*args) & logger.pipe_info("nvme")
+
+    # Return the connected session
+    return get_connected_session(host_nqn=host_nqn, subsystem_nqn=subsystem_nqn)
 
 
 def change_io_policy(device_name, io_policy):
@@ -181,3 +277,28 @@ def change_io_policy(device_name, io_policy):
     """
     with BLOCK_DEVICE_INFO_PATH[device_name]["device/iopolicy"].open("w") as f:
         f.write(io_policy)
+
+
+def disable_nvme_timeout(subsystem):
+    """
+    Disables the NVMe controller loss timeout by setting ctrl_loss_tmo to -1 for all
+    controllers in the subsystem.
+
+    Args:
+        subsystem: Subsystem object with Paths containing controller names
+    """
+    if not subsystem.Paths:
+        logger.warning(f"Subsystem {subsystem.Name} has no paths")
+        return
+
+    # Disable timeout for all controllers in the subsystem
+    for path in subsystem.Paths:
+        ctrl_name = path.Name
+        ctrl_loss_tmo_path = NVME_CLASS_PATH / ctrl_name / "ctrl_loss_tmo"
+
+        if ctrl_loss_tmo_path.exists():
+            with ctrl_loss_tmo_path.open("w") as f:
+                f.write("-1")
+            logger.info(f"Disabled timeout for NVMe controller {ctrl_name!r}")
+        else:
+            logger.warning(f"ctrl_loss_tmo not found for controller {ctrl_name!r}")

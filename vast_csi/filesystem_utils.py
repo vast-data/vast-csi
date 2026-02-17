@@ -5,9 +5,12 @@ from threading import RLock
 from collections import defaultdict
 from contextlib import contextmanager
 
+from easypy.units import MINUTE
 from requests.exceptions import HTTPError  # noqa
 from plumbum import local, cmd, ProcessExecutionError
+from plumbum.commands.processes import ProcessTimedOut
 from vast_csi.logging import logger
+from vast_csi.utils import run_with_timeout
 
 
 PROC_MOUNT_INFO = "/proc/self/mountinfo"
@@ -73,8 +76,19 @@ class HostCommand:
             *args: Positional arguments to pass to the command.
             timeout (float or None, optional): Timeout for the command execution in seconds. Defaults to None.
         """
-        executable = self.get_executable(*args)
-        retcode, stdout, stderr = executable.run(retcode=None, timeout=timeout)
+
+        def _execute_command():
+            return self.get_executable(*args).run(retcode=None)
+
+        if timeout is not None:
+            try:
+                retcode, stdout, stderr = run_with_timeout(_execute_command, timeout)
+            except TimeoutError:
+                cmd_str = self._get_cmd_chain(*args)
+                raise ProcessTimedOut(f"Command timed out after {timeout}s: {cmd_str}", None)
+        else:
+            retcode, stdout, stderr = _execute_command()
+
         if retcode != 0:
             # Avoid using cmd.formulate() or any kind of cmd resolving within docker system context.
             # Because such commands as 'nvme' are available only on the host system.
@@ -148,6 +162,13 @@ class MountInfo:
         return self.root
 
     @property
+    def server_ip(self):
+        """Return the server IP for NFS mounts (e.g. '172.21.112.4' from '172.21.112.4:/path')."""
+        if ":" in self.mount_source:
+            return self.mount_source.split(":", 1)[0]
+        return None
+
+    @property
     def has_blockdev_root(self):
         """Return True if the root is a block device."""
         return bool(DEVICE_NAME_RGX.match(self.root))
@@ -166,28 +187,34 @@ class MountInfo:
 
     @classmethod
     def from_host(cls):
-        """Return a list of MountInfo objects from the host's mount info."""
-        return [
-            MountInfo(line) for line in hostcmd.cat(PROC_MOUNT_INFO).split("\n") if line
-        ]
+        """
+        Return a list of MountInfo objects from the host's mount info.
+        Host mounts are visible due to mountPropagation: Bidirectional on /var/lib/kubelet.
+        """
+        with open(PROC_MOUNT_INFO) as f:
+            return [MountInfo(line) for line in f if line.strip()]
 
     @classmethod
-    def get_mount_by_destination(cls, dest_path):
+    def get_mount_by_destination(cls, dest_path, resolve_symlink=False):
         """Return the source device for a path.
         The source of a mounted path will either be the mount source of the
         mount point or the root if it's a bind mount.
-        This method  resolves symlinks to support real mounts.
+        
+        Args:
+            dest_path: Path to search for in mount points
+            resolve_symlink: If True, resolve symlinks via get_host_realpath (slower).
+                           If False (default), use paths as-is for better performance.
         """
-        dest_path_resolved = get_host_realpath(dest_path)
+        dest_path_resolved = get_host_realpath(dest_path) if resolve_symlink else dest_path
         mount_info = cls.from_host()
         for mount in mount_info:
-            mount_point_resolved = get_host_realpath(mount.mount_point)
+            mount_point_resolved = get_host_realpath(mount.mount_point) if resolve_symlink else mount.mount_point
             if mount_point_resolved == dest_path_resolved:
                 return mount
         return None
 
     @classmethod
-    def get_mounts_by_source(cls, src):
+    def get_mounts_by_source(cls, src, resolve_symlink=False):
         """
         Retrieve a list of mounts associated with a given source.
         This method behaves differently for bind mounts, depending
@@ -196,6 +223,12 @@ class MountInfo:
            The search is performed by matching the device.
          - For bind mounts to directories, the source is the directory.
            The search establishes a relationship between the source and its mount point.
+        
+        Args:
+            src: Source path to search for
+            resolve_symlink: If True, resolve symlinks via get_host_realpath (slower).
+                           If False (default), use paths as-is for better performance.
+        
         Returns:
            A tuple containing:
            - The mount object corresponding to the given source, if found.
@@ -203,14 +236,14 @@ class MountInfo:
         """
         src_mount = None
         target_mounts = []
-        src_resolved = get_host_realpath(src)
+        src_resolved = get_host_realpath(src) if resolve_symlink else src
 
         mounts_by_source = defaultdict(list)
         mount_info = cls.from_host()
 
         for mount in mount_info:
-            mount_point_resolved = get_host_realpath(mount.mount_point)
-            mount_source_resolved = get_host_realpath(mount.source)
+            mount_point_resolved = get_host_realpath(mount.mount_point) if resolve_symlink else mount.mount_point
+            mount_source_resolved = get_host_realpath(mount.source) if resolve_symlink else mount.source
 
             if not src_mount and mount_point_resolved == src_resolved:
                 src_mount = mount
@@ -218,8 +251,8 @@ class MountInfo:
                 mounts_by_source[mount_source_resolved].append(mount)
 
         if src_mount:
-            resolved_src = get_host_realpath(src_mount.source)
-            resolved_mount_point = get_host_realpath(src_mount.mount_point)
+            resolved_src = get_host_realpath(src_mount.source) if resolve_symlink else src_mount.source
+            resolved_mount_point = get_host_realpath(src_mount.mount_point) if resolve_symlink else src_mount.mount_point
             target_mounts = mounts_by_source[resolved_src] + mounts_by_source[resolved_mount_point]
 
         return src_mount, target_mounts
@@ -234,7 +267,7 @@ class MountInfo:
 
 def get_filesystem_type(path: str):
     """Determine the filesystem type of given path using the `blkid` command."""
-    retcode, stdout, stderr = cmd.blkid[path, "-s", "TYPE", "-o", "value"].run(retcode=None)
+    retcode, stdout, stderr = cmd.blkid[path, "-s", "TYPE", "-o", "value"].run(retcode=None, timeout=10)
     if retcode not in (0, 2):
         # Disk device is unformatted.
         # For `blkid`, if the specified token (TYPE/PTTYPE, etc) was
@@ -268,7 +301,7 @@ def format_device(requested_fs: str, device: str, format_args: str = None):
         args += split(format_args)
     args.append(str(device))
     logger.info(f"{requested_fs} fs type has been requested with {args=}. Formatting device.")
-    local[f"mkfs.{requested_fs}"][args] & logger.pipe_info(f"{requested_fs}: ")
+    local[f"mkfs.{requested_fs}"][args] & logger.pipe_info(f"{requested_fs}: ", line_timeout=10 * MINUTE)
     return True
 
 

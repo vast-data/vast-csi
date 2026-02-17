@@ -43,7 +43,7 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented):
             name = name[:CONF.truncate_volume_name]  # crop to Vast's max-length
 
         uid = randint(50000, 60000)
-        vms_session.users.ensure(name=name, uid=uid, allow_create_bucket=True)
+        vms_session.users.ensure(name=name, uid=uid)
         view = vms_session.views.ensure_s3view(bucket_name=name, root_export=root_export, **parameters)
         port = 443 if scheme == "https" else 80
         vip = vms_session.vippools.get_vip(vip_pool_name=vip_pool_name, tenant_id=view.tenant_id)
@@ -90,7 +90,9 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented):
 
 def serve(server: grpc.Server, conf: Config):
     global CONF
-    CONF = conf
+    import vast_csi.plugins.base
+
+    vast_csi.plugins.base.CONF = CONF = conf
     cosi_identity = CosiIdentity()
     cosi_grpc.add_IdentityServicer_to_server(cosi_identity, server)
 

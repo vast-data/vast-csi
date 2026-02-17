@@ -4,6 +4,7 @@ import json
 import requests
 import hashlib
 import inspect
+import threading
 from abc import ABC
 from pprint import pformat
 from uuid import uuid4
@@ -11,6 +12,7 @@ from types import FunctionType
 from contextlib import contextmanager
 from datetime import datetime
 from functools import wraps
+from requests import cookies
 from requests.exceptions import ConnectionError, HTTPError
 from requests.utils import default_user_agent
 
@@ -18,7 +20,7 @@ from easypy.bunch import Bunch, bunchify
 from easypy.caching import cached_property
 from easypy.collections import shuffled
 from easypy.semver import SemVer
-from easypy.caching import timecache, locking_cache
+from easypy.caching import locking_cache
 from easypy.units import HOUR, MINUTE
 from easypy.sync import wait
 from easypy.resilience import retrying, resilient
@@ -34,6 +36,7 @@ from .exceptions import ApiError, MountFailed, OperationNotSupported, LookupFiel
 from .utils import generate_ip_range
 from . import csi_types as types
 from .serialization_utils import SerializationMixin
+from .lru_cache import cache_on_arguments
 
 
 class ApiVersion:
@@ -127,17 +130,29 @@ def get_vms_session(username=None, password=None, token=None, tenant=None, endpo
     )
 
 
+class NoCookiesJar(cookies.RequestsCookieJar):
+    def set(self, name, value, **kwargs):
+        return None
+
+    def set_cookie(self, cookie, *args, **kwargs):
+        return
+
+
 class RESTSession(requests.Session):
     def __init__(self, config):
         super().__init__()
         self.config = config
+        self.cookies = NoCookiesJar()
         self.headers["Accept"] = "application/json"
         self.headers["Content-Type"] = "application/json"
         self.headers["User-Agent"] = f"VastCSI/{config.plugin_version}.{config.ci_pipe}.{config.git_commit[:10]} ({config._mode.capitalize()}) {default_user_agent()}"
-        self.headers['authorization'] = f"Bearer #"  # will be updated on first request
+        self.headers['authorization'] = ""  # will be set on first request
 
     @retrying.debug(times=3, acceptable=retrying.Retry)
     def request(self, verb, api_method, *args, params=None, log_result=True, api_ver=None, **kwargs):
+        if not self.headers.get("authorization"):
+            self.refresh_auth_token()
+
         verb = verb.upper()
         api_method = api_method.strip("/")
         api_ver = api_ver or "v1"
@@ -163,7 +178,7 @@ class RESTSession(requests.Session):
         ret = super().request(
             verb, url, verify=self.ssl_verify, params=params, **kwargs
         )
-        if not self.token and ret.status_code == 403 and "Token is invalid or expired" in ret.text:
+        if not self.token and ret.status_code == 403:
             self.refresh_auth_token()
             raise retrying.Retry("refresh token")
 
@@ -183,6 +198,11 @@ class RESTSession(requests.Session):
         else:
             ret = None
         logger.info(f"--- [{verb}] {url}: Done")
+        
+        # Opportunistically send usage stats after successful requests
+        if not self.config.disable_usage_stats and not url.endswith('/plugins/usage/'):
+            self.plugins.usage_report()
+        
         return ret
 
     def __getattr__(self, attr):
@@ -212,6 +232,12 @@ class VmsSession(RESTSession, SerializationMixin):
         self.ssl_cert = ssl_cert
         self.cluster_name = cluster_name  # for serialization
         self.base_url = f"https://{endpoint}/api"
+
+        # Thread-safe locks for shared operations across gRPC workers
+        self._token_refresh_lock = threading.RLock()
+        self._token_refresh_cond = threading.Condition(self._token_refresh_lock)
+        self._authorizing = False
+
         # Modify the SSL verification CA bundle path established
         # by the underlying Certifi library's defaults if ssl_verify==True.
         certs_base_dir = "/etc/ssl/certs"
@@ -233,6 +259,8 @@ class VmsSession(RESTSession, SerializationMixin):
             self.headers["Authorization"] = f"Api-Token {self.token}"
         if self.tenant:
             self.headers["X-Tenant-Name"] = self.tenant
+        if config.max_cache_control_seconds:
+            self.headers["Cache-Control"] = f"max-age={config.max_cache_control_seconds}"
 
         # Sub resources
         self.versions = Version(self)
@@ -365,14 +393,85 @@ class VmsSession(RESTSession, SerializationMixin):
         return session
 
     def refresh_auth_token(self):
+        """
+        Refreshes the authentication token.
+
+        This method implements a thread-safe, single-authorization-at-a-time pattern
+        to prevent the "thundering herd" problem where multiple gRPC workers would all
+        attempt to refresh tokens simultaneously, causing redundant API calls.
+
+        Concurrency Strategy:
+
+        1. Authorization In Progress Flag (self._authorizing):
+           - Acts as a signal that one worker is currently refreshing the token
+           - Protected by self._token_refresh_lock for thread-safe access
+
+        2. Condition Variable (self._token_refresh_cond):
+           - Coordinates workers waiting for token refresh to complete
+           - wait() atomically: releases lock → sleeps → re-acquires lock when signaled
+           - notify_all() wakes all waiting workers when refresh completes
+
+        3. Token Clearing Strategy:
+           - Before attempting refresh, we clear the authorization header
+           - This ensures waiting workers won't use stale/invalid tokens if refresh fails
+           - If refresh succeeds, the new token is written; if it fails, header stays empty
+
+        Flow for Concurrent Calls:
+
+        Worker 1 (first to arrive):
+          → Acquires lock
+          → Sets self._authorizing = True
+          → Clears authorization header (invalidate old token)
+          → Releases lock
+          → Makes HTTP call to refresh token
+          → Sets self._authorizing = False, notify_all() to wake waiters
+
+        Workers 2-N (arrive while Worker 1 is working):
+          → Acquire lock
+          → See self._authorizing = True
+          → Call self._token_refresh_cond.wait() - releases lock and sleeps
+          → Woken by notify_all() when Worker 1 completes
+          → Re-acquire lock and check if token is now available:
+             - If token exists → return (use Worker 1's token)
+             - If token is empty → Worker 2 tries refresh (Worker 1 failed)
+
+        This design ensures:
+          - Only 1 HTTP call per refresh attempt (no thundering herd)
+          - Automatic retry on transient failures (next waiting worker tries)
+          - Thread-safe access to shared self.headers state
+        """
+        with self._token_refresh_lock:
+            # Wait while another worker is authorizing
+            if self._authorizing:
+                logger.info("Token refresh already in progress by another worker, waiting...")
+                while self._authorizing:
+                    self._token_refresh_cond.wait()  # Releases lock and waits, re-acquires when signaled
+                
+                # We were waiting - check if token is now available
+                if self.headers.get("authorization"):
+                    logger.info("Token refresh completed by another worker, using existing token")
+                    return
+
+            # We're the first - set authorizing flag
+            self._authorizing = True
+            logger.info("Starting token refresh request to VMS")
+
+            # Clear the authorization header before attempting refresh
+            # This ensures waiting workers won't use stale token if refresh fails
+            self.headers["authorization"] = ""
+
+        # Now make HTTP call without holding the lock
         try:
             resp = super(RESTSession, self).request(
-                "POST", f"{self.base_url}/v1/token/", verify=self.ssl_verify, timeout=5,
+                "POST", f"{self.base_url}/v1/token/", verify=self.ssl_verify, timeout=30,
                 json={"username": self.username, "password": self.password}
             )
             resp.raise_for_status()
             token = resp.json()["access"]
-            self.headers['authorization'] = f"Bearer {token}"
+
+            with self._token_refresh_lock:
+                self.headers["authorization"] = f"Bearer {token}"
+                logger.info("Successfully refreshed auth token from VMS")
         except ConnectionError as e:
             raise ApiError(
                 response=Bunch(
@@ -381,7 +480,11 @@ class VmsSession(RESTSession, SerializationMixin):
                          f"cannot be accessed. Please verify the specified endpoint. "
                          f"origin error: {e}"
                 ))
-        self.plugins.usage_report()
+        finally:
+            # Clear authorizing flag and notify waiting workers
+            with self._token_refresh_lock:
+                self._authorizing = False
+                self._token_refresh_cond.notify_all()  # Wake up all waiting workers
 
     def wait_task(self, task, latest=False, start_timeout=0, verbose=True):
         """
@@ -537,7 +640,7 @@ class VastResource(ABC):
 class Version(VastResource):
     resource_name = "versions"
 
-    @timecache(HOUR)
+    @cache_on_arguments(expiration_time=HOUR)
     def get_sw_version(self) -> SemVer:
         """Get VMS software version."""
         versions = self.list(status="success")[0].sys_version
@@ -546,34 +649,75 @@ class Version(VastResource):
 class Plugin(VastResource):
     resource_name = "plugins"
 
-    @requisite(semver="5.2.0", ignore=True)
-    @resilient.error(msg="failed to report usage to VMS")
+    @cache_on_arguments(expiration_time=20 * MINUTE)
     def usage_report(self):
-        self.session.post(f"{self.resource_name}/usage/",
-            data={
-                "vendor": "vastdata",
-                "name": "vast-csi",
-                "version": self.session.config.plugin_version,
-                "build": self.session.config.git_commit[:10]
-            })
+        """
+        Sends plugin usage statistics to VMS.
+        
+        Called opportunistically after successful requests.
+        Rate-limited to once every 20 minutes via caching.
+        Thread-safe: dogpile.cache handles locking internally.
+        """
+        data={
+            "vendor": "vastdata",
+            "name": "vast-csi",
+            "version": self.session.config.plugin_version,
+            "build": self.session.config.git_commit[:10]
+        }
+        try:
+            self.session.post(f"{self.resource_name}/usage/", data=data)
+        except ApiError as e:
+            logger.warning(f"Failed to report usage to VMS: {e}")
 
 class ViewPolicy(VastResource):
     resource_name = "viewpolicies"
+
+    @cache_on_arguments(expiration_time=5 * MINUTE)
+    def one(self, **params):
+        return super().one(**params)
 
 
 class QosPolicy(VastResource):
     resource_name = "qospolicies"
 
+    @cache_on_arguments(expiration_time=5 * MINUTE)
+    def one(self, **params):
+        return super().one(**params)
+
 
 class Tenant(VastResource):
     resource_name = "tenants"
+
+    @cache_on_arguments(expiration_time=5 * MINUTE)
+    def one(self, **params):
+        return super().one(**params)
 
 
 class View(VastResource):
     resource_name = "views"
 
+    @cache_on_arguments(expiration_time=5 * MINUTE)
+    def one_cached(self, **params):
+        """Cached version of one() method."""
+        return VastResource.one(self, **params)
+
     def ensure(self, path, protocols, view_policy, qos_policy, create_dir=True, qos_policy_id=None):
         if not (view := self.one(path=str(path), policy__name=view_policy)):
+            view_policy = self.session.viewpolicies.one(name=view_policy, fail_if_missing=True)
+            if qos_policy:
+                qos_policy_id = self.session.quospolicies.one(name=qos_policy, fail_if_missing=True).id
+            view = self.create(
+                path=str(path),
+                protocols=protocols,
+                policy_id=view_policy.id,
+                qos_policy_id=qos_policy_id,
+                tenant_id=view_policy.tenant_id,
+                create_dir=create_dir,
+            )
+        return view
+
+    def ensure_cached(self, path, protocols, view_policy, qos_policy, create_dir=True, qos_policy_id=None):
+        if not (view := self.one_cached(path=str(path), policy__name=view_policy)):
             view_policy = self.session.viewpolicies.one(name=view_policy, fail_if_missing=True)
             if qos_policy:
                 qos_policy_id = self.session.quospolicies.one(name=qos_policy, fail_if_missing=True).id
@@ -626,8 +770,8 @@ class View(VastResource):
             self.delete_by_id(view.id)
 
     @requisite(semver="5.3.0")
-    @timecache(5 * MINUTE)
     @apiver.v5
+    @cache_on_arguments(expiration_time=5 * MINUTE)
     def get_subsystem(self, subsystem, **params):
         """Get BLOCK type view by provided name."""
         view = self.one(name=subsystem, fail_if_missing=True, **params)
@@ -635,8 +779,8 @@ class View(VastResource):
         return view
 
     @requisite(semver="5.3.0")
-    @timecache(5 * MINUTE)
     @apiver.v5
+    @cache_on_arguments(expiration_time=5 * MINUTE)
     def get_subsystem_by_id(self, _id, **params):
         """Get BLOCK type view by provided id."""
         view = self.get(_id, **params)
@@ -669,7 +813,7 @@ class Folder(VastResource):
 class VipPool(VastResource):
     resource_name = "vippools"
 
-    @timecache(5 * MINUTE)
+    @cache_on_arguments(expiration_time=5 * MINUTE)
     def one(self, **params):
         return super().one(**params)
 
@@ -859,6 +1003,11 @@ class User(VastResource):
 @apiver.v5
 class Volume(VastResource):
     resource_name = "volumes"
+
+    @cache_on_arguments(expiration_time=MINUTE)
+    def one_cached(self, **params):
+        """Cached version of one() method."""
+        return VastResource.one(self, **params)
 
     @requisite(semver="5.3.0")
     def delete_by_id(self, _id, **params):

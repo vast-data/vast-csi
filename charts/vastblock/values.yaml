@@ -38,6 +38,18 @@ sslCertsSecretName: ""
 # When disabled (false), hosts remain in VAST even if unused and must be cleaned
 # up manually.
 blockHostsAutoPrune: false
+# Prefix used when naming CSI block hosts (e.g. csi-<node-id>)
+hostNamePrefix: ""
+# Timeout in seconds for mount/umount operations.
+# If a mount or umount command does not complete within this time, it will be terminated
+# and an error will be returned. This prevents the driver from getting stuck indefinitely
+# due to network issues or unresponsive storage.
+mountUmountTimeout: 30
+# Enable symlink resolution when querying mount information.
+# When enabled, mount paths containing symlinks (e.g., /dev/disk/by-uuid/*) will be
+# resolved to their canonical paths before comparison.
+# Default: false (skip symlink resolution for maximum performance)
+resolveMountSymlinks: false
 
 ####################
 # VAST CSI STORAGE CLASS OPTIONS
@@ -194,6 +206,15 @@ storageClasses: {}
 numWorkers: 10
 # Timeout of all calls to CSI driver.
 operationTimeout: 60
+# Disable sending usage statistics to VAST cluster.
+# When set to true, the CSI driver will not report plugin usage metrics to VMS.
+disableUsageStats: false
+# Cache-Control max-age header value in seconds for VMS API requests.
+# When set to a value greater than 0, the CSI driver will add a Cache-Control header
+# to VMS API requests, allowing intermediate caches (like Nginx) to cache responses.
+# This is useful for handling burst traffic patterns and reducing load on the VMS.
+# Set to 0 to disable caching (default).
+cacheMaxAgeSeconds: 0
 # Each time a failure occurs, sidecar containers initiate retries
 # but only after waiting for 'operationRetryIntervalStart' seconds
 # which then doubles with each subsequent failure  until it reaches `operationRetryIntervalMax`
@@ -256,7 +277,7 @@ snapshotClasses: {}
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.6.4  # the version of the Vast CSI driver
+    tag: v2.6.5  # the version of the Vast CSI driver
     imagePullPolicy: IfNotPresent
   csiAttacher:
     repository: registry.k8s.io/sig-storage/csi-attacher
@@ -365,6 +386,30 @@ controller:
     csiResizer: []
   # priorityClassName is the name of priority class to be used for the pod.
   priorityClassName: system-cluster-critical
+  # Metrics configuration for CSI controller
+  # Usage: see docs/METRICS_GUIDE.md (Prometheus Operator vs manual Prometheus)
+  metrics:
+    # Enable Prometheus metrics endpoint (disabled by default)
+    enabled: false
+    # Port for metrics HTTP server
+    # Note: Using 9093 to avoid conflict with vastcsi controller metrics (9091)
+    # Service DNS: <release>-vast-controller-metrics.<namespace>.svc.cluster.local:9093
+    port: 9093
+    # ServiceMonitor configuration (Prometheus Operator CRD)
+    # Ref: https://prometheus-operator.dev/docs/getting-started/introduction/
+    # Note: This is ONLY for users with Prometheus Operator installed.
+    #       If you use vanilla Prometheus, configure scrape targets manually instead.
+    serviceMonitor:
+      # Enable ServiceMonitor creation (requires Prometheus Operator installed in cluster)
+      enabled: false
+      # Scrape interval
+      interval: 30s
+      # Additional labels for ServiceMonitor
+      labels: {}
+      # Relabelings to apply to samples before ingestion
+      relabelings: []
+      # MetricRelabelings to apply to samples before ingestion
+      metricRelabelings: []
 
 node:
   # See controller.dnsPolicy section for details
@@ -390,10 +435,35 @@ node:
       limits:
         memory: 500Mi
       requests:
-        cpu: 100m
-        memory: 50Mi
+        cpu: 200m
+        memory: 300Mi
   # See controller.priorityClassName section for details
   priorityClassName: system-cluster-critical
+  # Metrics configuration for CSI node
+  # Usage: see docs/METRICS_GUIDE.md (Prometheus Operator vs manual Prometheus)
+  metrics:
+    # Enable Prometheus metrics endpoint (disabled by default; not common to run driver with metrics)
+    # See also: https://prometheus.io/docs/concepts/metric_types/
+    enabled: false
+    # Port for metrics HTTP server
+    # Note: Using 9092 to avoid conflict with vastcsi node metrics (9090)
+    # Service DNS: <release>-vast-node-metrics.<namespace>.svc.cluster.local:9092
+    port: 9092
+    # ServiceMonitor configuration (Prometheus Operator CRD)
+    # Ref: https://prometheus-operator.dev/docs/getting-started/introduction/
+    # Note: This is ONLY for users with Prometheus Operator installed.
+    #       If you use vanilla Prometheus, configure scrape targets manually instead.
+    serviceMonitor:
+      # Enable ServiceMonitor creation (requires Prometheus Operator installed in cluster)
+      enabled: false
+      # Scrape interval
+      interval: 30s
+      # Additional labels for ServiceMonitor
+      labels: {}
+      # Relabelings to apply to samples before ingestion
+      relabelings: []
+      # MetricRelabelings to apply to samples before ingestion
+      metricRelabelings: []
 
 # The path to the kubelet root dir. must be provided when Kubernetes is not installed in its default directory.
 kubeletPath: "/var/lib/kubelet"

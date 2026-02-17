@@ -2,11 +2,18 @@ import json
 from pathlib import Path
 from vast_csi.filesystem_utils import hostcmd
 from plumbum import cmd, ProcessExecutionError, FG
+from plumbum.commands.processes import ProcessTimedOut
 from vast_csi.logging import logger
 from vast_csi.exceptions import Abort, LookupFieldError
 from vast_csi.csi_types import ABORTED, INVALID_ARGUMENT
 from vast_csi.serialization_utils import SerializationMixin
 from vast_csi.configuration import Config
+
+# Timeout for LUKS operations (in seconds)
+# luksFormat with high pbkdf_memory can take a long time, but should not hang forever
+LUKS_FORMAT_TIMEOUT = 600  # 10 minutes
+LUKS_OPEN_TIMEOUT = 180     # 3 minutes
+LUKS_READ_TIMEOUT = 20
 
 
 def get_luks_manager(
@@ -220,7 +227,7 @@ class LuksManager(SerializationMixin):
     def _is_luks_device(self, device_path: str) -> bool:
         """Check if the raw device is LUKS-encrypted."""
         try:
-            hostcmd.cryptsetup("isLuks", device_path)
+            hostcmd.cryptsetup("isLuks", device_path, timeout=LUKS_READ_TIMEOUT)
             return True
         except ProcessExecutionError:
             return False
@@ -232,7 +239,7 @@ class LuksManager(SerializationMixin):
             bool: True if the LUKS mapping is active, False otherwise.
         """
         try:
-            output = hostcmd.cryptsetup("status", self.luks_device_name)
+            output = hostcmd.cryptsetup("status", self.luks_device_name, timeout=LUKS_READ_TIMEOUT)
             return "LUKS2" in output.strip()
         except ProcessExecutionError:
             return False
@@ -248,7 +255,7 @@ class LuksManager(SerializationMixin):
             return False
 
         try:
-            hostcmd.cryptsetup("luksClose", self.luks_device_name)
+            hostcmd.cryptsetup("luksClose", self.luks_device_name, timeout=LUKS_READ_TIMEOUT)
             logger.info(f"LUKS device {self.luks_device_name} closed successfully.")
             return True
         except ProcessExecutionError as e:
@@ -281,7 +288,10 @@ class LuksManager(SerializationMixin):
 
             crypt_cmd = hostcmd.cryptsetup.get_executable(*args)
             echo_cmd = cmd.echo["-n", self.passphrase]
-            (echo_cmd | crypt_cmd) & FG
+            # Add timeout protection to prevent hanging on OOM/killed processes
+            (echo_cmd | crypt_cmd).run(timeout=LUKS_OPEN_TIMEOUT)
+        except ProcessTimedOut:
+            raise Abort(ABORTED, f"LUKS open timed out after {LUKS_OPEN_TIMEOUT}s for {device_path}")
         except ProcessExecutionError as e:
             raise Abort(ABORTED, f"Failed to open LUKS device {device_path}: {e.stderr}")
 
@@ -304,7 +314,11 @@ class LuksManager(SerializationMixin):
         try:
             crypt_cmd = hostcmd.cryptsetup.get_executable(*args)
             echo_cmd = cmd.echo["-n", self.passphrase]
-            (echo_cmd | crypt_cmd) & FG
+            # Add timeout protection to prevent hanging on OOM/killed processes
+            (echo_cmd | crypt_cmd).run(timeout=LUKS_FORMAT_TIMEOUT)
+        except ProcessTimedOut:
+            raise Abort(ABORTED, f"LUKS format timed out after {LUKS_FORMAT_TIMEOUT}s for {device_path}. "
+                        f"This may indicate insufficient memory for pbkdf_memory setting.")
         except ProcessExecutionError as e:
             raise Abort(ABORTED, f"LUKS format failed for {device_path}: {e.stderr}")
 
