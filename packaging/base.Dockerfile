@@ -27,7 +27,7 @@ COPY pyproject.toml poetry.lock* ./
 COPY LICENSE /licenses/LICENSE
 
 # Install Poetry and python dependencies
-RUN curl -sSL https://install.python-poetry.org | python3 - \
+RUN curl -sSL https://install.python-poetry.org | python3 - --version 1.8.5 \
     && mv /root/.local/bin/poetry /usr/local/bin/poetry \
     && poetry config virtualenvs.create false \
     && poetry config virtualenvs.in-project true \
