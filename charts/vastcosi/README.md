@@ -21,7 +21,7 @@ helm install cosi-driver vast/vastcosi -f values.yaml -n vast-cosi --create-name
 
 ### install a specific version
 ```console
-helm install cosi-driver vast/vastcosi -f values.yaml -n vast-cosi --create-namespace --version 2.4.0
+helm install cosi-driver vast/vastcosi -f values.yaml -n vast-cosi --create-namespace --version 2.6.5
 ```
 
 ### Upgrade driver
