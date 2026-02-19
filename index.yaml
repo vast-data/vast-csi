@@ -322,23 +322,6 @@ entries:
     version: 2.4.0
   vastcsi:
   - apiVersion: v2
-    created: "2026-02-17T11:43:11.004236772Z"
-    description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
-    digest: bd11e10b19fedccf021c5e96526274e861b0c29bf871a31b961fe0745f7dc9e1
-    home: https://support.vastdata.com/s/topic/0TOV400000026yzOAA/vast-csi-driver
-    icon: https://uploads.vastdata.com/2020/04/vast-white-1.svg
-    keywords:
-    - vast
-    - csi
-    - driver
-    - vastdata
-    - csi-driver
-    name: vastcsi
-    type: application
-    urls:
-    - https://github.com/vast-data/vast-csi/releases/download/helm-vastcsi-2.6.5/vastcsi-2.6.5.tgz
-    version: 2.6.5
-  - apiVersion: v2
     created: "2025-10-16T15:46:55.283368148Z"
     description: Helm chart for Deployment of VAST Container Storage Interface (CSI)
     digest: 7be83f4465cd7237dc85e7ed8509125c0665014af408583e129f31290c24faa7
