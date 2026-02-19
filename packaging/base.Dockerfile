@@ -1,10 +1,16 @@
-FROM registry.access.redhat.com/ubi9/ubi-minimal
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.6-1760515502
 
 WORKDIR /root
 
 # Install basic tools and dependencies
 RUN microdnf upgrade -y \
-    && microdnf install -y python3 python3-devel python3-pip gcc g++ make findutils which \
+    && microdnf install -y python3.12 python3.12-devel python3.12-pip gcc g++ make findutils which \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python \
+    && ln -sf /usr/bin/pip3.12 /usr/bin/pip3 \
+    && microdnf clean all
+
+RUN microdnf update -y expat-2.5.0-5.el9_7.1 sqlite-libs-3.34.1-9.el9_7 \
     && microdnf clean all
 
 # Add CentOS Stream 9 repository for nfs-utils installation
@@ -21,14 +27,18 @@ COPY pyproject.toml poetry.lock* ./
 COPY LICENSE /licenses/LICENSE
 
 # Install Poetry and python dependencies
-RUN curl -sSL https://install.python-poetry.org | python3 - --version 1.8.3 \
+RUN curl -sSL https://install.python-poetry.org | python3 - --version 1.8.5 \
     && mv /root/.local/bin/poetry /usr/local/bin/poetry \
     && poetry config virtualenvs.create false \
     && poetry config virtualenvs.in-project true \
     && poetry config virtualenvs.options.no-pip true \
     && mkdir .venv \
-    && poetry install --no-dev \
-    && rm -f poetry.lock*
+    && poetry install --only main \
+    && rm -f poetry.lock* \
+    && /root/.local/share/pypoetry/venv/bin/pip install --upgrade setuptools \
+    && pip3 install --upgrade setuptools \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python3
+
 
 # Dynamically find the GCC directory and remove GCC files
 RUN set -ex; \
