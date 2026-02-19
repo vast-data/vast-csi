@@ -14,7 +14,6 @@ spec:
   clusterIP: None  # Headless service for DaemonSet
   selector:
     app: csi-vast-node
-    csi.vastdata.com/driver: block
 {{- include "vastcsi.selectorLabels" . | nindent 4 }}
   ports:
     - name: metrics
