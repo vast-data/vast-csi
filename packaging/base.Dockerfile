@@ -36,7 +36,10 @@ RUN curl -sSL https://install.python-poetry.org | python3 - --version 1.8.5 \
     && poetry install --only main \
     && rm -f poetry.lock* \
     && /root/.local/share/pypoetry/venv/bin/pip install --upgrade setuptools \
-    && pip3 install --upgrade setuptools "jaraco.context>=6.1.0" "wheel>=0.46.2" \
+    && pip3 install --upgrade setuptools jaraco.context wheel \
+    && /root/.venv/bin/python -m ensurepip --upgrade \
+    && /root/.venv/bin/python -m pip install --upgrade setuptools \
+    && /root/.venv/bin/python -m pip uninstall pip -y \
     && ln -sf /usr/bin/python3.12 /usr/bin/python3
 
 
