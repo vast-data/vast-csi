@@ -199,6 +199,147 @@ storageClasses: {}
 #    ....  other options
 
 ####################
+# VAST CSI VOLUME REPLICATION CLASS OPTIONS
+####################
+
+# Enable volume replication support.
+# Set to true to enable the replication service even if no volumeReplicationClasses are defined in this Helm chart.
+# This is useful when VolumeReplicationClass resources are managed outside of Helm (e.g., via GitOps, operators, or separate manifests).
+# When false (default), replication is automatically enabled only if volumeReplicationClasses are defined below.
+enableReplication: false
+
+# volumeReplicationClassDefaults is set of options that will be using by default if option is not provided
+# for particular volumeReplicationClass in 'volumeReplicationClasses' section
+volumeReplicationClassDefaults:
+  # Any of the following options can be specified within the volumeReplicationClasses section on a per-class basis,
+  # or can be set here as default values for all volume replication classes.
+
+  # Optional protected path suffix for the replication.
+  # If provided, the protected path name will be: {volume_id}-{ppath_suffix}
+  # If not provided, the protected path name will be: {volume_id}
+  ppathSuffix: ""
+  # Secret name for replication credentials - required.
+  # The secret should contain VAST cluster authentication credentials:
+  #   - username: VMS username for source cluster
+  #   - password: VMS password for source cluster
+  #   - endpoint: VMS endpoint URL
+  #
+  # For cross-cluster replication, include destination cluster credentials with "secondary_" prefix:
+  #   - secondary_username: VMS username for destination cluster
+  #   - secondary_password: VMS password for destination cluster
+  #   - secondary_endpoint: VMS endpoint URL for destination cluster
+  #
+  # Example:
+  #   kubectl create secret generic vast-replication-secret \
+  #     --from-literal=username='admin' \
+  #     --from-literal=password='password123' \
+  #     --from-literal=endpoint='https://vms1.example.com' \
+  #     --from-literal=secondary_username='admin' \
+  #     --from-literal=secondary_password='password456' \
+  #     --from-literal=secondary_endpoint='https://vms2.example.com'
+  secretName: ""
+  # Secret namespace.
+  # If not specified, the secret will be searched in the same namespace as the VolumeReplicationClass
+  # Default: Same namespace as VolumeReplicationClass
+  secretNamespace: ""
+  # Name of pre-existing protection policy - required.
+  # This must be an existing protection policy configured on the source VAST cluster
+  # that defines the replication snapshot schedule and retention.
+  #
+  # The protection policy should be created beforehand on the source cluster using
+  # the VAST GUI or API and must include:
+  #   - Clone type: NATIVE_REPLICATION
+  #   - Target replication peer reference
+  #   - Frames (snapshot schedules): when snapshots are taken and retention periods
+  #
+  # Example: "hourly-replication-policy"
+  protectionPolicy: ""
+  # Destination subsystem name.
+  # NVMe-oF subsystem on the destination cluster.
+  # This is optional and should be specified only if the destination subsystem name
+  # differs from the source. If left empty, the source subsystem name is used.
+  secondarySubsystem: ""
+  # Destination tenant name.
+  # Required only when multiple subsystems share the same name across different tenants
+  # Used for additional filtering to identify the correct subsystem
+  secondaryTenantName: ""
+  # Destination QoS policy.
+  # Name of QoS policy to associate with the destination block volumes
+  secondaryQosPolicy: ""
+  # Sync interval in seconds.
+  # Controls how frequently data is synchronized between clusters
+  # This maps to the "sync_interval" parameter in VAST Protected Path configuration
+  #
+  # Default: 900 seconds (15 minutes)
+  #
+  # Lower values provide more frequent replication but increase network and storage overhead
+  # Higher values reduce overhead but increase potential data loss in disaster scenarios
+  syncIntervalSeconds: 900
+  # Delete destination snapshots when disabling replication.
+  # When true, the CSI driver will delete replication snapshots
+  # on both source and destination clusters during DisableVolumeReplication.
+  # When false, snapshots are preserved (honoring VMS default behavior).
+  deleteDestinationSnapshots: true
+  # Delete destination volumes when disabling replication.
+  # When true, the CSI driver will delete replicated block volumes
+  # on the destination cluster during DisableVolumeReplication.
+  # When false (default), destination volumes are preserved for manual management or failback.
+  deleteDestinationVolumes: false
+
+# Volume replication classes to create.
+# User can define multiple replication classes with different replication parameters.
+# Each class represents a different replication policy (e.g., production vs. development, different RPOs)
+volumeReplicationClasses: {}
+  # Example:
+  # vast-replication-production:
+  #   secretName: "vast-replication-secret"
+  #   secretNamespace: "kube-system"
+  #   protectionPolicy: "hourly-replication"
+  #   secondarySubsystem: "dr-subsystem"
+  #   syncIntervalSeconds: 900
+
+####################
+# CSI-ADDONS CONTROLLER OPTIONS
+####################
+
+addonsController:
+  # runOnMaster flag indicated if CSI-Addons Controller should be run on master.
+  runOnMaster: false
+  # runOnControlPlane flag indicated if CSI-Addons Controller should be run on control plane node.
+  runOnControlPlane: false
+  # determine how DNS (Domain Name System) resolution should be handled within Pod.
+  dnsPolicy: Default
+  # nodeSelector for the CSI-Addons controller pod
+  nodeSelector: {}
+  # tolerations for the CSI-Addons controller pod
+  tolerations: []
+  # Allows to specify which nodes your pod is eligible to be scheduled based on labels on pods that are already running on the node.
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  podAffinity: {}
+  # Allows to specify conditions for preventing pods from being scheduled on nodes where certain labels are already present on other pods.
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  podAntiAffinity: {}
+  # Allows to specify which nodes your pod is eligible to be scheduled on based on labels on the node
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  nodeAffinity: {}
+  # Resources for the CSI-Addons controller containers
+  resources:
+    csiVastPlugin:
+      limits:
+        memory: 500Mi
+      requests:
+        cpu: 100m
+        memory: 50Mi
+    csiAddonsSidecar:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+  # priorityClassName for the replication controller pod
+  priorityClassName: system-cluster-critical
+
+####################
 # VAST PROVISIONER RUNTIME PARAMETERS
 ####################
 
@@ -206,6 +347,8 @@ storageClasses: {}
 numWorkers: 10
 # Timeout of all calls to CSI driver.
 operationTimeout: 60
+# Timeout for CSI-Addons operations (in seconds). This applies to replication and other CSI-Addons services.
+addonsOperationTimeout: 120
 # Disable sending usage statistics to VAST cluster.
 # When set to true, the CSI driver will not report plugin usage metrics to VMS.
 disableUsageStats: false
@@ -299,6 +442,10 @@ image:
     repository: registry.k8s.io/sig-storage/csi-snapshotter
     tag: v7.0.1
     imagePullPolicy: IfNotPresent
+  csiAddonsSidecar:
+    repository: quay.io/csiaddons/k8s-sidecar
+    tag: v0.14.0
+    imagePullPolicy: IfNotPresent
 
 ####################
 # VAST CONTROLLER AND NODE BEHAVIOR
@@ -365,6 +512,12 @@ controller:
       requests:
         cpu: 100m
         memory: 50Mi
+    csiAddonsSidecar:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
   extraArgs:
     # For further options, check
     # https://github.com/kubernetes-csi/external-provisioner#command-line-options

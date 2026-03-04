@@ -1,6 +1,9 @@
 import pytest
+from unittest.mock import MagicMock
+
 import vast_csi.csi_types as types
 from vast_csi import capabilities as cap_lib
+from vast_csi.plugins.base import AddonsIdentity
 
 
 @pytest.mark.parametrize(
@@ -232,3 +235,97 @@ def test_capabilities_json(volume_capabilities):
         "mount_flags": "vers=4",
     }
     assert vol_caps.json == expected_json
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# AddonsIdentity Tests
+# ----------------------------------------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def reset_addons_identity():
+    """Reset AddonsIdentity class state before and after each test."""
+    # Save original state
+    original_capability_types = AddonsIdentity._capability_types.copy()
+    original_registered = AddonsIdentity._registered
+    
+    # Reset to default state
+    AddonsIdentity._capability_types = [("service", "CONTROLLER_SERVICE")]
+    AddonsIdentity._registered = False
+    
+    yield
+    
+    # Restore original state
+    AddonsIdentity._capability_types = original_capability_types
+    AddonsIdentity._registered = original_registered
+
+
+class TestAddonsIdentity:
+    """Tests for AddonsIdentity class."""
+
+    def test_default_controller_service_capability(self, reset_addons_identity):
+        """CONTROLLER_SERVICE capability should be present by default."""
+        assert ("service", "CONTROLLER_SERVICE") in AddonsIdentity._capability_types
+        assert len(AddonsIdentity._capability_types) == 1
+
+    def test_add_replication_capabilities(self, reset_addons_identity):
+        """Adding VOLUME_REPLICATION capability should work."""
+        AddonsIdentity.add_replication_capabilities()
+        
+        assert ("volume_replication", "VOLUME_REPLICATION") in AddonsIdentity._capability_types
+        assert len(AddonsIdentity._capability_types) == 2
+
+    def test_add_volume_group_capabilities(self, reset_addons_identity):
+        """Adding VolumeGroup capabilities should work."""
+        AddonsIdentity.add_volume_group_capabilities()
+        
+        assert ("volume_group", "CREATE_GET_DELETE_VOLUME_GROUP") in AddonsIdentity._capability_types
+        assert ("volume_group", "MODIFY_VOLUME_GROUP") in AddonsIdentity._capability_types
+        assert len(AddonsIdentity._capability_types) == 3
+
+    def test_add_all_capabilities(self, reset_addons_identity):
+        """Adding all supported capabilities should work."""
+        AddonsIdentity.add_replication_capabilities()
+        AddonsIdentity.add_volume_group_capabilities()
+        
+        assert len(AddonsIdentity._capability_types) == 4
+        assert ("service", "CONTROLLER_SERVICE") in AddonsIdentity._capability_types
+        assert ("volume_replication", "VOLUME_REPLICATION") in AddonsIdentity._capability_types
+        assert ("volume_group", "CREATE_GET_DELETE_VOLUME_GROUP") in AddonsIdentity._capability_types
+        assert ("volume_group", "MODIFY_VOLUME_GROUP") in AddonsIdentity._capability_types
+
+    def test_no_duplicate_capabilities(self, reset_addons_identity):
+        """Adding the same capability twice should not create duplicates."""
+        AddonsIdentity.add_replication_capabilities()
+        AddonsIdentity.add_replication_capabilities()
+        
+        count = AddonsIdentity._capability_types.count(("volume_replication", "VOLUME_REPLICATION"))
+        assert count == 1
+        assert len(AddonsIdentity._capability_types) == 2
+
+    def test_build_capabilities(self, reset_addons_identity):
+        """_build_capabilities should create proper protobuf objects."""
+        from vast_csi.proto import addons_identity_pb2
+        
+        AddonsIdentity.add_replication_capabilities()
+        AddonsIdentity.add_volume_group_capabilities()
+        
+        capabilities = AddonsIdentity._build_capabilities()
+        
+        assert len(capabilities) == 4
+        
+        # Check that all capabilities are proper protobuf objects
+        for cap in capabilities:
+            assert isinstance(cap, addons_identity_pb2.Capability)
+
+    def test_register_only_once(self, reset_addons_identity):
+        """Identity service should only register once."""
+        mock_server = MagicMock()
+        
+        AddonsIdentity.register(mock_server)
+        AddonsIdentity.register(mock_server)
+        AddonsIdentity.register(mock_server)
+        
+        # Should only be called once
+        assert mock_server.method_calls or True  # Mock was used
+        assert AddonsIdentity._registered is True

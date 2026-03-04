@@ -25,7 +25,8 @@
 
 
 {{- define "vastcsi.commonEnv" }}
-
+{{- $ := .root | default . }}
+{{- $timeout := .timeout | default $.Values.operationTimeout }}
 - name: X_CSI_PLUGIN_NAME
   value: {{ include "vastcsi.csiDriver" $ | quote }}
 - name: X_CSI_VMS_HOST
@@ -39,7 +40,7 @@
 - name: X_CSI_ATTACH_REQUIRED
   value: {{ $.Values.attachRequired | quote }}
 - name: X_CSI_VMS_TIMEOUT
-  value: {{ $.Values.operationTimeout | quote }}
+  value: {{ $timeout | quote }}
 - name: X_CSI_CACHE_MAX_AGE
   value: {{ $.Values.cacheMaxAgeSeconds | default 0 | quote }}
 - name: X_CSI_DISABLE_USAGE_STATS
@@ -56,7 +57,12 @@
 - name: X_CSI_RESOLVE_MOUNT_SYMLINKS
   value: {{ $.Values.resolveMountSymlinks | quote }}
 {{- end }}
-
+{{- if .extraEnv }}
+{{- range $key, $value := .extraEnv }}
+- name: {{ $key }}
+  value: {{ $value | quote }}
+{{- end }}
+{{- end }}
 {{- end }}
 
 
@@ -142,3 +148,32 @@ Fails if the input is not a map.
 {{ $key }}: {{ $map | toJson | quote }}
 {{- end }}
 {{- end }}
+
+
+{{/*
+Return true if any CSI-Addons are enabled (replication or volume group replication)
+Usage:
+{{- include "vastcsi.addons-enabled" . -}}
+*/}}
+{{- define "vastcsi.addons-enabled" -}}
+{{- if or .Values.enableReplication (gt (len .Values.volumeReplicationClasses) 0) -}}
+{{- true -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Build the comma-separated list of addons to enable.
+VolumeGroupReplicationClass is always created alongside VolumeReplicationClass.
+Usage:
+{{- include "vastcsi.addons-list" (dict "root" . "type" "block") -}}
+*/}}
+{{- define "vastcsi.addons-list" -}}
+{{- $type := .type -}}
+{{- $root := .root -}}
+{{- $addons := list -}}
+{{- if or $root.Values.enableReplication (gt (len $root.Values.volumeReplicationClasses) 0) -}}
+{{- $addons = append $addons (printf "replication[%s]" $type) -}}
+{{- $addons = append $addons (printf "volumegroup[%s]" $type) -}}
+{{- end -}}
+{{- join "," $addons -}}
+{{- end -}}

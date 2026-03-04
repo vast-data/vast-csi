@@ -10,6 +10,8 @@ from requests.exceptions import HTTPError  # noqa
 from plumbum import local, cmd, ProcessExecutionError
 from plumbum.commands.processes import ProcessTimedOut
 from vast_csi.logging import logger
+from vast_csi.exceptions import Abort
+from vast_csi import csi_types as types
 from vast_csi.utils import run_with_timeout
 
 
@@ -419,18 +421,67 @@ def resize_device(device: str, target_mount: str, fs_type: str):
         logger.info(f"Device {device!r} does not need resizing")
 
 
-class VolumeLockedError(Exception):
+class ResourceLockedError(Exception):
+    """Raised when a resource is already locked by another operation."""
     pass
 
 
-@contextmanager
-def volume_locked(volume_id, _locks=set(), _global_lock=RLock()):
-    """helps ensure formatting/resizing of a volume does not happen concurrently"""
-    with _global_lock:
-        if volume_id in _locks:
-            raise VolumeLockedError(f"Volume {volume_id} is locked")
-        _locks.add(volume_id)
-    try:
+class LockedResource:
+    """Context manager for locking a resource."""
+    def __init__(self, resource_id):
+        self.resource_id = resource_id
+        self.message = f"Resource {resource_id} is currently locked"
+
+    def set_message(self, message: str):
+        self.message = message
+
+    @contextmanager
+    def with_message(self, message: str):
+        prev_message = self.message
+        self.set_message(message)
         yield
+        self.set_message(prev_message)
+
+    def fail(self):
+        raise ResourceLockedError(self.message)
+
+    def abort(self):
+        raise Abort(types.ABORTED, self.message)
+
+
+@contextmanager
+def resource_locked(resource_id, _locks={}, _global_lock=RLock(), abort_on_error=False):
+    """
+    Ensures exclusive access to a resource (volume, volume group, etc.).
+    
+    Prevents concurrent operations on the same resource such as:
+    - Volume formatting/resizing
+    - Volume group creation/modification
+    - Replication operations
+    - Any operation requiring exclusive access
+    
+    Args:
+        resource_id: Unique identifier for the resource to lock
+        abort_on_error: If True, abort the operation on error
+    
+    Raises:
+        ResourceLockedError: If the resource is already locked
+    """
+    logger.debug(f"Attempting to acquire lock for resource {resource_id}")
+
+    with _global_lock:
+        if resource_id in _locks:
+            if abort_on_error:
+                _locks[resource_id].abort()
+            else:
+                _locks[resource_id].fail()
+
+        locked_resource = LockedResource(resource_id)
+        _locks[resource_id] = locked_resource
+
+    try:
+        yield locked_resource
     finally:
-        _locks.discard(volume_id)
+        with _global_lock:
+            _locks.pop(resource_id, None)
+        logger.debug(f"Lock released for resource {resource_id}")

@@ -24,8 +24,8 @@ class TestCsiMount:
 
     def test_mount_success(self, mock_conf):
         """Test successful mount operation logs before and after with duration."""
-        with patch("vast_csi.plugins.csi.CONF", mock_conf):
-            from vast_csi.plugins import csi
+        with patch("vast_csi.plugins.nfs.CONF", mock_conf):
+            from vast_csi.plugins import nfs as csi
 
             mock_run = MagicMock(return_value=(0, "", ""))
             mock_mount_cmd = MagicMock()
@@ -53,8 +53,8 @@ class TestCsiMount:
 
     def test_mount_timeout(self, mock_conf):
         """Test mount operation that times out."""
-        with patch("vast_csi.plugins.csi.CONF", mock_conf):
-            from vast_csi.plugins import csi
+        with patch("vast_csi.plugins.nfs.CONF", mock_conf):
+            from vast_csi.plugins import nfs as csi
             from vast_csi.exceptions import MountFailed
 
             mock_mount_cmd = MagicMock()
@@ -76,8 +76,8 @@ class TestCsiMount:
 
     def test_mount_execution_error(self, mock_conf):
         """Test mount operation that fails with execution error."""
-        with patch("vast_csi.plugins.csi.CONF", mock_conf):
-            from vast_csi.plugins import csi
+        with patch("vast_csi.plugins.nfs.CONF", mock_conf):
+            from vast_csi.plugins import nfs as csi
             from vast_csi.exceptions import MountFailed
 
             mock_mount_cmd = MagicMock()
@@ -103,8 +103,8 @@ class TestCsiUmount:
 
     def test_umount_success(self, mock_conf):
         """Test successful umount operation logs before and after with duration."""
-        with patch("vast_csi.plugins.csi.CONF", mock_conf):
-            from vast_csi.plugins import csi
+        with patch("vast_csi.plugins.nfs.CONF", mock_conf):
+            from vast_csi.plugins import nfs as csi
             from vast_csi.exceptions import UmountTimedOut
 
             mock_run = MagicMock(return_value=(0, "", ""))
@@ -132,8 +132,8 @@ class TestCsiUmount:
 
     def test_umount_timeout(self, mock_conf):
         """Test umount operation that times out."""
-        with patch("vast_csi.plugins.csi.CONF", mock_conf):
-            from vast_csi.plugins import csi
+        with patch("vast_csi.plugins.nfs.CONF", mock_conf):
+            from vast_csi.plugins import nfs as csi
             from vast_csi.exceptions import UmountTimedOut
 
             mock_umount_cmd = MagicMock()
@@ -156,8 +156,8 @@ class TestCsiUmount:
 
     def test_umount_not_mounted_ignored(self, mock_conf):
         """Test umount with 'not mounted' error when ignore_not_mounted=True."""
-        with patch("vast_csi.plugins.csi.CONF", mock_conf):
-            from vast_csi.plugins import csi
+        with patch("vast_csi.plugins.nfs.CONF", mock_conf):
+            from vast_csi.plugins import nfs as csi
 
             mock_umount_cmd = MagicMock()
             mock_umount_cmd.__getitem__ = MagicMock(return_value=mock_umount_cmd)
@@ -179,8 +179,8 @@ class TestCsiUmount:
 
     def test_umount_not_mounted_warning(self, mock_conf):
         """Test umount with 'not mounted' error when ignore_not_mounted=False."""
-        with patch("vast_csi.plugins.csi.CONF", mock_conf):
-            from vast_csi.plugins import csi
+        with patch("vast_csi.plugins.nfs.CONF", mock_conf):
+            from vast_csi.plugins import nfs as csi
 
             mock_umount_cmd = MagicMock()
             mock_umount_cmd.__getitem__ = MagicMock(return_value=mock_umount_cmd)
@@ -204,8 +204,8 @@ class TestCsiUmount:
 
     def test_umount_other_error_raises(self, mock_conf):
         """Test umount with other errors raises exception."""
-        with patch("vast_csi.plugins.csi.CONF", mock_conf):
-            from vast_csi.plugins import csi
+        with patch("vast_csi.plugins.nfs.CONF", mock_conf):
+            from vast_csi.plugins import nfs as csi
 
             mock_umount_cmd = MagicMock()
             mock_umount_cmd.__getitem__ = MagicMock(return_value=mock_umount_cmd)
@@ -377,8 +377,8 @@ class TestTimeoutConfiguration:
             mount_umount_timeout = 60  # Custom 60 second timeout
             mock_vast = False
 
-        with patch("vast_csi.plugins.csi.CONF", CustomConf()):
-            from vast_csi.plugins import csi
+        with patch("vast_csi.plugins.nfs.CONF", CustomConf()):
+            from vast_csi.plugins import nfs as csi
 
             mock_run = MagicMock(return_value=(0, "", ""))
             mock_mount_cmd = MagicMock()
@@ -406,9 +406,9 @@ class TestDurationLogging:
     """Tests to verify duration is properly logged using easypy timing."""
 
     def test_mount_duration_logged(self, mock_conf):
-        """Test that mount success is logged (duration is recorded in Prometheus metrics)."""
-        with patch("vast_csi.plugins.csi.CONF", mock_conf):
-            from vast_csi.plugins import csi
+        """Test that mount duration is logged on success using Duration format."""
+        with patch("vast_csi.plugins.nfs.CONF", mock_conf):
+            from vast_csi.plugins import nfs as csi
 
             mock_run = MagicMock(return_value=(0, "", ""))
             mock_mount_cmd = MagicMock()
@@ -429,8 +429,8 @@ class TestDurationLogging:
 
     def test_umount_timeout_exception_message(self, mock_conf):
         """Test that umount timeout exception contains proper message."""
-        with patch("vast_csi.plugins.csi.CONF", mock_conf):
-            from vast_csi.plugins import csi
+        with patch("vast_csi.plugins.nfs.CONF", mock_conf):
+            from vast_csi.plugins import nfs as csi
             from vast_csi.exceptions import UmountTimedOut
 
             mock_umount_cmd = MagicMock()
