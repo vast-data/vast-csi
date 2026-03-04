@@ -14,7 +14,7 @@ if [ -z "$1" ]; then
 fi
 
 BUNDLE_IMAGE="$1"
-VERSION="${2:-v2.6.5}"
+VERSION="${2:-v2.6.6}"
 
 echo "Installing VAST CSI Operator from bundle image: $BUNDLE_IMAGE (version: $VERSION)"
 
