@@ -14,7 +14,11 @@ CreatedVolumeT = TypeVar("CreatedVolumeT")
 VOLUME_ID_SEPARATOR = "@"
 
 
-__all__ = ["BaseVolumeBuilder", "parse_volume_id", "to_volume_id_with_metadata"]
+__all__ = [
+    "BaseVolumeBuilder",
+    "parse_volume_id",
+    "to_volume_id_with_metadata",
+]
 
 
 def parse_volume_id(volume_id: str) -> Tuple[str, Optional[str]]:

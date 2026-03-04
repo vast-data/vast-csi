@@ -40,7 +40,7 @@ from vast_csi.utils import (
     path_exists,
     run_with_timeout,
 )
-from vast_csi.filesystem_utils import volume_locked
+from vast_csi.filesystem_utils import resource_locked
 from vast_csi.proto import csi_pb2_grpc as csi_grpc
 from vast_csi import csi_types as types
 from vast_csi.csi_types import (
@@ -398,7 +398,7 @@ class CsiController(ControllerBase, Instrumented):
         return types.DeleteResp()
 
     def ControllerPublishVolume(
-        self, vms_session, node_id, volume_id, volume_capability, volume_context=None, exit_stack=None
+            self, vms_session, node_id, volume_id, volume_capability, volume_context=None, exit_stack=None
     ):
         volume_context = dict(volume_context or dict())
         volume_capabilities = _validate_capabilities(volume_capability)
@@ -620,7 +620,7 @@ class CsiNode(NodeBase, Instrumented):
         volume_context=None,
         metrics_registry=None
     ):
-        exit_stack.enter_context(volume_locked(volume_id))
+        exit_stack.enter_context(resource_locked(volume_id))
         volume_context = volume_context or dict()
         if (
             is_ephemeral := volume_context
@@ -730,7 +730,7 @@ class CsiNode(NodeBase, Instrumented):
             vms_session=None,
             metrics_registry=None,
     ):
-        exit_stack.enter_context(volume_locked(volume_id))
+        exit_stack.enter_context(resource_locked(volume_id))
         target_path = local.path(target_path)
         meta_file = target_path[".vast-csi-meta"]
 

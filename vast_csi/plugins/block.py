@@ -70,8 +70,8 @@ from vast_csi.filesystem_utils import (
     resize_device,
     get_device_size,
     check_fs_integrity,
-    volume_locked,
     run_with_timeout,
+    resource_locked,
 )
 from vast_csi.configuration import Config
 import vast_csi.capabilities as cap_lib
@@ -118,7 +118,7 @@ def nvme_connect(host_nqn, discovery_server, host_id, subsystem_nqn, metrics_reg
 def mount(src, tgt, flags=None, bind=False, fs_type=None, metrics_registry=None):
     """
     Mount block device with auto-instrumented metrics.
-    
+
     Args:
         src (str): The source path to be mounted (e.g., a device or directory).
         tgt (str): The target path where the source will be mounted.
@@ -139,7 +139,7 @@ def mount(src, tgt, flags=None, bind=False, fs_type=None, metrics_registry=None)
     flags_str = ",".join(flags) if flags else "(none)"
     mount_type = "bind" if bind else (f"fs_type={fs_type}" if fs_type else "default")
     logger.info(f"Mounting {src!r} -> {tgt!r} ({mount_type}) with flags: {flags_str}")
-    
+
     if metrics_registry:
         metrics_manager = metrics_registry.mount("block_mount")
     else:
@@ -155,7 +155,7 @@ def mount(src, tgt, flags=None, bind=False, fs_type=None, metrics_registry=None)
         raise MountFailed(detail=f"mount timed out after {timeout}s", src=src, tgt=tgt, mount_options=flags)
     except ProcessExecutionError as exc:
         raise MountFailed(detail=exc.stderr, src=src, tgt=tgt, mount_options=flags)
-    
+
     logger.info(f"Mount succeeded in {timer.elapsed}: {src!r} -> {tgt!r}")
 
 
@@ -167,7 +167,7 @@ def umount(path, ignore_not_mounted=False, metrics_registry=None):
         path: Path to unmount
         ignore_not_mounted: If True, ignore "not mounted" errors
         metrics_registry: Optional MetricsRegistry instance
-    
+
     Returns:
         True if unmounted, False if not mounted
     """
@@ -177,7 +177,7 @@ def umount(path, ignore_not_mounted=False, metrics_registry=None):
     def do_umount():
         return cmd.umount['-v', path].run()
 
-    
+
     if metrics_registry:
         metrics_manager = metrics_registry.umount("block_mount")
     else:
@@ -395,7 +395,7 @@ class BlockController(ControllerBase, Instrumented):
 
         if CONF.block_hosts_auto_prune:
             # Ensure map host operations are atomic based on the composite key (node ID + tenant name).
-            exit_stack.enter_context(volume_locked(f"{node_id}:{tenant_name}"))
+            exit_stack.enter_context(resource_locked(f"{node_id}:{tenant_name}"))
         blockhost = vms_session.blockhosts.ensure(
             node_id=f"{CONF.block_hosts_prefix}{node_id}",
             transport_type=transport_type,
@@ -465,7 +465,7 @@ class BlockController(ControllerBase, Instrumented):
                 # A race condition may occur if ControllerUnpublishVolume unmaps the last volume from a host
                 # while ControllerPublishVolume simultaneously maps a new volume to the same host.
                 # In such cases, we must either delete and recreate the host, or wait for the new mapping and skip deletion.
-                exit_stack.enter_context(volume_locked(f"{node_id}:{volume.tenant_name}"))
+                exit_stack.enter_context(resource_locked(f"{node_id}:{volume.tenant_name}"))
                 if host := vms_session.blockhosts.one(name=block_host_name, tenant_name=volume.tenant_name):
                     if not host.mapped_volumes_preview and host.nqn.startswith(CONF.block_nqn_prefix):
                         logger.info(f"Host {block_host_name!r} has no remaining volumes, removing host")
@@ -562,7 +562,7 @@ class BlockNode(NodeBase, Instrumented):
             volume_context=None,
             metrics_registry=None
     ):
-        exit_stack.enter_context(volume_locked(volume_id))
+        exit_stack.enter_context(resource_locked(volume_id))
         volume_context = volume_context or dict()
         volume_capabilities = _validate_capabilities(volume_capability, volume_context, publish_context)
 
@@ -878,7 +878,7 @@ class BlockNode(NodeBase, Instrumented):
             exit_stack,
             luks_manager,
     ):
-        exit_stack.enter_context(volume_locked(volume_id))
+        exit_stack.enter_context(resource_locked(volume_id))
         volume_capabilities = _validate_capabilities(volume_capability)
         device_bind_path = get_device_bind_path(staging_target_path)
         requested_capacity = capacity_range.required_bytes
