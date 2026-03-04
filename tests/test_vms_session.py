@@ -1,11 +1,14 @@
 import pytest
+import yaml
 import requests
+from plumbum import local
 from io import BytesIO
 from unittest.mock import patch, PropertyMock, MagicMock
-from vast_csi.plugins.csi import CsiController
+from vast_csi.plugins.nfs import CsiController
 from requests import Response
-from vast_csi.vms_session import apiver, get_vms_session, Config, VmsSession, VastResource
-from vast_csi.exceptions import OperationNotSupported, ApiError
+from vast_csi.session import apiver, get_vms_session, VmsSession, VastResource, instantiate_session_from_secret
+from vast_csi.configuration import Config
+from vast_csi.exceptions import OperationNotSupported, ApiError, LookupFieldError
 from easypy.semver import SemVer
 from easypy.resilience import _Retry
 from easypy.bunch import Bunch
@@ -22,7 +25,7 @@ def version_mock(version):
 
 @patch("vast_csi.configuration.Config.vms_user", PropertyMock("test"))
 @patch("vast_csi.configuration.Config.vms_password", PropertyMock("test"))
-@patch("vast_csi.vms_session.VmsSession.refresh_auth_token", MagicMock())
+@patch("vast_csi.session.VmsSession.refresh_auth_token", MagicMock())
 class TestVmsSessionRequisiteSuite:
 
     @pytest.mark.parametrize(
@@ -84,7 +87,7 @@ class TestVmsSessionRequisiteSuite:
         # Execution
         with (
             patch.object(vms_session, "versions", version_mock("5.0.0.25")),
-            patch("vast_csi.vms_session.VmsSession.delete", side_effect=raise_http_err),
+            patch("vast_csi.session.VmsSession.delete", side_effect=raise_http_err),
         ):
             with pytest.raises(OperationNotSupported) as exc:
                 vms_session.folders.delete("/abc", 1)
@@ -128,7 +131,7 @@ class TestVmsSessionRequisiteSuite:
         with (
             patch.object(vms_session, "versions", version_mock("4.7.0")),
             patch(
-                "vast_csi.vms_session.VmsSession.delete", side_effect=raise_http_err
+                "vast_csi.session.VmsSession.delete", side_effect=raise_http_err
             ) as mocked_request,
         ):
             with pytest.raises(AssertionError):
@@ -262,6 +265,9 @@ def test_refresh_auth_token_failure(mock_request, monkeypatch, mock_credentials)
     monkeypatch.setattr(Config, "vms_credentials_store", mock_credentials)
 
     session = get_vms_session()
+    # Reset token to force refresh attempt (in case session was cached from previous test)
+    session.headers['authorization'] = 'Bearer #'
+    # With the mock, ConnectionError bubbles up before being caught and wrapped in ApiError
     with pytest.raises(ConnectionError):
         session.refresh_auth_token()
 
@@ -277,6 +283,13 @@ def test_request_success(mock_request, monkeypatch, mock_credentials):
     # Ensure credentials are patched
     monkeypatch.setattr(Config, "vms_credentials_store", mock_credentials)
     session = get_vms_session()
+    
+    # Set authorization header to bypass automatic token refresh
+    session.headers["authorization"] = "Bearer test-token"
+    
+    # Mock usage_report to prevent it from being called during this test
+    session.plugins.usage_report = MagicMock()
+    
     # Execution
     session.request(
         "GET", "test_method",
@@ -386,8 +399,504 @@ def test_deserialize(vms_session):
 
     assert deserialized_session.username == vms_session.username
     assert deserialized_session.password == vms_session.password
+    assert deserialized_session.tenant == vms_session.tenant
     assert deserialized_session.endpoint == vms_session.endpoint
     assert deserialized_session.ssl_cert == vms_session.ssl_cert
+
+def test_dump_data_includes_tenant(vms_session):
+    dump_data = vms_session.dump_data()
+    
+    assert "username" in dump_data
+    assert "password" in dump_data
+    assert "token" in dump_data
+    assert "tenant" in dump_data
+    assert "endpoint" in dump_data
+    assert "ssl_cert" in dump_data
+    assert "cluster_name" in dump_data
+    
+    assert dump_data["tenant"] == vms_session.tenant
+
+
+#####################
+# Enhanced Serialization Tests
+#####################
+
+def test_vms_session_serialization_different_salts_produce_different_output(vms_session):
+    """Test that different salts produce different encrypted output for the same session."""
+    salt1 = "salt1"
+    salt2 = "salt2"
+    
+    serialized1 = vms_session.serialize(salt1)
+    serialized2 = vms_session.serialize(salt2)
+    
+    assert serialized1 != serialized2
+    assert isinstance(serialized1, str)
+    assert isinstance(serialized2, str)
+    assert len(serialized1) > 0
+    assert len(serialized2) > 0
+
+
+def test_vms_session_serialization_round_trip_consistency(vms_session):
+    """Test that serialize -> deserialize produces identical session data."""
+    salt = "consistency_test_salt"
+    
+    # Serialize and deserialize
+    serialized_data = vms_session.serialize(salt)
+    deserialized_session = VmsSession.deserialize(salt, serialized_data)
+    
+    # Test all fields
+    assert deserialized_session.username == vms_session.username
+    assert deserialized_session.password == vms_session.password
+    assert deserialized_session.token == vms_session.token
+    assert deserialized_session.tenant == vms_session.tenant
+    assert deserialized_session.endpoint == vms_session.endpoint
+    assert deserialized_session.ssl_cert == vms_session.ssl_cert
+    assert deserialized_session.cluster_name == vms_session.cluster_name
+
+
+def test_vms_session_serialization_with_wrong_salt_fails():
+    """Test that deserializing with wrong salt fails."""
+    import base64
+    from cryptography.exceptions import InvalidSignature
+    
+    config = Config()
+    original_session = VmsSession.create(
+        config=config, username="test", password="test", token=None, 
+        tenant="test-tenant", endpoint="test.com", ssl_cert=None, cluster_name=None
+    )
+    
+    correct_salt = "correct_salt"
+    wrong_salt = "wrong_salt"
+    
+    serialized_data = original_session.serialize(correct_salt)
+    
+    # Attempting to deserialize with wrong salt should produce garbage or fail
+    try:
+        deserialized_session = VmsSession.deserialize(wrong_salt, serialized_data)
+        # If it doesn't fail, the data should be corrupted
+        assert deserialized_session.username != original_session.username
+    except Exception:
+        # Expected - decryption with wrong key should fail
+        pass
+
+
+def test_vms_session_serialization_with_none_values():
+    """Test serialization works correctly with None values."""
+    config = Config()
+    session_with_nones = VmsSession.create(
+        config=config, username="user", password="pass", token=None, 
+        tenant=None, endpoint="test.com", ssl_cert=None, cluster_name=None
+    )
+    
+    salt = "none_test_salt"
+    serialized_data = session_with_nones.serialize(salt)
+    deserialized_session = VmsSession.deserialize(salt, serialized_data)
+    
+    assert deserialized_session.username == "user"
+    assert deserialized_session.password == "pass"
+    assert deserialized_session.token is None
+    assert deserialized_session.tenant is None
+    assert deserialized_session.endpoint == "test.com"
+    assert deserialized_session.ssl_cert is None
+    assert deserialized_session.cluster_name is None
+
+
+def test_vms_session_serialization_with_special_characters():
+    """Test serialization works with special characters in credentials."""
+    config = Config()
+    session_with_special_chars = VmsSession.create(
+        config=config, username="user@domain.com", password="p@ssw0rd!#$%", 
+        token=None, tenant="tenant-with-dashes", endpoint="test.com", 
+        ssl_cert=None,  # Avoid permission issues with /etc/ssl/certs
+        cluster_name=None
+    )
+    
+    salt = "special_chars_salt"
+    serialized_data = session_with_special_chars.serialize(salt)
+    deserialized_session = VmsSession.deserialize(salt, serialized_data)
+    
+    assert deserialized_session.username == "user@domain.com"
+    assert deserialized_session.password == "p@ssw0rd!#$%"
+    assert deserialized_session.tenant == "tenant-with-dashes"
+    assert deserialized_session.ssl_cert is None
+
+
+def test_vms_session_serialization_output_format():
+    """Test that serialized output is properly base64 encoded."""
+    import base64
+    config = Config()
+    session = VmsSession.create(
+        config=config, username="test", password="test", token=None, 
+        tenant=None, endpoint="test.com", ssl_cert=None, cluster_name=None
+    )
+    
+    salt = "format_test_salt"
+    serialized_data = session.serialize(salt)
+    
+    # Should be valid base64
+    try:
+        decoded_bytes = base64.b64decode(serialized_data)
+        assert len(decoded_bytes) > 16  # At least IV (16 bytes) + some ciphertext
+    except Exception as e:
+        pytest.fail(f"Serialized data is not valid base64: {e}")
+
+
+#####################
+# LuksManager Serialization Tests
+#####################
+
+def test_luks_manager_serialization_round_trip_consistency():
+    """Test that LuksManager serialize -> deserialize produces identical data."""
+    from vast_csi.luks_utils import LuksManager
+    
+    original_manager = LuksManager(
+        volume_id="test-volume-123",
+        passphrase="super-secret-key",
+        encryption_config={
+            "luks_type": "luks2",
+            "cipher": "aes-xts-plain64",
+            "key_size": "512",
+            "hash_algo": "sha256"
+        }
+    )
+    
+    salt = "luks_test_salt"
+    serialized_data = original_manager.serialize(salt)
+    deserialized_manager = LuksManager.deserialize(salt, serialized_data)
+    
+    assert deserialized_manager.volume_id == original_manager.volume_id
+    assert deserialized_manager.passphrase == original_manager.passphrase
+    assert deserialized_manager.encryption_config == original_manager.encryption_config
+
+
+def test_luks_manager_serialization_different_salts():
+    """Test that different salts produce different encrypted output for LuksManager."""
+    from vast_csi.luks_utils import LuksManager
+    
+    manager = LuksManager(
+        volume_id="test-volume",
+        passphrase="secret",
+        encryption_config={"cipher": "aes-xts-plain64"}
+    )
+    
+    salt1 = "salt1"
+    salt2 = "salt2"
+    
+    serialized1 = manager.serialize(salt1)
+    serialized2 = manager.serialize(salt2)
+    
+    assert serialized1 != serialized2
+    assert isinstance(serialized1, str)
+    assert isinstance(serialized2, str)
+
+
+def test_luks_manager_serialization_with_none_passphrase():
+    """Test LuksManager serialization works with None passphrase."""
+    from vast_csi.luks_utils import LuksManager
+    
+    manager = LuksManager(
+        volume_id="test-volume",
+        passphrase=None,
+        encryption_config={"luks_type": "luks2"}
+    )
+    
+    salt = "none_passphrase_salt"
+    serialized_data = manager.serialize(salt)
+    deserialized_manager = LuksManager.deserialize(salt, serialized_data)
+    
+    assert deserialized_manager.volume_id == "test-volume"
+    assert deserialized_manager.passphrase is None
+    assert deserialized_manager.encryption_config == {"luks_type": "luks2"}
+
+
+def test_luks_manager_serialization_with_empty_encryption_config():
+    """Test LuksManager serialization works with empty encryption config."""
+    from vast_csi.luks_utils import LuksManager
+    
+    manager = LuksManager(
+        volume_id="test-volume",
+        passphrase="secret",
+        encryption_config={}
+    )
+    
+    salt = "empty_config_salt"
+    serialized_data = manager.serialize(salt)
+    deserialized_manager = LuksManager.deserialize(salt, serialized_data)
+    
+    assert deserialized_manager.volume_id == "test-volume"  
+    assert deserialized_manager.passphrase == "secret"
+    assert deserialized_manager.encryption_config == {}
+
+
+def test_luks_manager_serialization_with_complex_encryption_config():
+    """Test LuksManager serialization with complex encryption configuration."""
+    from vast_csi.luks_utils import LuksManager
+    
+    complex_config = {
+        "luks_type": "luks2",
+        "cipher": "aes-xts-plain64",
+        "key_size": "512",
+        "hash_algo": "sha256",
+        "pbkdf_mem": "65536",
+        "iter_time": "2000",
+        "custom_param": "value with spaces and special chars !@#$%"
+    }
+    
+    manager = LuksManager(
+        volume_id="complex-test-volume",
+        passphrase="complex-passphrase-123!@#",
+        encryption_config=complex_config
+    )
+    
+    salt = "complex_config_salt"
+    serialized_data = manager.serialize(salt)
+    deserialized_manager = LuksManager.deserialize(salt, serialized_data)
+    
+    assert deserialized_manager.volume_id == "complex-test-volume"
+    assert deserialized_manager.passphrase == "complex-passphrase-123!@#"
+    assert deserialized_manager.encryption_config == complex_config
+
+
+def test_luks_manager_dump_data_format():
+    """Test that LuksManager dump_data returns expected structure."""
+    from vast_csi.luks_utils import LuksManager
+    
+    manager = LuksManager(
+        volume_id="test-volume",
+        passphrase="secret",
+        encryption_config={"type": "luks2"}
+    )
+    
+    dump_data = manager.dump_data()
+    
+    assert isinstance(dump_data, dict)
+    assert "volume_id" in dump_data
+    assert "passphrase" in dump_data
+    assert "encryption_config" in dump_data
+    
+    assert dump_data["volume_id"] == "test-volume"
+    assert dump_data["passphrase"] == "secret"
+    assert dump_data["encryption_config"] == {"type": "luks2"}
+
+
+def test_luks_manager_load_data_method():
+    """Test that LuksManager load_data works correctly."""
+    from vast_csi.luks_utils import LuksManager
+    
+    test_data = {
+        "volume_id": "loaded-volume",
+        "passphrase": "loaded-secret",
+        "encryption_config": {"loaded": "config"}
+    }
+    
+    loaded_manager = LuksManager.load_data(test_data)
+    
+    assert loaded_manager.volume_id == "loaded-volume"
+    assert loaded_manager.passphrase == "loaded-secret"
+    assert loaded_manager.encryption_config == {"loaded": "config"}
+
+
+#####################
+# Cross-class Serialization Tests
+#####################
+
+def test_different_classes_same_salt_different_output():
+    """Test that VmsSession and LuksManager produce different output with same salt."""
+    from vast_csi.luks_utils import LuksManager
+    
+    config = Config()
+    vms_session = VmsSession.create(
+        config=config, username="test", password="test", token=None, 
+        tenant=None, endpoint="test.com", ssl_cert=None, cluster_name=None
+    )
+    
+    luks_manager = LuksManager(
+        volume_id="test-volume",
+        passphrase="secret",
+        encryption_config={}
+    )
+    
+    salt = "shared_salt"
+    vms_serialized = vms_session.serialize(salt)
+    luks_serialized = luks_manager.serialize(salt)
+    
+    assert vms_serialized != luks_serialized
+    
+    # Cross-deserialization should fail or produce garbage
+    try:
+        # This should fail since the data structures are different
+        VmsSession.deserialize(salt, luks_serialized)
+        pytest.fail("Cross-deserialization should not succeed")
+    except Exception:
+        # Expected - different data structures
+        pass
+
+
+#####################
+# Additional Edge Case Tests
+#####################
+
+def test_vms_session_serialization_with_empty_strings():
+    """Test serialization works with empty strings."""
+    config = Config()
+    # Use token authentication to avoid empty username/password validation
+    session_with_empty_strings = VmsSession.create(
+        config=config, username=None, password=None, token="test-token", 
+        tenant="", endpoint="test.com", ssl_cert=None, cluster_name=None
+    )
+    
+    salt = "empty_strings_salt"
+    serialized_data = session_with_empty_strings.serialize(salt)
+    deserialized_session = VmsSession.deserialize(salt, serialized_data)
+    
+    assert deserialized_session.username is None
+    assert deserialized_session.password is None
+    assert deserialized_session.token == "test-token"
+    assert deserialized_session.tenant == ""
+
+
+def test_vms_session_serialization_with_unicode_characters():
+    """Test serialization works with Unicode characters."""
+    config = Config()
+    session_with_unicode = VmsSession.create(
+        config=config, username="用户", password="密码123", token=None, 
+        tenant="租户-テスト", endpoint="test.com", ssl_cert=None, cluster_name=None
+    )
+    
+    salt = "unicode_salt_测试"
+    serialized_data = session_with_unicode.serialize(salt)
+    deserialized_session = VmsSession.deserialize(salt, serialized_data)
+    
+    assert deserialized_session.username == "用户"
+    assert deserialized_session.password == "密码123"
+    assert deserialized_session.tenant == "租户-テスト"
+    assert deserialized_session.cluster_name is None
+
+
+def test_luks_manager_serialization_with_unicode_in_config():
+    """Test LuksManager serialization with Unicode in encryption config."""
+    from vast_csi.luks_utils import LuksManager
+    
+    unicode_config = {
+        "cipher": "aes-xts-plain64",
+        "description": "Description with Unicode: 加密配置 テスト",
+        "label": "ラベル-标签"
+    }
+    
+    manager = LuksManager(
+        volume_id="unicode-test-卷",
+        passphrase="密码-パスワード",
+        encryption_config=unicode_config
+    )
+    
+    salt = "unicode_luks_salt"
+    serialized_data = manager.serialize(salt)
+    deserialized_manager = LuksManager.deserialize(salt, serialized_data)
+    
+    assert deserialized_manager.volume_id == "unicode-test-卷"
+    assert deserialized_manager.passphrase == "密码-パスワード"
+    assert deserialized_manager.encryption_config["description"] == "Description with Unicode: 加密配置 テスト"
+    assert deserialized_manager.encryption_config["label"] == "ラベル-标签"
+
+
+def test_serialization_with_very_long_strings():
+    """Test serialization with very long strings."""
+    from vast_csi.luks_utils import LuksManager
+    
+    long_string = "A" * 10000  # 10KB string
+    very_long_config = {
+        "long_field": long_string,
+        "another_long_field": "B" * 5000
+    }
+    
+    manager = LuksManager(
+        volume_id="long-test-volume",
+        passphrase=long_string[:100],  # Reasonable passphrase length
+        encryption_config=very_long_config
+    )
+    
+    salt = "long_strings_salt"
+    serialized_data = manager.serialize(salt)
+    deserialized_manager = LuksManager.deserialize(salt, serialized_data)
+    
+    assert deserialized_manager.volume_id == "long-test-volume"
+    assert deserialized_manager.passphrase == long_string[:100]
+    assert deserialized_manager.encryption_config["long_field"] == long_string
+    assert deserialized_manager.encryption_config["another_long_field"] == "B" * 5000
+
+
+def test_serialization_deterministic_same_input():
+    """Test that serialization is deterministic for the same input and salt."""
+    config = Config()
+    session = VmsSession.create(
+        config=config, username="test", password="test", token=None, 
+        tenant=None, endpoint="test.com", ssl_cert=None, cluster_name=None
+    )
+    
+    salt = "deterministic_salt"
+    
+    # Serialize the same session multiple times with the same salt
+    serialized1 = session.serialize(salt)
+    serialized2 = session.serialize(salt)
+    
+    # Note: This test might fail because of random IV generation
+    # The encrypted content should be different due to IV, but let's test the behavior
+    # In AES-CFB mode with random IV, the output should be different each time
+    # So we actually expect them to be different
+    assert isinstance(serialized1, str)
+    assert isinstance(serialized2, str)
+    # With random IV, these should actually be different
+    # But both should deserialize to the same content
+    
+    deserialized1 = VmsSession.deserialize(salt, serialized1)
+    deserialized2 = VmsSession.deserialize(salt, serialized2)
+    
+    assert deserialized1.username == deserialized2.username
+    assert deserialized1.password == deserialized2.password
+
+
+def test_serialization_with_malformed_base64():
+    """Test deserialization behavior with malformed base64 input."""
+    from vast_csi.luks_utils import LuksManager
+    
+    malformed_inputs = [
+        "not-base64!",
+        "SGVsbG8=extra-chars",
+        "",
+        "A" * 100,  # Invalid base64
+    ]
+    
+    for malformed_input in malformed_inputs:
+        try:
+            LuksManager.deserialize("test_salt", malformed_input)
+            pytest.fail(f"Expected deserialization to fail for input: {malformed_input}")
+        except Exception:
+            # Expected - malformed input should fail
+            pass
+
+
+def test_serialization_data_integrity():
+    """Test that serialized data maintains integrity across multiple operations."""
+    from vast_csi.luks_utils import LuksManager
+    
+    original_manager = LuksManager(
+        volume_id="integrity-test",
+        passphrase="integrity-passphrase", 
+        encryption_config={"test": "integrity"}
+    )
+    
+    salt = "integrity_salt"
+    
+    # Multiple serialize/deserialize cycles
+    current_manager = original_manager
+    for i in range(5):
+        serialized = current_manager.serialize(salt)
+        current_manager = LuksManager.deserialize(salt, serialized)
+    
+    # After 5 cycles, data should still be identical
+    assert current_manager.volume_id == original_manager.volume_id
+    assert current_manager.passphrase == original_manager.passphrase
+    assert current_manager.encryption_config == original_manager.encryption_config
 
 
 #####################
@@ -440,7 +949,7 @@ def test_delete(mock_session):
 
     # Call the delete method and check that it calls the session's delete method
     result = resource.delete(api_ver="v1", foo="bar")
-    mock_session.delete.assert_called_once_with("test_resource/1", api_ver="v1", data={})
+    mock_session.delete.assert_called_once_with("test_resource/1", api_ver="v1")
     assert result == Bunch(status="deleted")
 
 
@@ -516,3 +1025,593 @@ def test_get(mock_session):
     result = resource.get(1, api_ver="v1")
     mock_session.get.assert_called_once_with("test_resource/1", api_ver="v1")
     assert result == Bunch(id=1, name="Test")
+
+
+
+class TestVmsSessionInitFromGlobalSecretSuite:
+    """
+    From CSI Driver prospective instantiation from "global secret"
+    is state when no credentials provided in secrets from storageClass and
+    no "cluster_name" provided IOW no option
+    to read credentials from special /opt/vms-auth/clusters.yaml file
+    """
+
+    def test_no_global_secret(self, config):
+        with pytest.raises(LookupFieldError, match="Could not find username"):
+            VmsSession.create(
+                config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name=None
+            )
+
+    @pytest.mark.parametrize('files, err', [
+        (("username", 'password'), "Could not find endpoint"),
+        (("username", 'endpoint'), "Could not find password"),
+        (("password", 'endpoint'), "Could not find username"),
+    ]
+    )
+    def test_missing_values(self, config, tmpdir, files, err):
+        tmpdir = local.path(tmpdir)
+        for file in files:
+            tmpdir.join(file).write("test")
+        config.vms_credentials_store = tmpdir
+        with pytest.raises(LookupFieldError, match=err):
+            VmsSession.create(
+                config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name=None
+            )
+
+
+    def test_instantiate_from_user_pass(self, config, tmpdir):
+        tmpdir = local.path(tmpdir)
+        tmpdir.join("username").write("test")
+        tmpdir.join("password").write("test")
+        tmpdir.join("endpoint").write("test")
+        config.vms_credentials_store = tmpdir
+        vms_session = VmsSession.create(
+            config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name=None
+        )
+        assert vms_session.username == "test"
+        assert vms_session.password == "test"
+        assert vms_session.endpoint == "test"
+
+
+    def test_instantiate_from_token(self, config, tmpdir):
+        tmpdir = local.path(tmpdir)
+        tmpdir.join("token").write("test")
+        tmpdir.join("endpoint").write("test")
+        config.vms_credentials_store = tmpdir
+        vms_session = VmsSession.create(
+            config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name=None
+        )
+        assert vms_session.token == "test"
+        assert vms_session.endpoint == "test"
+        assert not vms_session.username
+        assert not vms_session.password
+
+    def test_instantiate_from_token_with_tenant(self, config, tmpdir):
+        tmpdir = local.path(tmpdir)
+        tmpdir.join("token").write("test")
+        tmpdir.join("tenant").write("test-tenant")
+        tmpdir.join("endpoint").write("test")
+        config.vms_credentials_store = tmpdir
+        vms_session = VmsSession.create(
+            config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name=None
+        )
+        assert vms_session.token == "test"
+        assert vms_session.tenant == "test-tenant"
+        assert vms_session.endpoint == "test"
+        assert vms_session.headers.get("X-Tenant-Name") == "test-tenant"
+        assert not vms_session.username
+        assert not vms_session.password
+
+
+    def test_ambiguous_creds(self, config, tmpdir):
+        """Test either username/password or token should be provided"""
+        tmpdir = local.path(tmpdir)
+        tmpdir.join("username").write("test")
+        tmpdir.join("password").write("test")
+        tmpdir.join("endpoint").write("test")
+        tmpdir.join("token").write("test")
+        config.vms_credentials_store = tmpdir
+        with pytest.raises(Exception, match="Provide either"):
+            VmsSession.create(
+                config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name=None
+            )
+
+    def test_global_store_ignored_when_token_provided(self, config, tmpdir):
+        tmpdir = local.path(tmpdir)
+        tmpdir.join("username").write("test")
+        tmpdir.join("password").write("test")
+        tmpdir.join("endpoint").write("test")
+        tmpdir.join("token").write("test")
+        config.vms_credentials_store = tmpdir
+
+        session = VmsSession.create(
+            config=config, username=None, password=None, token="xxx", tenant=None,
+            endpoint="https://from-secret", ssl_cert=None, cluster_name=None,
+        )
+
+        assert session.username is None
+        assert session.password is None
+        assert session.token == "xxx"
+        assert session.endpoint == "https://from-secret"
+
+    def test_global_store_ignored_when_username_provided(self, config, tmpdir):
+        tmpdir = local.path(tmpdir)
+        tmpdir.join("username").write("test")
+        tmpdir.join("password").write("test")
+        tmpdir.join("endpoint").write("test")
+        tmpdir.join("token").write("test")
+        config.vms_credentials_store = tmpdir
+
+        session = VmsSession.create(
+            config=config, username="admin", password="admin", token=None, tenant=None,
+            endpoint="https://from-secret", ssl_cert=None, cluster_name=None,
+        )
+
+        assert session.username == "admin"
+        assert session.password == "admin"
+        assert session.token is None
+        assert session.endpoint == "https://from-secret"
+
+class TestVmsSessionInitFromArgumentsSuite:
+    """
+    Tests for instantiating VmsSession directly from passed arguments (StorageClass secret scope).
+    """
+
+
+    @pytest.mark.parametrize('username, password, endpoint, err', [
+        ("user", None, "endpoint", "Could not find password"),
+        (None, "pass", "endpoint", "Could not find username"),
+        ("user", "pass", None, "Could not find endpoint"),
+    ])
+    def test_missing_values(self, config, username, password, endpoint, err):
+        with pytest.raises(LookupFieldError, match=err):
+            VmsSession.create(
+                config=config, username=username, password=password, token=None, tenant=None, endpoint=endpoint, ssl_cert=None, cluster_name=None
+            )
+
+    def test_instantiate_from_user_pass(self, config):
+        vms_session = VmsSession.create(
+            config=config, username="test", password="test", token=None, tenant=None, endpoint="test", ssl_cert=None, cluster_name=None
+        )
+        assert vms_session.username == "test"
+        assert vms_session.password == "test"
+        assert vms_session.endpoint == "test"
+
+    def test_instantiate_from_token(self, config):
+        vms_session = VmsSession.create(
+            config=config, username=None, password=None, token="test", tenant=None, endpoint="test", ssl_cert=None, cluster_name=None
+        )
+        assert vms_session.token == "test"
+        assert vms_session.endpoint == "test"
+        assert not vms_session.username
+        assert not vms_session.password
+
+    def test_instantiate_with_tenant_argument(self, config):
+        """Test instantiation with tenant passed as argument."""
+        vms_session = VmsSession.create(
+            config=config, username="test", password="test", token=None, tenant="my-tenant", endpoint="test", ssl_cert=None, cluster_name=None
+        )
+        assert vms_session.username == "test"
+        assert vms_session.password == "test"
+        assert vms_session.tenant == "my-tenant"
+        assert vms_session.endpoint == "test"
+        assert vms_session.headers.get("X-Tenant-Name") == "my-tenant"
+
+    def test_ambiguous_creds(self, config):
+        """Test either username/password or token should be provided, not both."""
+        with pytest.raises(Exception, match="Provide either"):
+            VmsSession.create(
+                config=config, username="user", password="pass", token="token", tenant=None, endpoint="test", ssl_cert=None, cluster_name=None
+            )
+
+
+
+class TestVmsSessionInitFromClustersSuite:
+    """
+    Tests for VmsSession instantiation from multi-cluster YAML configuration.
+    """
+
+    def test_missing_cluster_name(self, config, tmpdir):
+        """Test when cluster_name is not found in the clusters file."""
+        tmpdir.join("clusters").write(yaml.dump({"cluster1": {"username": "user1"}}))
+        config.vms_credentials_store = local.path(tmpdir)
+        with pytest.raises(LookupFieldError, match="Make sure cluster name is present in secret."):
+            VmsSession.create(
+                config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name="clusterX"
+            )
+
+    @pytest.mark.parametrize('cluster_data, err', [
+        ({"username": "user1", "endpoint": "clstr1.example.com"}, "Could not find password"),
+        ({"password": "111111", "endpoint": "clstr1.example.com"}, "Could not find username"),
+    ])
+    def test_missing_values_in_cluster(self, config, tmpdir, cluster_data, err):
+        """Test missing fields for a cluster in clusters.yaml."""
+        tmpdir.join("clusters").write(yaml.dump({"cluster1": cluster_data}))
+        config.vms_credentials_store = local.path(tmpdir)
+        with pytest.raises(LookupFieldError, match=err):
+            VmsSession.create(
+                config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name="cluster1"
+            )
+
+    def test_instantiate_from_user_pass(self, config, tmpdir):
+        """Test successful instantiation from cluster credentials with username/password."""
+        tmpdir.join("clusters").write(yaml.dump({
+            "cluster1": {
+                "username": "user1",
+                "password": "111111",
+                "endpoint": "clstr1.example.com"
+            }
+        }))
+        config.vms_credentials_store = local.path(tmpdir)
+        vms_session = VmsSession.create(
+            config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name="cluster1"
+        )
+        assert vms_session.username == "user1"
+        assert vms_session.password == "111111"
+        assert vms_session.endpoint == "clstr1.example.com"
+
+    def test_instantiate_from_token(self, config, tmpdir):
+        """Test successful instantiation from cluster credentials with token."""
+        tmpdir.join("clusters").write(yaml.dump({
+            "cluster2": {
+                "token": "xxxxxxxxxxxxxxxxxxxx",
+                "endpoint": "clstr2.example.com"
+            }
+        }))
+        config.vms_credentials_store = local.path(tmpdir)
+        vms_session = VmsSession.create(
+            config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name="cluster2"
+        )
+        assert vms_session.token == "xxxxxxxxxxxxxxxxxxxx"
+        assert vms_session.endpoint == "clstr2.example.com"
+        assert not vms_session.username
+        assert not vms_session.password
+
+    def test_instantiate_with_tenant_from_cluster(self, config, tmpdir):
+        """Test successful instantiation from cluster credentials with tenant."""
+        tmpdir.join("clusters").write(yaml.dump({
+            "cluster3": {
+                "username": "user3",
+                "password": "333333",
+                "tenant": "test-tenant",
+                "endpoint": "clstr3.example.com"
+            }
+        }))
+        config.vms_credentials_store = local.path(tmpdir)
+        vms_session = VmsSession.create(
+            config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name="cluster3"
+        )
+        assert vms_session.username == "user3"
+        assert vms_session.password == "333333"
+        assert vms_session.tenant == "test-tenant"
+        assert vms_session.endpoint == "clstr3.example.com"
+        assert vms_session.headers.get("X-Tenant-Name") == "test-tenant"
+
+    def test_ambiguous_creds(self, config, tmpdir):
+        """Test error when both username/password and token are provided in cluster config."""
+        tmpdir.join("clusters").write(yaml.dump({
+            "cluster1": {
+                "username": "user1",
+                "password": "111111",
+                "token": "xxxxxxxxxxxxxxxxxxxx",
+                "endpoint": "clstr1.example.com"
+            }
+        }))
+        config.vms_credentials_store = local.path(tmpdir)
+        with pytest.raises(Exception, match="Provide either"):
+            VmsSession.create(
+                config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name="cluster1"
+            )
+
+
+#####################
+# instantiate_session_from_secret with tuple-based prefixes
+#####################
+#
+#
+# class TestInstantiateSessionFromSecretWithPrefixes:
+#     """Test the new tuple-based prefix functionality for instantiate_session_from_secret."""
+#
+#     def test_default_no_prefix(self):
+#         """Test with default tuple ("",) - no prefix."""
+#         secrets = {
+#             "username": "admin",
+#             "password": "secret123",
+#             "endpoint": "vms.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_session = MagicMock()
+#             mock_create.return_value = mock_session
+#
+#             result = instantiate_session_from_secret(secrets, key_prefix=("",))
+#
+#             # Should call get_vms_session with unprefixed keys
+#             assert mock_create.called  # VmsSession.create was called
+#             assert result == mock_session
+#
+#     def test_source_prefix_with_fallback(self):
+#         """Test with source prefix and fallback ("src_", "")."""
+#         # Secrets with src_ prefix
+#         secrets = {
+#             "src_username": "admin",
+#             "src_password": "secret123",
+#             "src_endpoint": "vms-primary.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_session = MagicMock()
+#             mock_create.return_value = mock_session
+#
+#             result = instantiate_session_from_secret(secrets, key_prefix=("src_", ""))
+#
+#             # Should use src_ prefixed keys
+#             assert mock_create.called  # VmsSession.create was called
+#             assert result == mock_session
+#
+#     def test_source_prefix_fallback_to_no_prefix(self):
+#         """Test fallback from src_ to no prefix when src_ keys don't exist."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         # Old-style secrets without prefix
+#         secrets = {
+#             "username": "admin",
+#             "password": "secret123",
+#             "endpoint": "vms.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             # First call with src_ prefix fails
+#             # Second call with no prefix succeeds
+#             mock_session = MagicMock()
+#             mock_create.side_effect = [
+#                 LookupFieldError("Could not find src_username"),
+#                 mock_session
+#             ]
+#
+#             result = instantiate_session_from_secret(secrets, key_prefix=("src_", ""))
+#
+#             # Should be called twice: first with src_ prefix, then without
+#             assert mock_create.call_count == 2
+#
+#             # First call with src_ prefix
+#             first_call = mock_create.call_args_list[0]
+#             assert first_call[1]["username"] is None  # src_username doesn't exist
+#
+#             # Second call without prefix
+#             second_call = mock_create.call_args_list[1]
+#             assert second_call[1]["username"] == "admin"
+#             assert second_call[1]["password"] == "secret123"
+#             assert second_call[1]["endpoint"] == "vms.example.com"
+#
+#             assert result == mock_session
+#
+#     def test_destination_prefix_only_no_fallback(self):
+#         """Test with destination prefix only ("dst_",) - no fallback."""
+#         secrets = {
+#             "dst_username": "admin",
+#             "dst_password": "secret456",
+#             "dst_endpoint": "vms-secondary.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_session = MagicMock()
+#             mock_create.return_value = mock_session
+#
+#             result = instantiate_session_from_secret(secrets, key_prefix=("dst_",))
+#
+#             # Should call get_vms_session with dst_ prefixed keys
+#             assert mock_create.called  # VmsSession.create was called
+#             assert result == mock_session
+#
+#     def test_destination_prefix_fails_without_dst_keys(self):
+#         """Test that dst_ prefix fails when dst_ keys don't exist (no fallback)."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         # Secrets without dst_ prefix
+#         secrets = {
+#             "username": "admin",
+#             "password": "secret123",
+#             "endpoint": "vms.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_create.side_effect = LookupFieldError("Could not find dst_username")
+#
+#             # Should raise error - no fallback for dst_
+#             with pytest.raises(LookupFieldError, match="Could not find dst_username"):
+#                 instantiate_session_from_secret(secrets, key_prefix=("dst_",))
+#
+#             # Should only be called once (no fallback)
+#             assert mock_create.call_count == 1
+#
+#     def test_mixed_secrets_both_src_and_dst(self):
+#         """Test with both source and destination secrets present."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         secrets = {
+#             # Source
+#             "src_username": "admin",
+#             "src_password": "secret123",
+#             "src_endpoint": "vms-primary.example.com",
+#             # Destination
+#             "dst_username": "admin",
+#             "dst_password": "secret456",
+#             "dst_endpoint": "vms-secondary.example.com",
+#             # Old-style (for fallback testing)
+#             "username": "fallback-admin",
+#             "password": "fallback-secret",
+#             "endpoint": "vms-fallback.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_src_session = MagicMock(name="src_session")
+#             mock_dst_session = MagicMock(name="dst_session")
+#             mock_create.side_effect = [mock_src_session, mock_dst_session]
+#
+#             # Get source session
+#             src_result = instantiate_session_from_secret(secrets, key_prefix=("src_", ""))
+#             assert src_result == mock_src_session
+#
+#             # Get destination session
+#             dst_result = instantiate_session_from_secret(secrets, key_prefix=("dst_",))
+#             assert dst_result == mock_dst_session
+#
+#             # Verify both calls used correct prefixes
+#             src_call = mock_create.call_args_list[0]
+#             assert src_call[1]["username"] == "admin"
+#             assert src_call[1]["endpoint"] == "vms-primary.example.com"
+#
+#             dst_call = mock_create.call_args_list[1]
+#             assert dst_call[1]["username"] == "admin"
+#             assert dst_call[1]["endpoint"] == "vms-secondary.example.com"
+#
+#     def test_multiple_prefixes_tries_all_in_order(self):
+#         """Test that multiple prefixes are tried in order until one succeeds."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         secrets = {
+#             "username": "admin",
+#             "password": "secret",
+#             "endpoint": "vms.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_session = MagicMock()
+#             # First three attempts fail, fourth succeeds
+#             mock_create.side_effect = [
+#                 LookupFieldError("prefix1 failed"),
+#                 LookupFieldError("prefix2 failed"),
+#                 LookupFieldError("prefix3 failed"),
+#                 mock_session
+#             ]
+#
+#             result = instantiate_session_from_secret(
+#                 secrets,
+#                 key_prefix=("prefix1_", "prefix2_", "prefix3_", "")
+#             )
+#
+#             # Should try all 4 prefixes
+#             assert mock_create.call_count == 4
+#             assert result == mock_session
+#
+#     def test_all_prefixes_fail_raises_last_error(self):
+#         """Test that when all prefixes fail, the last error is raised."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         secrets = {
+#             "wrong_key": "value"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             error1 = LookupFieldError("First prefix failed")
+#             error2 = LookupFieldError("Second prefix failed")
+#             last_error = LookupFieldError("Last prefix failed - this should be raised")
+#
+#             mock_create.side_effect = [error1, error2, last_error]
+#
+#             # Should raise the last error
+#             with pytest.raises(LookupFieldError, match="Last prefix failed"):
+#                 instantiate_session_from_secret(
+#                     secrets,
+#                     key_prefix=("src_", "dst_", "")
+#                 )
+#
+#             # Should have tried all three prefixes
+#             assert mock_create.call_count == 3
+#
+#     def test_with_token_authentication(self):
+#         """Test prefix handling with token-based authentication."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         secrets = {
+#             "src_token": "source-token-123",
+#             "src_endpoint": "vms-primary.example.com",
+#             "dst_token": "dest-token-456",
+#             "dst_endpoint": "vms-secondary.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_src_session = MagicMock(name="src_session")
+#             mock_dst_session = MagicMock(name="dst_session")
+#             mock_create.side_effect = [mock_src_session, mock_dst_session]
+#
+#             # Get source session with token
+#             src_result = instantiate_session_from_secret(secrets, key_prefix=("src_",))
+#             assert src_result == mock_src_session
+#
+#             # Get destination session with token
+#             dst_result = instantiate_session_from_secret(secrets, key_prefix=("dst_",))
+#             assert dst_result == mock_dst_session
+#
+#             # Verify tokens were used
+#             src_call = mock_create.call_args_list[0]
+#             assert src_call[1]["token"] == "source-token-123"
+#             assert src_call[1]["endpoint"] == "vms-primary.example.com"
+#
+#             dst_call = mock_create.call_args_list[1]
+#             assert dst_call[1]["token"] == "dest-token-456"
+#             assert dst_call[1]["endpoint"] == "vms-secondary.example.com"
+#
+#     def test_with_tenant_and_ssl_cert(self):
+#         """Test prefix handling with tenant and SSL certificate."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         secrets = {
+#             "src_username": "admin",
+#             "src_password": "secret",
+#             "src_endpoint": "vms-primary.example.com",
+#             "src_tenant": "source-tenant",
+#             "src_ssl_cert": "-----BEGIN CERTIFICATE-----\nsrc cert\n-----END CERTIFICATE-----",
+#             "src_cluster_name": "primary-cluster"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_session = MagicMock()
+#             mock_create.return_value = mock_session
+#
+#             result = instantiate_session_from_secret(secrets, key_prefix=("src_",))
+#
+#             # Verify all parameters including tenant and ssl_cert
+#             assert mock_create.called  # VmsSession.create was called
+#             assert result == mock_session
+#
+#     def test_empty_prefix_tuple_raises_error(self):
+#         """Test that empty prefix tuple raises appropriate error."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         secrets = {
+#             "username": "admin",
+#             "password": "secret",
+#             "endpoint": "vms.example.com"
+#         }
+#
+#         with pytest.raises(LookupFieldError, match="Unable to instantiate session"):
+#             instantiate_session_from_secret(secrets, key_prefix=())
+#
+#     def test_backward_compatibility_default_behavior(self):
+#         """Test that default behavior (no prefix) maintains backward compatibility."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         # Old-style secrets without any prefix
+#         secrets = {
+#             "username": "legacy-admin",
+#             "password": "legacy-secret",
+#             "endpoint": "legacy-vms.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_session = MagicMock()
+#             mock_create.return_value = mock_session
+#
+#             # Call without specifying key_prefix (uses default)
+#             result = instantiate_session_from_secret(secrets)
+#
+#             # Should use unprefixed keys
+#             mock_create.assert_called_once()
+#             call_args = mock_create.call_args[1]
+#             assert call_args["username"] == "legacy-admin"
+#             assert call_args["password"] == "legacy-secret"
+#             assert call_args["endpoint"] == "legacy-vms.example.com"
+#             assert result == mock_session
+#

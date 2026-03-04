@@ -1,0 +1,14 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: vast-csi-operator-catalog
+  namespace: olm
+spec:
+  sourceType: grpc
+  image: quay.io/operator-framework/opm:latest
+  displayName: VAST CSI Operator
+  publisher: VASTData
+  description: VAST CSI Operator for Kubernetes
+  # For local testing, we'll use a placeholder image
+  # In production, this would point to your actual bundle image
+  # image: quay.io/vastdata/vast-csi-operator-bundle:v2.6.4

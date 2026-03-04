@@ -1,11 +1,15 @@
 import uuid
 import pytest
+import contextlib
+from contextlib import ExitStack
 from unittest.mock import MagicMock
-from vast_csi.plugins.csi import CsiController
+from vast_csi.plugins.nfs import CsiController
+from vast_csi.plugins.block import BlockController
 from vast_csi.exceptions import Abort, MissingParameter
 
 import grpc
 import vast_csi.csi_types as types
+from vast_csi.utils import wrap_ipv6
 from easypy.bunch import Bunch
 
 
@@ -131,7 +135,7 @@ class TestControllerSuite:
         if vip_pool_name:
             assert publish_context["nfs_server_ip"] == "2.2.2.2"
         else:
-            assert publish_context["nfs_server_ip"] == local_ip
+            assert publish_context["nfs_server_ip"] == wrap_ipv6(local_ip)
 
     def test_static_volume_no_vip_pool(self, vms_session, volume_capabilities):
         # Prepare test data
@@ -194,7 +198,11 @@ class TestControllerSuite:
 
         if kwargs.get("static_pv_create_views"):
             session.views.ensure.assert_called_once_with(
-                path=volume_id.rstrip("/"), protocols=['NFS'], view_policy='default', qos_policy=None
+                path=volume_id.rstrip("/"),
+                protocols=['NFS'],
+                view_policy='default',
+                qos_policy=None,
+                qos_policy_id=None,
             )
         else:
             session.views.ensure.assert_not_called()
@@ -225,3 +233,159 @@ class TestControllerSuite:
 
         err = ex_context.value
         assert "Volume already exists with different tenancy ownership (test)" in str(err)
+
+
+class TestBlockControllerCleanup:
+
+    @pytest.fixture()
+    def vms_session_mock(self):
+        session = Bunch()
+        session.volumes = Bunch()
+        session.blockhostmappings = Bunch()
+        session.blockhosts = Bunch()
+
+        # Defaults; individual tests will override as needed
+        session.volumes.one = MagicMock(return_value=Bunch(id=1, tenant_name="tenant-a"))
+        session.blockhostmappings.ensure_unmap = MagicMock()
+        session.blockhosts.one = MagicMock(return_value=Bunch(id=2, mapped_volumes_preview=[], nqn="nqn.2014-08.com.vastcsiblock:default:node-1"))
+        session.blockhosts.delete_by_id = MagicMock()
+        return session
+
+    @pytest.fixture()
+    def no_op_volume_lock(self, monkeypatch):
+        calls = []
+
+        @contextlib.contextmanager
+        def _fake_volume_locked(key):
+            calls.append(key)
+            yield
+
+        monkeypatch.setattr("vast_csi.plugins.block.resource_locked", _fake_volume_locked)
+        return calls
+
+    @pytest.fixture()
+    def conf_with_prefix(self, monkeypatch):
+        # Enable auto prune for tests that assert deletion
+        monkeypatch.setattr(
+            "vast_csi.plugins.block.CONF",
+            Bunch(block_nqn_prefix="nqn.2014-08.com.vastcsiblock", block_hosts_auto_prune=True, block_hosts_prefix=""),
+        )
+
+    def test_unpublish_deletes_host_when_last_volume(self, vms_session_mock, no_op_volume_lock, conf_with_prefix):
+        controller = BlockController()
+        node_id = "node-1"
+        volume_id = "vol-1"
+
+        resp = controller.ControllerUnpublishVolume(
+            vms_session=vms_session_mock,
+            node_id=node_id,
+            volume_id=volume_id,
+            exit_stack=ExitStack(),
+        )
+
+        from vast_csi import csi_types as types
+        assert isinstance(resp, types.CtrlUnpublishResp)
+        vms_session_mock.blockhostmappings.ensure_unmap.assert_called_once_with(
+            volume__id=1, block_host__name=node_id
+        )
+        vms_session_mock.blockhosts.delete_by_id.assert_called_once_with(2)
+        # lock taken with composite key
+        assert no_op_volume_lock == [f"{node_id}:tenant-a"]
+
+    def test_unpublish_does_not_delete_host_when_mappings_exist(self, vms_session_mock, no_op_volume_lock):
+        vms_session_mock.blockhosts.one = MagicMock(
+            return_value=Bunch(id=2, mapped_volumes_preview=[{"id": 1}])
+        )
+        controller = BlockController()
+
+        controller.ControllerUnpublishVolume(
+            vms_session=vms_session_mock,
+            node_id="node-1",
+            volume_id="vol-1",
+            exit_stack=ExitStack(),
+        )
+
+        vms_session_mock.blockhostmappings.ensure_unmap.assert_called_once()
+        vms_session_mock.blockhosts.delete_by_id.assert_not_called()
+
+    def test_unpublish_volume_not_found_skips_unmap_and_delete(self, vms_session_mock, no_op_volume_lock):
+        vms_session_mock.volumes.one = MagicMock(return_value=None)
+        controller = BlockController()
+
+        controller.ControllerUnpublishVolume(
+            vms_session=vms_session_mock,
+            node_id="node-1",
+            volume_id="missing-vol",
+            exit_stack=ExitStack(),
+        )
+
+        vms_session_mock.blockhostmappings.ensure_unmap.assert_not_called()
+        vms_session_mock.blockhosts.delete_by_id.assert_not_called()
+
+    def test_unpublish_host_not_found_no_delete(self, vms_session_mock, no_op_volume_lock):
+        vms_session_mock.blockhosts.one = MagicMock(return_value=None)
+        controller = BlockController()
+
+        controller.ControllerUnpublishVolume(
+            vms_session=vms_session_mock,
+            node_id="node-1",
+            volume_id="vol-1",
+            exit_stack=ExitStack(),
+        )
+
+        vms_session_mock.blockhostmappings.ensure_unmap.assert_called_once()
+        vms_session_mock.blockhosts.delete_by_id.assert_not_called()
+
+    def test_unpublish_deletes_only_when_host_nqn_has_driver_prefix(self, vms_session_mock, no_op_volume_lock, monkeypatch):
+        # Host with matching NQN prefix should be deleted when last volume is unmapped
+        monkeypatch.setattr(
+            "vast_csi.plugins.block.CONF",
+            Bunch(block_nqn_prefix="nqn.2014-08.com.vastcsiblock", block_hosts_auto_prune=True, block_hosts_prefix=""),
+        )
+        vms_session_mock.blockhosts.one = MagicMock(return_value=Bunch(id=2, mapped_volumes_preview=[], nqn="nqn.2014-08.com.vastcsiblock:default:node-1"))
+
+        controller = BlockController()
+        controller.ControllerUnpublishVolume(
+            vms_session=vms_session_mock,
+            node_id="node-1",
+            volume_id="vol-1",
+            exit_stack=ExitStack(),
+        )
+
+        vms_session_mock.blockhosts.delete_by_id.assert_called_once_with(2)
+
+    def test_unpublish_does_not_delete_when_host_nqn_without_driver_prefix(self, vms_session_mock, no_op_volume_lock, monkeypatch):
+        # Host with non-matching NQN prefix should NOT be deleted even if last volume
+        monkeypatch.setattr(
+            "vast_csi.plugins.block.CONF",
+            Bunch(block_nqn_prefix="nqn.2014-08.com.vastcsiblock", block_hosts_auto_prune=True, block_hosts_prefix=""),
+        )
+        vms_session_mock.blockhosts.one = MagicMock(return_value=Bunch(id=2, mapped_volumes_preview=[], nqn="nqn.2014-08.com.otherstack:default:node-1"))
+
+        controller = BlockController()
+        controller.ControllerUnpublishVolume(
+            vms_session=vms_session_mock,
+            node_id="node-1",
+            volume_id="vol-1",
+            exit_stack=ExitStack(),
+        )
+
+        vms_session_mock.blockhosts.delete_by_id.assert_not_called()
+
+    def test_unpublish_does_not_delete_when_auto_prune_disabled(self, vms_session_mock, no_op_volume_lock, monkeypatch):
+        # Even with matching prefix and last volume, do not delete if auto prune is disabled
+        monkeypatch.setattr(
+            "vast_csi.plugins.block.CONF",
+            Bunch(block_nqn_prefix="nqn.2014-08.com.vastcsiblock", block_hosts_auto_prune=False, block_hosts_prefix=""),
+        )
+        vms_session_mock.blockhosts.one = MagicMock(return_value=Bunch(id=2, mapped_volumes_preview=[], nqn="nqn.2014-08.com.vastcsiblock:default:node-1"))
+
+        controller = BlockController()
+        controller.ControllerUnpublishVolume(
+            vms_session=vms_session_mock,
+            node_id="node-1",
+            volume_id="vol-1",
+            exit_stack=ExitStack(),
+        )
+
+        vms_session_mock.blockhosts.delete_by_id.assert_not_called()

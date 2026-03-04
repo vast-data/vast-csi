@@ -8,5 +8,36 @@ To learn more about the release, try:
   $ helm status -n {{ .Release.Namespace}} {{ .Release.Name }}
   $ helm get all -n {{ .Release.Namespace}} {{ .Release.Name }}
 
+{{- if or .Values.node.metrics.enabled .Values.controller.metrics.enabled }}
+
+Metrics status:
+{{- if .Values.node.metrics.enabled }}
+  - Node metrics: ENABLED (port {{ .Values.node.metrics.port }})
+{{- end }}
+{{- if .Values.controller.metrics.enabled }}
+  - Controller metrics: ENABLED (port {{ .Values.controller.metrics.port }})
+{{- end }}
+{{- end }}
+
+{{- if include "vastcsi.addons-enabled" . }}
+
+CSI-Addons: ENABLED (Block Replication)
+  Deployment: {{ .Release.Name }}-vast-addons-controller
+  Plugin: replication[block]
+{{- if gt (len .Values.volumeReplicationClasses) 0 }}
+  VolumeReplicationClasses:
+{{- range $name, $options := .Values.volumeReplicationClasses }}
+    - {{ $name }}
+{{- end }}
+{{- else }}
+  Note: No VolumeReplicationClasses defined in this chart (can be managed externally)
+{{- end }}
+  Check status: kubectl get deployment {{ .Release.Name }}-vast-addons-controller -n {{ .Release.Namespace }}
+{{- else }}
+
+Volume Replication: DISABLED
+  To enable: set enableReplication=true or define volumeReplicationClasses in values.yaml
+{{- end }}
+
 Examples on how to configure a storage class and start using the driver are here:
 {{ .Chart.Home }}

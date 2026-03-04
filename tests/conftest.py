@@ -16,7 +16,7 @@ with local.cwd(gettempdir()) as tempdir:
     # Temporary change working directory and create version.info file in order to allow reading
     # driver name, version and git commit by Config.
     tempdir["version.info"].open("w").write("csi.vastdata.com v0.0.0 #### local")
-    from vast_csi.plugins.csi import CsiController, CsiNode, Config
+    from vast_csi.plugins.nfs import CsiController, CsiNode, Config
     from vast_csi.plugins.cosi import CosiProvisioner
     from vast_csi.plugins.block import BlockController, BlockNode
     import vast_csi.csi_types as types
@@ -35,7 +35,7 @@ for cls in (CsiController, CsiNode, CosiProvisioner, BlockController, BlockNode)
 
 # Load configuration
 CONF = Config()
-for pkg_name in ("vast_csi.plugins.csi", "vast_csi.plugins.cosi",  "vast_csi.plugins.block"):
+for pkg_name in ("vast_csi.plugins.nfs", "vast_csi.plugins.cosi",  "vast_csi.plugins.block"):
     if module := sys.modules.get(pkg_name):
         module.CONF = CONF
 
@@ -44,23 +44,44 @@ for pkg_name in ("vast_csi.plugins.csi", "vast_csi.plugins.cosi",  "vast_csi.plu
 # Fixtures
 # ----------------------------------------------------------------------------------------------------------------------
 
+
+@pytest.fixture
+def config():
+    return Config()
+
+
 @pytest.fixture
 def mock_credentials(tmpdir):
     """Fixture to mock the credentials files"""
     tmpdir.join("username").write("test")
     tmpdir.join("password").write("test")
     tmpdir.join("endpoint").write("mock.test.com")
+    tmpdir.join("passphrase").write("test_passphrase")
     return local.path(tmpdir)
 
 @pytest.fixture
 def vms_session(monkeypatch, mock_credentials):
-    from vast_csi.plugins.base import get_vms_session
+    from vast_csi.session import get_vms_session
     from vast_csi.configuration import Config
 
     monkeypatch.setattr(Config, "vms_credentials_store", mock_credentials)
-    with patch("vast_csi.vms_session.VmsSession.refresh_auth_token", MagicMock()):
+    with patch("vast_csi.session.VmsSession.refresh_auth_token", MagicMock()):
         get_vms_session.cache_clear()
         yield get_vms_session()
+
+
+@pytest.fixture(autouse=True)
+def clear_lru_cache():
+    """
+    Clear the LRU cache before each test to prevent stale cached values
+    from interfering with mocked methods.
+    """
+    from vast_csi.lru_cache import _cache_region
+    # Clear the cache before each test
+    _cache_region.backend._cache.clear()
+    yield
+    # Optionally clear after test as well
+    _cache_region.backend._cache.clear()
 
 
 @pytest.fixture
@@ -74,7 +95,16 @@ def vms_session_with_mocked_resources_factory(vms_session):
         """
         for resource, method, retvalue in args:
             resource_val = getattr(vms_session, resource)
-            setattr(resource_val, method, MagicMock(return_value=retvalue))
+            mock = MagicMock(return_value=retvalue)
+            setattr(resource_val, method, mock)
+            
+            # If mocking "one" method, also mock "one_cached" for resources that have it
+            if method == "one" and hasattr(resource_val, "one_cached"):
+                setattr(resource_val, "one_cached", mock)
+            
+            # If mocking "ensure" method, also mock "ensure_cached" for resources that have it
+            if method == "ensure" and hasattr(resource_val, "ensure_cached"):
+                setattr(resource_val, "ensure_cached", mock)
         return vms_session
 
     return __wrapped

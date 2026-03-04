@@ -25,7 +25,7 @@ metadata:
   namespace: {{ include "vastcosinamespace" $ }}
   labels:
 {{- include "vastcosilabels" $ | nindent 4 }}
-driverName: csi.vastdata.com
+driverName: {{ include "vastcosi.csiDriver" $ }}
 deletionPolicy: {{ $deletion_policy }}
 parameters:
   root_export: {{ $storage_path }}

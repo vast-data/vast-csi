@@ -1,8 +1,10 @@
 import os
+import json
 from abc import ABC
 from typing import Optional, TypeVar, Tuple
 from vast_csi.csi_types import INVALID_ARGUMENT
 from easypy.bunch import Bunch
+from easypy.humanize import yesno_to_bool
 
 from vast_csi.exceptions import Abort, MissingParameter
 from vast_csi.utils import is_valid_ip, get_random_fqdn_prefix, is_ver_nfs4_present
@@ -12,7 +14,11 @@ CreatedVolumeT = TypeVar("CreatedVolumeT")
 VOLUME_ID_SEPARATOR = "@"
 
 
-__all__ = ["BaseVolumeBuilder", "parse_volume_id", "to_volume_id_with_metadata"]
+__all__ = [
+    "BaseVolumeBuilder",
+    "parse_volume_id",
+    "to_volume_id_with_metadata",
+]
 
 
 def parse_volume_id(volume_id: str) -> Tuple[str, Optional[str]]:
@@ -113,11 +119,6 @@ class CommonPropsMixin:
         return os.path.join("/", self.root_export)
 
     @property
-    def vip_pool_fqdn_with_prefix(self) -> str:
-        """Return a random FQDN for the VIP pool with a prefix."""
-        return f"{get_random_fqdn_prefix()}.{self.vip_pool_fqdn}"
-
-    @property
     def volume_id_with_metadata(self):
         """Return the volume ID with metadata."""
         return to_volume_id_with_metadata(self.name, self.cluster_name)
@@ -157,6 +158,11 @@ class BaseVolumeBuilder(CommonPropsMixin, VolumeBuilderI):
         return value
 
     @classmethod
+    def _get_bool_param(cls, parameters, param_name, default_value="false"):
+        """Get boolean parameter from parameters or return default value."""
+        return yesno_to_bool(str(parameters.get(param_name) or default_value))
+
+    @classmethod
     def _validate_mount_src(cls, vip_pool_name, vip_pool_fqdn, local_ip_for_mount):
         """Validate that only one of vip_pool_name, vip_pool_fqdn or local_ip_for_mount is provided."""
         if vip_pool_name and vip_pool_fqdn:
@@ -182,3 +188,10 @@ class BaseVolumeBuilder(CommonPropsMixin, VolumeBuilderI):
             pvc_name=params.get("csi.storage.k8s.io/pvc/name"),
             pvc_namespace=params.get("csi.storage.k8s.io/pvc/namespace"),
         )
+
+    @staticmethod
+    def _parse_host_encryption(params):
+        host_encryption = params.get("host_encryption", {})
+        if isinstance(host_encryption, str):
+            host_encryption = json.loads(host_encryption)
+        return host_encryption

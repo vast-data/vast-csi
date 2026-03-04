@@ -10,3 +10,9 @@ username: ""
 password: ""
 # Default value, replace with actual SSL cert
 sslCert: ""
+# Default value, replace with actual token
+token: ""
+# Default value, replace with actual passphrase for host encryption
+passphrase: ""
+# Default value, replace with actual tenant name
+tenant: ""

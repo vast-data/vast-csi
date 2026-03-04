@@ -15,11 +15,6 @@
 - name: vms-auth
   secret:
     secretName: {{ $.Values.secretName | quote }}
-    items:
-    - key: username
-      path: username
-    - key: password
-      path: password
 {{- end }}
 {{- if $.ca_bundle }}
 - name: vms-ca-bundle
@@ -30,7 +25,6 @@
       path: ca-certificates.crt
 {{- end }}
 {{- end }}
-
 
 {{/* Volume bindings for vms credentials and vms session certificates */}}
 {{ define "vastcsi.vmsAuthVolumeMount" }}

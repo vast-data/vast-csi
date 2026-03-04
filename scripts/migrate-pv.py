@@ -357,6 +357,21 @@ async def main(loop: asyncio.AbstractEventLoop) -> None:
             _print(text=f"PV {pv['metadata']['name']} will be patched {', '.join(missing_params)}")
             candidates.append(pv)
 
+    # Check if PVC is not attached to any POD
+    pods_output = await kubectl_ex.exec("get pod --all-namespaces -o json", supress_output=True)
+    pods = json.loads(pods_output).get("items", [])
+    if candidates and pods:
+        for candidate in candidates:
+            pvc_name = candidate["spec"].get("claimRef", {}).get("name")
+            for pod in pods:
+                for volume in pod.get("spec", {}).get("volumes", []):
+                    if volume.get("persistentVolumeClaim", {}).get("claimName") == pvc_name:
+                        _print(
+                            text=f"PVC '{pvc_name}' is currently mounted "
+                                 f"to pod '{pod['metadata']['name']}'. Migration not allowed."
+                        )
+                        sys.exit(1)
+
     # Start migration process
     if candidates:
         await process_migrate(candidates=candidates, user_params=user_params, executor=kubectl_ex, loop=loop)

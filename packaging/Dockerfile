@@ -18,6 +18,11 @@ LABEL \
     version=$VERSION \
     release="1" \
     summary="VAST CSI Driver" \
-    description="VAST CSI Driver allows container orchestration frameworks such as Kubernetes to dynamically provision storage volumes on the VAST Data Platform. VAST provides scalable, reliable, and fast persistent storage that can be accessed remotely by any Kubernetes application container."
+    description="VAST CSI Driver allows container orchestration frameworks such as Kubernetes to dynamically provision storage volumes on the VAST Data Platform. VAST provides scalable, reliable, and fast persistent storage that can be accessed remotely by any Kubernetes application container." \
+    io.k8s.description="VAST CSI Driver allows container orchestration frameworks such as Kubernetes to dynamically provision storage volumes on the VAST Data Platform. VAST provides scalable, reliable, and fast persistent storage that can be accessed remotely by any Kubernetes application container." \
+    license="Apache License" \
+    maintainer="VAST Data" \
+    io.k8s.display-name="VAST CSI Driver" \
+    io.openshift.tags="vastdata,csi,vastdata-csi-driver"
 
 ENTRYPOINT ["poetry", "run", "python", "-m", "vast_csi"]

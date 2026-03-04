@@ -1,5 +1,46 @@
 # CHANGELOG
 
+## Version 2.6.5
+* Additional logging and timeout for mount/unmount operations (VCSI-343)
+* Added `EXPAND_VOLUME` node capability and implemented `NodeExpandVolume` as a no-op for NFS filesystem volumes. (VCSI-345)
+* Disabled NVMe controller timeout (`ctrl_loss_tmo=-1`) to prevent premature disconnection during temporary network issues. (VCSI-346)
+* Added `resolveMountSymlinks` configuration option to enable symlink resolution when querying mount information. When enabled, mount paths containing symlinks (e.g., `/dev/disk/by-uuid/*`) are resolved to their canonical paths before comparison. (VCSI-367)
+* Optimized mount info parsing by using `hostPid` and Python standard library instead of `chroot + cat` for reading `/proc/self/mountinfo`. This improves performance and prevents `DeadlineExceeded` timeouts during volume re-attachment operations. (VCSI-367)
+* Fixed VMS API caching to prevent concurrent requests for token acquisition and cluster version retrieval, improving performance and reducing API load
+* Added `cacheMaxAgeSeconds` configuration option to enable HTTP caching for VMS API requests via Cache-Control headers. When set to a value greater than 0, allows VMS to cache responses, useful for handling burst traffic patterns and reducing VMS load
+* Added `disableUsageStats` configuration option to disable sending plugin usage statistics to VAST cluster. When set to true, the CSI driver will not report plugin usage metrics to VMS
+* Added Prometheus metrics support for CSI controller with configurable metrics endpoint exposing CSI RPC operation metrics (`csi_plugin_operations_total`, `csi_plugin_operations_seconds`). Includes optional ServiceMonitor CRD support for Prometheus Operator integration (VCSI-342)
+* Added Prometheus metrics support for CSI node with configurable metrics endpoint exposing CSI RPC operations, mount/umount operations, NVMe connect operations, and NFS transport statistics. Includes optional ServiceMonitor CRD support for Prometheus Operator integration (VCSI-342)
+
+## Version 2.6.4
+* Added `blockHostsAutoPrune` option to automatically remove unused VAST Host entries (NQNs), preventing host sprawl in dynamic Kubernetes environments (VCSI-263)
+* Added default performance optimization flags: `--perf-same_cpu_crypt`, `--perf-submit_from_crypt_cpus`, `--perf-no_read_workqueue`, `--perf-no_write_workqueue` for host encryption (VCSI-306)
+* Updated default csi plugin container memory limit to 500Mi
+
+## Version 2.6.3
+* Added support for host encryption of volumes using LUKS for block CSI driver (VCSI-250). Thanks to Vishal Varma <vishal1.verma@intel.com> (Intel) for the contribution.
+* Added support for `blockingClones` option in the StorageClass.
+  When enabled, the CSI driver waits for the Global Snapshot Stream (GSS) to fully complete
+  before returning from a volume clone operation. (VCSI-255)
+* Added qosPolicy parameter for Block. Allow optional qos_policy_id storage class argument (unsupported via helm) (VCSI-267)
+* Added tenant-scoped authentication capabilities to the VAST CSI driver, allowing users to authenticate as tenant administrators (VCSI-224)
+
+## Version 2.6.2
+* Added support for locating mount paths via symlinks.
+
+## Version 2.6.1
+* Added support for token-based authentication as an alternative to username and password (ORION-226852)
+
+## Version 2.6.0
+* Block CSI Driver (VCSI-193)
+
+## Version 2.5.2
+* Added support for IPv6 addresses when mounting volumes. IPv6 addresses are now automatically wrapped in square brackets.
+
+## Version 2.5.1
+* Custom driver name
+* Allow optional qos_policy_id storage class argument (unsupported via helm) (VCSI-226)
+
 ## Version 2.5.0
 * CSI driver operator (VCSI-173)
 * Allow using VIPPool DNS name instead of the CSI choosing IPs (VCSI-167)

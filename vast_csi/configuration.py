@@ -13,7 +13,7 @@ from .exceptions import LookupFieldError
 
 from easypy.caching import cached_property
 from easypy.timing import Timer
-from easypy.units import HOUR
+from easypy.units import HOUR, MINUTE
 from easypy.bunch import Bunch
 
 
@@ -43,44 +43,62 @@ class Config(TypedEnv):
     ssl_verify = TypedEnv.Bool("X_CSI_ENABLE_VMS_SSL_VERIFICATION", default=False)
     truncate_volume_name = TypedEnv.Int("X_CSI_TRUNCATE_VOLUME_NAME", default=None)
     worker_threads = TypedEnv.Int("X_CSI_WORKER_THREADS", default=10)
+
+    metrics_port = TypedEnv.Int("X_CSI_METRICS_PORT", default=9090)
+    metrics_enabled = TypedEnv.Bool("X_CSI_METRICS_ENABLED", default=False)
+    
     dont_use_trash_api = TypedEnv.Bool("X_CSI_DONT_USE_TRASH_API", default=False)
     use_local_ip_for_mount = TypedEnv.Str("X_CSI_USE_LOCALIP_FOR_MOUNT", default="")
     attach_required = TypedEnv.Bool("X_CSI_ATTACH_REQUIRED", default=True)
+    block_hosts_auto_prune = TypedEnv.Bool("X_CSI_BLOCK_HOSTS_AUTO_PRUNE", default=False)
+    disable_usage_stats = TypedEnv.Bool("X_CSI_DISABLE_USAGE_STATS", default=False)
+    block_hosts_prefix = TypedEnv.Str("X_CSI_BLOCK_HOSTS_PREFIX", default="")
 
     _mode = TypedEnv.Str("X_CSI_MODE", default="controller_and_node")
     _endpoint = TypedEnv.Str("CSI_ENDPOINT", default="unix:///var/run/csi.sock")
     _mount_options = TypedEnv.Str("X_CSI_MOUNT_OPTIONS", default="")  # For example: "port=2049,nolock,vers=3"
-    _vms_host = TypedEnv.Str("X_CSI_VMS_HOST", default="vast")
+    _vms_host = TypedEnv.Str("X_CSI_VMS_HOST", default="")
     name_fmt = "csi:{namespace}:{name}:{id}"
+    block_nqn_prefix = "nqn.2014-08.com.vastcsiblock:"
+    max_cache_control_seconds = TypedEnv.Int("X_CSI_CACHE_MAX_AGE", default=0)
 
     fake_quota_store = local.path("/tmp/volumes")
     fake_snapshot_store = local.path("/tmp/snapshots")
 
     timeout = TypedEnv.Int("X_CSI_VMS_TIMEOUT", default=30)
+    mount_umount_timeout = TypedEnv.Int("X_CSI_MOUNT_UMOUNT_TIMEOUT", default=30)
+    resolve_mount_symlinks = TypedEnv.Bool("X_CSI_RESOLVE_MOUNT_SYMLINKS", default=False)
 
     @cached_property
     def vms_user(self):
-        if not self.vms_credentials_store['username'].exists():
-            raise LookupFieldError(
-                field="username",
-                tip="Make sure username is present in global VMS credentials secret"
-            )
-        return self.vms_credentials_store['username'].read().strip()
+        if self.vms_credentials_store['username'].exists():
+            return self.vms_credentials_store['username'].read().strip()
 
     @cached_property
     def vms_password(self):
-        if not self.vms_credentials_store['password'].exists():
-            raise LookupFieldError(
-                field="password",
-                tip="Make sure password is present in global VMS credentials secret"
-            )
-        return self.vms_credentials_store['password'].read().strip()
+        if self.vms_credentials_store['password'].exists():
+            return self.vms_credentials_store['password'].read().strip()
+
+    @cached_property
+    def vms_token(self):
+        if self.vms_credentials_store['token'].exists():
+            return self.vms_credentials_store['token'].read().strip()
+
+    @cached_property
+    def vms_tenant(self):
+        if self.vms_credentials_store['tenant'].exists():
+            return self.vms_credentials_store['tenant'].read().strip()
 
     @cached_property
     def vms_host(self):
         if self.vms_credentials_store['endpoint'].exists():
             return self.vms_credentials_store['endpoint'].read().strip()
         return self._vms_host
+
+    @cached_property
+    def host_encryption_passphrase(self):
+        if self.vms_credentials_store['passphrase'].exists():
+            return self.vms_credentials_store['passphrase'].read().strip()
 
     @cached_property
     def cluster_credentials(self):
@@ -113,4 +131,13 @@ class Config(TypedEnv):
     def endpoint(self):
         return self._endpoint.strip("tcp://")
 
+    @cached_property
+    def has_running_controller(self):
+        return self.mode in {CONTROLLER_AND_NODE, CONTROLLER}
+
+    @cached_property
+    def has_running_node(self):
+        return self.mode in {CONTROLLER_AND_NODE, NODE}
+
     avoid_trash_api = Timer(now=-1, expiration=HOUR)
+

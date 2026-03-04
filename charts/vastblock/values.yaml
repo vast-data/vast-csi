@@ -10,6 +10,10 @@
 #    --from-literal=username='<VAST username>' \
 #    --from-literal=password='<VAST password>' \
 #    --from-literal=endpoint='<VAST endpoint>'
+#
+# Optionally, you can include:
+# - ssl_cert: SSL certificate for secure communication
+# - tenant: The tenant name for tenant scoped authentication (tenant admin).
 secretName: ""
 
 # Set true to enable certificate validity test
@@ -23,6 +27,29 @@ sslCert: ""
 # Example: kubectl create secret generic vast-tls --from-file=ca-bundle.crt=< path to sslCert.crt >
 # sslCertsSecretName secret and sslCert option in values.yaml are mutually exclusive. Make sure to use only one of them.
 sslCertsSecretName: ""
+# If set to true, the CSI driver will automatically prune (delete) VAST Host
+# entries (NQNs) when they are no longer in use by any PVCs on the corresponding
+# Kubernetes node. This prevents "host sprawl" from unused auto-generated NQNs.
+#
+# This option is particularly useful in Kubernetes environments where nodes are
+# not static (e.g., clusters with dynamic or ephemeral node pools and changing
+# hostnames), since unused hosts can otherwise accumulate quickly.
+#
+# When disabled (false), hosts remain in VAST even if unused and must be cleaned
+# up manually.
+blockHostsAutoPrune: false
+# Prefix used when naming CSI block hosts (e.g. csi-<node-id>)
+hostNamePrefix: ""
+# Timeout in seconds for mount/umount operations.
+# If a mount or umount command does not complete within this time, it will be terminated
+# and an error will be returned. This prevents the driver from getting stuck indefinitely
+# due to network issues or unresponsive storage.
+mountUmountTimeout: 30
+# Enable symlink resolution when querying mount information.
+# When enabled, mount paths containing symlinks (e.g., /dev/disk/by-uuid/*) will be
+# resolved to their canonical paths before comparison.
+# Default: false (skip symlink resolution for maximum performance)
+resolveMountSymlinks: false
 
 ####################
 # VAST CSI STORAGE CLASS OPTIONS
@@ -34,21 +61,36 @@ storageClassDefaults:
   # or can be set here as default values for all storage classes.
 
   # Secret name, which corresponds to a secret containing credentials to login - must be provided by user
-  # Secret must contain username, password and endpoint fields and optionally ssl_cert field. Other fields are ignored.
-  # Example: kubectl create secret generic vast-mgmt --from-literal=username='< VAST username >' --from-literal=password='< VAST password >' --from-literal=endpoint='< VAST endpoint >'
-  # Optionally you can include CA ssl certificate. Along with verifySsl option enabled it will establish trusted connection per StorageClass
-  # if you have different certificates per cluster (Otherwise use `sslCertsSecretName` to specify global secret with ssl certificate to be used across all storage classes):
+  # The secret must contain authentication fields for VAST login, including the endpoint field.
+  # For username/password authentication, the secret must include:
+  # - username: VAST username
+  # - password: VAST password
+  # - endpoint: VAST API endpoint
   # Example:
   #     kubectl create secret generic vast-mgmt \
-  #    --from-literal=username='<VAST username>' \
-  #    --from-literal=password='<VAST password>' \
-  #    --from-literal=endpoint='<VAST endpoint>' \
-  #    --from-file=ssl_cert='<path to sslCert.crt>'
+  #       --from-literal=username=< VAST username > \
+  #       --from-literal=password=< VAST password > \
+  #       --from-literal=endpoint=< VAST endpoint >
+  #
+  # For API token authentication, the secret must include:
+  # - token: API token
+  # - endpoint: VAST API endpoint
+  # Example:
+  #     kubectl create secret generic vast-mgmt \
+  #       --from-literal=token=< API token > \
+  #       --from-literal=endpoint=< VAST endpoint >
+  #
+  # Optionally, you can include:
+  # - ssl_cert: SSL certificate for secure communication
+  # - tenant: The tenant name for tenant scoped authentication (tenant admin).
+  # All other fields are ignored.
   secretName: ""
   # Secret namespace. If not specified then secret will be searched in the same namespace as StorageClass is created.
   secretNamespace: ""
   # Subsystem name - must be provided by user
   subsystem: ""
+  # Tenant name – required for additional filtering when multiple subsystems share the same name.
+  tenantName: ""
   # Optional template for constructing the volume group name.
   # It supports placeholders for the PVC name, namespace, and ID,
   # which can be used in the format {namespace}, {name}, and {id}.
@@ -56,6 +98,42 @@ storageClassDefaults:
   # can represent nested folder structures. For example:
   #   - "folder1/folder2/block-{namespace}-{id}
   volumeGroup: ""
+  # Enables encryption using LUKS on the device on the client side.
+  # If set to true, the CSI driver will expect a passphrase to be provided
+  # with the vast-mgmt secret.
+
+  # Example Kubernetes Secret for host encryption:
+  # kubectl create secret generic vast-mgmt --from-literal=username='' --from-literal=password='' --from-literal=endpoint='' --from-literal=passphrase=''
+
+  # Ensure the StorageClass has the following parameters set when host Encryption is true:
+  # Optional host encryption parameters (will default if not specified):
+  #   cipher: "aes-xts-plain64"           # Encryption cipher
+  #   key_size: "512"                     # Key size in bits (e.g., 256 or 512)
+  #   hash: "sha256"                      # Hashing algorithm
+  #   pbkdf_memory: "65536"               # Memory cost for PBKDF in KB
+  #
+  # Optional LUKS performance flags for cryptsetup open (defaults are enabled):
+  #   perf-same_cpu_crypt: true            # Use same CPU for encryption work (set to false to disable)
+  #   perf-submit_from_crypt_cpus: true    # Submit IO from crypt CPUs (set to false to disable)
+  #   perf-no_read_workqueue: true         # Bypass read workqueue (set to false to disable)
+  #   perf-no_write_workqueue: true        # Bypass write workqueue (set to false to disable)
+  #
+  # Disable read/write workqueues while keeping other perf flags on:
+  #   hostEncryption:
+  #     perf-no_read_workqueue: false
+  #     perf-no_write_workqueue: false
+  #
+  # Fully explicit configuration with defaults shown (override as needed):
+  #   hostEncryption:
+  #     cipher: "aes-xts-plain64"
+  #     key_size: "512"
+  #     hash: "sha256"
+  #     pbkdf_memory: "65536"
+  #     perf-same_cpu_crypt: true
+  #     perf-submit_from_crypt_cpus: true
+  #     perf-no_read_workqueue: true
+  #     perf-no_write_workqueue: true
+  hostEncryption: {}
   # Name of VAST VIP pool to use. Must specify either vipPool or vipPoolFQDN.
   vipPool: ""
   # The FQDN of the VIP pool to use. Must specify either vipPool or vipPoolFQDN.
@@ -63,12 +141,17 @@ storageClassDefaults:
   # NOTE: The driver will prepend the FQDN with a random prefix, which forces the NFS client to resolve into a different VIP,
   # thereby distributing the load across the entire range of the VIP pool.
   vipPoolFQDN: ""
+  # vipPoolFQDNRandomPrefix helps distribute load across the entire VIP pool by randomizing the VIP resolved for each volume mount.
+  # If set to true, a random prefix will be added to the VIP FQDN, ensuring that each NFS mount request resolves to a different VIP from the VIP pool.
+  vipPoolFQDNRandomPrefix: true
   # Allows resizing existing volumes
   allowVolumeExpansion: true
   # If true, sets Vast CSI as the cluster-wide storage class default
   setDefaultStorageClass: false
   # Add any extra mount NFS options here
   mountOptions: []
+  # Name of QoS policy associates with the volume.
+  qosPolicy: ""
   # Reclaim policy to use with the storage class.
   reclaimPolicy: "Delete"
   # Filesystem type to format the volume during creation.
@@ -82,6 +165,14 @@ storageClassDefaults:
   #   - RDMA
   # Default: TCP
   transportType: "TCP"
+  # If true, the CSI driver will wait for the GSS (global snapshot stream) process to fully complete
+  # before returning from a volume clone operation.
+  # This ensures the volume is fully usable and consistent at the time of provisioning, but may add
+  # significant latency if the underlying GSS operation is long-running.
+  #
+  # If false (default), the driver returns as soon as the clone operation is initiated, allowing
+  # Kubernetes to proceed while the data stream continues in the background.
+  blockingClones: false
 
 # Default storage class to use with CSI DRIVER.
 # The only required value is 'vipPool' name where user should provide name of existing vip pool on
@@ -108,6 +199,147 @@ storageClasses: {}
 #    ....  other options
 
 ####################
+# VAST CSI VOLUME REPLICATION CLASS OPTIONS
+####################
+
+# Enable volume replication support.
+# Set to true to enable the replication service even if no volumeReplicationClasses are defined in this Helm chart.
+# This is useful when VolumeReplicationClass resources are managed outside of Helm (e.g., via GitOps, operators, or separate manifests).
+# When false (default), replication is automatically enabled only if volumeReplicationClasses are defined below.
+enableReplication: false
+
+# volumeReplicationClassDefaults is set of options that will be using by default if option is not provided
+# for particular volumeReplicationClass in 'volumeReplicationClasses' section
+volumeReplicationClassDefaults:
+  # Any of the following options can be specified within the volumeReplicationClasses section on a per-class basis,
+  # or can be set here as default values for all volume replication classes.
+
+  # Optional protected path suffix for the replication.
+  # If provided, the protected path name will be: {volume_id}-{ppath_suffix}
+  # If not provided, the protected path name will be: {volume_id}
+  ppathSuffix: ""
+  # Secret name for replication credentials - required.
+  # The secret should contain VAST cluster authentication credentials:
+  #   - username: VMS username for source cluster
+  #   - password: VMS password for source cluster
+  #   - endpoint: VMS endpoint URL
+  #
+  # For cross-cluster replication, include destination cluster credentials with "secondary_" prefix:
+  #   - secondary_username: VMS username for destination cluster
+  #   - secondary_password: VMS password for destination cluster
+  #   - secondary_endpoint: VMS endpoint URL for destination cluster
+  #
+  # Example:
+  #   kubectl create secret generic vast-replication-secret \
+  #     --from-literal=username='admin' \
+  #     --from-literal=password='password123' \
+  #     --from-literal=endpoint='https://vms1.example.com' \
+  #     --from-literal=secondary_username='admin' \
+  #     --from-literal=secondary_password='password456' \
+  #     --from-literal=secondary_endpoint='https://vms2.example.com'
+  secretName: ""
+  # Secret namespace.
+  # If not specified, the secret will be searched in the same namespace as the VolumeReplicationClass
+  # Default: Same namespace as VolumeReplicationClass
+  secretNamespace: ""
+  # Name of pre-existing protection policy - required.
+  # This must be an existing protection policy configured on the source VAST cluster
+  # that defines the replication snapshot schedule and retention.
+  #
+  # The protection policy should be created beforehand on the source cluster using
+  # the VAST GUI or API and must include:
+  #   - Clone type: NATIVE_REPLICATION
+  #   - Target replication peer reference
+  #   - Frames (snapshot schedules): when snapshots are taken and retention periods
+  #
+  # Example: "hourly-replication-policy"
+  protectionPolicy: ""
+  # Destination subsystem name.
+  # NVMe-oF subsystem on the destination cluster.
+  # This is optional and should be specified only if the destination subsystem name
+  # differs from the source. If left empty, the source subsystem name is used.
+  secondarySubsystem: ""
+  # Destination tenant name.
+  # Required only when multiple subsystems share the same name across different tenants
+  # Used for additional filtering to identify the correct subsystem
+  secondaryTenantName: ""
+  # Destination QoS policy.
+  # Name of QoS policy to associate with the destination block volumes
+  secondaryQosPolicy: ""
+  # Sync interval in seconds.
+  # Controls how frequently data is synchronized between clusters
+  # This maps to the "sync_interval" parameter in VAST Protected Path configuration
+  #
+  # Default: 900 seconds (15 minutes)
+  #
+  # Lower values provide more frequent replication but increase network and storage overhead
+  # Higher values reduce overhead but increase potential data loss in disaster scenarios
+  syncIntervalSeconds: 900
+  # Delete destination snapshots when disabling replication.
+  # When true, the CSI driver will delete replication snapshots
+  # on both source and destination clusters during DisableVolumeReplication.
+  # When false, snapshots are preserved (honoring VMS default behavior).
+  deleteDestinationSnapshots: true
+  # Delete destination volumes when disabling replication.
+  # When true, the CSI driver will delete replicated block volumes
+  # on the destination cluster during DisableVolumeReplication.
+  # When false (default), destination volumes are preserved for manual management or failback.
+  deleteDestinationVolumes: false
+
+# Volume replication classes to create.
+# User can define multiple replication classes with different replication parameters.
+# Each class represents a different replication policy (e.g., production vs. development, different RPOs)
+volumeReplicationClasses: {}
+  # Example:
+  # vast-replication-production:
+  #   secretName: "vast-replication-secret"
+  #   secretNamespace: "kube-system"
+  #   protectionPolicy: "hourly-replication"
+  #   secondarySubsystem: "dr-subsystem"
+  #   syncIntervalSeconds: 900
+
+####################
+# CSI-ADDONS CONTROLLER OPTIONS
+####################
+
+addonsController:
+  # runOnMaster flag indicated if CSI-Addons Controller should be run on master.
+  runOnMaster: false
+  # runOnControlPlane flag indicated if CSI-Addons Controller should be run on control plane node.
+  runOnControlPlane: false
+  # determine how DNS (Domain Name System) resolution should be handled within Pod.
+  dnsPolicy: Default
+  # nodeSelector for the CSI-Addons controller pod
+  nodeSelector: {}
+  # tolerations for the CSI-Addons controller pod
+  tolerations: []
+  # Allows to specify which nodes your pod is eligible to be scheduled based on labels on pods that are already running on the node.
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  podAffinity: {}
+  # Allows to specify conditions for preventing pods from being scheduled on nodes where certain labels are already present on other pods.
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  podAntiAffinity: {}
+  # Allows to specify which nodes your pod is eligible to be scheduled on based on labels on the node
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  nodeAffinity: {}
+  # Resources for the CSI-Addons controller containers
+  resources:
+    csiVastPlugin:
+      limits:
+        memory: 500Mi
+      requests:
+        cpu: 100m
+        memory: 50Mi
+    csiAddonsSidecar:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+  # priorityClassName for the replication controller pod
+  priorityClassName: system-cluster-critical
+
+####################
 # VAST PROVISIONER RUNTIME PARAMETERS
 ####################
 
@@ -115,6 +347,17 @@ storageClasses: {}
 numWorkers: 10
 # Timeout of all calls to CSI driver.
 operationTimeout: 60
+# Timeout for CSI-Addons operations (in seconds). This applies to replication and other CSI-Addons services.
+addonsOperationTimeout: 120
+# Disable sending usage statistics to VAST cluster.
+# When set to true, the CSI driver will not report plugin usage metrics to VMS.
+disableUsageStats: false
+# Cache-Control max-age header value in seconds for VMS API requests.
+# When set to a value greater than 0, the CSI driver will add a Cache-Control header
+# to VMS API requests, allowing intermediate caches (like Nginx) to cache responses.
+# This is useful for handling burst traffic patterns and reducing load on the VMS.
+# Set to 0 to disable caching (default).
+cacheMaxAgeSeconds: 0
 # Each time a failure occurs, sidecar containers initiate retries
 # but only after waiting for 'operationRetryIntervalStart' seconds
 # which then doubles with each subsequent failure  until it reaches `operationRetryIntervalMax`
@@ -128,6 +371,10 @@ operationRetryIntervalMax: 60
 # which might speed up the volume attach operation significantly but not appropriate for workload nodes where
 # http/https ports are not open.
 attachRequired: true
+
+# The name of the CSI driver registered with Kubernetes.
+# This value is used to identify the driver in CSI objects like VolumeAttachments and CSINodes.
+csiDriverName: block.csi.vastdata.com
 
 ####################
 # VAST CSI SNAPSHOTS CLASS OPTIONS
@@ -173,7 +420,7 @@ snapshotClasses: {}
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.6.0  # the version of the Vast CSI driver
+    tag: v2.6.6-beta-2304736  # the version of the Vast CSI driver
     imagePullPolicy: IfNotPresent
   csiAttacher:
     repository: registry.k8s.io/sig-storage/csi-attacher
@@ -194,6 +441,10 @@ image:
   csiSnapshotter:
     repository: registry.k8s.io/sig-storage/csi-snapshotter
     tag: v7.0.1
+    imagePullPolicy: IfNotPresent
+  csiAddonsSidecar:
+    repository: quay.io/csiaddons/k8s-sidecar
+    tag: v0.14.0
     imagePullPolicy: IfNotPresent
 
 ####################
@@ -251,16 +502,22 @@ controller:
         memory: 20Mi
     csiResizer:
       limits:
-        memory: 200Mi
+        memory: 300Mi
       requests:
         cpu: 10m
         memory: 20Mi
     csiVastPlugin:
       limits:
-        memory: 400Mi
+        memory: 500Mi
       requests:
         cpu: 100m
         memory: 50Mi
+    csiAddonsSidecar:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
   extraArgs:
     # For further options, check
     # https://github.com/kubernetes-csi/external-provisioner#command-line-options
@@ -282,6 +539,30 @@ controller:
     csiResizer: []
   # priorityClassName is the name of priority class to be used for the pod.
   priorityClassName: system-cluster-critical
+  # Metrics configuration for CSI controller
+  # Usage: see docs/METRICS_GUIDE.md (Prometheus Operator vs manual Prometheus)
+  metrics:
+    # Enable Prometheus metrics endpoint (disabled by default)
+    enabled: false
+    # Port for metrics HTTP server
+    # Note: Using 9093 to avoid conflict with vastcsi controller metrics (9091)
+    # Service DNS: <release>-vast-controller-metrics.<namespace>.svc.cluster.local:9093
+    port: 9093
+    # ServiceMonitor configuration (Prometheus Operator CRD)
+    # Ref: https://prometheus-operator.dev/docs/getting-started/introduction/
+    # Note: This is ONLY for users with Prometheus Operator installed.
+    #       If you use vanilla Prometheus, configure scrape targets manually instead.
+    serviceMonitor:
+      # Enable ServiceMonitor creation (requires Prometheus Operator installed in cluster)
+      enabled: false
+      # Scrape interval
+      interval: 30s
+      # Additional labels for ServiceMonitor
+      labels: {}
+      # Relabelings to apply to samples before ingestion
+      relabelings: []
+      # MetricRelabelings to apply to samples before ingestion
+      metricRelabelings: []
 
 node:
   # See controller.dnsPolicy section for details
@@ -305,12 +586,37 @@ node:
         memory: 20Mi
     csiVastPlugin:
       limits:
-        memory: 400Mi
+        memory: 500Mi
       requests:
-        cpu: 100m
-        memory: 50Mi
+        cpu: 200m
+        memory: 300Mi
   # See controller.priorityClassName section for details
   priorityClassName: system-cluster-critical
+  # Metrics configuration for CSI node
+  # Usage: see docs/METRICS_GUIDE.md (Prometheus Operator vs manual Prometheus)
+  metrics:
+    # Enable Prometheus metrics endpoint (disabled by default; not common to run driver with metrics)
+    # See also: https://prometheus.io/docs/concepts/metric_types/
+    enabled: false
+    # Port for metrics HTTP server
+    # Note: Using 9092 to avoid conflict with vastcsi node metrics (9090)
+    # Service DNS: <release>-vast-node-metrics.<namespace>.svc.cluster.local:9092
+    port: 9092
+    # ServiceMonitor configuration (Prometheus Operator CRD)
+    # Ref: https://prometheus-operator.dev/docs/getting-started/introduction/
+    # Note: This is ONLY for users with Prometheus Operator installed.
+    #       If you use vanilla Prometheus, configure scrape targets manually instead.
+    serviceMonitor:
+      # Enable ServiceMonitor creation (requires Prometheus Operator installed in cluster)
+      enabled: false
+      # Scrape interval
+      interval: 30s
+      # Additional labels for ServiceMonitor
+      labels: {}
+      # Relabelings to apply to samples before ingestion
+      relabelings: []
+      # MetricRelabelings to apply to samples before ingestion
+      metricRelabelings: []
 
 # The path to the kubelet root dir. must be provided when Kubernetes is not installed in its default directory.
 kubeletPath: "/var/lib/kubelet"

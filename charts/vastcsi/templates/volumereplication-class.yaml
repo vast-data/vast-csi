@@ -1,0 +1,72 @@
+{{/* Generate VolumeReplicationClass and VolumeGroupReplicationClass pairs from 'volumeReplicationClasses' section. */}}
+
+{{/* Iterate over VolumeReplicationClasses from manifest */}}
+{{- range $name, $options := .Values.volumeReplicationClasses }}
+
+{{/* Get VAST-specific replication parameters - REQUIRED */}}
+{{- $protection_policy := required (printf "protectionPolicy is required for VolumeReplicationClass '%s'" $name) (pluck "protectionPolicy" $options $.Values.volumeReplicationClassDefaults | first) | quote -}}
+{{- $ppath_suffix := pluck "ppathSuffix" $options $.Values.volumeReplicationClassDefaults | first | quote -}}
+
+{{/* Get optional storage path */}}
+{{- $secondary_storage_path := pluck "secondaryStoragePath" $options $.Values.volumeReplicationClassDefaults | first | quote -}}
+
+{{/* Get NFS-specific parameters */}}
+{{- $secondary_view_policy := required (printf "secondaryViewPolicy is required for VolumeReplicationClass '%s'" $name) (pluck "secondaryViewPolicy" $options $.Values.volumeReplicationClassDefaults | first) | quote -}}
+{{- $secondary_tenant_name := pluck "secondaryTenantName" $options $.Values.volumeReplicationClassDefaults | first | quote -}}
+{{- $secondary_qos_policy := pluck "secondaryQosPolicy" $options $.Values.volumeReplicationClassDefaults | first | quote -}}
+{{- $create_view := pluck "createView" $options $.Values.volumeReplicationClassDefaults | first -}}
+{{- $create_quota := pluck "createQuota" $options $.Values.volumeReplicationClassDefaults | first -}}
+{{- $delete_destination_snapshots := pluck "deleteDestinationSnapshots" $options $.Values.volumeReplicationClassDefaults | first -}}
+{{- $delete_destination_volumes := pluck "deleteDestinationVolumes" $options $.Values.volumeReplicationClassDefaults | first -}}
+
+{{/* Get replication secret parameters - REQUIRED */}}
+{{- $replication_secret := required (printf "secretName is required for VolumeReplicationClass '%s'" $name) (pluck "secretName" $options $.Values.volumeReplicationClassDefaults | first) | quote -}}
+{{- $replication_secret_namespace := pluck "secretNamespace" $options $.Values.volumeReplicationClassDefaults | first | default $.Release.Namespace | quote -}}
+
+{{/* Get required sync interval parameter */}}
+{{- $sync_interval_seconds := required (printf "syncIntervalSeconds is required for VolumeReplicationClass '%s'" $name) (pluck "syncIntervalSeconds" $options $.Values.volumeReplicationClassDefaults | first) | quote -}}
+
+---
+kind: VolumeReplicationClass
+apiVersion: replication.storage.openshift.io/v1alpha1
+metadata:
+  name: {{ required "A VolumeReplicationClass name must be not empty" $name }}
+  namespace: {{ include "vastcsi.namespace" $ }}
+  labels:
+  {{- include "vastcsi.labels" $ | nindent 4 }}
+spec:
+  provisioner: {{ include "vastcsi.csiDriver" $ }}
+  parameters:
+{{- include "vastcsi.dictToKeyValParams" (list (dict
+  "ppath_suffix" $ppath_suffix
+  "protection_policy" $protection_policy
+  "secondary_storage_path" $secondary_storage_path
+  "secondary_view_policy" $secondary_view_policy
+  "secondary_tenant_name" $secondary_tenant_name
+  "secondary_qos_policy" $secondary_qos_policy
+  "sync_interval_seconds" $sync_interval_seconds
+)) | indent 4 }}
+{{- include "vastcsi.dictToBoolParams" (list (dict
+  "create_view" $create_view
+  "create_quota" $create_quota
+  "delete_destination_snapshots" $delete_destination_snapshots
+  "delete_destination_volumes" $delete_destination_volumes
+)) | indent 4 }}
+    replication.storage.openshift.io/replication-secret-name: {{ $replication_secret }}
+    replication.storage.openshift.io/replication-secret-namespace: {{ $replication_secret_namespace }}
+
+---
+
+kind: VolumeGroupReplicationClass
+apiVersion: replication.storage.openshift.io/v1alpha1
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "vastcsi.namespace" $ }}
+  labels:
+  {{- include "vastcsi.labels" $ | nindent 4 }}
+spec:
+  provisioner: {{ include "vastcsi.csiDriver" $ }}
+  parameters:
+    replication.storage.openshift.io/group-replication-secret-name: {{ $replication_secret }}
+    replication.storage.openshift.io/group-replication-secret-namespace: {{ $replication_secret_namespace }}
+{{- end }}

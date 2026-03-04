@@ -6,6 +6,8 @@ from google.protobuf import wrappers_pb2 as wrappers
 
 from .proto import csi_pb2
 from .proto import cosi_pb2
+from .proto import replication_pb2
+from .proto import volumegroup_pb2
 
 
 class EnumWrapper(object):
@@ -91,6 +93,27 @@ S3 = cosi_pb2.S3
 S3SignatureVersion = cosi_pb2.S3SignatureVersion
 CredentialDetails = cosi_pb2.CredentialDetails
 
+# CSI-Addons Replication types
+EnableVolumeReplicationResp = replication_pb2.EnableVolumeReplicationResponse
+DisableVolumeReplicationResp = replication_pb2.DisableVolumeReplicationResponse
+PromoteVolumeResp = replication_pb2.PromoteVolumeResponse
+DemoteVolumeResp = replication_pb2.DemoteVolumeResponse
+ResyncVolumeResp = replication_pb2.ResyncVolumeResponse
+GetVolumeReplicationInfoResp = replication_pb2.GetVolumeReplicationInfoResponse
+ReplicationSource = replication_pb2.ReplicationSource
+ReplicationVolumeSource = replication_pb2.ReplicationSource.VolumeSource
+ReplicationVolumeGroupSource = replication_pb2.ReplicationSource.VolumeGroupSource
+ReplicationStatus = EnumWrapper(replication_pb2.GetVolumeReplicationInfoResponse.Status)
+
+# CSI-Addons VolumeGroup types
+CreateVolumeGroupResp = volumegroup_pb2.CreateVolumeGroupResponse
+DeleteVolumeGroupResp = volumegroup_pb2.DeleteVolumeGroupResponse
+ModifyVolumeGroupMembershipResp = volumegroup_pb2.ModifyVolumeGroupMembershipResponse
+ControllerGetVolumeGroupResp = volumegroup_pb2.ControllerGetVolumeGroupResponse
+ListVolumeGroupsResp = volumegroup_pb2.ListVolumeGroupsResponse
+VolumeGroup = volumegroup_pb2.VolumeGroup
+VolumeGroupVolume = csi_pb2.Volume  # Volume entry within a VolumeGroup (uses CSI Volume definition)
+
 # gRPC statuses
 FAILED_PRECONDITION = grpc.StatusCode.FAILED_PRECONDITION
 INVALID_ARGUMENT = grpc.StatusCode.INVALID_ARGUMENT
@@ -99,3 +122,6 @@ NOT_FOUND = grpc.StatusCode.NOT_FOUND
 ABORTED = grpc.StatusCode.ABORTED
 UNKNOWN = grpc.StatusCode.UNKNOWN
 OUT_OF_RANGE = grpc.StatusCode.OUT_OF_RANGE
+RESOURCE_EXHAUSTED = grpc.StatusCode.RESOURCE_EXHAUSTED
+UNAVAILABLE = grpc.StatusCode.UNAVAILABLE
+INTERNAL = grpc.StatusCode.INTERNAL

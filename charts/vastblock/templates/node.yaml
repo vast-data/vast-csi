@@ -3,6 +3,8 @@
 {{- $csi_images := .Values.image -}}
 {{- $kubelet_path := .Values.kubeletPath | default "/var/lib/kubelet" | trimSuffix "/" }}
 {{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
+{{- $driver_name := include "vastcsi.csiDriver" . -}}
+{{- $csi_sock := printf "%s.sock" ($driver_name | lower | replace "." "-" | replace "_" "-" | trimSuffix "-" | trimPrefix "-") -}}
 
 apiVersion: apps/v1
 kind: DaemonSet
@@ -37,6 +39,7 @@ spec:
           {{- toYaml .Values.node.podAntiAffinity | nindent 10 }}
         nodeAffinity:
           {{- toYaml .Values.node.nodeAffinity | nindent 10 }}
+      hostIPC: true
       containers:
         - name: csi-node-driver-registrar
           image: {{ printf "%s:%s" $csi_images.csiNodeDriverRegistrar.repository (toString $csi_images.csiNodeDriverRegistrar.tag) }}
@@ -47,12 +50,12 @@ spec:
           lifecycle:
             preStop:
               exec:
-                command: ["/bin/sh", "-c", "rm -rf /registration/block.csi.vastdata.com /registration/block.csi.vastdata.com-reg.sock"]
+                command: ["/bin/sh", "-c", "rm -rf /registration/{{ $driver_name }} /registration/{{ $driver_name }}-reg.sock"]
           env:
             - name: ADDRESS
-              value: /csi/csi.sock
+              value: /csi/{{ $csi_sock }}
             - name: DRIVER_REG_SOCK_PATH
-              value: {{ $kubelet_path }}/plugins/block.csi.vastdata.com/csi.sock
+              value: {{ $kubelet_path }}/plugins/{{ $driver_name }}/{{ $csi_sock }}
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
@@ -70,7 +73,7 @@ spec:
           env:
 {{- include "vastcsi.commonEnv" . | indent 12 }}
             - name: CSI_ENDPOINT
-              value: unix:///csi/csi.sock
+              value: unix:///csi/{{ $csi_sock }}
             - name: X_CSI_MODE
               value: node
             - name: X_CSI_NODE_ID
@@ -78,6 +81,16 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: spec.nodeName
+            - name: X_CSI_METRICS_ENABLED
+              value: "{{ .Values.node.metrics.enabled }}"
+            - name: X_CSI_METRICS_PORT
+              value: "{{ .Values.node.metrics.port }}"
+{{- if .Values.node.metrics.enabled }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.node.metrics.port }}
+              protocol: TCP
+{{- end }}
           securityContext:
             privileged: true
             capabilities:
@@ -99,6 +112,7 @@ spec:
 {{- include "vastcsi.vmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 12 }}
           resources: {{- toYaml .Values.node.resources.csiVastPlugin | nindent 12 }}
       hostNetwork: true
+      hostPID: true
       dnsPolicy: {{ .Values.node.dnsPolicy }}
       nodeSelector:
 {{ toYaml .Values.node.nodeSelector | indent 8 }}
@@ -113,7 +127,7 @@ spec:
             type: DirectoryOrCreate
         - name: plugin-dir
           hostPath:
-            path: {{ $kubelet_path }}/plugins/block.csi.vastdata.com
+            path: {{ $kubelet_path }}/plugins/{{ $driver_name }}
             type: DirectoryOrCreate
         - name: pods-mount-dir
           hostPath:

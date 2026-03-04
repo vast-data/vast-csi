@@ -1,0 +1,10 @@
+apiVersion: storage.vastdata.com/v1
+kind: VastCSIDriver
+metadata:
+  name: block.csi.vastdata.com
+  namespace: vast-csi
+spec:
+  driverType: "block" # default is nfs
+  image:
+    csiVastPlugin:
+      repository: docker.io/vastdataorg/csi:v2.6.4

@@ -1,0 +1,11 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: vast-csi-operator
+  namespace: vast-csi
+spec:
+  channel: stable
+  name: vast-csi-operator
+  source: vast-csi-operator-catalog
+  sourceNamespace: olm
+

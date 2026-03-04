@@ -13,14 +13,28 @@ spec:
     password:
       description: Password used for authentication.
       type: string
+    token:
+      description: API token for accessing VAST mgmt. If provided, it will be used instead of 'username' and 'password'."
+      type: string
+    tenant:
+      description: The tenant name for tenant scoped authentication (tenant admin).
+      type: string
+      nullable: true
     sslCert:
       description: Optional SSL certificate for secure connections.
       type: string
       nullable: true
+    passphrase:
+      description: >-
+        Optional passphrase used to enable LUKS-based host encryption on the client.
+        If present, host-side encryption will be activated automatically.
+      type: string
+      nullable: true
   required:
     - endpoint
-    - username
-    - password
+  oneOf:
+    - required: [ token ]
+    - required: [ username, password ]
   type: object
 
 specDescriptors:
@@ -44,4 +58,7 @@ example:
     endpoint: {{ .Values.endpoint }}
     username: {{ .Values.username }}
     password: {{ .Values.password }}
+    token: {{ .Values.token }}
+    tenant: {{ .Values.tenant }}
     sslCert: {{ .Values.sslCert }}
+    passphrase: {{ .Values.passphrase }}
