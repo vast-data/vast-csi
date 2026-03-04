@@ -1,4 +1,4 @@
-from vast_csi.builders.fs import (
+from vast_csi.builders.nfs import (
     EmptyVolumeBuilder,
     VolumeFromVolumeBuilder,
     VolumeFromSnapshotBuilder,
@@ -12,4 +12,14 @@ from vast_csi.builders.block import (
 )
 from vast_csi.builders.test import TestVolumeBuilder
 
-from vast_csi.builders.base import to_volume_id_with_metadata, parse_volume_id
+from vast_csi.builders.base import (
+    to_volume_id_with_metadata,
+    parse_volume_id,
+)
+
+from vast_csi.builders.addons_base import VolumeAddonsBuilderI
+
+from vast_csi.builders.replication import (
+    NFSReplicationBuilder,
+    BlockReplicationBuilder,
+)

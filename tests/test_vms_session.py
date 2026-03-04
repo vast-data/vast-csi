@@ -4,10 +4,11 @@ import requests
 from plumbum import local
 from io import BytesIO
 from unittest.mock import patch, PropertyMock, MagicMock
-from vast_csi.plugins.csi import CsiController
+from vast_csi.plugins.nfs import CsiController
 from requests import Response
-from vast_csi.vms_session import apiver, get_vms_session, Config, VmsSession, VastResource, LookupFieldError
-from vast_csi.exceptions import OperationNotSupported, ApiError
+from vast_csi.session import apiver, get_vms_session, VmsSession, VastResource, instantiate_session_from_secret
+from vast_csi.configuration import Config
+from vast_csi.exceptions import OperationNotSupported, ApiError, LookupFieldError
 from easypy.semver import SemVer
 from easypy.resilience import _Retry
 from easypy.bunch import Bunch
@@ -24,7 +25,7 @@ def version_mock(version):
 
 @patch("vast_csi.configuration.Config.vms_user", PropertyMock("test"))
 @patch("vast_csi.configuration.Config.vms_password", PropertyMock("test"))
-@patch("vast_csi.vms_session.VmsSession.refresh_auth_token", MagicMock())
+@patch("vast_csi.session.VmsSession.refresh_auth_token", MagicMock())
 class TestVmsSessionRequisiteSuite:
 
     @pytest.mark.parametrize(
@@ -86,7 +87,7 @@ class TestVmsSessionRequisiteSuite:
         # Execution
         with (
             patch.object(vms_session, "versions", version_mock("5.0.0.25")),
-            patch("vast_csi.vms_session.VmsSession.delete", side_effect=raise_http_err),
+            patch("vast_csi.session.VmsSession.delete", side_effect=raise_http_err),
         ):
             with pytest.raises(OperationNotSupported) as exc:
                 vms_session.folders.delete("/abc", 1)
@@ -130,7 +131,7 @@ class TestVmsSessionRequisiteSuite:
         with (
             patch.object(vms_session, "versions", version_mock("4.7.0")),
             patch(
-                "vast_csi.vms_session.VmsSession.delete", side_effect=raise_http_err
+                "vast_csi.session.VmsSession.delete", side_effect=raise_http_err
             ) as mocked_request,
         ):
             with pytest.raises(AssertionError):
@@ -1302,3 +1303,315 @@ class TestVmsSessionInitFromClustersSuite:
                 config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name="cluster1"
             )
 
+
+#####################
+# instantiate_session_from_secret with tuple-based prefixes
+#####################
+#
+#
+# class TestInstantiateSessionFromSecretWithPrefixes:
+#     """Test the new tuple-based prefix functionality for instantiate_session_from_secret."""
+#
+#     def test_default_no_prefix(self):
+#         """Test with default tuple ("",) - no prefix."""
+#         secrets = {
+#             "username": "admin",
+#             "password": "secret123",
+#             "endpoint": "vms.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_session = MagicMock()
+#             mock_create.return_value = mock_session
+#
+#             result = instantiate_session_from_secret(secrets, key_prefix=("",))
+#
+#             # Should call get_vms_session with unprefixed keys
+#             assert mock_create.called  # VmsSession.create was called
+#             assert result == mock_session
+#
+#     def test_source_prefix_with_fallback(self):
+#         """Test with source prefix and fallback ("src_", "")."""
+#         # Secrets with src_ prefix
+#         secrets = {
+#             "src_username": "admin",
+#             "src_password": "secret123",
+#             "src_endpoint": "vms-primary.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_session = MagicMock()
+#             mock_create.return_value = mock_session
+#
+#             result = instantiate_session_from_secret(secrets, key_prefix=("src_", ""))
+#
+#             # Should use src_ prefixed keys
+#             assert mock_create.called  # VmsSession.create was called
+#             assert result == mock_session
+#
+#     def test_source_prefix_fallback_to_no_prefix(self):
+#         """Test fallback from src_ to no prefix when src_ keys don't exist."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         # Old-style secrets without prefix
+#         secrets = {
+#             "username": "admin",
+#             "password": "secret123",
+#             "endpoint": "vms.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             # First call with src_ prefix fails
+#             # Second call with no prefix succeeds
+#             mock_session = MagicMock()
+#             mock_create.side_effect = [
+#                 LookupFieldError("Could not find src_username"),
+#                 mock_session
+#             ]
+#
+#             result = instantiate_session_from_secret(secrets, key_prefix=("src_", ""))
+#
+#             # Should be called twice: first with src_ prefix, then without
+#             assert mock_create.call_count == 2
+#
+#             # First call with src_ prefix
+#             first_call = mock_create.call_args_list[0]
+#             assert first_call[1]["username"] is None  # src_username doesn't exist
+#
+#             # Second call without prefix
+#             second_call = mock_create.call_args_list[1]
+#             assert second_call[1]["username"] == "admin"
+#             assert second_call[1]["password"] == "secret123"
+#             assert second_call[1]["endpoint"] == "vms.example.com"
+#
+#             assert result == mock_session
+#
+#     def test_destination_prefix_only_no_fallback(self):
+#         """Test with destination prefix only ("dst_",) - no fallback."""
+#         secrets = {
+#             "dst_username": "admin",
+#             "dst_password": "secret456",
+#             "dst_endpoint": "vms-secondary.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_session = MagicMock()
+#             mock_create.return_value = mock_session
+#
+#             result = instantiate_session_from_secret(secrets, key_prefix=("dst_",))
+#
+#             # Should call get_vms_session with dst_ prefixed keys
+#             assert mock_create.called  # VmsSession.create was called
+#             assert result == mock_session
+#
+#     def test_destination_prefix_fails_without_dst_keys(self):
+#         """Test that dst_ prefix fails when dst_ keys don't exist (no fallback)."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         # Secrets without dst_ prefix
+#         secrets = {
+#             "username": "admin",
+#             "password": "secret123",
+#             "endpoint": "vms.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_create.side_effect = LookupFieldError("Could not find dst_username")
+#
+#             # Should raise error - no fallback for dst_
+#             with pytest.raises(LookupFieldError, match="Could not find dst_username"):
+#                 instantiate_session_from_secret(secrets, key_prefix=("dst_",))
+#
+#             # Should only be called once (no fallback)
+#             assert mock_create.call_count == 1
+#
+#     def test_mixed_secrets_both_src_and_dst(self):
+#         """Test with both source and destination secrets present."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         secrets = {
+#             # Source
+#             "src_username": "admin",
+#             "src_password": "secret123",
+#             "src_endpoint": "vms-primary.example.com",
+#             # Destination
+#             "dst_username": "admin",
+#             "dst_password": "secret456",
+#             "dst_endpoint": "vms-secondary.example.com",
+#             # Old-style (for fallback testing)
+#             "username": "fallback-admin",
+#             "password": "fallback-secret",
+#             "endpoint": "vms-fallback.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_src_session = MagicMock(name="src_session")
+#             mock_dst_session = MagicMock(name="dst_session")
+#             mock_create.side_effect = [mock_src_session, mock_dst_session]
+#
+#             # Get source session
+#             src_result = instantiate_session_from_secret(secrets, key_prefix=("src_", ""))
+#             assert src_result == mock_src_session
+#
+#             # Get destination session
+#             dst_result = instantiate_session_from_secret(secrets, key_prefix=("dst_",))
+#             assert dst_result == mock_dst_session
+#
+#             # Verify both calls used correct prefixes
+#             src_call = mock_create.call_args_list[0]
+#             assert src_call[1]["username"] == "admin"
+#             assert src_call[1]["endpoint"] == "vms-primary.example.com"
+#
+#             dst_call = mock_create.call_args_list[1]
+#             assert dst_call[1]["username"] == "admin"
+#             assert dst_call[1]["endpoint"] == "vms-secondary.example.com"
+#
+#     def test_multiple_prefixes_tries_all_in_order(self):
+#         """Test that multiple prefixes are tried in order until one succeeds."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         secrets = {
+#             "username": "admin",
+#             "password": "secret",
+#             "endpoint": "vms.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_session = MagicMock()
+#             # First three attempts fail, fourth succeeds
+#             mock_create.side_effect = [
+#                 LookupFieldError("prefix1 failed"),
+#                 LookupFieldError("prefix2 failed"),
+#                 LookupFieldError("prefix3 failed"),
+#                 mock_session
+#             ]
+#
+#             result = instantiate_session_from_secret(
+#                 secrets,
+#                 key_prefix=("prefix1_", "prefix2_", "prefix3_", "")
+#             )
+#
+#             # Should try all 4 prefixes
+#             assert mock_create.call_count == 4
+#             assert result == mock_session
+#
+#     def test_all_prefixes_fail_raises_last_error(self):
+#         """Test that when all prefixes fail, the last error is raised."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         secrets = {
+#             "wrong_key": "value"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             error1 = LookupFieldError("First prefix failed")
+#             error2 = LookupFieldError("Second prefix failed")
+#             last_error = LookupFieldError("Last prefix failed - this should be raised")
+#
+#             mock_create.side_effect = [error1, error2, last_error]
+#
+#             # Should raise the last error
+#             with pytest.raises(LookupFieldError, match="Last prefix failed"):
+#                 instantiate_session_from_secret(
+#                     secrets,
+#                     key_prefix=("src_", "dst_", "")
+#                 )
+#
+#             # Should have tried all three prefixes
+#             assert mock_create.call_count == 3
+#
+#     def test_with_token_authentication(self):
+#         """Test prefix handling with token-based authentication."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         secrets = {
+#             "src_token": "source-token-123",
+#             "src_endpoint": "vms-primary.example.com",
+#             "dst_token": "dest-token-456",
+#             "dst_endpoint": "vms-secondary.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_src_session = MagicMock(name="src_session")
+#             mock_dst_session = MagicMock(name="dst_session")
+#             mock_create.side_effect = [mock_src_session, mock_dst_session]
+#
+#             # Get source session with token
+#             src_result = instantiate_session_from_secret(secrets, key_prefix=("src_",))
+#             assert src_result == mock_src_session
+#
+#             # Get destination session with token
+#             dst_result = instantiate_session_from_secret(secrets, key_prefix=("dst_",))
+#             assert dst_result == mock_dst_session
+#
+#             # Verify tokens were used
+#             src_call = mock_create.call_args_list[0]
+#             assert src_call[1]["token"] == "source-token-123"
+#             assert src_call[1]["endpoint"] == "vms-primary.example.com"
+#
+#             dst_call = mock_create.call_args_list[1]
+#             assert dst_call[1]["token"] == "dest-token-456"
+#             assert dst_call[1]["endpoint"] == "vms-secondary.example.com"
+#
+#     def test_with_tenant_and_ssl_cert(self):
+#         """Test prefix handling with tenant and SSL certificate."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         secrets = {
+#             "src_username": "admin",
+#             "src_password": "secret",
+#             "src_endpoint": "vms-primary.example.com",
+#             "src_tenant": "source-tenant",
+#             "src_ssl_cert": "-----BEGIN CERTIFICATE-----\nsrc cert\n-----END CERTIFICATE-----",
+#             "src_cluster_name": "primary-cluster"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_session = MagicMock()
+#             mock_create.return_value = mock_session
+#
+#             result = instantiate_session_from_secret(secrets, key_prefix=("src_",))
+#
+#             # Verify all parameters including tenant and ssl_cert
+#             assert mock_create.called  # VmsSession.create was called
+#             assert result == mock_session
+#
+#     def test_empty_prefix_tuple_raises_error(self):
+#         """Test that empty prefix tuple raises appropriate error."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         secrets = {
+#             "username": "admin",
+#             "password": "secret",
+#             "endpoint": "vms.example.com"
+#         }
+#
+#         with pytest.raises(LookupFieldError, match="Unable to instantiate session"):
+#             instantiate_session_from_secret(secrets, key_prefix=())
+#
+#     def test_backward_compatibility_default_behavior(self):
+#         """Test that default behavior (no prefix) maintains backward compatibility."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         # Old-style secrets without any prefix
+#         secrets = {
+#             "username": "legacy-admin",
+#             "password": "legacy-secret",
+#             "endpoint": "legacy-vms.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_session = MagicMock()
+#             mock_create.return_value = mock_session
+#
+#             # Call without specifying key_prefix (uses default)
+#             result = instantiate_session_from_secret(secrets)
+#
+#             # Should use unprefixed keys
+#             mock_create.assert_called_once()
+#             call_args = mock_create.call_args[1]
+#             assert call_args["username"] == "legacy-admin"
+#             assert call_args["password"] == "legacy-secret"
+#             assert call_args["endpoint"] == "legacy-vms.example.com"
+#             assert result == mock_session
+#

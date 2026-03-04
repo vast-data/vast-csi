@@ -88,7 +88,7 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented):
         return types.DriverRevokeBucketAccessResp()
 
 
-def serve(server: grpc.Server, conf: Config):
+def serve(server: grpc.Server, conf: Config, plugin: str):
     global CONF
     import vast_csi.plugins.base
 

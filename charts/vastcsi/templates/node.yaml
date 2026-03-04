@@ -69,6 +69,7 @@ spec:
           image: {{ printf "%s:%s" $csi_images.csiVastPlugin.repository (toString $csi_images.csiVastPlugin.tag) }}
           args:
             - "serve"
+            - "--plugin=nfs"
           imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default  "IfNotPresent" }}
           env:
 {{- include "vastcsi.commonEnv" . | indent 12 }}

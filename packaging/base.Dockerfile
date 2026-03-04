@@ -10,7 +10,7 @@ RUN microdnf upgrade -y \
     && ln -sf /usr/bin/pip3.12 /usr/bin/pip3 \
     && microdnf clean all
 
-RUN microdnf update -y expat-2.5.0-5.el9_7.1 sqlite-libs-3.34.1-9.el9_7 \
+RUN microdnf update -y expat-2.5.0-5.el9_7.1 sqlite-libs-3.34.1-9.el9_7 openssl openssl-libs \
     && microdnf clean all
 
 # Add CentOS Stream 9 repository for nfs-utils installation
@@ -36,7 +36,10 @@ RUN curl -sSL https://install.python-poetry.org | python3 - --version 1.8.5 \
     && poetry install --only main \
     && rm -f poetry.lock* \
     && /root/.local/share/pypoetry/venv/bin/pip install --upgrade setuptools \
-    && pip3 install --upgrade setuptools \
+    && pip3 install --upgrade setuptools jaraco.context wheel \
+    && /root/.venv/bin/python -m ensurepip --upgrade \
+    && /root/.venv/bin/python -m pip install --upgrade setuptools \
+    && /root/.venv/bin/python -m pip uninstall pip -y \
     && ln -sf /usr/bin/python3.12 /usr/bin/python3
 
 

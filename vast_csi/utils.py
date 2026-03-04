@@ -3,8 +3,9 @@ import re
 import uuid
 import psutil
 import threading
+from contextlib import contextmanager
 from pprint import pformat
-from datetime import datetime
+from datetime import datetime, timedelta
 from ipaddress import summarize_address_range, ip_address
 from base64 import b32encode
 from random import getrandbits
@@ -14,6 +15,23 @@ from plumbum import local
 from easypy.caching import locking_cache
 from easypy.collections import listify
 from . import csi_types as types
+from .exceptions import Abort
+
+
+@contextmanager
+def to_abort(code=types.ABORTED):
+    """
+    Context manager that converts any exception into Abort(ABORTED, ...).
+
+    Useful for wrapping VMS API calls in gRPC handlers where internal errors
+    (e.g., HTTP 503 from VMS) should be surfaced as gRPC ABORTED status
+    """
+    try:
+        yield
+    except Abort:
+        raise
+    except Exception as exc:
+        raise Abort(code, str(exc)) from exc
 
 
 PATH_ALIASES = {
@@ -265,3 +283,249 @@ def string_to_static_uuid(value: str) -> str:
     using the standard DNS namespace.
     """
     return str(uuid.uuid5(uuid.NAMESPACE_DNS, value))
+
+
+def parse_string_parameters(params: dict) -> dict:
+    """
+    Parse string parameters (from StorageClass, SnapshotClass, BucketClass, etc.)
+    into properly typed values.
+    
+    Kubernetes resource parameters are always string-to-string dictionaries.
+    This function converts them to appropriate Python types:
+    - "true"/"false" (case-insensitive) → bool
+    - String numbers → int or float
+    - Everything else → kept as string
+    
+    Args:
+        params: Dictionary with string keys and string values from K8s resource parameters
+        
+    Returns:
+        Dictionary with the same keys but properly typed values
+        
+    Example:
+        >>> parse_string_parameters({
+        ...     "create_dir": "true",
+        ...     "capacity": "1000",
+        ...     "ratio": "1.5",
+        ...     "name": "my-volume"
+        ... })
+        {
+            "create_dir": True,
+            "capacity": 1000,
+            "ratio": 1.5,
+            "name": "my-volume"
+        }
+    """
+    result = {}
+    
+    for key, value in params.items():
+        if not isinstance(value, str):
+            # If it's already not a string, keep it as is
+            result[key] = value
+            continue
+            
+        # Try boolean conversion first
+        value_lower = value.lower().strip()
+        if value_lower in ("true", "yes", "on", "1"):
+            result[key] = True
+            continue
+        elif value_lower in ("false", "no", "off", "0"):
+            result[key] = False
+            continue
+        
+        # Try numeric conversion
+        try:
+            # Try integer first (this also handles "1.0" properly)
+            if '.' not in value and 'e' not in value_lower:
+                result[key] = int(value)
+                continue
+        except (ValueError, TypeError):
+            pass
+        
+        try:
+            # Try float
+            result[key] = float(value)
+            continue
+        except (ValueError, TypeError):
+            pass
+        
+        # Keep as string if no conversion worked
+        result[key] = value
+    
+    return result
+
+
+def yesno_to_bool(value):
+    """
+    Convert a yes/no, true/false, on/off string to boolean.
+    
+    Args:
+        value: String or boolean value
+        
+    Returns:
+        Boolean value
+        
+    Raises:
+        ValueError: If the string cannot be converted to boolean
+    """
+    if isinstance(value, bool):
+        return value
+    
+    if isinstance(value, str):
+        value_lower = value.lower().strip()
+        if value_lower in ("true", "yes", "on", "1"):
+            return True
+        elif value_lower in ("false", "no", "off", "0"):
+            return False
+    
+    raise ValueError(f"Cannot convert {value!r} to boolean")
+
+
+def slugify(text: str, separator: str = "-") -> str:
+    """
+    Convert a string (such as IP address, hostname, or URL) into a valid slug.
+    
+    This function is useful for creating valid resource names from endpoints,
+    IP addresses, or other identifiers that may contain special characters.
+    
+    Args:
+        text: The input string to slugify (e.g., "192.168.1.1", "fe80::1", "host.example.com")
+        separator: Character to use as separator (default: "-")
+        
+    Returns:
+        A slugified string with only alphanumeric characters and separators
+        
+    Example:
+        >>> slugify("192.168.1.1")
+        '192-168-1-1'
+        >>> slugify("fe80::1")
+        'fe80-1'
+        >>> slugify("host.example.com")
+        'host-example-com'
+        >>> slugify("10.0.0.1", separator="_")
+        '10_0_0_1'
+    """
+    # Convert to lowercase and strip whitespace
+    slug = text.lower().strip()
+    
+    # Replace common separators and special characters with the separator
+    # This handles: dots, colons, slashes, underscores, spaces
+    slug = re.sub(r'[.:/_\s]+', separator, slug)
+    
+    # Remove any characters that are not alphanumeric or the separator
+    slug = re.sub(r'[^a-z0-9' + re.escape(separator) + r']+', '', slug)
+    
+    # Remove leading/trailing separators and collapse multiple separators
+    slug = re.sub(r'' + re.escape(separator) + r'+', separator, slug)
+    slug = slug.strip(separator)
+    
+    return slug
+
+
+def parse_duration_to_timestamp(duration_str: str, from_time: datetime = None) -> str:
+    """
+    Parse a duration string (like "2H", "10m", "1d") and convert it to a timestamp.
+    
+    This function takes VAST duration strings from protection policies and converts
+    them to absolute timestamps in the format required by the API: YYYY-mm-ddTHH:MM:SS
+    
+    Implementation matches VAST's internal replicate_now() method which uses
+    datetime.isoformat(timespec="seconds") for timestamp formatting.
+    
+    Args:
+        duration_str: Duration string (e.g., "2H", "30m", "1d", "1W")
+                     Supported units: m (minutes), H (hours), d (days), W (weeks)
+        from_time: Base datetime to add duration to (default: current time)
+        
+    Returns:
+        Timestamp string in format "YYYY-mm-ddTHH:MM:SS"
+        
+    Example:
+        >>> parse_duration_to_timestamp("2H")  # 2 hours from now
+        '2025-11-22T18:30:00'
+        >>> parse_duration_to_timestamp("30m")  # 30 minutes from now
+        '2025-11-22T16:45:00'
+    """
+    if from_time is None:
+        from_time = datetime.now()
+    
+    if not duration_str:
+        # Default to 1 hour if no duration specified
+        duration_str = "1H"
+    
+    # Parse the duration string using regex
+    # Format: <number><unit> where unit is m, H, d, W
+    match = re.match(r'^(\d+)([mHdW])$', duration_str.strip())
+    
+    if not match:
+        raise ValueError(f"Invalid duration format: {duration_str}. Expected format: <number><unit> (e.g., '2H', '30m')")
+    
+    amount = int(match.group(1))
+    unit = match.group(2)
+    
+    # Convert to timedelta
+    if unit == 'm':  # minutes
+        delta = timedelta(minutes=amount)
+    elif unit == 'H':  # hours
+        delta = timedelta(hours=amount)
+    elif unit == 'd':  # days
+        delta = timedelta(days=amount)
+    elif unit == 'W':  # weeks
+        delta = timedelta(weeks=amount)
+    else:
+        raise ValueError(f"Unsupported duration unit: {unit}")
+    
+    # Calculate expiration time
+    expiration_time = from_time + delta
+    
+    # Format as required by VAST API using isoformat (same as VAST's internal implementation)
+    # This produces format: YYYY-mm-ddTHH:MM:SS
+    return expiration_time.isoformat(timespec="seconds")
+
+
+def replace_path_prefix(base_path, replacement_path):
+    """
+    Replace the first N segments of base_path with replacement_path.
+    
+    This is useful for replication scenarios where you want to replicate a directory
+    structure to a different base location while preserving the relative hierarchy.
+    
+    Args:
+        base_path: Source path whose prefix will be replaced (e.g., "/foo/bar/biz")
+        replacement_path: New prefix to use (e.g., "/zoo/rar")
+    
+    Returns:
+        Path with replaced prefix (e.g., "/zoo/rar/biz")
+    
+    Examples:
+        >>> replace_path_prefix("/foo/bar/biz", "/zoo/rar")
+        '/zoo/rar/biz'
+        
+        >>> replace_path_prefix("/k8s", "/replication/volumes")
+        '/replication/volumes'
+        
+        >>> replace_path_prefix("/production/team-a/app1/data", "/backup/dr-site")
+        '/backup/dr-site/app1/data'
+        
+        >>> replace_path_prefix("/k8s/volumes", None)
+        '/k8s/volumes'
+    """
+    if not replacement_path:
+        return base_path
+    
+    # Normalize paths by removing trailing slashes
+    base_path = base_path.rstrip('/')
+    replacement_path = replacement_path.rstrip('/')
+    
+    # Split paths into segments (filter out empty strings from leading/trailing slashes)
+    base_segments = [s for s in base_path.split('/') if s]
+    replacement_segments = [s for s in replacement_path.split('/') if s]
+    n_replace = len(replacement_segments)
+    
+    if n_replace >= len(base_segments):
+        # Replacement path is longer or equal - use it directly
+        return replacement_path
+    else:
+        # Keep remaining segments from base_path
+        remaining_segments = base_segments[n_replace:]
+        return replacement_path + '/' + '/'.join(remaining_segments)

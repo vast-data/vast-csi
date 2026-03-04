@@ -70,7 +70,7 @@ spec:
           args:
             - "serve"
             - "--plugin"
-            - {{ ternary "csi" "block" $is_nfs_driver }}
+            - {{ ternary "nfs" "block" $is_nfs_driver }}
           imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default "IfNotPresent" }}
           env:
 {{- include "vastcsi.commonEnv" . | indent 12 }}

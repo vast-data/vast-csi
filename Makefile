@@ -197,6 +197,9 @@ create-csi-secret: create-csi-namespace ## Recreate secret for CSI driver
 install-snapshost-crds: ## Install snapshot CRDs
 	@$(CURDIR)/scripts/install_snapshot_crds.sh
 
+install-replication-crds: ## Install VolumeReplication CRDs and Operator (complete stack)
+	@$(CURDIR)/scripts/install_replication_stack.sh
+
 start-minikube: ## Start Minikube cluster
 	@$(call check_required_env,MINIKUBE_DRIVER)
 	@$(CURDIR)/scripts/start-minikube.sh
@@ -224,7 +227,7 @@ endif
 #   Examples:
 #     ENDPOINT=v95 make run nfs
 #     ENDPOINT=v95 DEV_VIP_POOL=vippool-2 make run block
-run: start-minikube create-csi-namespace install-snapshost-crds create-csi-secret ## Run the CSI driver with a specified profile: 'nfs' or 'block'
+run: start-minikube create-csi-namespace install-snapshost-crds install-replication-crds create-csi-secret ## Run the CSI driver with a specified profile: 'nfs' or 'block'
 	@$(call check_required_env,DEV_VIP_POOL DEV_VIEW_POLICY DEV_SUBSYSTEM)
 	@profile="$(word 1, $(runargs))"; \
 	if [ -z "$$profile" ]; then \
