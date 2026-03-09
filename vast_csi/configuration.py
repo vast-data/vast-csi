@@ -58,7 +58,7 @@ class Config(TypedEnv):
     _endpoint = TypedEnv.Str("CSI_ENDPOINT", default="unix:///var/run/csi.sock")
     _mount_options = TypedEnv.Str("X_CSI_MOUNT_OPTIONS", default="")  # For example: "port=2049,nolock,vers=3"
     _vms_host = TypedEnv.Str("X_CSI_VMS_HOST", default="")
-    name_fmt = "csi:{namespace}:{name}:{id}"
+    name_fmt = "csi:{id}:{namespace}:{name}"
     block_nqn_prefix = "nqn.2014-08.com.vastcsiblock:"
     max_cache_control_seconds = TypedEnv.Int("X_CSI_CACHE_MAX_AGE", default=0)
 

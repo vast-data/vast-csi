@@ -7,7 +7,7 @@ parameters:
   vip_pool_name: vippool-1
   root_export: /k8s
   view_policy: default
-  volume_name_fmt: csi:{namespace}:{name}:{id}
+  volume_name_fmt: csi:{id}:{namespace}:{name}
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 allowVolumeExpansion: true

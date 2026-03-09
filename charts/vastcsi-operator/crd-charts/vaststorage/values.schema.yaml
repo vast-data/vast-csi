@@ -191,11 +191,11 @@ spec:
       default: false
     volumeNameFormat:
       description: String template for CSI-provisioned volume names, within VAST.
-      default: csi:{namespace}:{name}:{id}
+      default: csi:{id}:{namespace}:{name}
       type: string
     ephemeralVolumeNameFormat:
       description: String template for CSI-provisioned ephemeral volumes, within VAST.
-      default: csi:{namespace}:{name}:{id}
+      default: csi:{id}:{namespace}:{name}
       type: string
     createSnapshotClass:
       description: Create SnapshotClass for VastStorage.
@@ -206,7 +206,7 @@ spec:
       properties:
         snapshotNameFormat:
           type: string
-          default: csi:{namespace}:{name}:{id}
+          default: csi:{id}:{namespace}:{name}
         deletionPolicy:
           description: >-
             Specifies the deletion policy for snapshots associated with this snapshot class.
