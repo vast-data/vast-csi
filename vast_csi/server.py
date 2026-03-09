@@ -98,10 +98,16 @@ def serve(plugin: str = None, addons: str = ""):
         # Automatically enable xprt metrics only for NFS driver (plugin="csi")
         # Block driver doesn't use NFS so no xprt metrics needed
         collect_nfs_xprt = (plugin == "csi")
+        
+        # Automatically enable NVMe controller metrics only for block driver (plugin="block")
+        # NFS driver doesn't use NVMe so no controller metrics needed
+        collect_nvme_controller = (plugin == "block")
+        
         metrics.start_metrics_server(
             port=CONF.metrics_port,
             is_node_service=CONF.has_running_node,
-            collect_nfs_xprt=collect_nfs_xprt
+            collect_nfs_xprt=collect_nfs_xprt,
+            collect_nvme_controller=collect_nvme_controller
         )
 
     server = grpc.server(
