@@ -402,7 +402,7 @@ snapshotClassDefaults:
   # If true, sets SnapshotClass as the cluster-wide snapshot class default
   setDefaultSnapshotClass: true
   # String template for CSI-provisioned snapshot names, within VAST
-  snapshotNameFormat: "csi:{namespace}:{name}:{id}"
+  snapshotNameFormat: "csi:{id}:{namespace}:{name}"
   # On snapshot delete behavior. By default, Vast Cluster snapshot will be removed as well.
   deletionPolicy: "Delete"
 
