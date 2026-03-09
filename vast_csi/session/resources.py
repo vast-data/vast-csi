@@ -471,7 +471,7 @@ class Quota(VastResource):
     def one(self, name=None, path=None, **kwargs):
         """Get quota by provided query params."""
         if name:
-            kwargs.update(path__contains=name)
+            kwargs.update(path__endswith=name)
         elif path:
             path = path.rstrip("/") or "/"  # for root path
             kwargs.update(path=path)
@@ -481,7 +481,7 @@ class Quota(VastResource):
     def one_cached(self, name=None, path=None, **kwargs):
         """Cached version of one() method."""
         if name:
-            kwargs.update(path__contains=name)
+            kwargs.update(path__endswith=name)
         elif path:
             path = path.rstrip("/") or "/"  # for root path
             kwargs.update(path=path)
