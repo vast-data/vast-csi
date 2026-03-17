@@ -626,7 +626,7 @@ class User(VastResource):
     resource_name = "users"
 
     def generate_access_key(self, _id):
-        return self.session.post(f"{self.resource_name}/{_id}/access_keys/", log_result=False)
+        return self.session.post(f"{self.resource_name}/{_id}/access_keys/", data={}, log_result=False)
 
     def delete_access_key(self, _id, access_key):
         data = dict(access_key=access_key)
