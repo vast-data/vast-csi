@@ -1,16 +1,89 @@
-kind: Pod
+# Static Volume Provisioning Example
+#
+# This example demonstrates static PV/PVC provisioning for NFS volumes.
+# The volume is pre-created and bound to a specific path on the VAST cluster.
+#
+# Key Configuration:
+# - volumeHandle: Specifies the exact path on VAST (/k8s/persistent-data)
+# - static_pv_create_views: "yes" - Automatically create the view if it doesn't exist
+# - static_pv_create_quotas: "yes" - Automatically create quota for the view
+# - nodePublishSecretRef: Required when using attachRequired: false in Helm chart
+#   (ControllerPublishVolume is skipped, NodePublishVolume needs direct secret access)
+#
+# Use Case:
+# - Pre-existing storage paths that need to be exposed to Kubernetes
+# - Migration of existing data into Kubernetes
+# - Shared storage across multiple clusters pointing to the same VAST path
+
+---
+# Static PersistentVolume
 apiVersion: v1
+kind: PersistentVolume
 metadata:
-  name: my-csi-app
+  name: csi-pv-static-persistent
+spec:
+  storageClassName: vastdata-filesystem
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteMany
+  mountOptions:
+    - nfsvers=3
+  csi:
+    driver: csi.vastdata.com
+    volumeAttributes:
+      vip_pool_name: vippool-1
+      view_policy: default
+      size: 10G
+      static_pv_create_views: "yes"
+      static_pv_create_quotas: "yes"
+    controllerPublishSecretRef:
+      name: vast-mgmt
+      namespace: default
+    nodePublishSecretRef:
+      name: vast-mgmt
+      namespace: default
+    volumeHandle: /k8s/persistent-data
+
+---
+# Static PersistentVolumeClaim (bound to PV above)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: csi-pvc-static-persistent
+spec:
+  storageClassName: vastdata-filesystem
+  volumeName: csi-pv-static-persistent
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# Pod using the static PVC
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-with-static-volume
 spec:
   containers:
-    - name: my-frontend
-      image: busybox
-      volumeMounts:
-      - mountPath: "/data"
-        name: my-csi-volume
-      command: [ "sleep", "1000000" ]
+  - name: my-app
+    image: busybox
+    command:
+    - sh
+    - -c
+    - |
+      echo "Using static persistent volume at /data"
+      while true; do
+        date -Iseconds >> /data/app-data.log
+        echo "Pod $HOSTNAME writing to static volume..." >> /data/app-data.log
+        sleep 5
+      done
+    volumeMounts:
+    - name: persistent-storage
+      mountPath: /data
   volumes:
-    - name: my-csi-volume
-      persistentVolumeClaim:
-        claimName: csi-pvc-static
+  - name: persistent-storage
+    persistentVolumeClaim:
+      claimName: csi-pvc-static-persistent
