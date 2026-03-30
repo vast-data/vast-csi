@@ -2,7 +2,7 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ .Release.Name }}-vast-node-metrics
+  name: {{ .Release.Name | replace "." "-" }}-vast-node-metrics
   namespace: {{ include "vastcsi.namespace" . }}
   labels:
 {{- include "vastcsi.labels" . | nindent 4 }}
@@ -41,7 +41,7 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ .Release.Name }}-vast-controller-metrics
+  name: {{ .Release.Name | replace "." "-" }}-vast-controller-metrics
   namespace: {{ include "vastcsi.namespace" . }}
   labels:
 {{- include "vastcsi.labels" . | nindent 4 }}

@@ -117,7 +117,7 @@ spec:
       nodeSelector:
 {{ toYaml .Values.node.nodeSelector | indent 8 }}
       priorityClassName: {{ .Values.node.priorityClassName }}
-      serviceAccountName: {{ .Release.Name }}-vast-node-sa
+      serviceAccountName: {{ .Release.Name | replace "." "-" }}-vast-node-sa
       tolerations:
 {{ toYaml .Values.node.tolerations | indent 8 }}
       volumes:

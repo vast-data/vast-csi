@@ -3,11 +3,11 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: {{ .Release.Name }}-vast-controller-scc-sa-binding
+  name: {{ .Release.Name | replace "." "-" }}-vast-controller-scc-sa-binding
   namespace: {{ .Release.Namespace }}
 subjects:
 - kind: ServiceAccount
-  name: {{ .Release.Name }}-vast-controller-sa
+  name: {{ .Release.Name | replace "." "-" }}-vast-controller-sa
   namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
@@ -19,11 +19,11 @@ roleRef:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: {{ .Release.Name }}-vast-node-scc-sa-binding
+  name: {{ .Release.Name | replace "." "-" }}-vast-node-scc-sa-binding
   namespace: {{ .Release.Namespace }}
 subjects:
 - kind: ServiceAccount
-  name: {{ .Release.Name }}-vast-node-sa
+  name: {{ .Release.Name | replace "." "-" }}-vast-node-sa
   namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
