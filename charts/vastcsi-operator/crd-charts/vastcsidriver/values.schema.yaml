@@ -2137,6 +2137,30 @@ specDescriptors:
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
       - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Scrape interval for controller ServiceMonitor (e.g. 30s, 1m)
+    displayName: Controller ServiceMonitor Interval
+    path: controller.metrics.serviceMonitor.interval
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Additional labels to add to the controller ServiceMonitor resource
+    displayName: Controller ServiceMonitor Labels
+    path: controller.metrics.serviceMonitor.labels
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:controllerServiceMonitorLabels'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Relabelings to apply to controller metrics samples before ingestion
+    displayName: Controller ServiceMonitor Relabelings
+    path: controller.metrics.serviceMonitor.relabelings
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:controllerServiceMonitorRelabelings'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: MetricRelabelings to apply to controller metrics samples before ingestion
+    displayName: Controller ServiceMonitor MetricRelabelings
+    path: controller.metrics.serviceMonitor.metricRelabelings
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:controllerServiceMonitorMetricRelabelings'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
   - description: Enable Prometheus metrics endpoint for CSI node
     displayName: Node Metrics Enabled
     path: node.metrics.enabled
@@ -2154,6 +2178,30 @@ specDescriptors:
     path: node.metrics.serviceMonitor.enabled
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Scrape interval for node ServiceMonitor (e.g. 30s, 1m)
+    displayName: Node ServiceMonitor Interval
+    path: node.metrics.serviceMonitor.interval
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Additional labels to add to the node ServiceMonitor resource
+    displayName: Node ServiceMonitor Labels
+    path: node.metrics.serviceMonitor.labels
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:nodeServiceMonitorLabels'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Relabelings to apply to node metrics samples before ingestion
+    displayName: Node ServiceMonitor Relabelings
+    path: node.metrics.serviceMonitor.relabelings
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:nodeServiceMonitorRelabelings'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: MetricRelabelings to apply to node metrics samples before ingestion
+    displayName: Node ServiceMonitor MetricRelabelings
+    path: node.metrics.serviceMonitor.metricRelabelings
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:nodeServiceMonitorMetricRelabelings'
       - 'urn:alm:descriptor:com.tectonic.ui:advanced'
 
 
