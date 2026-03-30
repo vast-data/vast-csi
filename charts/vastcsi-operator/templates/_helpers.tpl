@@ -166,6 +166,18 @@ Create chart name and version as used by the chart label.
   verbs:
     - '*'
 - apiGroups:
+    - ""
+  resources:
+    - services
+  verbs:
+    - '*'
+- apiGroups:
+    - monitoring.coreos.com
+  resources:
+    - servicemonitors
+  verbs:
+    - '*'
+- apiGroups:
     - storage.k8s.io
   resources:
     - storageclasses

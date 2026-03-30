@@ -748,6 +748,48 @@ spec:
                   the taint. By default, it is not set, which means tolerate the taint forever
                   (do not evict). Zero and negative values will be treated as 0 (evict
                   immediately) by the system.
+        metrics:
+          type: object
+          description: Metrics configuration for CSI controller
+          properties:
+            enabled:
+              type: boolean
+              description: Enable Prometheus metrics endpoint
+              default: {{ .Values.controller.metrics.enabled }}
+            port:
+              type: integer
+              format: int32
+              description: Port for metrics HTTP server
+              default: {{ .Values.controller.metrics.port }}
+            serviceMonitor:
+              type: object
+              description: ServiceMonitor configuration (Prometheus Operator CRD)
+              properties:
+                enabled:
+                  type: boolean
+                  description: Enable ServiceMonitor creation (requires Prometheus Operator)
+                  default: {{ .Values.controller.metrics.serviceMonitor.enabled }}
+                interval:
+                  type: string
+                  description: Scrape interval
+                  default: {{ .Values.controller.metrics.serviceMonitor.interval }}
+                labels:
+                  type: object
+                  description: Additional labels for ServiceMonitor
+                  additionalProperties:
+                    type: string
+                relabelings:
+                  type: array
+                  description: Relabelings to apply to samples before ingestion
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                metricRelabelings:
+                  type: array
+                  description: MetricRelabelings to apply to samples before ingestion
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
     # -- Controller -- end ->
     # -- Node -- start ->
     node:
@@ -1413,6 +1455,48 @@ spec:
                   <<: *limits
                 requests:
                   <<: *requests
+        metrics:
+          type: object
+          description: Metrics configuration for CSI node
+          properties:
+            enabled:
+              type: boolean
+              description: Enable Prometheus metrics endpoint
+              default: {{ .Values.node.metrics.enabled }}
+            port:
+              type: integer
+              format: int32
+              description: Port for metrics HTTP server
+              default: {{ .Values.node.metrics.port }}
+            serviceMonitor:
+              type: object
+              description: ServiceMonitor configuration (Prometheus Operator CRD)
+              properties:
+                enabled:
+                  type: boolean
+                  description: Enable ServiceMonitor creation (requires Prometheus Operator)
+                  default: {{ .Values.node.metrics.serviceMonitor.enabled }}
+                interval:
+                  type: string
+                  description: Scrape interval
+                  default: {{ .Values.node.metrics.serviceMonitor.interval }}
+                labels:
+                  type: object
+                  description: Additional labels for ServiceMonitor
+                  additionalProperties:
+                    type: string
+                relabelings:
+                  type: array
+                  description: Relabelings to apply to samples before ingestion
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                metricRelabelings:
+                  type: array
+                  description: MetricRelabelings to apply to samples before ingestion
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
     # -- Node -- end ->
     # -- images -- start ->
     image:
@@ -1591,6 +1675,42 @@ spec:
         up manually.
       type: boolean
       default: {{ .Values.blockHostsAutoPrune }}
+    hostNamePrefix:
+      description: >-
+        (Block driver only) Prefix used when naming CSI block hosts (e.g. csi-<node-id>).
+        Leave empty to use the default naming scheme.
+      type: string
+      default: {{ .Values.hostNamePrefix | quote }}
+    mountUmountTimeout:
+      description: >-
+        Timeout in seconds for mount/umount operations.
+        If a mount or umount command does not complete within this time, it will be terminated
+        and an error will be returned.
+      type: integer
+      format: int32
+      default: {{ .Values.mountUmountTimeout }}
+    resolveMountSymlinks:
+      description: >-
+        Enable symlink resolution when querying mount information.
+        When enabled, mount paths containing symlinks (e.g., /dev/disk/by-uuid/*) will be
+        resolved to their canonical paths before comparison.
+      type: boolean
+      default: {{ .Values.resolveMountSymlinks }}
+    disableUsageStats:
+      description: >-
+        Disable sending usage statistics to VAST cluster.
+        When set to true, the CSI driver will not report plugin usage metrics to VMS.
+      type: boolean
+      default: {{ .Values.disableUsageStats }}
+    cacheMaxAgeSeconds:
+      description: >-
+        Cache-Control max-age header value in seconds for VMS API requests.
+        When set to a value greater than 0, the CSI driver will add a Cache-Control header
+        to VMS API requests, allowing intermediate caches (like Nginx) to cache responses.
+        Set to 0 to disable caching.
+      type: integer
+      format: int32
+      default: {{ .Values.cacheMaxAgeSeconds }}
     applySecurityContextConstraints:
       description: >-
         Flag specifies whether to enforce the defined security context constraints for pods 
@@ -1956,6 +2076,133 @@ specDescriptors:
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
       - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: >-
+      (Block driver only) Prefix used when naming CSI block hosts (e.g. csi-<node-id>).
+      Leave empty to use the default naming scheme.
+    displayName: Host Name Prefix
+    path: hostNamePrefix
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+      - *block-driver-dep
+  - description: >-
+      Timeout in seconds for mount/umount operations.
+      If a mount or umount command does not complete within this time, it will be terminated
+      and an error will be returned.
+    displayName: Mount/Umount Timeout
+    path: mountUmountTimeout
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:number'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: >-
+      Enable symlink resolution when querying mount information.
+      When enabled, mount paths containing symlinks will be resolved to their canonical paths
+      before comparison.
+    displayName: Resolve Mount Symlinks
+    path: resolveMountSymlinks
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: >-
+      Disable sending usage statistics to VAST cluster.
+      When set to true, the CSI driver will not report plugin usage metrics to VMS.
+    displayName: Disable Usage Stats
+    path: disableUsageStats
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: >-
+      Cache-Control max-age header value in seconds for VMS API requests.
+      Set to 0 to disable caching.
+    displayName: Cache Max Age Seconds
+    path: cacheMaxAgeSeconds
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:number'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Enable Prometheus metrics endpoint for CSI controller
+    displayName: Controller Metrics Enabled
+    path: controller.metrics.enabled
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Port for controller metrics HTTP server
+    displayName: Controller Metrics Port
+    path: controller.metrics.port
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:number'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Enable ServiceMonitor creation for controller metrics (requires Prometheus Operator)
+    displayName: Controller ServiceMonitor Enabled
+    path: controller.metrics.serviceMonitor.enabled
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Scrape interval for controller ServiceMonitor (e.g. 30s, 1m)
+    displayName: Controller ServiceMonitor Interval
+    path: controller.metrics.serviceMonitor.interval
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Additional labels to add to the controller ServiceMonitor resource
+    displayName: Controller ServiceMonitor Labels
+    path: controller.metrics.serviceMonitor.labels
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:controllerServiceMonitorLabels'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Relabelings to apply to controller metrics samples before ingestion
+    displayName: Controller ServiceMonitor Relabelings
+    path: controller.metrics.serviceMonitor.relabelings
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:controllerServiceMonitorRelabelings'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: MetricRelabelings to apply to controller metrics samples before ingestion
+    displayName: Controller ServiceMonitor MetricRelabelings
+    path: controller.metrics.serviceMonitor.metricRelabelings
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:controllerServiceMonitorMetricRelabelings'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Enable Prometheus metrics endpoint for CSI node
+    displayName: Node Metrics Enabled
+    path: node.metrics.enabled
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Port for node metrics HTTP server
+    displayName: Node Metrics Port
+    path: node.metrics.port
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:number'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Enable ServiceMonitor creation for node metrics (requires Prometheus Operator)
+    displayName: Node ServiceMonitor Enabled
+    path: node.metrics.serviceMonitor.enabled
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Scrape interval for node ServiceMonitor (e.g. 30s, 1m)
+    displayName: Node ServiceMonitor Interval
+    path: node.metrics.serviceMonitor.interval
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Additional labels to add to the node ServiceMonitor resource
+    displayName: Node ServiceMonitor Labels
+    path: node.metrics.serviceMonitor.labels
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:nodeServiceMonitorLabels'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Relabelings to apply to node metrics samples before ingestion
+    displayName: Node ServiceMonitor Relabelings
+    path: node.metrics.serviceMonitor.relabelings
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:nodeServiceMonitorRelabelings'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: MetricRelabelings to apply to node metrics samples before ingestion
+    displayName: Node ServiceMonitor MetricRelabelings
+    path: node.metrics.serviceMonitor.metricRelabelings
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:nodeServiceMonitorMetricRelabelings'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
 
 
 example:
@@ -2009,6 +2256,15 @@ example:
         csiSnapshotter: {{ .Values.controller.extraArgs.csiSnapshotter }}
         csiAttacher: {{ .Values.controller.extraArgs.csiAttacher }}
         csiResizer: {{ .Values.controller.extraArgs.csiResizer }}
+      metrics:
+        enabled: {{ .Values.controller.metrics.enabled }}
+        port: {{ .Values.controller.metrics.port }}
+        serviceMonitor:
+          enabled: {{ .Values.controller.metrics.serviceMonitor.enabled }}
+          interval: {{ .Values.controller.metrics.serviceMonitor.interval }}
+          labels: {}
+          relabelings: []
+          metricRelabelings: []
     node:
       podAffinity: {}
       podAntiAffinity: {}
@@ -2030,6 +2286,15 @@ example:
           requests:
             cpu: {{ .Values.node.resources.nodeDriverRegistrar.requests.cpu }}
             memory: {{ .Values.node.resources.nodeDriverRegistrar.requests.memory }}
+      metrics:
+        enabled: {{ .Values.node.metrics.enabled }}
+        port: {{ .Values.node.metrics.port }}
+        serviceMonitor:
+          enabled: {{ .Values.node.metrics.serviceMonitor.enabled }}
+          interval: {{ .Values.node.metrics.serviceMonitor.interval }}
+          labels: {}
+          relabelings: []
+          metricRelabelings: []
     image:
       csiAttacher:
         imagePullPolicy: {{ .Values.image.csiAttacher.imagePullPolicy }}
@@ -2061,6 +2326,11 @@ example:
     operationTimeout: {{ .Values.operationTimeout }}
     truncateVolumeName: {{ .Values.truncateVolumeName }}
     blockHostsAutoPrune: {{ .Values.blockHostsAutoPrune }}
+    hostNamePrefix: {{ .Values.hostNamePrefix | quote }}
+    mountUmountTimeout: {{ .Values.mountUmountTimeout }}
+    resolveMountSymlinks: {{ .Values.resolveMountSymlinks }}
+    disableUsageStats: {{ .Values.disableUsageStats }}
+    cacheMaxAgeSeconds: {{ .Values.cacheMaxAgeSeconds }}
     useLocalIpForMount: {{ .Values.useLocalIpForMount }}
     verifySsl: {{ .Values.verifySsl }}
     driverType: {{ .Values.driverType }}
