@@ -64,11 +64,23 @@ app.kubernetes.io/instance: {{ .Release.Name }}
   value: {{ $.Values.attachRequired | quote }}
 - name: X_CSI_DISABLE_USAGE_STATS
   value: {{ $.Values.disableUsageStats | default false | quote }}
+- name: X_CSI_CACHE_MAX_AGE
+  value: {{ $.Values.cacheMaxAgeSeconds | default 0 | quote }}
+- name: X_CSI_MOUNT_UMOUNT_TIMEOUT
+  value: {{ $.Values.mountUmountTimeout | quote }}
+{{- if $.Values.resolveMountSymlinks }}
+- name: X_CSI_RESOLVE_MOUNT_SYMLINKS
+  value: {{ $.Values.resolveMountSymlinks | quote }}
+{{- end }}
 {{- if $.Values.truncateVolumeName }}
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}
+{{- end }}
 - name: X_CSI_BLOCK_HOSTS_AUTO_PRUNE
   value: {{ $.Values.blockHostsAutoPrune | quote }}
+{{- if $.Values.hostNamePrefix }}
+- name: X_CSI_HOST_NAME_PREFIX
+  value: {{ $.Values.hostNamePrefix | quote }}
 {{- end }}
 
 {{- end }}
