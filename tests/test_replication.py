@@ -4,15 +4,19 @@ Tests for ReplicationSource helper class and ReplicationRole enum.
 import pytest
 from unittest.mock import MagicMock
 from vast_csi.plugins.replication import ReplicationSource
-from vast_csi.builders.replication import ReplicationRole
+from vast_csi.plugins.replication import ReplicationRole
 from vast_csi.exceptions import Abort
 
 
 def _make_nfs_controller():
     """Return a mock controller that behaves like NFSReplicationController."""
     controller = MagicMock()
-    controller._list_volumes_in_group.side_effect = lambda vms_session, parsed: \
-        vms_session.views.list(path__startswith=parsed.path)
+    # Mirrors NFSReplicationController._list_volumes_in_group: resolves the ppath
+    # by name then lists views under its source_dir.
+    def _list_volumes_in_group(vms_session, parsed):
+        ppath = vms_session.protectedpaths.one(name=parsed.ppath_name, fail_if_missing=True)
+        return vms_session.views.list(path__startswith=ppath.source_dir)
+    controller._list_volumes_in_group.side_effect = _list_volumes_in_group
     controller._get_volume_id.side_effect = lambda vol: vol["path"].rsplit("/", 1)[-1]
     return controller
 
@@ -37,9 +41,14 @@ class TestReplicationSource:
         """Test volume group replication source."""
         mock_source = MagicMock()
         mock_source.HasField = lambda field: field == 'volumegroup'
-        mock_source.volumegroup.volume_group_id = "vg-456@t=default:p=/k8s"
+        # New format: {suffix}@n={ppath_name}
+        mock_source.volumegroup.volume_group_id = "vg-456@n=app-replication"
+
+        mock_ppath = MagicMock()
+        mock_ppath.source_dir = "/k8s"
 
         mock_vms_session = MagicMock()
+        mock_vms_session.protectedpaths.one.return_value = mock_ppath
         mock_vms_session.views.list.return_value = [
             {"path": "/k8s/vol1"},
             {"path": "/k8s/vol2"},
@@ -53,6 +62,9 @@ class TestReplicationSource:
         assert source.is_volume_group is True
         assert source.volume_group_id == "vg-456"
         assert source.volume_ids == ["vol1", "vol2"]
+        mock_vms_session.protectedpaths.one.assert_called_once_with(
+            name="app-replication", fail_if_missing=True
+        )
 
     def test_none_source_raises(self):
         """Test that None source raises Abort."""
@@ -75,7 +87,7 @@ class TestReplicationSource:
         """Test that accessing volume_id on volumegroup source raises."""
         mock_source = MagicMock()
         mock_source.HasField = lambda field: field == 'volumegroup'
-        mock_source.volumegroup.volume_group_id = "test-vg-456@t=default:p=/"
+        mock_source.volumegroup.volume_group_id = "test-vg-456@n=app-replication"
 
         source = ReplicationSource(
             mock_source, vms_session=MagicMock(), controller=MagicMock()

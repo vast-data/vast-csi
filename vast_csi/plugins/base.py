@@ -33,7 +33,6 @@ from vast_csi.proto import addons_identity_pb2, addons_identity_pb2_grpc
 from vast_csi import csi_types as types
 from vast_csi.csi_types import FAILED_PRECONDITION
 
-from vast_csi.logging import logger
 from vast_csi.utils import stringify_dict
 from vast_csi.csi_types import INVALID_ARGUMENT, UNKNOWN
 from vast_csi.builders import  parse_volume_id
@@ -120,15 +119,6 @@ class Instrumented:
                     params["vms_session"] = instantiate_session_from_secret(secrets)
                 except LookupFieldError:
                     params["vms_session"] = None
-
-            # Handle secondary/destination session (secondary_vms_session)
-            if "secondary_vms_session" in required_params:
-                params["secondary_vms_session"] = instantiate_session_from_secret(secrets, key_prefix=("secondary_",))
-            elif "secondary_vms_session" in non_required_params:
-                try:
-                    params["secondary_vms_session"] = instantiate_session_from_secret(secrets, key_prefix=("secondary_",))
-                except LookupFieldError:
-                    params["secondary_vms_session"] = None
 
             if "luks_manager" in required_params:
                 # If method signature requires `luks_manager` parameter

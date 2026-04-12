@@ -22,6 +22,7 @@ from easypy.resilience import resilient
 from easypy.sync import wait
 from easypy.collections import shuffled
 from easypy.semver import SemVer
+from easypy.collections import listify
 
 from ..logging import logger
 from ..exceptions import NoRecordsFound, ApiError, WaitResourceFailed
@@ -226,12 +227,13 @@ class VastResource(ABC):
             if state:
                 state = state.lower()
 
-            # Normalize TARGET_STATE and other states for comparison
-            target_state = self.TARGET_STATE.lower() if isinstance(self.TARGET_STATE, str) else self.TARGET_STATE
+            # Normalize TARGET_STATE to a list of lowercase strings.
+            target_states = [t.lower() for t in listify(self.TARGET_STATE)]
+
             failed_states = [s.lower() if isinstance(s, str) else s for s in self.FAILED_STATES]
             running_states = [s.lower() if isinstance(s, str) else s for s in self.RUNNING_STATES]
 
-            if state == target_state:
+            if state in target_states:
                 logger.info(f"{self.resource_name} {resource_id} reached target state: {state}")
                 return True
             elif state in failed_states:
@@ -242,14 +244,14 @@ class VastResource(ABC):
             else:
                 raise Exception(
                     f"Unknown {self.resource_name} state: {state}. "
-                    f"Expected one of: TARGET={target_state}, "
+                    f"Expected one of: TARGET={target_states}, "
                     f"RUNNING={running_states}, FAILED={failed_states}"
                 )
 
         if timeout is None:
             timeout = self.session.config.timeout
         logger.info(f"Waiting for {self.resource_name} {resource_id} to reach state '{self.TARGET_STATE}' (timeout: {timeout}s)...")
-        
+
         wait(
             timeout,
             is_resource_in_target_state,
@@ -710,12 +712,18 @@ class ProtectionPolicy(VastResource):
 @apiver.v5
 class ProtectedPath(VastResource):
     resource_name = "protectedpaths"
+    # "Partially Active" is the normal steady state for group-replication ppaths
+    # (multiple destination members).  It is a valid terminal state, not a
+    # transient one, so it belongs in TARGET_STATE alongside "active".
     TARGET_STATE = "active"
     FAILED_STATES = ["delete_pending", "error", "failed", "suspended"]
     RUNNING_STATES = [
         "initializing",
         "syncing",
         "joining",
+        "initial sync",
+        "partially active",
+        "replication ready",
         "waiting for a standby stream",
         "waiting for a remote peer setup",
         "waiting for sync point to member",
@@ -783,19 +791,45 @@ class ProtectedPath(VastResource):
         protected_path = self.one(name=name, fail_if_missing=True)
         return self.replicate_now(protected_path.id, time_expires_local, time_expires_target)
 
-    def force_failover(self, protected_path_id, wait_failover: bool = True):
-        """Force failover of a protected path to make it the primary (SOURCE).
+    def failover(self, protected_path_id, graceful: bool):
+        """Initiate a failover of a protected path, transitioning it toward SOURCE role.
 
-        This operation promotes the secondary/target cluster to become the primary source.
-        Returns an async task which is automatically awaited if wait_failover=True.
+        - ``graceful=True``: coordinates with the remote SOURCE cluster to drain
+          in-flight I/O before switching roles.  Both sides transition cleanly —
+          the remote becomes ``DESTINATION`` and the local becomes ``SOURCE``.
+
+        - ``graceful=False``: severs the replication link immediately without
+          waiting for the remote.  Both sides land on ``STANDALONE`` — neither is
+          SOURCE yet.  A subsequent :meth:`force_failover` call is required to
+          promote the local ``STANDALONE`` to ``SOURCE``.
 
         Args:
-            protected_path_id: ID of the protected path
-            wait_failover: If True, wait for the async task to complete and verify role is SOURCE
-            timeout: Timeout in seconds for waiting (default: 2700s / 45 minutes)
+            protected_path_id: ID of the protected path.
+            graceful: ``True`` for a graceful failover, ``False`` for ungraceful.
+        """
+        return self.update(protected_path_id, failover=True, graceful=graceful)
+
+    def force_failover(self, protected_path_id, wait_failover: bool = True):
+        """Promote a STANDALONE protected path to SOURCE without contacting the remote cluster.
+
+        This is the second step of an ungraceful failover sequence.  After
+        :meth:`failover(graceful=False)` leaves both sides in ``STANDALONE``,
+        ``force_failover`` unilaterally declares the local side the new primary.
+        It does not require the original SOURCE to be reachable, making it
+        suitable for disaster-recovery scenarios where the remote cluster is
+        offline or unreachable.
+
+        Unlike :meth:`failover`, this call is fire-and-forget toward the remote —
+        the original SOURCE will detect the detachment via an ``ALERT`` when it
+        comes back online.
+
+        Args:
+            protected_path_id: ID of the protected path (must be in ``STANDALONE`` role).
+            wait_failover: If ``True``, block until the async VMS task completes
+                and the role has transitioned to ``SOURCE``.
 
         Returns:
-            API response containing async_task
+            API response containing the async task handle.
         """
         logger.info(f"Performing force failover on protected path {protected_path_id}")
         response = self.session.patch(f"{self.resource_name}/{protected_path_id}/force_failover/")

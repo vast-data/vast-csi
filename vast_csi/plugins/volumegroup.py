@@ -32,9 +32,15 @@ from vast_csi.filesystem_utils import resource_locked
 
 CONF = None
 
-# Volume group ID encoding configuration
-# This keeps the ID compact while preserving the base directory path
+# Compact suffix appended to every encoded volume group ID.
 ID_SUFFIX_LENGTH = 10
+
+# VolumeReplicationClass / VolumeGroupReplicationClass parameter key for the
+# protected path name.  Written by the extensions-controller operator.
+REPLICATION_PARAM_PPATH_NAME = "vastdata.com/ppath-name"
+# VolumeReplicationClass / VolumeGroupReplicationClass parameter keys.
+# These are written by the extensions-controller into the VRC parameters.
+REPLICATION_PARAM_STORAGE_CLASS = "vastdata.com/storage-class"
 
 
 class VolumeGroupMetadata(NamedTuple):
@@ -42,107 +48,67 @@ class VolumeGroupMetadata(NamedTuple):
     Parsed metadata from an encoded volume group ID.
 
     Attributes:
-        suffix: Volume group suffix including 'vg-' prefix (e.g., 'vg-9dc74656c')
-        tenant_name: Tenant name (e.g., 'default')
-        path: Path component:
-            - For NFS: Full base directory path (e.g., '/k8s/myapp')
-            - For Block: Volume prefix or '/' if no prefix (e.g., 'base' or '/')
-        subsystem_name: Subsystem name (Block only, e.g., 'nvmeof'), None for NFS
+        suffix:     Volume group suffix (e.g., '9dc74656c').
+        ppath_name: VAST protected path name created by the operator.
+                    Used by the replication plugin to look up the ppath
+                    without requiring extra parameters.
     """
 
     suffix: str
-    tenant_name: str
-    path: str
-    subsystem_name: Optional[str] = None
+    ppath_name: Optional[str] = None
 
 
-def _encode_volume_group_id(volume_group_id, tenant_name, path, subsystem_name=None):
+def _encode_volume_group_id(volume_group_id, ppath_name):
     """
-    Encode a volume group ID with metadata using key-value pairs.
+    Encode a volume group ID with its operator-assigned ppath name.
 
-    Args:
-        volume_group_id: Full volume group ID (e.g., "vgrcontent-9b54846c-dcc5-4238-9c8a-c509dc74656c")
-        tenant_name: Tenant name (e.g., "default")
-        path: Path component:
-            - For NFS: Full base directory path (e.g., "/k8s/myapp")
-            - For Block: Volume prefix or "/" if no prefix (e.g., "base" or "/")
-        subsystem_name: Subsystem name (Block only, e.g., "nvmeof")
+    Format: ``{suffix}@n={ppath_name}``
 
-    Returns:
-        Encoded ID in format: {suffix}@t={tenant}:p={path}[:s={subsystem}]
-
-    Examples:
-        >>> _encode_volume_group_id("vgrcontent-c509dc74656c", "default", "/k8s/myapp")
-        '9dc74656c@t=default:p=/k8s/myapp'
-        >>> _encode_volume_group_id("vgrcontent-c509dc74656c", "default", "base", "nvmeof")
-        '9dc74656c@t=default:p=base:s=nvmeof'
-        >>> _encode_volume_group_id("vgrcontent-c509dc74656c", "default", "/", "nvmeof")
-        '9dc74656c@t=default:p=/:s=nvmeof'
+    Example:
+        >>> _encode_volume_group_id("vgrcontent-c509dc74656c", "app-replication")
+        '9dc74656c@n=app-replication'
     """
+    if not ppath_name:
+        raise Abort(
+            types.INVALID_ARGUMENT,
+            f"Cannot encode volume group ID without a protected path name. "
+            f"Ensure {REPLICATION_PARAM_PPATH_NAME!r} is set in the "
+            f"VolumeGroupReplicationClass parameters.",
+        )
     suffix = volume_group_id[-ID_SUFFIX_LENGTH:]
-
-    # Build key-value pairs with single-letter abbreviations:
-    # t=tenant, p=path, s=subsystem
-    params = [
-        f"t={tenant_name}",
-        f"p={path}",
-    ]
-
-    if subsystem_name:
-        params.append(f"s={subsystem_name}")
-
-    params_str = ":".join(params)
-    return f"{suffix}@{params_str}"
+    return f"{suffix}@n={ppath_name}"
 
 
 def _parse_volume_group_id(encoded_id) -> VolumeGroupMetadata:
     """
     Parse an encoded volume group ID to extract metadata.
 
-    Args:
-        encoded_id: Encoded ID in format: {suffix}@t={tenant}:p={path}[:s={subsystem}]
+    Format: ``{suffix}@n={ppath_name}``
 
-    Returns:
-        VolumeGroupMetadata with parsed fields
+    Falls back to defaults (``ppath_name=""``) when the ID pre-dates the
+    ``@``-encoded format or when the ``n`` key is absent, so that callers can
+    handle the missing ppath gracefully rather than receiving an hard error.
 
-    Examples:
-        >>> _parse_volume_group_id("9dc74656c@t=default:p=/k8s/myapp")
-        VolumeGroupMetadata(suffix='9dc74656c', tenant_name='default', path='/k8s/myapp', subsystem_name=None)
-        >>> _parse_volume_group_id("9dc74656c@t=default:p=base:s=nvmeof")
-        VolumeGroupMetadata(suffix='9dc74656c', tenant_name='default', path='base', subsystem_name='nvmeof')
+    Example:
+        >>> _parse_volume_group_id("9dc74656c@n=app-replication")
+        VolumeGroupMetadata(suffix='9dc74656c', ppath_name='app-replication')
+        >>> _parse_volume_group_id("9dc74656c")
+        VolumeGroupMetadata(suffix='9dc74656c', ppath_name='')
     """
     if "@" not in encoded_id:
-        raise ValueError(
-            f"Invalid encoded volume group ID format: {encoded_id}. "
-            f"Expected format: {{suffix}}@t={{tenant}}:p={{path}}[:s={{subsystem}}]"
-        )
+        return VolumeGroupMetadata(suffix=encoded_id, ppath_name="")
 
     suffix, params_str = encoded_id.split("@", 1)
 
-    # Parse key-value pairs (separated by colon)
-    # Single-letter keys: t=tenant, p=path, s=subsystem
     params = {}
-    for param in params_str.split(":"):
-        if "=" in param:
-            key, value = param.split("=", 1)
+    for part in params_str.split(":"):
+        if "=" in part:
+            key, value = part.split("=", 1)
             params[key] = value
 
-    # Validate required fields
-    if "t" not in params:
-        raise ValueError(
-            f"Missing required 't' (tenant_name) in volume group ID: {encoded_id}"
-        )
-    if "p" not in params:
-        raise ValueError(
-            f"Missing required 'p' (path) in volume group ID: {encoded_id}"
-        )
+    ppath_name = params.get("n", "")
 
-    return VolumeGroupMetadata(
-        suffix=suffix,
-        tenant_name=params["t"],
-        path=params["p"],
-        subsystem_name=params.get("s"),
-    )
+    return VolumeGroupMetadata(suffix=suffix, ppath_name=ppath_name)
 
 
 ################################################################
@@ -187,6 +153,10 @@ class BaseVolumeGroupController(volumegroup_pb2_grpc.ControllerServicer):
         """
         params = dict(parameters) if parameters else {}
         volume_ids = list(volume_ids) if volume_ids else []
+        
+        # Normalize volume IDs at entry point to handle any format from external callers
+        # This ensures consistent volume lookups regardless of whether IDs have leading slashes
+        normalized_volume_ids = [os.path.basename(vol_id) for vol_id in volume_ids]
 
         exit_stack.enter_context(resource_locked(name))
 
@@ -195,7 +165,7 @@ class BaseVolumeGroupController(volumegroup_pb2_grpc.ControllerServicer):
             vms_session=vms_session,
             volume_group_id=name,
             parameters=params,
-            volume_ids=volume_ids,
+            volume_ids=normalized_volume_ids,
         )
 
         return types.CreateVolumeGroupResp(volume_group=volume_group)
@@ -236,12 +206,17 @@ class BaseVolumeGroupController(volumegroup_pb2_grpc.ControllerServicer):
         """
         params = dict(parameters) if parameters else {}
         volume_ids = list(volume_ids) if volume_ids else []
+        
+        # Normalize volume IDs at entry point to handle any format from external callers
+        # This prevents endless cycles where caller sends /pvc-xxx, we return pvc-xxx,
+        # but caller constructs new request with /pvc-xxx from another source
+        normalized_volume_ids = [os.path.basename(vol_id) for vol_id in volume_ids]
 
         # Implementation-specific modification logic
         volume_group = self._modify_volume_group_impl(
             vms_session=vms_session,
             volume_group_id=volume_group_id,
-            volume_ids=volume_ids,
+            volume_ids=normalized_volume_ids,
             parameters=params,
         )
 
@@ -399,21 +374,6 @@ class NFSVolumeGroupController(BaseVolumeGroupController, Instrumented):
 
     log_prefix = "NFS"
 
-    def _get_volume_group_base_directory(self, vms_session, first_view):
-        """
-        Get the base directory for a volume group from the first view.
-
-        Args:
-            vms_session: VAST API session
-            first_view: The first view in the volume group
-
-        Returns:
-            str: The base directory path
-        """
-        base_dir = os.path.dirname(first_view.path)
-        logger.info(f"{self.log_prefix}: Volume group base directory: {base_dir!r}")
-        return base_dir
-
     def _validate_volume_group_membership(self, vms_session, volume_ids, base_dir):
         """
         Validate that all volumes exist in the specified base directory.
@@ -433,7 +393,8 @@ class NFSVolumeGroupController(BaseVolumeGroupController, Instrumented):
         ids_by_base_dir = {os.path.basename(view["path"]) for view in views_by_base_dir}
 
         # All requested volumes MUST exist in the base directory
-        requested_ids = set(volume_ids)
+        # Normalize volume_ids using basename to handle paths with leading slashes or subdirectories
+        requested_ids = {os.path.basename(vol_id) for vol_id in volume_ids}
         missing_volumes = requested_ids - ids_by_base_dir
 
         if missing_volumes:
@@ -456,38 +417,14 @@ class NFSVolumeGroupController(BaseVolumeGroupController, Instrumented):
         self, vms_session, volume_group_id, parameters, volume_ids
     ):
         """Create NFS volume group implementation."""
+        ppath_name = parameters.get(REPLICATION_PARAM_PPATH_NAME)
+        vms_session.protectedpaths.one(name=ppath_name, fail_if_missing=True)
 
-        volume_group_context = {"type": self.log_prefix}
-
-        if not volume_ids:
-            raise Abort(
-                types.INVALID_ARGUMENT,
-                f"Cannot create empty volume group. At least one volume required.",
-            )
-
-        # Get tenant name from the first volume's view
-        first_volume_id = volume_ids[0]
-        first_view = vms_session.views.one(
-            path__contains=first_volume_id, fail_if_missing=True
-        )
-
-        # Get base directory from first view
-        base_dir = self._get_volume_group_base_directory(vms_session, first_view)
-        tenant_name = first_view.tenant_name
-
-        # Build Volume objects for all validated volumes
-        all_volumes = [
-            types.VolumeGroupVolume(volume_id=vol_id) for vol_id in volume_ids
-        ]
-
-        # Embed metadata in volume_group_id
-        volume_group_id_with_path = _encode_volume_group_id(
-            volume_group_id, tenant_name=tenant_name, path=base_dir
-        )
+        all_volumes = [types.VolumeGroupVolume(volume_id=vol_id) for vol_id in volume_ids]
 
         return types.VolumeGroup(
-            volume_group_id=volume_group_id_with_path,
-            volume_group_context=volume_group_context,
+            volume_group_id=_encode_volume_group_id(volume_group_id, ppath_name=ppath_name),
+            volume_group_context={"type": self.log_prefix},
             volumes=all_volumes,
         )
 
@@ -497,33 +434,32 @@ class NFSVolumeGroupController(BaseVolumeGroupController, Instrumented):
         """
         Modify NFS volume group membership.
 
-        Validates that all provided volumes exist in the volume group's base directory.
-        Uses cache to skip validation if all volumes were recently validated.
-        Returns the volume group with provided volume_ids.
+        Validates that all provided volumes exist in the volume group's base directory
+        (derived from the protected path's source_dir).  Uses a cache to skip
+        validation when all volumes were recently validated.
         """
         if not volume_ids:
             all_volumes = []
         else:
-            # Check cache first - skip validation if all volumes are already validated
-            if self._validation_cache.are_all_validated(volume_group_id, volume_ids):
+            normalized_volume_ids = [os.path.basename(vol_id) for vol_id in volume_ids]
+
+            if self._validation_cache.are_all_validated(volume_group_id, normalized_volume_ids):
                 logger.debug(
-                    f"{self.log_prefix}: All {len(volume_ids)} volumes already validated for {volume_group_id}, "
-                    f"skipping validation"
+                    f"{self.log_prefix}: All {len(volume_ids)} volumes already validated "
+                    f"for {volume_group_id}, skipping validation"
                 )
             else:
-                # Parse metadata to get the base directory
                 parsed = _parse_volume_group_id(volume_group_id)
-                base_dir = parsed.path
+                ppath = vms_session.protectedpaths.one(
+                    name=parsed.ppath_name, fail_if_missing=True
+                )
+                base_dir = ppath.source_dir
 
-                # Validate all volumes exist in the base directory
                 self._validate_volume_group_membership(vms_session, volume_ids, base_dir)
+                self._validation_cache.add_validated(volume_group_id, normalized_volume_ids)
 
-                # Add validated volumes to cache
-                self._validation_cache.add_validated(volume_group_id, volume_ids)
-
-            # Build Volume objects for the validated volume IDs
             all_volumes = [
-                types.VolumeGroupVolume(volume_id=vol_id) for vol_id in volume_ids
+                types.VolumeGroupVolume(volume_id=vol_id) for vol_id in normalized_volume_ids
             ]
 
         return types.VolumeGroup(
@@ -543,24 +479,23 @@ class NFSVolumeGroupController(BaseVolumeGroupController, Instrumented):
         """
         Get NFS volume group information.
 
-        Parses the volume_group_id to extract metadata and
-        retrieves all member volumes from that directory.
+        Resolves the base directory from the protected path's source_dir and
+        lists all member views beneath it.
         """
-
         parsed = _parse_volume_group_id(volume_group_id)
-        base_dir = parsed.path
+
+        ppath = vms_session.protectedpaths.one(name=parsed.ppath_name, fail_if_missing=True)
+        base_dir = ppath.source_dir
+
         logger.debug(
-            f"{self.log_prefix}: Getting volume group {parsed.suffix} from base directory: {base_dir}"
+            f"{self.log_prefix}: Getting volume group {parsed.suffix!r} "
+            f"from ppath {parsed.ppath_name!r} (base_dir={base_dir!r})"
         )
 
-        # Query all views in the base directory
         views = vms_session.views.list(path__startswith=base_dir, fields="path")
-
-        # Extract volume IDs from view paths
-        member_volumes = []
-        for view in views:
-            volume_id = os.path.basename(view["path"])
-            member_volumes.append(types.VolumeGroupVolume(volume_id=volume_id))
+        member_volumes = [
+            types.VolumeGroupVolume(volume_id=os.path.basename(v["path"])) for v in views
+        ]
 
         logger.debug(f"{self.log_prefix}: has {len(member_volumes)} member(s)")
 
@@ -583,158 +518,40 @@ class BlockVolumeGroupController(BaseVolumeGroupController, Instrumented):
 
     log_prefix = "BLOCK"
 
-    def _get_volume_group_base_directory(self, vms_session, first_volume):
+    def _find_subsystem_for_source_dir(self, vms_session, source_dir):
         """
-        Get the base directory (subsystem path + prefix) for a volume group from the first volume.
+        Return the NVMe subsystem (a VAST view) whose path is a prefix of source_dir.
 
-        Args:
-            vms_session: VAST API session
-            first_volume: The first volume in the volume group
-
-        Returns:
-            str: The base directory path (subsystem_path/base_prefix or subsystem_path)
+        The operator always sets source_dir to ``{subsystem.path}/{volumeGroup}``,
+        so walking up one directory level is normally sufficient.  We continue
+        upward to handle deeper subsystem paths.
         """
-        # Get the subsystem for the first volume
-        subsystem = vms_session.views.get_subsystem_by_id(_id=first_volume.view_id)
-        if not subsystem:
-            raise Abort(types.NOT_FOUND, f"Unknown subsystem: {first_volume.view_id}")
-
-        subsystem_path = subsystem.path
-
-        # Check if first volume has a base prefix (e.g., "base/pvc-xxxxx")
-        name_parts = first_volume.name.split("/")
-        if len(name_parts) > 1:
-            # Take all parts except the last one (which is the volume ID)
-            # e.g., "dev/mapper/pvc-xxx" -> "dev/mapper"
-            base_prefix = "/".join(name_parts[:-1])
-            logger.info(
-                f"Volume group base directory: {subsystem_path}/{base_prefix}. "
-                "It is a subsystem sub directory level group."
-            )
-            return os.path.join(subsystem_path, base_prefix)
-        else:
-            logger.info(
-                f"Volume group base directory: {subsystem_path}. "
-                f"It is subsystem root level group."
-            )
-            return subsystem_path
-
-    def _validate_volume_group_membership(
-        self, vms_session, volume_ids, subsystem, path
-    ):
-        """
-        Validate that all volumes exist in the specified subsystem with optional prefix.
-
-        Args:
-            vms_session: VAST API session
-            volume_ids: List of volume IDs to validate
-            subsystem: subsystem object
-            path: Path component (prefix or "/" if no prefix)
-
-        Raises:
-            Abort: If any requested volumes are missing
-        """
-        # Get subsystem by name
-
-        subsystem_path = subsystem.path
-        base_prefix = None if path == "/" else path
-
-        kwargs = dict(
-            subsystem_name=subsystem.name,
-            fields="name",
+        path = os.path.dirname(source_dir)
+        while path and path != "/":
+            sub = vms_session.views.one(path=path, fail_if_missing=False)
+            if sub:
+                return sub
+            path = os.path.dirname(path)
+        raise Abort(
+            types.NOT_FOUND,
+            f"No NVMe subsystem found covering source_dir {source_dir!r}",
         )
 
-        if base_prefix:
-            kwargs["name__contains"] = base_prefix
-
-        volumes_in_subsystem = vms_session.volumes.list(**kwargs)
-
-        # Extract volume IDs from the full names
-        ids_in_subsystem = {
-            os.path.basename(vol["name"]) for vol in volumes_in_subsystem
-        }
-
-        # All requested volumes MUST exist in the subsystem
-        requested_ids = set(volume_ids)
-        missing_volumes = requested_ids - ids_in_subsystem
-
-        if missing_volumes:
-            location = (
-                f"{subsystem_path}/{base_prefix}" if base_prefix else subsystem_path
-            )
-            raise Abort(
-                types.NOT_FOUND,
-                f"{len(missing_volumes)} volume(s) not found in {location}: {', '.join(sorted(missing_volumes))}",
-            )
-
-        # Extra volumes are allowed but logged as a warning
-        extra_volumes = ids_in_subsystem - requested_ids
-        if extra_volumes:
-            location = (
-                f"{subsystem_path}/{base_prefix}" if base_prefix else subsystem_path
-            )
-            logger.warning(
-                f"{len(extra_volumes)} extra volume(s) found in {location} "
-                f"(not part of the volume group):"
-            )
-            for vol_id in sorted(extra_volumes):
-                logger.warning(f"  - {vol_id}")
+    def _validate_volume_group_membership(self, *args, **kwargs):
+        pass
 
     def _create_volume_group_impl(
         self, vms_session, volume_group_id, parameters, volume_ids
     ):
-        """
-        Create Block volume group implementation.
+        """Create Block volume group implementation."""
+        ppath_name = parameters.get(REPLICATION_PARAM_PPATH_NAME)
+        vms_session.protectedpaths.one(name=ppath_name, fail_if_missing=True)
 
-        Returns a VolumeGroup with volume_group_id in format: {group_id}@{base_dir}
-        """
-        volume_group_context = {"type": self.log_prefix}
-
-        if not volume_ids:
-            raise Abort(
-                types.INVALID_ARGUMENT,
-                f"Cannot create empty volume group. At least one volume required.",
-            )
-
-        # Get subsystem and tenant information from the first volume
-        first_volume_id = volume_ids[0]
-        first_volume = vms_session.volumes.one(
-            name__contains=first_volume_id,
-            fail_if_missing=True,
-        )
-
-        # Get base directory from first volume
-        base_dir = self._get_volume_group_base_directory(vms_session, first_volume)
-        subsystem = vms_session.views.get_subsystem_by_id(_id=first_volume.view_id)
-
-        # Determine path component (prefix or "/" if no prefix)
-        # base_dir is either subsystem.path or subsystem.path/prefix
-        if base_dir == subsystem.path:
-            path = "/"
-        else:
-            # Extract prefix part
-            path = base_dir[len(subsystem.path) :].lstrip("/")
-
-        self._validate_volume_group_membership(
-            vms_session, volume_ids, subsystem, path,
-        )
-
-        # Build Volume objects for all validated volumes
-        all_volumes = [
-            types.VolumeGroupVolume(volume_id=vol_id) for vol_id in volume_ids
-        ]
-
-        # Embed metadata in volume_group_id
-        volume_group_id_with_path = _encode_volume_group_id(
-            volume_group_id,
-            tenant_name=subsystem.tenant_name,
-            path=path,
-            subsystem_name=subsystem.name,
-        )
+        all_volumes = [types.VolumeGroupVolume(volume_id=vol_id) for vol_id in volume_ids]
 
         return types.VolumeGroup(
-            volume_group_id=volume_group_id_with_path,
-            volume_group_context=volume_group_context,
+            volume_group_id=_encode_volume_group_id(volume_group_id, ppath_name=ppath_name),
+            volume_group_context={"type": self.log_prefix},
             volumes=all_volumes,
         )
 
@@ -744,40 +561,34 @@ class BlockVolumeGroupController(BaseVolumeGroupController, Instrumented):
         """
         Modify Block volume group membership.
 
-        Validates that all provided volumes exist in the volume group's subsystem/prefix.
-        Uses cache to skip validation if all volumes were recently validated.
-        Returns the volume group with provided volume_ids.
+        Validates that all provided volumes exist in the subsystem/prefix derived
+        from the protected path's source_dir.  Uses a cache to skip validation when
+        all volumes were recently validated.
         """
         if not volume_ids:
             all_volumes = []
         else:
-            # Check cache first - skip validation if all volumes are already validated
-            if self._validation_cache.are_all_validated(volume_group_id, volume_ids):
+            normalized_volume_ids = [os.path.basename(vol_id) for vol_id in volume_ids]
+
+            if self._validation_cache.are_all_validated(volume_group_id, normalized_volume_ids):
                 logger.info(
-                    f"{self.log_prefix}: All {len(volume_ids)} volumes already validated for {volume_group_id}, "
-                    f"skipping validation"
+                    f"{self.log_prefix}: All {len(volume_ids)} volumes already validated "
+                    f"for {volume_group_id}, skipping validation"
                 )
             else:
-                # Parse metadata to get subsystem and path
                 parsed = _parse_volume_group_id(volume_group_id)
-                subsystem_name = parsed.subsystem_name
-                path = parsed.path
-
-                subsystem = vms_session.views.get_subsystem(subsystem=subsystem_name)
-                if not subsystem:
-                    raise Abort(types.NOT_FOUND, f"Unknown subsystem: {subsystem_name}")
-
-                # Validate all volumes exist in the subsystem/prefix
-                self._validate_volume_group_membership(
-                    vms_session, volume_ids, subsystem, path
+                ppath = vms_session.protectedpaths.one(
+                    name=parsed.ppath_name, fail_if_missing=True
                 )
+                source_dir = ppath.source_dir
 
-                # Add validated volumes to cache
-                self._validation_cache.add_validated(volume_group_id, volume_ids)
+                self._validate_volume_group_membership(
+                    vms_session, volume_ids, source_dir
+                )
+                self._validation_cache.add_validated(volume_group_id, normalized_volume_ids)
 
-            # Build Volume objects for the validated volume IDs
             all_volumes = [
-                types.VolumeGroupVolume(volume_id=vol_id) for vol_id in volume_ids
+                types.VolumeGroupVolume(volume_id=vol_id) for vol_id in normalized_volume_ids
             ]
 
         return types.VolumeGroup(
@@ -798,47 +609,36 @@ class BlockVolumeGroupController(BaseVolumeGroupController, Instrumented):
         """
         Get Block volume group information.
 
-        Parses the volume_group_id to extract the base directory and
-        retrieves all member volumes from that subsystem/prefix.
+        Resolves the subsystem and base directory from the protected path's
+        source_dir, then retrieves all member volumes.
         """
-
-        # Parse metadata from volume_group_id
         parsed = _parse_volume_group_id(volume_group_id)
 
-        subsystem_name = parsed.subsystem_name
-        path = parsed.path
+        ppath = vms_session.protectedpaths.one(name=parsed.ppath_name, fail_if_missing=True)
+        source_dir = ppath.source_dir
 
         logger.debug(
-            f"{self.log_prefix}: Getting volume group {parsed.suffix} "
-            f"from subsystem '{subsystem_name}' with path '{path}'"
+            f"{self.log_prefix}: Getting volume group {parsed.suffix!r} "
+            f"from ppath {parsed.ppath_name!r} (source_dir={source_dir!r})"
         )
 
-        subsystem = vms_session.views.get_subsystem(subsystem=subsystem_name)
-        if not subsystem:
-            raise ValueError(f"Unknown subsystem: {subsystem_name}")
+        subsystem = self._find_subsystem_for_source_dir(vms_session, source_dir)
 
-        # Determine if there's a prefix
-        base_prefix = None if path == "/" else path
+        rel = source_dir[len(subsystem.path):].lstrip("/")
+        base_prefix = rel or None
 
-        logger.info(
-            f"{self.log_prefix}: Subsystem path: {subsystem.path}, "
-            f"prefix: {base_prefix}"
+        logger.debug(
+            f"{self.log_prefix}: subsystem={subsystem.path!r}, prefix={base_prefix!r}"
         )
 
-        kwargs = dict(
-            subsystem_name=subsystem.name,
-            fields="name",
-        )
+        kwargs = dict(subsystem_name=subsystem.name, fields="name")
         if base_prefix:
             kwargs["name__contains"] = base_prefix
 
         volumes = vms_session.volumes.list(**kwargs)
-
-        # Extract volume IDs from volume names
-        member_volumes = []
-        for vol in volumes:
-            volume_id = os.path.basename(vol["name"])
-            member_volumes.append(types.VolumeGroupVolume(volume_id=volume_id))
+        member_volumes = [
+            types.VolumeGroupVolume(volume_id=os.path.basename(v["name"])) for v in volumes
+        ]
 
         return types.VolumeGroup(
             volume_group_id=volume_group_id,
