@@ -1,0 +1,29 @@
+# This rule is not used by the project extensions-controller itself.
+# It is provided to allow the cluster admin to help manage permissions for users.
+#
+# Grants read-only access to vastdata.vastdata.com resources.
+# This role is intended for users who need visibility into these resources
+# without permissions to modify them. It is ideal for monitoring purposes and limited-access viewing.
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: extensions-controller
+    app.kubernetes.io/managed-by: kustomize
+  name: vaststorageclassreplication-viewer-role
+rules:
+- apiGroups:
+  - vastdata.vastdata.com
+  resources:
+  - vaststorageclassreplications
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - vastdata.vastdata.com
+  resources:
+  - vaststorageclassreplications/status
+  verbs:
+  - get
