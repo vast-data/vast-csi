@@ -1,0 +1,89 @@
+// VAST extensions controller service.
+//
+// Served by the Go extensions-controller on a unix socket shared with the
+// Python CSI plugin container.  Python connects as a gRPC client to query and
+// control operations managed by the controller — without needing direct
+// Kubernetes API access.
+
+syntax = "proto3";
+
+package vastextensions.v1;
+
+option go_package = "github.com/vast-data/vast-csi/extensions-controller/internal/server/extensions/v1;extensionsv1";
+
+// VastExtensions exposes management operations to non-native clients
+service VastExtensions {
+  // GetReplicationTenant resolves the VAST tenant GUID for the given
+  // Kubernetes StorageClass.  The GUID is looked up from the VAST VMS REST
+  // API via the VIP pool referenced by the StorageClass parameters
+  // (vip_pool_name or vip_pool_fqdn).
+  rpc GetReplicationTenant(GetReplicationTenantRequest)
+      returns (GetReplicationTenantResponse);
+
+  // GetReplicationInfo - return replication related info.
+  rpc GetReplicationInfo(GetReplicationInfoRequest)
+      returns (GetReplicationInfoResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Tenant resolution
+// ---------------------------------------------------------------------------
+
+message GetReplicationTenantRequest {
+  // storage_class is the Kubernetes StorageClass name to resolve.
+  string storage_class = 1;
+}
+
+message GetReplicationTenantResponse {
+  // storage_class echoes the requested StorageClass name.
+  string storage_class = 1;
+
+  // tenant_guid is the GUID of the VAST tenant associated with this
+  // StorageClass.
+  string tenant_guid = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Replication info lookup by StorageClass
+// ---------------------------------------------------------------------------
+
+// ReplicationAction is the desired failover operation.
+enum ReplicationAction {
+  REPLICATION_ACTION_UNGRACEFUL_FAILOVER = 0;
+  REPLICATION_ACTION_GRACEFUL_FAILOVER = 1;
+  REPLICATION_ACTION_RESYNC = 2;
+}
+
+message GetReplicationInfoRequest {
+  // storage_class is the Kubernetes StorageClass name to look up.
+  string storage_class = 1;
+
+  // namespace limits the search to a specific namespace.
+  // Leave empty to search across all namespaces.
+  string namespace = 2;
+}
+
+message GetReplicationInfoResponse {
+  // resource_name is the name of the owning VastStorageClassReplication or
+  // VastVolumeReplication object.
+  string resource_name = 1;
+
+  // namespace is the namespace of the owning object.
+  string namespace = 2;
+
+  // resource_kind is either "VastStorageClassReplication" or
+  // "VastVolumeReplication".
+  string resource_kind = 3;
+
+  // is_primary is true when storage_class equals the spec.primaryStorageClass
+  // of the owning object.
+  bool is_primary = 4;
+
+  // storage_classes is the full list of StorageClass names that participate
+  // in this replication group (i.e. spec.storageClasses of the owner).
+  repeated string storage_classes = 5;
+
+  // action is the replication action configured on the owning resource
+  // (failover, resync, …).
+  ReplicationAction action = 6;
+}
