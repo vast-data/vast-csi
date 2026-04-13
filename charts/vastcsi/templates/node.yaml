@@ -117,7 +117,7 @@ spec:
 {{- include "vastcsi.vmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 12 }}
           resources: {{- toYaml .Values.node.resources.csiVastPlugin | nindent 12 }}
       hostNetwork: true
-      hostPID: true
+      hostPID: true  # Required for NFS mTLS: access host's kernel keyring namespace
       dnsPolicy: {{ .Values.node.dnsPolicy }}
       nodeSelector:
 {{ toYaml .Values.node.nodeSelector | indent 8 }}
