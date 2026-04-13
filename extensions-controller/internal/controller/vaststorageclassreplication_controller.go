@@ -194,9 +194,27 @@ func (r *VastStorageClassReplicationReconciler) Reconcile(ctx context.Context, r
 	}
 
 	var errs cerrors.DeferredError
-	for _, scName := range vscr.Spec.AllStorageClasses() {
-		if err := r.ensureVGR(ctx, emit, vscr, scName, ppathName); err != nil {
+	// Use primary-first ordering so the primary VRC exists in the constellation
+	// before any secondary VRC reconciles for the first time.
+	allSCs := vscr.Spec.AllStorageClassesPrimaryFirst()
+	for i, scName := range allSCs {
+		vgrName, created, err := r.ensureVGR(ctx, emit, vscr, scName, ppathName)
+		if err != nil {
 			errs.Add(fmt.Errorf("SC %s: %w", scName, err))
+		}
+		// When a VGR is freshly created, wait until the ReplicationObjectReconciler
+		// has created the corresponding VRC before moving on to the next SC.
+		// Secondary VRCs must find the primary VRC already present in the
+		// constellation when they first reconcile so classifyConstellationPVCs
+		// can locate the source PVCs and create the mirror PVCs.
+		if created && i < len(allSCs)-1 {
+			if waitErr := k8s.WaitForVRC(ctx, vscr.Namespace, vgrName, 30*time.Second); waitErr != nil {
+				log.Warn(
+					"proceeding without confirmed VRC",
+					zap.String("vgr", vgrName),
+					zap.Error(waitErr),
+				)
+			}
 		}
 	}
 
@@ -541,21 +559,24 @@ func (r *VastStorageClassReplicationReconciler) syncVGRReplicationStates(
 	return errs.Err()
 }
 
+// ensureVGR creates or updates the VolumeGroupReplication for the given StorageClass.
+// Returns (true, nil) when the VGR was freshly created, (false, nil) when it
+// already existed, and (false, err) on error.
 func (r *VastStorageClassReplicationReconciler) ensureVGR(
 	ctx context.Context,
 	emit *events.BoundReporter,
 	vscr *vastv1alpha1.VastStorageClassReplication,
 	scName string,
 	ppathName string,
-) error {
+) (vgrName string, created bool, err error) {
 	k8s := r.K8sFor(emit.Logger())
 
 	className, err := r.ensureReplicationClasses(ctx, emit, vscr, scName, ppathName)
 	if err != nil {
-		return err
+		return "", false, err
 	}
 
-	vgrName := vgrNameForSC(vscr.Name, scName)
+	vgrName = vgrNameForSC(vscr.Name, scName)
 
 	state := replicationv1alpha1.Secondary
 	if scName == vscr.Spec.PrimaryStorageClass {
@@ -575,27 +596,27 @@ func (r *VastStorageClassReplicationReconciler) ensureVGR(
 		WithOwnerRef(vscr, k8s.Client().Scheme()).
 		Build()
 	if err != nil {
-		return err
+		return "", false, err
 	}
 
-	created, err := k8s.EnsureVolumeGroupReplication(ctx, vgr)
+	wasCreated, err := k8s.EnsureVolumeGroupReplication(ctx, vgr)
 	if err != nil {
-		return fmt.Errorf("failed to ensure VolumeGroupReplication %s/%s: %w", vscr.Namespace, vgrName, err)
+		return "", false, fmt.Errorf("failed to ensure VolumeGroupReplication %s/%s: %w", vscr.Namespace, vgrName, err)
 	}
-	if created {
+	if wasCreated {
 		emit.Normalf(events.ReasonVolumeGroupReplicationCreated,
 			"created VolumeGroupReplication %s/%s for StorageClass %q (replicationState=%s)",
 			vscr.Namespace, vgrName, scName, state)
-		return nil
+		return vgrName, true, nil
 	}
 
 	// Only drive the replicationState of the primary storage class.  Secondary
 	// VGRs reflect the actual VAST ppath role via csi-addons Status.State, which
 	// the VGR controller propagates into VastReplicationContent.
 	if scName != vscr.Spec.PrimaryStorageClass {
-		return nil
+		return vgrName, false, nil
 	}
-	return r.ensureReplicationState(ctx, emit, vscr.Namespace, vgrName, scName, state)
+	return vgrName, false, r.ensureReplicationState(ctx, emit, vscr.Namespace, vgrName, scName, state)
 }
 
 // ensureReplicationState syncs the replicationState of an existing VolumeGroupReplication

@@ -93,6 +93,22 @@ func (s *VastVolumeReplicationSpec) AllStorageClasses() []string {
 	return result
 }
 
+// AllStorageClassesPrimaryFirst returns the same set as AllStorageClasses but
+// with PrimaryStorageClass guaranteed to be the first element.
+func (s *VastVolumeReplicationSpec) AllStorageClassesPrimaryFirst() []string {
+	scs := s.AllStorageClasses()
+	sort.Slice(scs, func(i, j int) bool {
+		if scs[i] == s.PrimaryStorageClass {
+			return true
+		}
+		if scs[j] == s.PrimaryStorageClass {
+			return false
+		}
+		return scs[i] < scs[j]
+	})
+	return scs
+}
+
 // TargetsFor returns all ProtectionTopology entries that involve the given
 // StorageClass, oriented so that scName is always Source (the originating side).
 func (s *VastVolumeReplicationSpec) TargetsFor(scName string) []ReplicationTarget {

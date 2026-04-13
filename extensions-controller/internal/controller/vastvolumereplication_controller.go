@@ -198,9 +198,27 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	var errs cerrors.DeferredError
-	for _, scName := range vvr.Spec.AllStorageClasses() {
-		if err := r.ensureVR(ctx, emit, vvr, scName, ppathName); err != nil {
+	// Use primary-first ordering so the primary VRC exists in the constellation
+	// before any secondary VRC reconciles for the first time.
+	allSCs := vvr.Spec.AllStorageClassesPrimaryFirst()
+	for i, scName := range allSCs {
+		vrName, created, err := r.ensureVR(ctx, emit, vvr, scName, ppathName)
+		if err != nil {
 			errs.Add(fmt.Errorf("SC %s: %w", scName, err))
+		}
+		// When a VR is freshly created, wait until the ReplicationObjectReconciler
+		// has created the corresponding VRC before moving on to the next SC.
+		// Secondary VRCs must find the primary VRC already present in the
+		// constellation when they first reconcile so classifyConstellationPVCs
+		// can locate the source PVC and create the mirror PVC.
+		if created && i < len(allSCs)-1 {
+			if waitErr := k8s.WaitForVRC(ctx, vvr.Namespace, vrName, 30*time.Second); waitErr != nil {
+				log.Warn(
+					"proceeding without confirmed VRC",
+					zap.String("vr", vrName),
+					zap.Error(waitErr),
+				)
+			}
 		}
 	}
 
@@ -484,21 +502,24 @@ func (r *VastVolumeReplicationReconciler) syncVRReplicationStates(
 	return errs.Err()
 }
 
+// ensureVR creates or updates the VolumeReplication for the given StorageClass.
+// Returns (true, nil) when the VR was freshly created, (false, nil) when it
+// already existed, and (false, err) on error.
 func (r *VastVolumeReplicationReconciler) ensureVR(
 	ctx context.Context,
 	emit *events.BoundReporter,
 	vvr *vastv1alpha1.VastVolumeReplication,
 	scName string,
 	ppathName string,
-) error {
+) (vrName string, created bool, err error) {
 	k8s := r.K8sFor(emit.Logger())
 
 	className, err := r.ensureVolumeReplicationClass(ctx, emit, vvr, scName, ppathName)
 	if err != nil {
-		return err
+		return "", false, err
 	}
 
-	vrName := vrNameForSC(vvr.Name, scName)
+	vrName = vrNameForSC(vvr.Name, scName)
 
 	isPrimary := scName == vvr.Spec.PrimaryStorageClass
 	state := replicationv1alpha1.Secondary
@@ -515,7 +536,7 @@ func (r *VastVolumeReplicationReconciler) ensureVR(
 	if !isPrimary {
 		mirrorPVCName, err := r.mirrorPVCName(ctx, k8s, vvr, scName)
 		if err != nil {
-			return fmt.Errorf("failed to compute mirror PVC name for SC %s: %w", scName, err)
+			return "", false, fmt.Errorf("failed to compute mirror PVC name for SC %s: %w", scName, err)
 		}
 		dataSourcePVC = mirrorPVCName
 	}
@@ -530,27 +551,27 @@ func (r *VastVolumeReplicationReconciler) ensureVR(
 		WithOwnerRef(vvr, k8s.Client().Scheme()).
 		Build()
 	if err != nil {
-		return err
+		return "", false, err
 	}
 
-	created, err := k8s.EnsureVolumeReplication(ctx, vr)
+	wasCreated, err := k8s.EnsureVolumeReplication(ctx, vr)
 	if err != nil {
-		return fmt.Errorf("failed to ensure VolumeReplication %s/%s: %w", vvr.Namespace, vrName, err)
+		return "", false, fmt.Errorf("failed to ensure VolumeReplication %s/%s: %w", vvr.Namespace, vrName, err)
 	}
-	if created {
+	if wasCreated {
 		emit.Normalf(events.ReasonVolumeReplicationCreated,
 			"created VolumeReplication %s/%s for StorageClass %q (replicationState=%s, dataSource=%s)",
 			vvr.Namespace, vrName, scName, state, dataSourcePVC)
-		return nil
+		return vrName, true, nil
 	}
 
 	// Only drive the replicationState of the primary storage class.  Secondary
 	// VRs reflect the actual VAST ppath role via csi-addons Status.State, which
 	// the VR controller propagates into VastReplicationContent.
 	if !isPrimary {
-		return nil
+		return vrName, false, nil
 	}
-	return r.ensureReplicationState(ctx, k8s, emit, vvr.Namespace, vrName, scName, state)
+	return vrName, false, r.ensureReplicationState(ctx, k8s, emit, vvr.Namespace, vrName, scName, state)
 }
 
 // mirrorPVCName computes the expected name of the mirror PVC on a secondary

@@ -20,6 +20,7 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
+	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -118,6 +119,35 @@ func (k *K8sClient) DeleteVastReplicationContent(ctx context.Context, vrc *vastv
 		return fmt.Errorf("failed to delete VastReplicationContent %s/%s: %w", vrc.Namespace, vrc.Name, err)
 	}
 	return nil
+}
+
+// WaitForVRC polls until a VastReplicationContent with the given name exists in
+// namespace, or until ctx is cancelled or timeout elapses.
+//
+// It is used after freshly creating a VR/VGR to ensure the
+// ReplicationObjectReconciler has created the corresponding VRC before the
+// next sibling VR/VGR is created.  Secondary VRCs must find the primary VRC
+// already present in the constellation when they first reconcile so that
+// classifyConstellationPVCs can locate the source PVC and create the mirror.
+func (k *K8sClient) WaitForVRC(ctx context.Context, namespace, name string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		_, err := k.GetVastReplicationContent(ctx, name, namespace)
+		if err == nil {
+			return nil
+		}
+		if !k8serrors.IsNotFound(err) {
+			return fmt.Errorf("checking for VRC %s/%s: %w", namespace, name, err)
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out waiting for VRC %s/%s to be created after %s", namespace, name, timeout)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
 }
 
 // listVastReplicationContentsByLabelSet is an internal helper using typed label.Set.

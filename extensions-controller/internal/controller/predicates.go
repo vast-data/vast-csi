@@ -173,10 +173,10 @@ func ownedVRPredicate() predicate.Predicate {
 			}
 			// Only reconcile when the VR has just been confirmed as primary
 			// (desired == primary AND current == primary).
-		return k8sclient.IsVRConfirmedPrimary(vrNew) && !k8sclient.IsVRConfirmedPrimary(vrOld)
-	},
-	DeleteFunc:  func(_ event.DeleteEvent) bool { return false },
-	GenericFunc: func(_ event.GenericEvent) bool { return false },
+			return k8sclient.IsVRConfirmedPrimary(vrNew) && !k8sclient.IsVRConfirmedPrimary(vrOld)
+		},
+		DeleteFunc:  func(_ event.DeleteEvent) bool { return false },
+		GenericFunc: func(_ event.GenericEvent) bool { return false },
 	}
 }
 
@@ -203,7 +203,7 @@ func ownedVGRPredicate() predicate.Predicate {
 			}
 			// Only reconcile when the VGR has just been confirmed as primary
 			// (desired == primary AND current == primary).
-		return k8sclient.IsVGRConfirmedPrimary(vgrNew) && !k8sclient.IsVGRConfirmedPrimary(vgrOld)
+			return k8sclient.IsVGRConfirmedPrimary(vgrNew) && !k8sclient.IsVGRConfirmedPrimary(vgrOld)
 		},
 		DeleteFunc:  func(_ event.DeleteEvent) bool { return false },
 		GenericFunc: func(_ event.GenericEvent) bool { return false },

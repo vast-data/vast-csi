@@ -112,7 +112,7 @@ type VastStorageClassReplicationSpec struct {
 }
 
 // AllStorageClasses returns every unique StorageClass name in the replication
-// group, derived from the ProtectionTopology entries and sorted.
+// group, derived from the ProtectionTopology entries and sorted alphabetically.
 func (s *VastStorageClassReplicationSpec) AllStorageClasses() []string {
 	seen := make(map[string]struct{}, len(s.ProtectionTopology)*2)
 	for _, t := range s.ProtectionTopology {
@@ -125,6 +125,25 @@ func (s *VastStorageClassReplicationSpec) AllStorageClasses() []string {
 	}
 	sort.Strings(result)
 	return result
+}
+
+// AllStorageClassesPrimaryFirst returns the same set as AllStorageClasses but
+// with PrimaryStorageClass guaranteed to be the first element.  Use this when
+// creation order matters: the primary VGR and its downstream VRC must exist
+// before secondary VRCs reconcile so they can find the source PVCs in the
+// constellation and create the mirror PVCs.
+func (s *VastStorageClassReplicationSpec) AllStorageClassesPrimaryFirst() []string {
+	scs := s.AllStorageClasses()
+	sort.Slice(scs, func(i, j int) bool {
+		if scs[i] == s.PrimaryStorageClass {
+			return true
+		}
+		if scs[j] == s.PrimaryStorageClass {
+			return false
+		}
+		return scs[i] < scs[j]
+	})
+	return scs
 }
 
 // TargetsFor returns all ProtectionTopology entries that involve the given

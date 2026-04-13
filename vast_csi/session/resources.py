@@ -719,6 +719,7 @@ class ProtectedPath(VastResource):
     FAILED_STATES = ["delete_pending", "error", "failed", "suspended"]
     RUNNING_STATES = [
         "initializing",
+        "initial scan",
         "syncing",
         "joining",
         "initial sync",

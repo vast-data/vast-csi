@@ -126,6 +126,9 @@ func (h *vvrAdmissionHandler) Handle(ctx context.Context, req admission.Request)
 		if resp := h.validateAndDefaultTopology(ctx, log, req, obj.Spec.ProtectionTopology); !resp.Allowed {
 			return resp
 		}
+		if resp := h.validateVVRPVCStorageClass(ctx, obj); !resp.Allowed {
+			return resp
+		}
 	}
 
 	if resp := h.validateStorageClassConsistency(ctx, obj.Spec.AllStorageClasses()); !resp.Allowed {
@@ -134,6 +137,36 @@ func (h *vvrAdmissionHandler) Handle(ctx context.Context, req admission.Request)
 
 	return h.validate(ctx, log, obj.Namespace, obj.Name, "VastVolumeReplication",
 		obj.Spec.AllStorageClasses())
+}
+
+// validateVVRPVCStorageClass checks that the PVC referenced by spec.volumeName
+// was provisioned by spec.primaryStorageClass.  This is enforced on CREATE only.
+func (h *replicationCRDValidator) validateVVRPVCStorageClass(
+	ctx context.Context,
+	obj *vastv1alpha1.VastVolumeReplication,
+) admission.Response {
+	pvc, err := h.k8sClient.GetPVC(ctx, obj.Spec.VolumeName, obj.Namespace)
+	if err != nil {
+		return admission.Denied(fmt.Sprintf(
+			"spec.volumeName: PVC %s/%s not found: %v",
+			obj.Namespace, obj.Spec.VolumeName, err,
+		))
+	}
+	if pvc.Spec.StorageClassName == nil || *pvc.Spec.StorageClassName == "" {
+		return admission.Denied(fmt.Sprintf(
+			"spec.volumeName: PVC %s/%s has no StorageClass set",
+			obj.Namespace, obj.Spec.VolumeName,
+		))
+	}
+	if *pvc.Spec.StorageClassName != obj.Spec.PrimaryStorageClass {
+		return admission.Denied(fmt.Sprintf(
+			"spec.primaryStorageClass %q does not match the StorageClass of PVC %s/%s (%q); "+
+				"the PVC must be provisioned by the primary StorageClass",
+			obj.Spec.PrimaryStorageClass, obj.Namespace, obj.Spec.VolumeName,
+			*pvc.Spec.StorageClassName,
+		))
+	}
+	return admission.Allowed("")
 }
 
 // validateAndDefaultTopology validates each topology entry via live REST calls

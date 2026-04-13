@@ -117,6 +117,9 @@ func predictSCR(
 // It first resolves the PVC → PV → CSI volume handle so that it can query
 // the VAST cluster by the handle (e.g. "pvc-8322d00f-...") rather than the
 // user-facing PVC name, which VAST never sees.
+//
+// The PVC must be provisioned by the same StorageClass that is set as
+// primaryStorageClass in the VVR spec.
 func predictVVR(
 	ctx context.Context,
 	k8sClient *k8sclient.K8sClient,
@@ -128,7 +131,7 @@ func predictVVR(
 	namespace string,
 ) (string, error) {
 	// Resolve PVC → PV → CSI volume handle.
-	_, pv, bound, err := k8sClient.GetPVCandPV(ctx, volumeName, namespace)
+	pvc, pv, bound, err := k8sClient.GetPVCandPV(ctx, volumeName, namespace)
 	if err != nil {
 		return "", fmt.Errorf("failed to get PV for PVC %s/%s: %w", namespace, volumeName, err)
 	}
@@ -141,6 +144,16 @@ func predictVVR(
 	volumeHandle := pv.Spec.CSI.VolumeHandle
 	if volumeHandle == "" {
 		return "", fmt.Errorf("PV %s has an empty CSI volume handle", pv.Name)
+	}
+
+	// The PVC must be provisioned by the primaryStorageClass: that is the only
+	// cluster where the volume handle exists and can be queried via REST.
+	if pvc.Spec.StorageClassName != nil && *pvc.Spec.StorageClassName != sc.Name {
+		return "", fmt.Errorf(
+			"PVC %s/%s was provisioned by StorageClass %q but primaryStorageClass is %q; "+
+				"the PVC must be created with the primary StorageClass",
+			namespace, volumeName, *pvc.Spec.StorageClassName, sc.Name,
+		)
 	}
 
 	rest, err := vmsrest.NewFromStorageClass(ctx, k8sClient, sc, sslVerify, log)

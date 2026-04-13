@@ -48,6 +48,15 @@ type VolumePair struct {
 	PV  *corev1.PersistentVolume
 }
 
+// pvcNames extracts the PVC name from each pair for use in log fields.
+func pvcNames(pairs []VolumePair) []string {
+	names := make([]string, len(pairs))
+	for i, p := range pairs {
+		names[i] = p.PVC.Name
+	}
+	return names
+}
+
 // baseProvisioner holds the fields and lifecycle helpers shared by all
 // provisioner implementations.
 type baseProvisioner struct {
@@ -199,6 +208,13 @@ func (b *baseProvisioner) ProvisionVolumes(ctx context.Context) error {
 	// We can sync VastObjects only for primary cluster.  Non-primary clusters are read-only
 	// so you cannot create views, volumes etc whatsoever.
 	if isPrimary && b.rp.Spec.SyncVastObjects {
+		b.logger.Info("syncing VAST objects",
+			zap.String("vrc", b.rp.Namespace+"/"+b.rp.Name),
+			zap.String("storageClass", b.rp.Spec.StorageClass),
+			zap.Bool("isVolumeGroup", isVolumeGroupReplication),
+			zap.Strings("toEnsure", pvcNames(b.toEnsure)),
+			zap.Strings("toDelete", b.toDelete),
+		)
 		if err := b.self.ProvisionVolumeCb(ctx, b.rp, b.sourceRest, b.sourceSc); err != nil {
 			return err
 		}
@@ -217,6 +233,14 @@ func (b *baseProvisioner) ProvisionVolumes(ctx context.Context) error {
 			otherPairs = append(otherPairs, p)
 			keepNames.Insert(p.PVC.Name)
 		}
+		b.logger.Info("syncing mirror PVCs",
+			zap.String("vrc", b.rp.Namespace+"/"+b.rp.Name),
+			zap.String("storageClass", b.rp.Spec.StorageClass),
+			zap.String("primaryStorageClass", b.primaryStorageClass),
+			zap.Bool("isPrimary", isPrimary),
+			zap.Bool("isVolumeGroup", isVolumeGroupReplication),
+			zap.Strings("siblings", pvcNames(otherPairs)),
+		)
 		if err := b.ensureReplicaMirrors(ctx, b.sourceSc, otherPairs); err != nil {
 			errs.Add(fmt.Errorf("ensure mirrors: %w", err))
 		}
