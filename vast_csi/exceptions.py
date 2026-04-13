@@ -42,6 +42,21 @@ class MissingParameter(Abort):
         )
 
 
+class XprtsecValidationError(Abort):
+    """Raised when xprtsec setting is incompatible with view policy or NFS version."""
+
+    def __init__(self, message: str):
+        self._message = message
+
+    @property
+    def code(self):
+        return grpc.StatusCode.INVALID_ARGUMENT
+
+    @property
+    def message(self):
+        return self._message
+
+
 class MountFailed(TException):
     template = "Mounting {src} failed"
 

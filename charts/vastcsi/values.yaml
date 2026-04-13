@@ -81,8 +81,27 @@ storageClassDefaults:
   #       --from-literal=endpoint=< VAST endpoint >
   #
   # Optionally, you can include:
-  # - ssl_cert: SSL certificate for secure communication
+  # - ssl_cert: SSL certificate for secure communication with VAST API
   # - tenant: The tenant name for tenant scoped authentication (tenant admin).
+  # - mtls_client_cert: PEM-formatted client certificate for NFS mTLS authentication
+  # - mtls_client_privkey: PEM-formatted client private key for NFS mTLS authentication
+  #
+  # Example with optional SSL certificate and tenant:
+  #     kubectl create secret generic vast-mgmt \
+  #       --from-literal=username=< VAST username > \
+  #       --from-literal=password=< VAST password > \
+  #       --from-literal=endpoint=< VAST endpoint > \
+  #       --from-literal=tenant=< tenant name > \
+  #       --from-file=ssl_cert=< path to CA certificate file >
+  #
+  # Example with NFS mTLS per-volume certificates (optional, requires mountOptions: ["xprtsec=mtls"] in StorageClass):
+  #     kubectl create secret generic vast-mgmt \
+  #       --from-literal=username=< VAST username > \
+  #       --from-literal=password=< VAST password > \
+  #       --from-literal=endpoint=< VAST endpoint > \
+  #       --from-file=mtls_client_cert=< path to client certificate PEM file > \
+  #       --from-file=mtls_client_privkey=< path to client private key PEM file >
+  # If mtls_client_cert/mtls_client_privkey are not provided, tlshd.conf is used for client authentication.
   # All other fields are ignored.
   secretName: ""
   # Secret namespace. If not specified then secret will be searched in the same namespace as StorageClass is created.
@@ -109,7 +128,15 @@ storageClassDefaults:
   volumeNameFormat: "csi:{id}:{namespace}:{name}"
   # String template for CSI-provisioned ephemeral volumes, within VAST
   ephemeralVolumeNameFormat: "csi:{id}:{namespace}:{name}"
-  # Add any extra mount NFS options here
+  # Add any extra mount NFS options here.
+  # For NFS transport security (TLS/mTLS), add "xprtsec=tls" or "xprtsec=mtls".
+  # Example for mTLS:
+  #   mountOptions:
+  #     - "xprtsec=mtls"
+  # Note: For mTLS with per-volume client certificates, the secret can optionally contain:
+  #   - mtls_client_cert: PEM-formatted client certificate
+  #   - mtls_client_privkey: PEM-formatted client private key
+  # If not provided, tlshd.conf is used for client authentication.
   mountOptions: []
   # Name of QoS policy associates with the view.
   qosPolicy: ""
