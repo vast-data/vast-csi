@@ -132,7 +132,7 @@ func AddReplicationStream(
 	sourceDir string,
 	pair ReplicationLink,
 ) error {
-	remoteTenant, err := ResolveTenantFromVipPool(pair.Edge.RestB, pair.Edge.SCB)
+	remoteTenant, err := ResolveTenant(pair.Edge.RestB, pair.Edge.SCB)
 	if err != nil {
 		return fmt.Errorf("SC %s: failed to resolve remote tenant: %w", pair.Edge.SideB, err)
 	}
@@ -182,11 +182,11 @@ func EnsurePpath(
 		// ppath does not exist yet — create it using the first policy as the
 		// initial embedded stream.
 		first := pairs[0]
-		localTenant, err := ResolveTenantFromVipPool(first.Edge.RestA, first.Edge.SCA)
+		localTenant, err := ResolveTenant(first.Edge.RestA, first.Edge.SCA)
 		if err != nil {
 			return "", fmt.Errorf("SC %s: failed to resolve local tenant: %w", first.Edge.SideA, err)
 		}
-		remoteTenant, err := ResolveTenantFromVipPool(first.Edge.RestB, first.Edge.SCB)
+		remoteTenant, err := ResolveTenant(first.Edge.RestB, first.Edge.SCB)
 		if err != nil {
 			return "", fmt.Errorf("SC %s: failed to resolve remote tenant: %w", first.Edge.SideB, err)
 		}
@@ -204,16 +204,13 @@ func EnsurePpath(
 		if err != nil {
 			return "", err
 		}
-		// If there are additional streams to add (pairs[1:]), return a short
-		// retryable error so the ppath can finish initializing before we call
-		// add_stream on the next reconcile.
+		// Sleep briefly so the ppath can finish initializing before we call
+		// add_stream for any additional streams.
 		if len(pairs) > 1 {
-			return "", cerrors.NewRetryAfterError(
-				fmt.Errorf("protected path %q was just created, waiting for initialization before adding streams", ownerName),
-				5*time.Second,
-			)
+			time.Sleep(10 * time.Second)
+		} else {
+			return record.RecordName(), nil
 		}
-		return record.RecordName(), nil
 	}
 
 	if err := record.Fill(&ppathObj); err != nil {
@@ -238,10 +235,7 @@ func EnsurePpath(
 		if err := AddReplicationStream(rest, streamName, ppathId, sourceDir, pair); err != nil {
 			return ppathName, err
 		}
-		return ppathName, cerrors.NewRetryAfterError(
-			fmt.Errorf("added stream %q to protected path %q, waiting before adding next stream", streamName, ppathName),
-			3*time.Second,
-		)
+		time.Sleep(5 * time.Second)
 	}
 
 	return ppathName, nil

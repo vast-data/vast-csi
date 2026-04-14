@@ -80,7 +80,7 @@ func (s *Service) GetReplicationTenant(
 			"failed to build VMS REST client from StorageClass %q: %v", req.StorageClass, err)
 	}
 
-	tenant, err := vmsrest.ResolveTenantFromVipPool(rest, sc)
+	tenant, err := vmsrest.ResolveTenant(rest, sc)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal,
 			"failed to resolve tenant GUID via VIP pool for StorageClass %q: %v", req.StorageClass, err)

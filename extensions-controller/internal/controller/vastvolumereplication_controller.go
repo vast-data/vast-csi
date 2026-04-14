@@ -649,8 +649,13 @@ func (r *VastVolumeReplicationReconciler) ensurePrimaryStorageClass(vvr *vastv1a
 	}
 	old := vvr.Status.CurrentPrimaryStorageClass
 	vvr.Status.CurrentPrimaryStorageClass = vvr.Spec.PrimaryStorageClass
-	emit.Normalf("PrimaryStorageClassChanged",
-		"primary StorageClass switched from %q to %q", old, vvr.Spec.PrimaryStorageClass)
+	if old == "" {
+		emit.Normalf("PrimaryStorageClassSet",
+			"primary StorageClass set to %q", vvr.Spec.PrimaryStorageClass)
+	} else {
+		emit.Normalf("PrimaryStorageClassChanged",
+			"primary StorageClass switched from %q to %q", old, vvr.Spec.PrimaryStorageClass)
+	}
 	return true
 }
 
@@ -661,8 +666,13 @@ func (r *VastVolumeReplicationReconciler) ensureLastAction(vvr *vastv1alpha1.Vas
 	old := vvr.Status.LastAction
 	vvr.Status.LastAction = vvr.Spec.Action
 	if vvr.Spec.Action != "" {
-		emit.Normalf("ActionChanged",
-			"action changed from %q to %q", old, vvr.Spec.Action)
+		if old == "" {
+			emit.Normalf("ActionSet",
+				"action set to %q", vvr.Spec.Action)
+		} else {
+			emit.Normalf("ActionChanged",
+				"action changed from %q to %q", old, vvr.Spec.Action)
+		}
 	}
 	return true
 }

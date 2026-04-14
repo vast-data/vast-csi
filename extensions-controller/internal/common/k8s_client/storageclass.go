@@ -108,7 +108,6 @@ func (k *K8sClient) ExtractPrefixedParams(prefix string, params map[string]strin
 // ScsFromStorageClasses fetches the StorageClass object for each name and
 // returns them keyed by StorageClass name.  It is the companion of
 // RestFromStorageClasses and is used when callers need the StorageClass
-// parameters (e.g. for ResolveTenantFromVipPool).
 func ScsFromStorageClasses(
 	ctx context.Context,
 	k8sClient *K8sClient,

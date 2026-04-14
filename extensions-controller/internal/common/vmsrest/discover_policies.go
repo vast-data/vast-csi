@@ -20,7 +20,7 @@ const (
 
 // ReplicationLinkEdge extends ReplicationEdge with live REST clients and
 // StorageClass objects for both sides of the link.  These are used to resolve
-// tenant information on-demand via ResolveTenantFromVipPool.
+// tenant information on-demand via ResolveTenant.
 type ReplicationLinkEdge struct {
 	ReplicationEdge                           // embedded: SideA, SideB, PeerName
 	RestA           *vast_client.TypedVMSRest // local (SideA) REST client
@@ -289,7 +289,7 @@ func ensurePolicy(
 // newReplicationLink constructs a ReplicationLink from policy identity, peer
 // models, and live REST clients + StorageClass objects for both sides.
 // The Edge.RestB and Edge.SCB fields are used later by AddReplicationStream to
-// resolve the remote tenant GUID on-demand via ResolveTenantFromVipPool.
+// resolve the remote tenant GUID on-demand via ResolveTenant.
 func newReplicationLink(
 	policyName string,
 	policyId int64,

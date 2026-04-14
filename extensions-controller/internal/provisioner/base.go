@@ -158,6 +158,16 @@ func (b *baseProvisioner) VolumeIDs(ctx context.Context, sc *storagev1.StorageCl
 	return sortedKeys(mapping), nil
 }
 
+// VolumeCount implements VolumeMapper.  Returns the number of backend objects
+// present for the given StorageClass.
+func (b *baseProvisioner) VolumeCount(ctx context.Context, sc *storagev1.StorageClass) (int, error) {
+	ids, err := b.self.(VolumeMapper).VolumeIDs(ctx, sc)
+	if err != nil {
+		return 0, err
+	}
+	return len(ids), nil
+}
+
 // hasVolume reports whether the full volume name / view path vol is present in
 // the cached bulk listing for sc.  vol must already be the normalised full key
 // (as returned by BackendObjectKey or constructed by ensureBlock/FileVastObject).
@@ -171,7 +181,7 @@ func (b *baseProvisioner) hasVolume(ctx context.Context, sc *storagev1.StorageCl
 }
 
 func (b *baseProvisioner) isVolumeGroup() bool {
-	return b.rp.Kind == vastv1alpha1.DestinationKindVolumeGroupReplication
+	return b.rp.Spec.Kind == vastv1alpha1.DestinationKindVolumeGroupReplication
 }
 
 // ProvisionVolumes implements Interface.
@@ -181,13 +191,6 @@ func (b *baseProvisioner) ProvisionVolumes(ctx context.Context) error {
 		isVolumeGroupReplication = b.isVolumeGroup()
 		isPrimary                = b.rp.Spec.StorageClass == b.primaryStorageClass
 	)
-	if !isPrimary && isVolumeGroupReplication {
-		b.logger.Info("VRC is not primary, skipping provisioning",
-			zap.String("storageClass", b.rp.Spec.StorageClass),
-			zap.String("primary", b.primaryStorageClass))
-		return nil
-	}
-
 	// Pre-fetch and classify PVC+PV pairs for all constellation VRCs.
 	// AllUnmanaged drives VAST object creation; OtherUnmanaged drives mirrors.
 	unmanaged, err := b.classifyConstellationPVCs(ctx)
@@ -506,11 +509,11 @@ func (b *baseProvisioner) deleteReplicationSnapshots(
 // it is treated as a mirror and will not trigger further mirroring.
 
 // ensureReplicaMirrors creates (or verifies) a managed mirror PVC+PV on
-// sibSc's StorageClass for every pre-fetched source VolumePair in pairs.
+// sc's StorageClass for every pre-fetched source VolumePair in pairs.
 // The PVC+PV are already fetched so no extra Kubernetes round-trips are needed.
 func (b *baseProvisioner) ensureReplicaMirrors(
 	ctx context.Context,
-	sibSc *storagev1.StorageClass,
+	sc *storagev1.StorageClass,
 	pairs []VolumePair,
 ) error {
 
@@ -526,13 +529,13 @@ func (b *baseProvisioner) ensureReplicaMirrors(
 		// For VolumeReplication (VVR) always create the mirror PVC regardless —
 		// the PVC must exist before csi-addons can track the replicated copy,
 		// and waiting for the backend object would break failover sequencing.
-		if b.rp.Spec.SyncVastObjects && isVolumeGroup {
+		if b.rp.Spec.SyncVastObjects && isVolumeGroup && b.self.ShouldGateMirrorOnBackend() {
 			key := b.self.(VolumeMapper).BackendObjectKey(pair.PV.Spec.CSI.VolumeHandle)
-			exists, err := b.hasVolume(ctx, sibSc, key)
+			exists, err := b.hasVolume(ctx, sc, key)
 			if err != nil {
 				if common.IsNetworkError(err) {
 					b.emit.Warningf(events.ReasonProvisionSkipped,
-						"cluster %s is unreachable, skipping mirror PVC/PV sync: %v", sibSc.Name, err)
+						"cluster %s is unreachable, skipping mirror PVC/PV sync: %v", sc.Name, err)
 					// Networking failure is cluster-wide — no point continuing for other PVCs.
 					return nil
 				}
@@ -541,15 +544,15 @@ func (b *baseProvisioner) ensureReplicaMirrors(
 			if !exists {
 				b.emit.Warningf(events.ReasonProvisionSkipped,
 					"VAST backend object for PV %s not yet present on cluster %s, skipping mirror creation",
-					pair.PV.Name, sibSc.Name,
+					pair.PV.Name, sc.Name,
 				)
 				continue
 			}
 		}
 
-		created, err := b.ensureMirrorPVCPV(ctx, pair.PVC, pair.PV, sibSc)
+		created, err := b.ensureMirrorPVCPV(ctx, pair.PVC, pair.PV, sc)
 		if err != nil {
-			errs.Add(fmt.Errorf("mirror %s → %s: %w", pair.PVC.Name, sibSc.Name, err))
+			errs.Add(fmt.Errorf("mirror %s → %s: %w", pair.PVC.Name, sc.Name, err))
 			continue
 		}
 		if !created {
@@ -676,18 +679,18 @@ func (b *baseProvisioner) ensureMirrorPVCPV(
 // Passing nil or empty removes ALL mirrors owned by this VRC for the given peer.
 func (b *baseProvisioner) cleanReplicaMirrorOrphans(
 	ctx context.Context,
-	sibVRC *vastv1alpha1.VastReplicationContent,
-	sibSc *storagev1.StorageClass,
+	vrc *vastv1alpha1.VastReplicationContent,
+	sc *storagev1.StorageClass,
 	currentSourcePVCNames sets.Set[string],
 ) error {
 	ns := b.rp.Namespace
 
 	pvcs, err := b.k8sClient.ListPVCsByLabelSelector(ctx, ns, map[string]string{
 		common.LabelManagedBy:    common.LabelManagedByValue,
-		common.LabelStorageClass: sibSc.Name,
+		common.LabelStorageClass: sc.Name,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to list mirror PVCs for %s: %w", sibVRC.Name, err)
+		return fmt.Errorf("failed to list mirror PVCs for %s: %w", vrc.Name, err)
 	}
 	if len(pvcs) == 0 {
 		return nil

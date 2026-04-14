@@ -112,6 +112,8 @@ func (b *BlockProvisioner) getVolume(ctx context.Context, sc *storagev1.StorageC
 	return v.(*typed.VolumeDetailsModel), nil
 }
 
+func (b *BlockProvisioner) ShouldGateMirrorOnBackend() bool { return false }
+
 // BackendObjectKey implements VolumeMapper.  Returns the full volume name used
 // as a key in VolumeMapping: volumeGroup/volId (or just volId when no group).
 func (b *BlockProvisioner) BackendObjectKey(volumeHandle string) string {

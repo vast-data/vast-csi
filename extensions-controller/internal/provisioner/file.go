@@ -141,6 +141,8 @@ func (f *FileProvisioner) getViewPolicy(rest *vast_client.TypedVMSRest, sc *stor
 	})
 }
 
+func (f *FileProvisioner) ShouldGateMirrorOnBackend() bool { return true }
+
 // BackendObjectKey implements VolumeMapper.  Returns the full view path used
 // as a key in VolumeMapping
 func (f *FileProvisioner) BackendObjectKey(volumeHandle string) string {
