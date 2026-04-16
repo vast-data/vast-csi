@@ -8,7 +8,7 @@ stages:
   - operatorhub
 
 # source: packaging/ci.Dockerfile
-image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:CI-2025-09-16
+image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:CI-2026-05-04
 
 variables:
   PLATFORMS: "linux/amd64,linux/arm64" # comma-separated list of platforms to build multi-arch images

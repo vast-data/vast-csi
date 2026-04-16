@@ -165,7 +165,7 @@ spec:
 {{ toYaml .Values.controller.nodeSelector | indent 8 }}
       {{- end }}
       priorityClassName: {{ .Values.controller.priorityClassName }}
-      serviceAccountName: {{ .Release.Name | replace "." "-" }}-vast-controller-sa
+      serviceAccountName: {{ .Release.Name }}-vast-controller-sa
       tolerations:
 {{ toYaml .Values.controller.tolerations | indent 8 }}
       volumes:

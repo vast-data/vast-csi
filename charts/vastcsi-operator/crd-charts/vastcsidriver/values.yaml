@@ -234,7 +234,7 @@ controller:
       # Scrape interval
       interval: 30s
       # Additional labels for ServiceMonitor
-      labels: {}
+      labels: []
       # Relabelings to apply to samples before ingestion
       relabelings: []
       # MetricRelabelings to apply to samples before ingestion
@@ -285,7 +285,7 @@ node:
       # Scrape interval
       interval: 30s
       # Additional labels for ServiceMonitor
-      labels: {}
+      labels: []
       # Relabelings to apply to samples before ingestion
       relabelings: []
       # MetricRelabelings to apply to samples before ingestion

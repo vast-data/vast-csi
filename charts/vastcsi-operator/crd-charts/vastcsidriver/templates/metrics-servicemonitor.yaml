@@ -8,8 +8,8 @@ metadata:
 {{- include "vastcsi.labels" . | nindent 4 }}
     app.kubernetes.io/component: metrics
     app.kubernetes.io/csi-role: "node"
-{{- with .Values.node.metrics.serviceMonitor.labels }}
-{{- toYaml . | nindent 4 }}
+{{- range .Values.node.metrics.serviceMonitor.labels }}
+    {{ .name }}: {{ .value | quote }}
 {{- end }}
 spec:
   selector:
@@ -47,8 +47,8 @@ metadata:
 {{- include "vastcsi.labels" . | nindent 4 }}
     app.kubernetes.io/component: metrics
     app.kubernetes.io/csi-role: "controller"
-{{- with .Values.controller.metrics.serviceMonitor.labels }}
-{{- toYaml . | nindent 4 }}
+{{- range .Values.controller.metrics.serviceMonitor.labels }}
+    {{ .name }}: {{ .value | quote }}
 {{- end }}
 spec:
   selector:
