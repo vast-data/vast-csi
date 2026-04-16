@@ -69,6 +69,7 @@ from vast_csi.exceptions import (
     OperationNotSupported,
     UmountTimedOut,
 )
+from vast_csi.mtls_utils import MtlsManager
 from vast_csi.configuration import Config
 import vast_csi.capabilities as cap_lib
 from vast_csi.plugins.base import (
@@ -131,17 +132,15 @@ def mount(src, tgt, flags="", metrics_registry=None):
     logger.info(f"Mount succeeded in {timer.elapsed}: {src!r} -> {tgt!r}")
 
 
-def umount(path, ignore_not_mounted=False, lazy=False, metrics_registry=None):
+def umount(path, ignore_not_mounted=False, metrics_registry=None):
     """
     Unmount volume with auto-instrumented metrics.
 
     Args:
         path: Path to unmount
         ignore_not_mounted: If True, ignore "not mounted" errors
-        lazy: If True, pass -l (lazy unmount — detach from VFS immediately,
-              clean up references when the path is no longer busy)
         metrics_registry: Optional MetricsRegistry instance (injected by framework if metrics enabled)
-
+    
     Returns:
         True if unmounted, False if not mounted (when ignore_not_mounted=True)
     """
@@ -149,10 +148,7 @@ def umount(path, ignore_not_mounted=False, lazy=False, metrics_registry=None):
     logger.info(f"Unmounting {path!r} with timeout: {timeout}s")
 
     def do_umount():
-        flags = ['-v']
-        if lazy:
-            flags.append('-l')
-        return cmd.umount[flags + [path]].run()
+        return cmd.umount['-v', path].run()
 
     if metrics_registry:
         metrics_manager = metrics_registry.umount("nfs")
@@ -182,7 +178,6 @@ def umount(path, ignore_not_mounted=False, lazy=False, metrics_registry=None):
 
     logger.info(f"Umount succeeded in {timer.elapsed}: {path!r}")
     return True
-
 
 
 def _validate_capabilities(capabilities):
@@ -685,20 +680,10 @@ class CsiNode(NodeBase, Instrumented):
             opts = set(found_mount.opts.split(","))
             is_readonly = "ro" in opts
             if found_mount.device != mount_spec:
-                _, _, mounted_path = found_mount.device.partition(":")
-                _, _, expected_path = mount_spec.partition(":")
-                if mounted_path == expected_path:
-                    logger.warning(
-                        f"{volume_id} found existing mount {found_mount.device} "
-                        f"instead of {mount_spec} — lazy-unmounting stale entry"
-                    )
-                    umount(target_path, lazy=True)
-                    # fall through to fresh mount below (target_path directory still exists)
-                else:
-                    raise Abort(
-                        ALREADY_EXISTS,
-                        f"Volume already mounted from {found_mount.device} instead of {mount_spec}",
-                    )
+                raise Abort(
+                    ALREADY_EXISTS,
+                    f"Volume already mounted from {found_mount.device} instead of {mount_spec}",
+                )
             elif is_readonly != readonly:
                 raise Abort(
                     ALREADY_EXISTS,
@@ -715,7 +700,6 @@ class CsiNode(NodeBase, Instrumented):
             volume_id=volume_id,
             is_ephemeral=is_ephemeral,
             vms_session=vms_session,
-            mtls_manager=mtls_manager,
         )
         logger.info(f"created: {target_path}")
 
@@ -796,6 +780,8 @@ class CsiNode(NodeBase, Instrumented):
                     vms_session=vms_session,
                 )
                 os.remove(meta_file)
+            # Always attempt to clean up mTLS credentials (no-op if they don't exist)
+            MtlsManager.delete_credentials(volume_id)
             logger.info(f"Deleting {target_path}")
             os.rmdir(target_path)  # don't use plumbum's .delete to avoid the dangerous rmtree
             logger.info(f"{target_path} removed successfully")

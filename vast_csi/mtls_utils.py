@@ -292,80 +292,84 @@ def delete_mtls_credentials(volume_id: str) -> None:
 
 def validate_xprtsec_view_policy(view_policy_obj, xprtsec: str, is_nfs4: bool = False) -> None:
     """
-    Validate that view policy TLS settings match the requested xprtsec mode.
+    Validate that view policy TLS settings are compatible with the requested xprtsec mode.
 
-    Required view policy settings:
-    - xprtsec=""     : nfs_enforce_tls=False, nfs_enforce_mtls=False
-    - xprtsec="tls"  : nfs_enforce_tls=True, nfs_enforce_mtls=False
-    - xprtsec="mtls" : nfs_enforce_tls=True, nfs_enforce_mtls=True
+    Per FRD, the enforcement settings control what the server REQUIRES from clients,
+    not what it accepts. Clients can always provide MORE security than required.
 
-    For NFSv3 only (is_nfs4=False):
-    - xprtsec="tls"/"mtls" also requires nfs_enforce_tls_relaxed=True
-      (NFSv3 uses separate NLM protocol for locking which needs relaxed mode)
+    Valid combinations (per FRD table):
+    +---------------------+-------------+-----------------------------+--------------------------------+
+    |                     | tls=allow   | tls=enforce, mtls=allow     | tls=enforce, mtls=enforce      |
+    +---------------------+-------------+-----------------------------+--------------------------------+
+    | no xprtsec          | Allow       | Deny                        | Deny                           |
+    | xprtsec=tls         | Allow       | Allow                       | Deny                           |
+    | xprtsec=mtls        | N/A*        | Allow                       | Allow                          |
+    +---------------------+-------------+-----------------------------+--------------------------------+
 
-    For NFSv4 (is_nfs4=True):
-    - nfs_enforce_tls_relaxed is ignored (NFSv4 includes locking in main protocol)
+    * N/A means server is not configured for mTLS (no CA cert). We allow this to proceed;
+      mount will fail at runtime if server can't handle mTLS.
+
+    For NFSv3 (is_nfs4=False), when server has nfs_enforce_tls=True:
+    - nfs_enforce_tls_relaxed=True is required to allow NFSv3 side protocols (NLM, NSM, MOUNT)
 
     Raises:
-        XprtsecValidationError: If the view policy settings don't match xprtsec requirements
+        XprtsecValidationError: If the client provides LESS security than the server requires
     """
     policy_name = getattr(view_policy_obj, 'name', 'unknown')
     enforce_tls = getattr(view_policy_obj, 'nfs_enforce_tls', False)
     enforce_tls_relaxed = getattr(view_policy_obj, 'nfs_enforce_tls_relaxed', False)
     enforce_mtls = getattr(view_policy_obj, 'nfs_enforce_mtls', False)
 
-    # Plain NFS: policy must not enforce any TLS
+    # Plain NFS (no xprtsec): server must not require TLS or mTLS
     if not xprtsec:
         if enforce_tls:
             raise XprtsecValidationError(
                 f"View policy '{policy_name}' has nfs_enforce_tls=True, "
-                f"but xprtsec is not set. Set xprtsec='tls' or 'mtls' in StorageClass."
+                f"but xprtsec is not set. Plain NFS is not allowed. "
+                f"Set xprtsec='tls' or 'mtls' in StorageClass mountOptions."
             )
         if enforce_mtls:
             raise XprtsecValidationError(
                 f"View policy '{policy_name}' has nfs_enforce_mtls=True, "
-                f"but xprtsec is not set. Set xprtsec='mtls' in StorageClass."
+                f"but xprtsec is not set. Plain NFS is not allowed. "
+                f"Set xprtsec='mtls' in StorageClass mountOptions."
             )
         return
 
-    # TLS mode: must have enforce_tls=True, enforce_mtls=False
-    # For NFSv3: also requires enforce_tls_relaxed=True
+    # TLS mode (xprtsec="tls"): client provides TLS
+    # - Allowed if server doesn't require anything (tls=allow) - client can use more security
+    # - Allowed if server requires TLS but not mTLS (tls=enforce, mtls=allow)
+    # - Rejected if server requires mTLS (mtls=enforce) - TLS-only is not enough
     if xprtsec == "tls":
-        if not enforce_tls:
-            raise XprtsecValidationError(
-                f"View policy '{policy_name}' has nfs_enforce_tls=False, "
-                f"but xprtsec='tls' requires nfs_enforce_tls=True."
-            )
-        if not is_nfs4 and not enforce_tls_relaxed:
+        # If server enforces TLS and uses NFSv3, need relaxed mode for side protocols
+        if enforce_tls and not is_nfs4 and not enforce_tls_relaxed:
             raise XprtsecValidationError(
                 f"View policy '{policy_name}' has nfs_enforce_tls_relaxed=False, "
-                f"but xprtsec='tls' with NFSv3 requires nfs_enforce_tls_relaxed=True."
+                f"but xprtsec='tls' with NFSv3 requires nfs_enforce_tls_relaxed=True "
+                f"to allow NLM/NSM/MOUNT protocols."
             )
+        # Server requires mTLS - TLS-only is not sufficient
         if enforce_mtls:
             raise XprtsecValidationError(
-                f"View policy '{policy_name}' has nfs_enforce_mtls=True, "
-                f"but xprtsec='tls' requires nfs_enforce_mtls=False. Use xprtsec='mtls' instead."
+                f"View policy '{policy_name}' has nfs_enforce_mtls=True. "
+                f"xprtsec='tls' is not sufficient; use xprtsec='mtls' instead."
             )
         return
 
-    # mTLS mode: must have enforce_tls=True, enforce_mtls=True
-    # For NFSv3: also requires enforce_tls_relaxed=True
+    # mTLS mode (xprtsec="mtls"): client provides mTLS
+    # - Always satisfies server requirements: mTLS >= TLS >= plain
+    # - Works with both mtls=allow and mtls=enforce
+    # - Note: If tls=allow (server not configured for TLS), this is "N/A" per FRD
+    #   but we allow it; mount will fail at runtime if server can't handle mTLS
     if xprtsec == "mtls":
-        if not enforce_tls:
-            raise XprtsecValidationError(
-                f"View policy '{policy_name}' has nfs_enforce_tls=False, "
-                f"but xprtsec='mtls' requires nfs_enforce_tls=True."
-            )
-        if not is_nfs4 and not enforce_tls_relaxed:
+        # If server enforces TLS and uses NFSv3, need relaxed mode for side protocols
+        if enforce_tls and not is_nfs4 and not enforce_tls_relaxed:
             raise XprtsecValidationError(
                 f"View policy '{policy_name}' has nfs_enforce_tls_relaxed=False, "
-                f"but xprtsec='mtls' with NFSv3 requires nfs_enforce_tls_relaxed=True."
+                f"but xprtsec='mtls' with NFSv3 requires nfs_enforce_tls_relaxed=True "
+                f"to allow NLM/NSM/MOUNT protocols."
             )
-        if not enforce_mtls:
-            raise XprtsecValidationError(
-                f"View policy '{policy_name}' has nfs_enforce_mtls=False, "
-                f"but xprtsec='mtls' requires nfs_enforce_mtls=True."
-            )
+        # mTLS satisfies all requirements - no further checks needed
         return
 
 
