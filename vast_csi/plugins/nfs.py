@@ -131,15 +131,17 @@ def mount(src, tgt, flags="", metrics_registry=None):
     logger.info(f"Mount succeeded in {timer.elapsed}: {src!r} -> {tgt!r}")
 
 
-def umount(path, ignore_not_mounted=False, metrics_registry=None):
+def umount(path, ignore_not_mounted=False, lazy=False, metrics_registry=None):
     """
     Unmount volume with auto-instrumented metrics.
 
     Args:
         path: Path to unmount
         ignore_not_mounted: If True, ignore "not mounted" errors
+        lazy: If True, pass -l (lazy unmount — detach from VFS immediately,
+              clean up references when the path is no longer busy)
         metrics_registry: Optional MetricsRegistry instance (injected by framework if metrics enabled)
-    
+
     Returns:
         True if unmounted, False if not mounted (when ignore_not_mounted=True)
     """
@@ -147,7 +149,10 @@ def umount(path, ignore_not_mounted=False, metrics_registry=None):
     logger.info(f"Unmounting {path!r} with timeout: {timeout}s")
 
     def do_umount():
-        return cmd.umount['-v', path].run()
+        flags = ['-v']
+        if lazy:
+            flags.append('-l')
+        return cmd.umount[flags + [path]].run()
 
     if metrics_registry:
         metrics_manager = metrics_registry.umount("nfs")
@@ -177,6 +182,7 @@ def umount(path, ignore_not_mounted=False, metrics_registry=None):
 
     logger.info(f"Umount succeeded in {timer.elapsed}: {path!r}")
     return True
+
 
 
 def _validate_capabilities(capabilities):
@@ -613,6 +619,7 @@ class CsiNode(NodeBase, Instrumented):
         volume_id,
         target_path,
         exit_stack,
+        mtls_manager,
         vms_session=None,
         volume_capability=None,
         publish_context=None,
@@ -678,10 +685,20 @@ class CsiNode(NodeBase, Instrumented):
             opts = set(found_mount.opts.split(","))
             is_readonly = "ro" in opts
             if found_mount.device != mount_spec:
-                raise Abort(
-                    ALREADY_EXISTS,
-                    f"Volume already mounted from {found_mount.device} instead of {mount_spec}",
-                )
+                _, _, mounted_path = found_mount.device.partition(":")
+                _, _, expected_path = mount_spec.partition(":")
+                if mounted_path == expected_path:
+                    logger.warning(
+                        f"{volume_id} found existing mount {found_mount.device} "
+                        f"instead of {mount_spec} — lazy-unmounting stale entry"
+                    )
+                    umount(target_path, lazy=True)
+                    # fall through to fresh mount below (target_path directory still exists)
+                else:
+                    raise Abort(
+                        ALREADY_EXISTS,
+                        f"Volume already mounted from {found_mount.device} instead of {mount_spec}",
+                    )
             elif is_readonly != readonly:
                 raise Abort(
                     ALREADY_EXISTS,
@@ -697,7 +714,8 @@ class CsiNode(NodeBase, Instrumented):
             meta_file=meta_file,
             volume_id=volume_id,
             is_ephemeral=is_ephemeral,
-            vms_session=vms_session
+            vms_session=vms_session,
+            mtls_manager=mtls_manager,
         )
         logger.info(f"created: {target_path}")
 
@@ -708,6 +726,17 @@ class CsiNode(NodeBase, Instrumented):
             flags += normalize_mount_options(
                 volume_context.get("mount_options", publish_context.get("mount_options", ""))
             )
+        
+        # Add mTLS mount flags if enabled
+        try:
+            flags += mtls_manager.to_mount_flags(volume_id=volume_id)
+        except Exception as e:
+            meta_file.delete()
+            raise Abort(
+                FAILED_PRECONDITION,
+                f"Failed to load mTLS credentials: {e}"
+            )
+        
         try:
             mount(
                 mount_spec,
@@ -718,6 +747,10 @@ class CsiNode(NodeBase, Instrumented):
             logger.info(f"mounted: {target_path} flags: {flags}")
         except Exception:
             meta_file.delete()
+            # Clean up mTLS credentials on mount failure
+            if mtls_manager.requires_mtls():
+                mtls_manager.delete_credentials(volume_id)
+
             raise
 
         return types.NodePublishResp()

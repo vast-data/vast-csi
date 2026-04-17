@@ -88,12 +88,16 @@ parameters:
   csi.storage.k8s.io/node-expand-secret-namespace: {{ $storage_class_secret_namespace }}
 {{- end }}
 allowVolumeExpansion: {{ $allow_volume_expansion }}
-{{- if kindIs "string" $mount_options -}}
-{{/* Keep option to specify mountOptions as string for backward compatibility */}}
+{{- if $mount_options }}
 mountOptions:
+{{- if kindIs "string" $mount_options }}
+{{/* String format for backward compatibility */}}
   - {{ $mount_options | quote }}
 {{- else }}
-mountOptions: {{ toYaml $mount_options | nindent 2  }}
+{{ toYaml $mount_options | indent 2 }}
+{{- end }}
+{{- else }}
+mountOptions: []
 {{- end }}
 ---
 {{- end }}

@@ -471,7 +471,7 @@ class Quota(VastResource):
     def one(self, name=None, path=None, **kwargs):
         """Get quota by provided query params."""
         if name:
-            kwargs.update(path__contains=name)
+            kwargs.update(path__endswith=name)
         elif path:
             path = path.rstrip("/") or "/"  # for root path
             kwargs.update(path=path)
@@ -481,7 +481,7 @@ class Quota(VastResource):
     def one_cached(self, name=None, path=None, **kwargs):
         """Cached version of one() method."""
         if name:
-            kwargs.update(path__contains=name)
+            kwargs.update(path__endswith=name)
         elif path:
             path = path.rstrip("/") or "/"  # for root path
             kwargs.update(path=path)
@@ -626,7 +626,7 @@ class User(VastResource):
     resource_name = "users"
 
     def generate_access_key(self, _id):
-        return self.session.post(f"{self.resource_name}/{_id}/access_keys/", log_result=False)
+        return self.session.post(f"{self.resource_name}/{_id}/access_keys/", data={}, log_result=False)
 
     def delete_access_key(self, _id, access_key):
         data = dict(access_key=access_key)
