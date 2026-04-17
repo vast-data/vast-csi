@@ -240,8 +240,8 @@ update_github [prod]:  &update_github
     VERSION=$(cat version.txt)
     TARGET_BRANCH=$CI_COMMIT_REF_NAME
     if $BETA; then
-      VERSION=${VERSION}-beta
-      TARGET_BRANCH=${TARGET_BRANCH}-beta
+      [[ "$VERSION" != *-beta ]] && VERSION=${VERSION}-beta
+      [[ "$TARGET_BRANCH" != *-beta ]] && TARGET_BRANCH=${TARGET_BRANCH}-beta
     fi
     git remote -v
     git remote add github git@github.com:vast-data/vast-csi.git || true
