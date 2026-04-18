@@ -418,6 +418,18 @@ func (r *VastStorageClassReplicationReconciler) handleDeletion(
 		}
 	}
 
+	// Delete the protection policies that were created for this VSCR.
+	if vscr.Spec.PrimaryStorageClass != "" {
+		vmsrest.DeleteProtectionPolicies(
+			ctx, k8s,
+			vscr.Name,
+			vscr.Spec.PrimaryStorageClass,
+			vscr.Spec.ProtectionTopology,
+			r.Config.SSLVerify,
+			log,
+		)
+	}
+
 	if err := k8s.RemoveFinalizer(ctx, vscr, common.FinalizerVSCR); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 	}

@@ -1,14 +1,18 @@
 package vmsrest
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	vast_client "github.com/vast-data/go-vast-client"
 	"github.com/vast-data/go-vast-client/core"
 	"github.com/vast-data/go-vast-client/resources/typed"
-	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
+	"go.uber.org/zap"
 	storagev1 "k8s.io/api/storage/v1"
+
+	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
+	k8s_client "github.com/vast-data/vast-csi/extensions-controller/internal/common/k8s_client"
 )
 
 const (
@@ -284,6 +288,57 @@ func ensurePolicy(
 	}
 
 	return newReplicationLink(policy.Name, policy.Id, rest, scA, restB, scB, peerA, peerB, edge)
+}
+
+// DeleteProtectionPolicies deletes every NATIVE_REPLICATION ProtectionPolicy
+// that was created for ownerName/topology.
+func DeleteProtectionPolicies(
+	ctx context.Context,
+	k8s *k8s_client.K8sClient,
+	ownerName string,
+	primarySC string,
+	topology []vastv1alpha1.ReplicationTarget,
+	sslVerify bool,
+	log *zap.Logger,
+) {
+	// Group policy names by the SC whose cluster owns them.
+	policyNamesBySC := make(map[string][]string)
+	for _, t := range topology {
+		if t.PeerName == "" {
+			continue
+		}
+		sideA := t.Source
+		if t.Destination == primarySC {
+			sideA = t.Destination
+		}
+		policyNamesBySC[sideA] = append(policyNamesBySC[sideA], ownerName+"-"+t.PeerName)
+	}
+
+	for scName, policyNames := range policyNamesBySC {
+		rest, _, err := NewFromStorageClassName(ctx, k8s, scName, sslVerify, log)
+		if err != nil {
+			log.With(zap.Error(err)).Info("skipping protection policy deletion: cannot build REST client",
+				zap.String("sc", scName))
+			continue
+		}
+		for _, name := range policyNames {
+			policy, err := rest.ProtectionPolicies.Get(&typed.ProtectionPolicySearchParams{Name: name})
+			if err != nil {
+				if vast_client.IsNotFoundErr(err) {
+					continue
+				}
+				log.With(zap.Error(err)).Info("failed to look up protection policy for deletion",
+					zap.String("policy", name))
+				continue
+			}
+			if err := rest.ProtectionPolicies.DeleteById(policy.Id); err != nil {
+				log.With(zap.Error(err)).Info("failed to delete protection policy",
+					zap.String("policy", name))
+			} else {
+				log.Info("deleted protection policy", zap.String("policy", name))
+			}
+		}
+	}
 }
 
 // newReplicationLink constructs a ReplicationLink from policy identity, peer

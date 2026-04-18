@@ -346,13 +346,23 @@ func (r *VastVolumeReplicationReconciler) handleDeletion(
 				if ppath.Enabled {
 					rest.Untyped.ProtectedPaths.Update(ppath.Id, core.Params{"enabled": false})
 				}
-				_, err := rest.ProtectedPaths.DeleteById(ppath.Id, time.Minute*2)
-				if err != nil {
+				if _, err := rest.ProtectedPaths.DeleteById(ppath.Id, 2*time.Minute); err != nil {
 					log.With(zap.Error(err)).Info("failed to delete protected path for VastVolumeReplication")
 				}
 			}
-
 		}
+	}
+
+	// Delete the protection policies that were created for this VVR.
+	if vvr.Spec.PrimaryStorageClass != "" {
+		vmsrest.DeleteProtectionPolicies(
+			ctx, k8s,
+			vvr.Name,
+			vvr.Spec.PrimaryStorageClass,
+			vvr.Spec.ProtectionTopology,
+			r.Config.SSLVerify,
+			log,
+		)
 	}
 
 	if err := k8s.RemoveFinalizer(ctx, vvr, common.FinalizerVVR); err != nil {
