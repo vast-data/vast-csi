@@ -369,11 +369,17 @@ class TestMtlsManagerXprtsecModes:
 
 class TestXprtsecValidation:
     """Tests for xprtsec validation against view policy settings.
-    
-    Validation is NFS version agnostic. Required view policy settings:
-    - xprtsec=""     : nfs_enforce_tls=False, nfs_enforce_mtls=False
-    - xprtsec="tls"  : nfs_enforce_tls=True, nfs_enforce_tls_relaxed=True, nfs_enforce_mtls=False
-    - xprtsec="mtls" : nfs_enforce_tls=True, nfs_enforce_tls_relaxed=True, nfs_enforce_mtls=True
+
+    Valid combinations:
+    +---------------------+-------------+-----------------------------+--------------------------------+
+    |                     | tls=allow   | tls=enforce, mtls=allow     | tls=enforce, mtls=enforce      |
+    +---------------------+-------------+-----------------------------+--------------------------------+
+    | no xprtsec          | Allow       | Deny                        | Deny                           |
+    | xprtsec=tls         | Allow       | Allow                       | Deny                           |
+    | xprtsec=mtls        | N/A*        | Allow                       | Allow                          |
+    +---------------------+-------------+-----------------------------+--------------------------------+
+
+    * N/A: Server is not configured for TLS. Mount will fail at runtime.
     """
 
     def _create_mock_view_policy(
@@ -429,8 +435,8 @@ class TestXprtsecValidation:
 
     # Tests for validate_xprtsec_view_policy - TLS mode (xprtsec="tls")
 
-    def test_tls_mode_correct_policy_passes(self):
-        """TLS mode with correct policy settings passes."""
+    def test_tls_mode_with_tls_enforce_mtls_allow_passes(self):
+        """TLS mode with tls=enforce, mtls=allow passes (server requires TLS, client provides TLS)."""
         from vast_csi.mtls_utils import validate_xprtsec_view_policy
 
         policy = self._create_mock_view_policy(
@@ -440,21 +446,19 @@ class TestXprtsecValidation:
         )
         validate_xprtsec_view_policy(policy, "tls")
 
-    def test_tls_mode_without_enforce_tls_fails(self):
-        """TLS mode with nfs_enforce_tls=False fails."""
+    def test_tls_mode_with_tls_allow_passes(self):
+        """TLS mode with tls=allow passes (client provides more security than required)."""
         from vast_csi.mtls_utils import validate_xprtsec_view_policy
-        from vast_csi.exceptions import XprtsecValidationError
 
         policy = self._create_mock_view_policy(
             nfs_enforce_tls=False,
-            nfs_enforce_tls_relaxed=True,
+            nfs_enforce_tls_relaxed=False,
             nfs_enforce_mtls=False,
         )
-        with pytest.raises(XprtsecValidationError, match="nfs_enforce_tls=False.*requires nfs_enforce_tls=True"):
-            validate_xprtsec_view_policy(policy, "tls")
+        validate_xprtsec_view_policy(policy, "tls")
 
-    def test_tls_mode_nfsv3_without_relaxed_fails(self):
-        """TLS mode with NFSv3 and nfs_enforce_tls_relaxed=False fails."""
+    def test_tls_mode_nfsv3_with_tls_enforce_without_relaxed_fails(self):
+        """TLS mode with NFSv3 and nfs_enforce_tls=True, nfs_enforce_tls_relaxed=False fails."""
         from vast_csi.mtls_utils import validate_xprtsec_view_policy
         from vast_csi.exceptions import XprtsecValidationError
 
@@ -463,11 +467,12 @@ class TestXprtsecValidation:
             nfs_enforce_tls_relaxed=False,
             nfs_enforce_mtls=False,
         )
-        with pytest.raises(XprtsecValidationError, match="nfs_enforce_tls_relaxed=False.*NFSv3.*requires nfs_enforce_tls_relaxed=True"):
+        # NFSv3 with TLS enforced needs relaxed mode for side protocols (NLM, NSM, MOUNT)
+        with pytest.raises(XprtsecValidationError, match="nfs_enforce_tls_relaxed=False.*NFSv3"):
             validate_xprtsec_view_policy(policy, "tls", is_nfs4=False)
 
-    def test_tls_mode_nfsv4_ignores_relaxed(self):
-        """TLS mode with NFSv4 ignores nfs_enforce_tls_relaxed=False."""
+    def test_tls_mode_nfsv4_with_tls_enforce_ignores_relaxed(self):
+        """TLS mode with NFSv4 ignores nfs_enforce_tls_relaxed (no side protocols)."""
         from vast_csi.mtls_utils import validate_xprtsec_view_policy
 
         policy = self._create_mock_view_policy(
@@ -475,10 +480,23 @@ class TestXprtsecValidation:
             nfs_enforce_tls_relaxed=False,  # Should be ignored for NFSv4
             nfs_enforce_mtls=False,
         )
+        # NFSv4 doesn't have separate side protocols, so relaxed mode is irrelevant
         validate_xprtsec_view_policy(policy, "tls", is_nfs4=True)
 
+    def test_tls_mode_nfsv3_with_tls_allow_ignores_relaxed(self):
+        """TLS mode with NFSv3 and tls=allow ignores relaxed (not enforcing TLS)."""
+        from vast_csi.mtls_utils import validate_xprtsec_view_policy
+
+        policy = self._create_mock_view_policy(
+            nfs_enforce_tls=False,
+            nfs_enforce_tls_relaxed=False,  # Should be ignored when tls=allow
+            nfs_enforce_mtls=False,
+        )
+        # When tls=allow, relaxed mode is irrelevant (not enforcing TLS at all)
+        validate_xprtsec_view_policy(policy, "tls", is_nfs4=False)
+
     def test_tls_mode_with_mtls_enforced_fails(self):
-        """TLS mode with nfs_enforce_mtls=True fails."""
+        """TLS mode with mtls=enforce fails (server requires mTLS, TLS-only is not enough)."""
         from vast_csi.mtls_utils import validate_xprtsec_view_policy
         from vast_csi.exceptions import XprtsecValidationError
 
@@ -487,13 +505,13 @@ class TestXprtsecValidation:
             nfs_enforce_tls_relaxed=True,
             nfs_enforce_mtls=True,
         )
-        with pytest.raises(XprtsecValidationError, match="nfs_enforce_mtls=True.*requires nfs_enforce_mtls=False"):
+        with pytest.raises(XprtsecValidationError, match="nfs_enforce_mtls=True.*xprtsec='tls' is not sufficient"):
             validate_xprtsec_view_policy(policy, "tls")
 
     # Tests for validate_xprtsec_view_policy - mTLS mode (xprtsec="mtls")
 
-    def test_mtls_mode_correct_policy_passes(self):
-        """mTLS mode with correct policy settings passes."""
+    def test_mtls_mode_with_mtls_enforce_passes(self):
+        """mTLS mode with tls=enforce, mtls=enforce passes."""
         from vast_csi.mtls_utils import validate_xprtsec_view_policy
 
         policy = self._create_mock_view_policy(
@@ -503,21 +521,30 @@ class TestXprtsecValidation:
         )
         validate_xprtsec_view_policy(policy, "mtls")
 
-    def test_mtls_mode_without_enforce_tls_fails(self):
-        """mTLS mode with nfs_enforce_tls=False fails."""
+    def test_mtls_mode_with_mtls_allow_passes(self):
+        """mTLS mode with tls=enforce, mtls=allow passes (client provides more than required)."""
         from vast_csi.mtls_utils import validate_xprtsec_view_policy
-        from vast_csi.exceptions import XprtsecValidationError
+
+        policy = self._create_mock_view_policy(
+            nfs_enforce_tls=True,
+            nfs_enforce_tls_relaxed=True,
+            nfs_enforce_mtls=False,
+        )
+        validate_xprtsec_view_policy(policy, "mtls")
+
+    def test_mtls_mode_with_tls_allow_passes(self):
+        """mTLS mode with tls=allow passes."""
+        from vast_csi.mtls_utils import validate_xprtsec_view_policy
 
         policy = self._create_mock_view_policy(
             nfs_enforce_tls=False,
-            nfs_enforce_tls_relaxed=True,
-            nfs_enforce_mtls=True,
+            nfs_enforce_tls_relaxed=False,
+            nfs_enforce_mtls=False,
         )
-        with pytest.raises(XprtsecValidationError, match="nfs_enforce_tls=False.*requires nfs_enforce_tls=True"):
-            validate_xprtsec_view_policy(policy, "mtls")
+        validate_xprtsec_view_policy(policy, "mtls")
 
-    def test_mtls_mode_nfsv3_without_relaxed_fails(self):
-        """mTLS mode with NFSv3 and nfs_enforce_tls_relaxed=False fails."""
+    def test_mtls_mode_nfsv3_with_tls_enforce_without_relaxed_fails(self):
+        """mTLS mode with NFSv3 and nfs_enforce_tls=True, nfs_enforce_tls_relaxed=False fails."""
         from vast_csi.mtls_utils import validate_xprtsec_view_policy
         from vast_csi.exceptions import XprtsecValidationError
 
@@ -526,11 +553,11 @@ class TestXprtsecValidation:
             nfs_enforce_tls_relaxed=False,
             nfs_enforce_mtls=True,
         )
-        with pytest.raises(XprtsecValidationError, match="nfs_enforce_tls_relaxed=False.*NFSv3.*requires nfs_enforce_tls_relaxed=True"):
+        with pytest.raises(XprtsecValidationError, match="nfs_enforce_tls_relaxed=False.*NFSv3"):
             validate_xprtsec_view_policy(policy, "mtls", is_nfs4=False)
 
-    def test_mtls_mode_nfsv4_ignores_relaxed(self):
-        """mTLS mode with NFSv4 ignores nfs_enforce_tls_relaxed=False."""
+    def test_mtls_mode_nfsv4_with_tls_enforce_ignores_relaxed(self):
+        """mTLS mode with NFSv4 ignores nfs_enforce_tls_relaxed (no side protocols)."""
         from vast_csi.mtls_utils import validate_xprtsec_view_policy
 
         policy = self._create_mock_view_policy(
@@ -538,20 +565,20 @@ class TestXprtsecValidation:
             nfs_enforce_tls_relaxed=False,  # Should be ignored for NFSv4
             nfs_enforce_mtls=True,
         )
+        # NFSv4 doesn't have separate side protocols, so relaxed mode is irrelevant
         validate_xprtsec_view_policy(policy, "mtls", is_nfs4=True)
 
-    def test_mtls_mode_without_enforce_mtls_fails(self):
-        """mTLS mode with nfs_enforce_mtls=False fails."""
+    def test_mtls_mode_nfsv3_with_tls_allow_ignores_relaxed(self):
+        """mTLS mode with NFSv3 and tls=allow ignores relaxed (not enforcing TLS)."""
         from vast_csi.mtls_utils import validate_xprtsec_view_policy
-        from vast_csi.exceptions import XprtsecValidationError
 
         policy = self._create_mock_view_policy(
-            nfs_enforce_tls=True,
-            nfs_enforce_tls_relaxed=True,
+            nfs_enforce_tls=False,
+            nfs_enforce_tls_relaxed=False,  # Should be ignored when tls=allow
             nfs_enforce_mtls=False,
         )
-        with pytest.raises(XprtsecValidationError, match="nfs_enforce_mtls=False.*requires nfs_enforce_mtls=True"):
-            validate_xprtsec_view_policy(policy, "mtls")
+        # When tls=allow, relaxed mode is irrelevant (not enforcing TLS at all)
+        validate_xprtsec_view_policy(policy, "mtls", is_nfs4=False)
 
 
 class TestGetXprtsecFromMountOptions:

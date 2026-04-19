@@ -77,6 +77,7 @@ from vast_csi.plugins.base import (
     NodeBase,
     Instrumented,
 )
+from vast_csi.mtls_utils import MtlsManager
 
 
 CONF = None
@@ -715,7 +716,7 @@ class CsiNode(NodeBase, Instrumented):
             volume_id=volume_id,
             is_ephemeral=is_ephemeral,
             vms_session=vms_session,
-            mtls_manager=mtls_manager,
+            extra_data={"has_mtls": True} if mtls_manager.requires_mtls() else None,
         )
         logger.info(f"created: {target_path}")
 
@@ -789,13 +790,17 @@ class CsiNode(NodeBase, Instrumented):
                     UNKNOWN,
                     f"Stuck in unmount loop of {target_path} too many times ({CONF.unmount_attempts})",
                 )
+            has_mtls = False
             if meta_file.exists():
-                self._read_and_process_meta_file(
+                meta = self._read_and_process_meta_file(
                     meta_file=meta_file,
                     volume_id=volume_id,
                     vms_session=vms_session,
                 )
+                has_mtls = meta.get("has_mtls", False)
                 os.remove(meta_file)
+            if has_mtls:
+                MtlsManager.delete_credentials(volume_id)
             logger.info(f"Deleting {target_path}")
             os.rmdir(target_path)  # don't use plumbum's .delete to avoid the dangerous rmtree
             logger.info(f"{target_path} removed successfully")
