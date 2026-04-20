@@ -164,6 +164,7 @@ func DiscoverLinkPolicies(
 	scByStorageClass map[string]*storagev1.StorageClass,
 	edges ReplicationEdgesList,
 	tmpl PolicyTemplateParams,
+	log *zap.Logger,
 ) (map[string][]ReplicationLink, error) {
 	nativeTargets, err := buildNativeReplicaTargetsBySC(restByStorageClass)
 	if err != nil {
@@ -212,7 +213,7 @@ func DiscoverLinkPolicies(
 		}
 		prefix := tmpl.OwnerName + "-" + peerA.PeerName + "-" + peerB.PeerName
 
-		pair, err := ensurePolicy(restA, scA, restB, scB, edge, tmpl, peerA, peerB, prefix)
+		pair, err := ensurePolicy(restA, scA, restB, scB, edge, tmpl, peerA, peerB, prefix, log)
 		if err != nil {
 			return nil, err
 		}
@@ -235,6 +236,7 @@ func DiscoverLinkPolicies(
 		result[edge.SideA] = append(result[edge.SideA], pair)
 	}
 
+	log.Info("all protection policies have been created successfully")
 	return result, nil
 }
 
@@ -255,6 +257,7 @@ func ensurePolicy(
 	peerA *typed.ReplicationPeersDetailsModel,
 	peerB *typed.ReplicationPeersDetailsModel,
 	prefix string,
+	log *zap.Logger,
 ) (ReplicationLink, error) {
 	policyName := tmpl.OwnerName + "-" + edge.PeerName
 
@@ -262,6 +265,11 @@ func ensurePolicy(
 	if existing, err := rest.ProtectionPolicies.Get(&typed.ProtectionPolicySearchParams{Name: policyName}); err == nil {
 		return newReplicationLink(existing.Name, existing.Id, rest, scA, restB, scB, peerA, peerB, edge)
 	}
+
+	log.Info("creating protection policy",
+		zap.String("policy", policyName),
+		zap.String("source_cluster", edge.SideA),
+		zap.String("destination_cluster", edge.SideB))
 
 	rawFrames := make([]any, len(tmpl.Frames))
 	for i, f := range tmpl.Frames {

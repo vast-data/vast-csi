@@ -174,13 +174,13 @@ func (r *VastStorageClassReplicationReconciler) Reconcile(ctx context.Context, r
 		//  ppath not yet created — discover policies and build full topology.
 		edges := vmsrest.NewReplicationEdgesList(vscr.Spec.ProtectionTopology, vscr.Spec.PrimaryStorageClass)
 		tmpl := vmsrest.SpecTemplateToParams(vscr.Name, vscr.Spec.ProtectionPolicyTemplate)
-		policyPairs, err := vmsrest.DiscoverLinkPolicies(restByStorageClass, scByStorageClass, edges, tmpl)
+		policyPairs, err := vmsrest.DiscoverLinkPolicies(restByStorageClass, scByStorageClass, edges, tmpl, log)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to ensure protection policies: %w", err)
 		}
 
 		ppathName, err = vmsrest.EnsureConstellationPpath(
-			restByStorageClass, policyPairs, vscr.Spec.PrimaryStorageClass, vscr.Name, primaryPpathDir,
+			restByStorageClass, policyPairs, vscr.Spec.PrimaryStorageClass, vscr.Name, primaryPpathDir, log,
 		)
 		if err != nil {
 			emit.Warning(events.ReasonPpathNotReady, err.Error())
