@@ -28,14 +28,24 @@ spec:
   # NATIVE_REPLICATION ProtectionPolicy per topology entry side.
   protectionPolicyTemplate:
     # params defines the replication schedule (one or more schedule windows).
-    # "every"       – replication interval, e.g. "15M", "1H", "1D"
-    # "keepLocal"   – local snapshot retention, e.g. "2D", "1W"
-    # "keepRemote"  – remote snapshot retention, e.g. "7D", "4W"
-    # "startAt"     – optional start time, e.g. "22:00" (local server time)
+    #
+    # Time unit suffixes (case-insensitive except M vs m):
+    #   s / S  – seconds  (e.g. "30s")
+    #   m      – minutes  (e.g. "15m")   ← lowercase only; uppercase M = months
+    #   h / H  – hours    (e.g. "1h", "6H")
+    #   d / D  – days     (e.g. "2d", "7D")
+    #   w / W  – weeks    (e.g. "1w", "4W")
+    #   M      – months   (= 30 days, e.g. "1M")
+    #   y / Y  – years    (= 365 days, e.g. "1y")
+    #
+    # "every"     – replication interval, e.g. "15m", "1h", "1d"
+    # "keepLocal" – local snapshot retention, e.g. "2d", "1w"
+    # "keepRemote"– remote snapshot retention, e.g. "7d", "4w"
+    # "startAt"   – optional start time: "YYYY-MM-DD HH:MM:SS" or bare "HH:MM"
     params:
-      - every: 15M
-        keepLocal: 2D
-        keepRemote: 7D
+      - every: 15m
+        keepLocal: 2d
+        keepRemote: 7d
 
   # action controls what failover / maintenance operation to trigger.
   # Allowed values: ungracefulFailover | gracefulFailover | resync | reprotect

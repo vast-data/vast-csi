@@ -95,21 +95,27 @@ spec:
                         It maps directly to the VAST API "frames" array on a ProtectionPolicy object.
                       properties:
                         every:
-                          description: Every is the replication interval, e.g. "15m",
-                            "1h", "1d".
+                          description: |-
+                            Every is the replication interval.
+                            Time units: s/S=seconds, m=minutes (lowercase only; M=months),
+                            h/H=hours, d/D=days, w/W=weeks, M=months(30d), y/Y=years.
+                            Examples: "30s", "15m", "1h", "1d", "1w", "1M", "1y".
                           type: string
                         keepLocal:
-                          description: KeepLocal is how long local snapshots are retained,
-                            e.g. "7d", "1w".
+                          description: |-
+                            KeepLocal is how long local snapshots are retained.
+                            Same time units as Every. E.g. "2d", "1w", "1M".
                           type: string
                         keepRemote:
-                          description: KeepRemote is how long remote snapshots are
-                            retained, e.g. "30d".
+                          description: |-
+                            KeepRemote is how long remote snapshots are retained.
+                            Same time units as Every. E.g. "7d", "4w", "1M".
                           type: string
                         startAt:
                           description: |-
-                            StartAt is an optional wall-clock time at which the first snapshot is
-                            taken, in RFC-3339 format or a bare time like "22:00".
+                            StartAt is an optional time at which the first snapshot is taken.
+                            Accepted formats: "YYYY-MM-DD HH:MM:SS", "HH:MM", or RFC-3339.
+                            Example: "2025-01-01 02:00:00".
                           type: string
                       required:
                       - every

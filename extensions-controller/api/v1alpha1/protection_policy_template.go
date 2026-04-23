@@ -26,47 +26,62 @@ import (
 // ProtectionPolicyFrame defines one schedule frame for a VAST ProtectionPolicy.
 // It maps directly to the VAST API "frames" array on a ProtectionPolicy object.
 type ProtectionPolicyFrame struct {
-	// Every is the replication interval, e.g. "15m", "1h", "1d".
+	// Every is the replication interval.
+	// Time units: s/S=seconds, m=minutes (lowercase only; M=months),
+	// h/H=hours, d/D=days, w/W=weeks, M=months(30d), y/Y=years.
+	// Examples: "30s", "15m", "1h", "1d", "1w", "1M", "1y".
 	// +kubebuilder:validation:Required
 	Every string `json:"every"`
 
-	// KeepLocal is how long local snapshots are retained, e.g. "7d", "1w".
+	// KeepLocal is how long local snapshots are retained.
+	// Same time units as Every. E.g. "2d", "1w", "1M".
 	// +optional
 	KeepLocal string `json:"keepLocal,omitempty"`
 
-	// KeepRemote is how long remote snapshots are retained, e.g. "30d".
+	// KeepRemote is how long remote snapshots are retained.
+	// Same time units as Every. E.g. "7d", "4w", "1M".
 	// +optional
 	KeepRemote string `json:"keepRemote,omitempty"`
 
-	// StartAt is an optional wall-clock time at which the first snapshot is
-	// taken, in RFC-3339 format or a bare time like "22:00".
+	// StartAt is an optional time at which the first snapshot is taken.
+	// Accepted formats: "YYYY-MM-DD HH:MM:SS", "HH:MM", or RFC-3339.
+	// Example: "2025-01-01 02:00:00".
 	// +optional
 	StartAt string `json:"startAt,omitempty"`
 }
 
 // vastDurationRe matches VAST schedule durations: one or more digits followed
-// by a single case-insensitive unit letter — M(inutes), H(ours), D(ays), W(eeks).
-// Examples: "15M", "1H", "2D", "4W".
-var vastDurationRe = regexp.MustCompile(`^\d+[MHDWmhdw]$`)
+// by a single unit letter.
+//
+// Units (case-insensitive except m vs M):
+//
+//	s / S  – seconds
+//	m      – minutes (lowercase only; uppercase M = months)
+//	h / H  – hours
+//	d / D  – days
+//	w / W  – weeks
+//	M      – months (= 30 days)
+//	y / Y  – years  (= 365 days)
+var vastDurationRe = regexp.MustCompile(`^\d+[sSmMhHdDwWyY]$`)
 
 // Validate checks that all fields of f are syntactically valid.
 //
-//   - Every:      required; must be a VAST duration (e.g. "15M", "1H", "2D", "1W").
+//   - Every:      required; must be a VAST duration (e.g. "30s", "15m", "1h", "1d", "1w", "1M", "1y").
 //   - KeepLocal:  optional; if set, must be a VAST duration.
 //   - KeepRemote: optional; if set, must be a VAST duration.
-//   - StartAt:    optional; if set, must be either "HH:MM" or RFC-3339.
+//   - StartAt:    optional; if set, must be "YYYY-MM-DD HH:MM:SS", "HH:MM", or RFC-3339.
 func (f *ProtectionPolicyFrame) Validate() error {
 	if f.Every == "" {
 		return fmt.Errorf("every must not be empty")
 	}
 	if !vastDurationRe.MatchString(f.Every) {
-		return fmt.Errorf("every %q is not a valid VAST duration (expected <number><unit>, e.g. \"15M\", \"1H\", \"2D\", \"1W\")", f.Every)
+		return fmt.Errorf("every %q is not a valid VAST duration (expected <number><unit>, e.g. \"15m\", \"1h\", \"2d\", \"1w\", \"1M\", \"1y\")", f.Every)
 	}
 	if f.KeepLocal != "" && !vastDurationRe.MatchString(f.KeepLocal) {
-		return fmt.Errorf("keepLocal %q is not a valid VAST duration (expected <number><unit>, e.g. \"2D\", \"1W\")", f.KeepLocal)
+		return fmt.Errorf("keepLocal %q is not a valid VAST duration (expected <number><unit>, e.g. \"2d\", \"1w\")", f.KeepLocal)
 	}
 	if f.KeepRemote != "" && !vastDurationRe.MatchString(f.KeepRemote) {
-		return fmt.Errorf("keepRemote %q is not a valid VAST duration (expected <number><unit>, e.g. \"7D\", \"4W\")", f.KeepRemote)
+		return fmt.Errorf("keepRemote %q is not a valid VAST duration (expected <number><unit>, e.g. \"7d\", \"4w\")", f.KeepRemote)
 	}
 	if f.StartAt != "" {
 		if err := validateStartAt(f.StartAt); err != nil {
@@ -76,16 +91,20 @@ func (f *ProtectionPolicyFrame) Validate() error {
 	return nil
 }
 
-// validateStartAt accepts either "HH:MM" bare time or a full RFC-3339 timestamp.
+// validateStartAt accepts "YYYY-MM-DD HH:MM:SS" (VMS native format),
+// "HH:MM" bare time, or a full RFC-3339 timestamp.
 func validateStartAt(s string) error {
+	if _, err := time.Parse("2006-01-02 15:04:05", s); err == nil {
+		return nil
+	}
 	if _, err := time.Parse("15:04", s); err == nil {
 		return nil
 	}
 	if _, err := time.Parse(time.RFC3339, s); err == nil {
 		return nil
 	}
-	return fmt.Errorf("startAt %q must be \"HH:MM\" or RFC-3339 (e.g. %q or %q)",
-		s, "22:00", strings.TrimSuffix(time.Now().UTC().Format(time.RFC3339), "Z")+"Z")
+	return fmt.Errorf("startAt %q must be \"YYYY-MM-DD HH:MM:SS\", \"HH:MM\", or RFC-3339 (e.g. %q, %q, or %q)",
+		s, "2025-01-01 02:00:00", "02:00", strings.TrimSuffix(time.Now().UTC().Format(time.RFC3339), "Z")+"Z")
 }
 
 // ProtectionPolicyTemplate describes how the operator should create the

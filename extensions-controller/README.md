@@ -64,11 +64,11 @@ spec:
       destination: vastdata-site-b
       peerName: clusterA-clusterB-peer          # VAST replication peer name
   protectionPolicyTemplate:                     # schedule for VAST protection policies
-    prefix: repl
+    # Time units: s/S=seconds, m=minutes, h/H=hours, d/D=days, w/W=weeks, M=months(30d), y/Y=years
     frames:
-      - every: 15M
-        keepLocal: 2D
-        keepRemote: 1W
+      - every: 15m
+        keepLocal: 2d
+        keepRemote: 1w
   syncIntervalSeconds: 900
   syncPVCPV: true          # create mirror PVC+PV on each secondary SC
   syncVastObjects: true    # create VAST volumes/views on each secondary cluster
@@ -401,7 +401,7 @@ VastStorageClassReplication  default/app-replication
   Sync VAST Objects:           true
   Protection Policy:
     Prefix:                    repl
-    Frame[0]:                  every=15M keepLocal=2D keepRemote=1W
+    Frame[0]:                  every=15m keepLocal=2d keepRemote=1w
 
   Status:
   Current Primary:             vastdata-site-a
