@@ -41,7 +41,7 @@ from vast_csi.exceptions import Abort, LookupFieldError
 from vast_csi.session import instantiate_session_from_secret, VmsSession
 from vast_csi.luks_utils import get_luks_manager, LuksManager
 from vast_csi.metrics import get_metrics_registry
-from vast_csi.mtls_utils import get_mtls_manager, MtlsManager
+from vast_csi.mtls_utils import get_mtls_manager
 from vast_csi.quantity import parse_quantity
 from vast_csi.logging import logger
 
@@ -527,26 +527,27 @@ class NodeBase(csi_grpc.NodeServicer):
             is_ephemeral,
             vms_session,
             luks_manager=None,
-            mtls_manager=None,
+            extra_data=None,
     ):
         """
         Stores metadata about a volume in a file, including information about
-        whether the volume is ephemeral, host_encryption, mTLS and, if so, serialized session data.
+        whether the volume is ephemeral, host_encryption and, if so, serialized session data.
+
+        Args:
+            extra_data: Optional dict of additional data to store (for protocol-specific needs)
         """
         payload = {
         "volume_id": volume_id,
         "is_ephemeral": is_ephemeral,
         }
 
-        if mtls_manager and mtls_manager.xprtsec:
-            payload["xprtsec"] = mtls_manager.xprtsec
+        if extra_data:
+            payload.update(extra_data)
 
         if is_ephemeral:
             payload["vms_session"] = vms_session.serialize(salt=volume_id)
             if luks_manager:
                 payload["luks_manager"] = luks_manager.serialize(salt=volume_id)
-            if mtls_manager:
-                payload["mtls_manager"] = mtls_manager.serialize(salt=volume_id)
 
         with meta_file.open("w") as f:
             json.dump(payload, f)
@@ -580,8 +581,5 @@ class NodeBase(csi_grpc.NodeServicer):
             self.controller.DeleteVolume.__wrapped__(
                 self.controller, vms_session=vms_session, volume_id=meta["volume_id"]
             )
-
-        if meta.get("xprtsec") == "mtls":
-            MtlsManager.delete_credentials(volume_id)
 
         return meta
