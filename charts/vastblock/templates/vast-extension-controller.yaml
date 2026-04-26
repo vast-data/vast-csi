@@ -151,6 +151,9 @@ spec:
 {{- if $rc.devLogging }}
             - --dev-logging
 {{- end }}
+{{- if $rc.applyExistingPvcs }}
+            - --apply-existing-pvcs
+{{- end }}
           livenessProbe:
             httpGet:
               path: /healthz

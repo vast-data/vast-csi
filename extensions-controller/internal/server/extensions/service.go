@@ -122,14 +122,14 @@ func (s *Service) GetReplicationInfo(
 					ResourceKind:   "VastStorageClassReplication",
 					IsPrimary:      vscr.Spec.PrimaryStorageClass == req.StorageClass,
 					StorageClasses: vscr.Spec.AllStorageClasses(),
-					Action:         replicationActionToProto(vscr.Spec.Action),
+					FailoverType:   failoverTypeToProto(vscr.Spec.FailoverType),
 				}
 				log.Info("replication info resolved",
 					zap.String("resource", vscr.Namespace+"/"+vscr.Name),
 					zap.String("kind", resp.ResourceKind),
 					zap.Bool("isPrimary", resp.IsPrimary),
 					zap.Strings("storageClasses", resp.StorageClasses),
-					zap.String("action", resp.Action.String()))
+					zap.String("failoverType", resp.FailoverType.String()))
 				return resp, nil
 			}
 		}
@@ -148,14 +148,14 @@ func (s *Service) GetReplicationInfo(
 					ResourceKind:   "VastVolumeReplication",
 					IsPrimary:      vvr.Spec.PrimaryStorageClass == req.StorageClass,
 					StorageClasses: vvr.Spec.AllStorageClasses(),
-					Action:         replicationActionToProto(vvr.Spec.Action),
+					FailoverType:   failoverTypeToProto(vvr.Spec.FailoverType),
 				}
 				log.Info("replication info resolved",
 					zap.String("resource", vvr.Namespace+"/"+vvr.Name),
 					zap.String("kind", resp.ResourceKind),
 					zap.Bool("isPrimary", resp.IsPrimary),
 					zap.Strings("storageClasses", resp.StorageClasses),
-					zap.String("action", resp.Action.String()))
+					zap.String("failoverType", resp.FailoverType.String()))
 				return resp, nil
 			}
 		}
@@ -165,15 +165,13 @@ func (s *Service) GetReplicationInfo(
 		"StorageClass %q is not part of any VastStorageClassReplication or VastVolumeReplication", req.StorageClass)
 }
 
-// replicationActionToProto converts the CR ReplicationAction string to the
-// corresponding proto enum value.
-func replicationActionToProto(a vastv1alpha1.ReplicationAction) extensionsv1.ReplicationAction {
+// failoverTypeToProto converts the CR FailoverAction to the corresponding
+// proto enum value.
+func failoverTypeToProto(a vastv1alpha1.FailoverAction) extensionsv1.FailoverType {
 	switch a {
-	case vastv1alpha1.ActionGracefulFailover:
-		return extensionsv1.ReplicationAction_REPLICATION_ACTION_GRACEFUL_FAILOVER
-	case vastv1alpha1.ActionResync:
-		return extensionsv1.ReplicationAction_REPLICATION_ACTION_RESYNC
+	case vastv1alpha1.FailoverTypeGraceful:
+		return extensionsv1.FailoverType_FAILOVER_TYPE_GRACEFUL
 	default:
-		return extensionsv1.ReplicationAction_REPLICATION_ACTION_UNGRACEFUL_FAILOVER
+		return extensionsv1.FailoverType_FAILOVER_TYPE_UNGRACEFUL
 	}
 }

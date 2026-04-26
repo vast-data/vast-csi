@@ -64,6 +64,16 @@ func (k *K8sClient) UpdateVastStorageClassReplicationStatus(ctx context.Context,
 	return nil
 }
 
+// PatchVSCRResync clears the Resync flag on a VastStorageClassReplication.
+func (k *K8sClient) PatchVSCRResync(ctx context.Context, vscr *vastv1alpha1.VastStorageClassReplication) error {
+	if err := k.PatchWithRetry(ctx, vscr, func() {
+		vscr.Spec.Resync = false
+	}); err != nil {
+		return fmt.Errorf("failed to clear Resync on VastStorageClassReplication %s/%s: %w", vscr.Namespace, vscr.Name, err)
+	}
+	return nil
+}
+
 // ListVastStorageClassReplications lists all VastStorageClassReplication objects.
 // Pass namespace="" to list across all namespaces.
 func (k *K8sClient) ListVastStorageClassReplications(ctx context.Context, namespace string) ([]vastv1alpha1.VastStorageClassReplication, error) {

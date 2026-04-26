@@ -26,8 +26,8 @@ spec:
     - jsonPath: .spec.primaryStorageClass
       name: Primary SC
       type: string
-    - jsonPath: .spec.action
-      name: Action
+    - jsonPath: .spec.failoverType
+      name: Failover Type
       type: string
     - jsonPath: .status.currentPrimaryStorageClass
       name: Current Primary
@@ -67,14 +67,14 @@ spec:
           spec:
             description: VastVolumeReplicationSpec defines the desired state of VastVolumeReplication.
             properties:
-              action:
+              failoverType:
                 default: ungracefulFailover
-                description: Action is the desired replication action to trigger (failover,
-                  resync, …).
+                description: |-
+                  FailoverType is the type of failover to execute when the primary StorageClass
+                  changes.  Supported values: ungracefulFailover (default), gracefulFailover.
                 enum:
                 - ungracefulFailover
                 - gracefulFailover
-                - resync
                 type: string
               primaryStorageClass:
                 description: |-
@@ -175,6 +175,10 @@ spec:
                 description: PVCRemap controls whether PVCs are remapped to the new
                   primary on failover.
                 type: boolean
+              resync:
+                description: 'Resync is a one-shot trigger: set to true to request
+                  an immediate resync.'
+                type: boolean
               syncIntervalSeconds:
                 description: SyncIntervalSeconds is the replication sync interval
                   in seconds.
@@ -200,7 +204,7 @@ spec:
                   replicated across the listed StorageClasses.
                 type: string
             required:
-            - action
+            - failoverType
             - primaryStorageClass
             - protectionPolicyTemplate
             - protectionTopology
@@ -217,13 +221,12 @@ spec:
                 description: CurrentPrimaryStorageClass is the StorageClass that is
                   currently primary.
                 type: string
-              lastAction:
-                description: LastAction is the most recent replication action that
+              lastFailoverType:
+                description: LastFailoverType is the most recent failover type that
                   was applied.
                 enum:
                 - ungracefulFailover
                 - gracefulFailover
-                - resync
                 type: string
               ppathDir:
                 description: |-

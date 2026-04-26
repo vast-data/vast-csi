@@ -34,6 +34,11 @@ import (
 
 // RegisterFlags registers replication object controller flags with the cobra command.
 func RegisterFlags(c *cobra.Command, cfg *config.Config) {
+	c.Flags().BoolVar(&cfg.ApplyExistingPVCs, "apply-existing-pvcs", false,
+		"Inject storageClass (and subsystem for block) labels onto existing PVCs whose "+
+			"backing VAST object appears in the VolumeMapping for the reconciled StorageClass. "+
+			"Mirrors what the PVC label webhook does for newly created PVCs. "+
+			"Idempotent: PVCs that already carry both labels are skipped.")
 	// Name format flags
 	c.Flags().StringVar(&cfg.PVCNameFormat, "pvc-name-format", common.DefaultPVCNameFormat,
 		`Format string for destination PVC names. Available tokens:

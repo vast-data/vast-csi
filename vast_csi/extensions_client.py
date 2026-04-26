@@ -107,7 +107,7 @@ def get_replication_info(
     * ``resource_kind`` — ``"VastStorageClassReplication"`` or ``"VastVolumeReplication"``
     * ``is_primary`` — whether *storage_class* is the primary one in the group
     * ``storage_classes`` — all StorageClass names in the replication group
-    * ``action`` — the replication action configured on the owning resource
+    * ``failover_type`` — the failover type configured on the owning resource
 
     Args:
         storage_class: Kubernetes StorageClass name to look up.
@@ -132,27 +132,26 @@ def is_primary_storage_class(storage_class: str) -> bool:
     return info.is_primary
 
 
-# Maps proto ReplicationAction enum values to the CRD action strings used by
-# the CLI and the Kubernetes API (e.g. spec.action on VSCR / VVR objects).
-_REPLICATION_ACTION_NAMES: dict[int, str] = {
-    vast_extensions_pb2.REPLICATION_ACTION_UNGRACEFUL_FAILOVER: "ungraceful",
-    vast_extensions_pb2.REPLICATION_ACTION_GRACEFUL_FAILOVER: "graceful",
-    vast_extensions_pb2.REPLICATION_ACTION_RESYNC: "resync",
+# Maps proto FailoverType enum values to the CRD failoverType strings used by
+# the CLI and the Kubernetes API (e.g. spec.failoverType on VSCR / VVR objects).
+_FAILOVER_TYPE_NAMES: dict[int, str] = {
+    vast_extensions_pb2.FAILOVER_TYPE_UNGRACEFUL: "ungraceful",
+    vast_extensions_pb2.FAILOVER_TYPE_GRACEFUL: "graceful",
 }
 
 
-def get_replication_action(storage_class: str) -> str:
-    """Return the replication action configured for *storage_class*.
+def get_failover_type(storage_class: str) -> str:
+    """Return the failover type configured for *storage_class*.
 
     Returns:
-        ``"ungraceful"``, ``"graceful"``, or ``"resync"``.
+        ``"ungraceful"`` or ``"graceful"``.
 
     Raises:
         grpc.RpcError: if the gRPC call fails or the StorageClass is not found.
-        KeyError: if the server returns an unrecognised action value.
+        KeyError: if the server returns an unrecognised failover_type value.
     """
     info = get_replication_info(storage_class)
-    return _REPLICATION_ACTION_NAMES[info.action]
+    return _FAILOVER_TYPE_NAMES[info.failover_type]
 
 
 # gRPC status codes that indicate the extensions-controller is temporarily
@@ -163,21 +162,22 @@ _CONNECTION_ERROR_CODES = frozenset({
 })
 
 
-def get_replication_action_if_available(storage_class: str) -> "str | None":
-    """Return the replication action for *storage_class*, or ``None`` if the
+def get_failover_type_if_available(storage_class: str) -> "str | None":
+    """Return the failover type for *storage_class*, or ``None`` if the
     extensions-controller is unreachable.
+
     Args:
         storage_class: Kubernetes StorageClass name.
 
     Returns:
-        ``"ungraceful"``, ``"graceful"``, or ``"resync"``, or ``None`` when
-        the controller socket is not yet available.
+        ``"ungraceful"`` or ``"graceful"``, or ``None`` when the controller
+        socket is not yet available.
 
     Raises:
         grpc.RpcError: for any non-connectivity gRPC error.
     """
     try:
-        return get_replication_action(storage_class)
+        return get_failover_type(storage_class)
     except grpc.RpcError as exc:
         if exc.code() in _CONNECTION_ERROR_CODES:
             return None

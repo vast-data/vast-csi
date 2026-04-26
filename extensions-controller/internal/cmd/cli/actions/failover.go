@@ -43,13 +43,13 @@ Examples:
 			}
 
 			// --manner is optional; when given it must be a recognised value.
-			var action vastv1alpha1.ReplicationAction
+			var failoverType vastv1alpha1.FailoverAction
 			if manner != "" {
 				switch manner {
 				case "graceful":
-					action = vastv1alpha1.ActionGracefulFailover
+					failoverType = vastv1alpha1.FailoverTypeGraceful
 				case "ungraceful":
-					action = vastv1alpha1.ActionUngracefulFailover
+					failoverType = vastv1alpha1.FailoverTypeUngraceful
 				default:
 					return fmt.Errorf("--manner must be 'graceful' or 'ungraceful', got %q", manner)
 				}
@@ -90,13 +90,13 @@ Examples:
 					return err
 				}
 			}
-			if err := cli.PatchReplicationSpec(ctx, k8s, vscrName, vvrName, namespace, action, primary); err != nil {
+			if err := cli.PatchReplicationSpec(ctx, k8s, vscrName, vvrName, namespace, failoverType, primary); err != nil {
 				return fmt.Errorf("failover failed: %w", err)
 			}
 
 			msg := fmt.Sprintf("Primary StorageClass will switch to %s", cli.Bold(primary))
-			if action != "" {
-				msg += fmt.Sprintf("; action set to %s", colorAction(action))
+			if failoverType != "" {
+				msg += fmt.Sprintf("; failoverType set to %s", colorFailoverType(failoverType))
 			}
 			fmt.Printf("%s %s\n", cli.Green("✓"), msg)
 			return nil
@@ -136,14 +136,12 @@ func validateFailoverPrimary(primary, currentPrimary string, all []string) error
 		primary, vastv1alpha1.DisplayableList(candidates).String())
 }
 
-// colorAction returns action colored for terminal output (same palette as printAction).
-func colorAction(action vastv1alpha1.ReplicationAction) string {
-	switch action {
-	case vastv1alpha1.ActionGracefulFailover, vastv1alpha1.ActionUngracefulFailover:
-		return cli.Yellow(string(action))
-	case vastv1alpha1.ActionResync:
-		return cli.Cyan(string(action))
+// colorFailoverType returns failoverType colored for terminal output.
+func colorFailoverType(ft vastv1alpha1.FailoverAction) string {
+	switch ft {
+	case vastv1alpha1.FailoverTypeGraceful, vastv1alpha1.FailoverTypeUngraceful:
+		return cli.Yellow(string(ft))
 	default:
-		return string(action)
+		return string(ft)
 	}
 }

@@ -54,6 +54,14 @@ type Config struct {
 	// SSL verification for VAST REST API calls (replication only)
 	SSLVerify bool `component:"replication"`
 
+	// ApplyExistingPVCs, when true, injects the storageClass label (and the
+	// subsystem label for block StorageClasses) onto all existing PVCs whose
+	// backing VAST object is present in the VolumeMapping for that StorageClass.
+	// This mirrors what the PVC label webhook does for newly created PVCs, but
+	// targets PVCs that were created before the webhook was enabled.
+	// Runs on PrimaryStorageClass change
+	ApplyExistingPVCs bool `component:"replication"`
+
 	// Shared manager configuration (always displayed)
 	HealthProbeBindAddress string
 	MetricsBindAddress     string

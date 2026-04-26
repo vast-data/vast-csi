@@ -265,6 +265,15 @@ extensions:
     #   {sc_name_pref:<N>}    - first N characters of StorageClass name
     pvNameFormat: "{pv_name}-repl-{endpoint}"
 
+  # applyExistingPvcs, when true, instructs the replication controller to
+  # inject the storageClass label (and the subsystem label for block
+  # StorageClasses) onto existing PVCs whose backing VAST object is found in
+  # the VolumeMapping for the reconciled StorageClass.  This mirrors what the
+  # PVC label webhook does for newly created PVCs, but targets PVCs that were
+  # created before the webhook was enabled.
+  # Runs on every PrimaryStorageClass change.
+  applyExistingPvcs: true
+
   # Scheduling and resource configuration for the extensions controller deployment.
   # runOnMaster flag indicated if extensions controller should be run on master.
   runOnMaster: false

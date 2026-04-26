@@ -47,11 +47,10 @@ message GetReplicationTenantResponse {
 // Replication info lookup by StorageClass
 // ---------------------------------------------------------------------------
 
-// ReplicationAction is the desired failover operation.
-enum ReplicationAction {
-  REPLICATION_ACTION_UNGRACEFUL_FAILOVER = 0;
-  REPLICATION_ACTION_GRACEFUL_FAILOVER = 1;
-  REPLICATION_ACTION_RESYNC = 2;
+// FailoverType describes how a failover should be executed.
+enum FailoverType {
+  FAILOVER_TYPE_UNGRACEFUL = 0;
+  FAILOVER_TYPE_GRACEFUL = 1;
 }
 
 message GetReplicationInfoRequest {
@@ -83,7 +82,7 @@ message GetReplicationInfoResponse {
   // in this replication group (i.e. spec.storageClasses of the owner).
   repeated string storage_classes = 5;
 
-  // action is the replication action configured on the owning resource
-  // (failover, resync, …).
-  ReplicationAction action = 6;
+  // failover_type is the failover type configured on the owning resource
+  // (ungraceful or graceful).
+  FailoverType failover_type = 6;
 }

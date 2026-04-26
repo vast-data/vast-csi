@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/cli"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/manager"
 )
@@ -46,8 +45,7 @@ Examples:
 			}
 			fmt.Printf("%s Requesting resync on %s/%s ...\n", cli.Cyan("→"), kind, cli.Bold(name))
 
-			if err := cli.UpdateReplicationSpec(context.Background(), k8s, vscrName, vvrName, namespace,
-				vastv1alpha1.ActionResync, ""); err != nil {
+			if err := cli.PatchReplicationResync(context.Background(), k8s, vscrName, vvrName, namespace); err != nil {
 				return fmt.Errorf("sync failed: %w", err)
 			}
 

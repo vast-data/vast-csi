@@ -51,9 +51,14 @@ type VastVolumeReplicationSpec struct {
 	// +kubebuilder:validation:Required
 	ProtectionPolicyTemplate ProtectionPolicyTemplate `json:"protectionPolicyTemplate"`
 
-	// Action is the desired replication action to trigger (failover, resync, …).
+	// FailoverType is the type of failover to execute when the primary StorageClass
+	// changes.  Supported values: ungracefulFailover (default), gracefulFailover.
 	// +kubebuilder:default=ungracefulFailover
-	Action ReplicationAction `json:"action"`
+	FailoverType FailoverAction `json:"failoverType"`
+
+	// Resync is a one-shot trigger: set to true to request an immediate resync.
+	// +optional
+	Resync bool `json:"resync,omitempty"`
 
 	// SyncIntervalSeconds is the replication sync interval in seconds.
 	// +kubebuilder:validation:Required
@@ -201,9 +206,9 @@ func (s *VastVolumeReplicationSpec) Validate() error {
 
 // VastVolumeReplicationStatus defines the observed state of VastVolumeReplication.
 type VastVolumeReplicationStatus struct {
-	// LastAction is the most recent replication action that was applied.
+	// LastFailoverType is the most recent failover type that was applied.
 	// +optional
-	LastAction ReplicationAction `json:"lastAction,omitempty"`
+	LastFailoverType FailoverAction `json:"lastFailoverType,omitempty"`
 
 	// CurrentPrimaryStorageClass is the StorageClass that is currently primary.
 	// +optional
@@ -246,7 +251,7 @@ type VastVolumeReplicationStatus struct {
 // +kubebuilder:printcolumn:name="Volume",type=string,JSONPath=`.spec.volumeName`
 // +kubebuilder:printcolumn:name="Storage Classes",type=string,JSONPath=`.status.storageClassesPreview`
 // +kubebuilder:printcolumn:name="Primary SC",type=string,JSONPath=`.spec.primaryStorageClass`
-// +kubebuilder:printcolumn:name="Action",type=string,JSONPath=`.spec.action`
+// +kubebuilder:printcolumn:name="Failover Type",type=string,JSONPath=`.spec.failoverType`
 // +kubebuilder:printcolumn:name="Current Primary",type=string,JSONPath=`.status.currentPrimaryStorageClass`
 // +kubebuilder:printcolumn:name="Sync Status",type=string,JSONPath=`.status.syncStatus`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`

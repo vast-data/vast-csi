@@ -110,10 +110,29 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 		}
 	}
 
-	if r.ensureStorageClassPreview(vvr) || r.ensurePrimaryStorageClass(vvr, emit) || r.ensureLastAction(vvr, emit) {
+	primaryChanged := r.ensurePrimaryStorageClass(vvr, emit)
+
+	if r.Config.ApplyExistingPVCs && primaryChanged {
+		scName := vvr.Spec.PrimaryStorageClass
+		if err := k8s.ApplyExistingPVCs(ctx, scName, scByStorageClass[scName], restByStorageClass[scName], log); err != nil {
+			log.Warn("PVC label backfill failed; continuing reconcile",
+				zap.String("sc", scName), zap.Error(err))
+		}
+	}
+
+	if r.ensureStorageClassPreview(vvr) || primaryChanged || r.ensureLastFailoverType(vvr, emit) {
 		if err := k8s.UpdateVastVolumeReplicationStatus(ctx, vvr); err != nil {
 			return ctrl.Result{}, err
 		}
+	}
+
+	if vvr.Spec.Resync {
+		if err := r.ensureResync(ctx, k8s, emit, vvr); err != nil {
+			return ctrl.Result{}, err
+		}
+		// Return after triggering resync so that ensureVR in this cycle does not
+		// immediately revert the replicationState back to Primary.
+		return ctrl.Result{}, nil
 	}
 
 	// PpathDir is immutable once set: predict it only on the first reconcile.
@@ -202,7 +221,7 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 	// before any secondary VRC reconciles for the first time.
 	allSCs := vvr.Spec.AllStorageClassesPrimaryFirst()
 	for i, scName := range allSCs {
-		vrName, created, err := r.ensureVR(ctx, emit, vvr, scName, ppathName)
+		vrName, created, err := r.ensureVR(ctx, emit, vvr, scName, ppathName, primaryChanged)
 		if err != nil {
 			errs.Add(fmt.Errorf("SC %s: %w", scName, err))
 		}
@@ -505,7 +524,7 @@ func (r *VastVolumeReplicationReconciler) syncVRReplicationStates(
 		if scName == truePrimarySC {
 			continue
 		}
-		if err := r.ensureReplicationState(ctx, k8s, emit, vvr.Namespace, vrNameForSC(vvr.Name, scName), scName, replicationv1alpha1.Secondary); err != nil {
+		if err := r.ensureReplicationState(ctx, k8s, emit, vvr.Namespace, vrNameForSC(vvr.Name, scName), scName, replicationv1alpha1.Secondary, false); err != nil {
 			errs.Add(fmt.Errorf("SC %s: %w", scName, err))
 		}
 	}
@@ -515,12 +534,15 @@ func (r *VastVolumeReplicationReconciler) syncVRReplicationStates(
 // ensureVR creates or updates the VolumeReplication for the given StorageClass.
 // Returns (true, nil) when the VR was freshly created, (false, nil) when it
 // already existed, and (false, err) on error.
+// primaryChanged must be true when the primary StorageClass switched this reconcile
+// cycle so that an in-progress resync can be overridden with the failover state.
 func (r *VastVolumeReplicationReconciler) ensureVR(
 	ctx context.Context,
 	emit *events.BoundReporter,
 	vvr *vastv1alpha1.VastVolumeReplication,
 	scName string,
 	ppathName string,
+	primaryChanged bool,
 ) (vrName string, created bool, err error) {
 	k8s := r.K8sFor(emit.Logger())
 
@@ -581,7 +603,7 @@ func (r *VastVolumeReplicationReconciler) ensureVR(
 	if !isPrimary {
 		return vrName, false, nil
 	}
-	return vrName, false, r.ensureReplicationState(ctx, k8s, emit, vvr.Namespace, vrName, scName, state)
+	return vrName, false, r.ensureReplicationState(ctx, k8s, emit, vvr.Namespace, vrName, scName, state, primaryChanged)
 }
 
 // mirrorPVCName computes the expected name of the mirror PVC on a secondary
@@ -614,18 +636,29 @@ func (r *VastVolumeReplicationReconciler) mirrorPVCName(
 
 // ensureReplicationState syncs the replicationState of an existing VolumeReplication
 // to the desired state (e.g. after a primary StorageClass switch).
+// primaryChanged must be true when the primary StorageClass switched this reconcile
+// cycle so that an in-progress resync can be overridden with the failover state.
 func (r *VastVolumeReplicationReconciler) ensureReplicationState(
 	ctx context.Context,
 	k8s *k8sclient.K8sClient,
 	emit *events.BoundReporter,
 	namespace, vrName, scName string,
 	desired replicationv1alpha1.ReplicationState,
+	primaryChanged bool,
 ) error {
 	existing, err := k8s.GetVolumeReplication(ctx, vrName, namespace)
 	if err != nil {
 		return fmt.Errorf("failed to get VolumeReplication %s/%s: %w", namespace, vrName, err)
 	}
 	if existing.Spec.ReplicationState == desired {
+		return nil
+	}
+	// When promoting to Primary, don't override an in-progress resync unless a
+	// real failover (primaryStorageClass change) was detected in this reconcile cycle.
+	// Demotions to Secondary always proceed regardless.
+	if desired == replicationv1alpha1.Primary &&
+		existing.Spec.ReplicationState == replicationv1alpha1.Resync &&
+		!primaryChanged {
 		return nil
 	}
 	if err := k8s.PatchVolumeReplicationState(ctx, existing, desired); err != nil {
@@ -669,22 +702,54 @@ func (r *VastVolumeReplicationReconciler) ensurePrimaryStorageClass(vvr *vastv1a
 	return true
 }
 
-func (r *VastVolumeReplicationReconciler) ensureLastAction(vvr *vastv1alpha1.VastVolumeReplication, emit *events.BoundReporter) bool {
-	if vvr.Status.LastAction == vvr.Spec.Action {
+func (r *VastVolumeReplicationReconciler) ensureLastFailoverType(vvr *vastv1alpha1.VastVolumeReplication, emit *events.BoundReporter) bool {
+	if vvr.Status.LastFailoverType == vvr.Spec.FailoverType {
 		return false
 	}
-	old := vvr.Status.LastAction
-	vvr.Status.LastAction = vvr.Spec.Action
-	if vvr.Spec.Action != "" {
+	old := vvr.Status.LastFailoverType
+	vvr.Status.LastFailoverType = vvr.Spec.FailoverType
+	if vvr.Spec.FailoverType != "" {
 		if old == "" {
-			emit.Normalf("ActionSet",
-				"action set to %q", vvr.Spec.Action)
+			emit.Normalf("FailoverTypeSet",
+				"failoverType set to %q", vvr.Spec.FailoverType)
 		} else {
-			emit.Normalf("ActionChanged",
-				"action changed from %q to %q", old, vvr.Spec.Action)
+			emit.Normalf("FailoverTypeChanged",
+				"failoverType changed from %q to %q", old, vvr.Spec.FailoverType)
 		}
 	}
 	return true
+}
+
+// ensureResync sets replicationState=resync on the primary VolumeReplication
+func (r *VastVolumeReplicationReconciler) ensureResync(
+	ctx context.Context,
+	k8s *k8sclient.K8sClient,
+	emit *events.BoundReporter,
+	vvr *vastv1alpha1.VastVolumeReplication,
+) error {
+	vrName := vrNameForSC(vvr.Name, vvr.Spec.PrimaryStorageClass)
+	existing, err := k8s.GetVolumeReplication(ctx, vrName, vvr.Namespace)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			// VR not yet created — normal on first reconcile; clear the flag
+			// so we don't loop.  The user can set Resync=true again once
+			// provisioning has completed.
+			emit.Logger().Info("resync skipped: VolumeReplication not yet created; clearing Resync flag",
+				zap.String("vr", vrName))
+			return k8s.PatchVVRResync(ctx, vvr)
+		}
+		return fmt.Errorf("ensureResync: failed to get VolumeReplication %s/%s: %w", vvr.Namespace, vrName, err)
+	}
+	if err := k8s.PatchVolumeReplicationState(ctx, existing, replicationv1alpha1.Resync); err != nil {
+		return fmt.Errorf("ensureResync: failed to patch replicationState on VolumeReplication %s/%s: %w", vvr.Namespace, vrName, err)
+	}
+	emit.Normalf("ResyncTriggered",
+		"replicationState set to resync on VolumeReplication %s/%s", vvr.Namespace, vrName)
+
+	if err := k8s.PatchVVRResync(ctx, vvr); err != nil {
+		return fmt.Errorf("ensureResync: failed to clear Resync flag on VVR %s/%s: %w", vvr.Namespace, vvr.Name, err)
+	}
+	return nil
 }
 
 // SetupVastVolumeReplicationController registers the reconciler with the manager.

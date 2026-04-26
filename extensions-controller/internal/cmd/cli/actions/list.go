@@ -88,7 +88,7 @@ func vscrRow(obj *vastv1alpha1.VastStorageClassReplication) listRow {
 		name:       obj.Name,
 		scs:        vastv1alpha1.DisplayableList(obj.Spec.AllStorageClasses()).String(),
 		primary:    primary,
-		action:     actionStr(string(obj.Spec.Action)),
+		action:     actionStr(string(obj.Spec.FailoverType)),
 		syncStatus: syncStatusStr(obj.Status.SyncStatus),
 		age:        age(obj.CreationTimestamp.Time),
 	}
@@ -105,7 +105,7 @@ func vvrRow(obj *vastv1alpha1.VastVolumeReplication) listRow {
 		name:       obj.Name,
 		scs:        vastv1alpha1.DisplayableList(obj.Spec.AllStorageClasses()).String(),
 		primary:    primary,
-		action:     actionStr(string(obj.Spec.Action)),
+		action:     actionStr(string(obj.Spec.FailoverType)),
 		syncStatus: syncStatusStr(obj.Status.SyncStatus),
 		age:        age(obj.CreationTimestamp.Time),
 	}
@@ -121,7 +121,7 @@ func actionStr(a string) string {
 // printListTable builds rows, computes max column widths from plain text, then
 // prints each row with manual padding so ANSI color codes don't shift columns.
 func printListTable(vscrs []vastv1alpha1.VastStorageClassReplication, vvrs []vastv1alpha1.VastVolumeReplication) {
-	headers := []string{"KIND", "NAMESPACE", "NAME", "STORAGE CLASSES", "PRIMARY", "ACTION", "SYNC STATUS", "AGE"}
+	headers := []string{"KIND", "NAMESPACE", "NAME", "STORAGE CLASSES", "PRIMARY", "FAILOVER TYPE", "SYNC STATUS", "AGE"}
 
 	rows := make([]listRow, 0, len(vscrs)+len(vvrs))
 	for i := range vscrs {

@@ -37,7 +37,7 @@ from vast_csi.exceptions import Abort, WaitResourceFailed, ApiError
 from vast_csi import csi_types as types
 from vast_csi.utils import to_abort, parse_duration_to_timestamp
 from vast_csi.filesystem_utils import resource_locked
-from vast_csi.extensions_client import get_replication_action_if_available
+from vast_csi.extensions_client import get_failover_type_if_available
 
 from vast_csi.plugins.volumegroup import (
     _parse_volume_group_id,
@@ -119,7 +119,6 @@ class ReplicationAction(StrEnum):
 
     UNGRACEFUL = "ungraceful"
     GRACEFUL = "graceful"
-    RESYNC = "resync"
 
 
 def _parse_policy_timestamps(ppolicy):
@@ -343,10 +342,10 @@ class BaseReplicationController(replication_pb2_grpc.ControllerServicer):
             vms_session.protectedpaths.wait_active(ppath.id)
 
     @classmethod
-    def _get_replication_action(cls, params) -> ReplicationAction:
+    def _get_failover_type(cls, params) -> ReplicationAction:
         action = ReplicationAction.UNGRACEFUL
         if storage_class := params.get(REPLICATION_PARAM_STORAGE_CLASS):
-            if raw := get_replication_action_if_available(storage_class):
+            if raw := get_failover_type_if_available(storage_class):
                 action = ReplicationAction(raw)
 
         return action
@@ -472,7 +471,7 @@ class BaseReplicationController(replication_pb2_grpc.ControllerServicer):
 
         The failover mode (graceful vs ungraceful) is driven by the
         ``replication.vastdata.com/action`` annotation on the StorageClass,
-        resolved via :meth:`_get_replication_action`.  Graceful failover
+        resolved via :meth:`_get_failover_type`.  Graceful failover
         coordinates with the remote cluster to drain in-flight I/O before
         switching roles; ungraceful switches immediately.
 
@@ -499,7 +498,7 @@ class BaseReplicationController(replication_pb2_grpc.ControllerServicer):
             resource_locked(repl_source.identifier, abort_on_error=True),
         )
 
-        action = self._get_replication_action(params)
+        action = self._get_failover_type(params)
         graceful = action == ReplicationAction.GRACEFUL
         ppath = vms_session.protectedpaths.wait(name=ppath_name)
         with locked.with_message(

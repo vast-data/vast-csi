@@ -23,15 +23,26 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// ReplicationAction describes the desired failover / maintenance operation.
+// FailoverAction describes the type of failover to execute when the primary
+// StorageClass changes.
 //
-// +kubebuilder:validation:Enum=ungracefulFailover;gracefulFailover;resync
-type ReplicationAction string
+// +kubebuilder:validation:Enum=ungracefulFailover;gracefulFailover
+type FailoverAction string
 
 const (
-	ActionUngracefulFailover ReplicationAction = "ungracefulFailover"
-	ActionGracefulFailover   ReplicationAction = "gracefulFailover"
-	ActionResync             ReplicationAction = "resync"
+	FailoverTypeUngraceful FailoverAction = "ungracefulFailover"
+	FailoverTypeGraceful   FailoverAction = "gracefulFailover"
+)
+
+// ReplicationAction is kept for backward compatibility with the gRPC proto
+// mapping.  New code should use FailoverAction.
+//
+// Deprecated: use FailoverAction.
+type ReplicationAction = FailoverAction
+
+const (
+	ActionUngracefulFailover = FailoverTypeUngraceful
+	ActionGracefulFailover   = FailoverTypeGraceful
 )
 
 // SyncStatus values for VastStorageClassReplicationStatus.SyncStatus and
@@ -86,9 +97,14 @@ type VastStorageClassReplicationSpec struct {
 	// +kubebuilder:validation:Required
 	ProtectionPolicyTemplate ProtectionPolicyTemplate `json:"protectionPolicyTemplate"`
 
-	// Action is the desired replication action to trigger (failover, resync, …).
+	// FailoverType is the type of failover to execute when the primary StorageClass
+	// changes.  Supported values: ungracefulFailover (default), gracefulFailover.
 	// +kubebuilder:default=ungracefulFailover
-	Action ReplicationAction `json:"action"`
+	FailoverType FailoverAction `json:"failoverType"`
+
+	// Resync is a one-shot trigger: set to true to request an immediate resync.
+	// +optional
+	Resync bool `json:"resync,omitempty"`
 
 	// SyncIntervalSeconds is the replication sync interval in seconds.
 	// +kubebuilder:validation:Required
@@ -163,9 +179,9 @@ func (s *VastStorageClassReplicationSpec) TargetsFor(scName string) []Replicatio
 
 // VastStorageClassReplicationStatus defines the observed state of VastStorageClassReplication.
 type VastStorageClassReplicationStatus struct {
-	// LastAction is the most recent replication action that was applied.
+	// LastFailoverType is the most recent failover type that was applied.
 	// +optional
-	LastAction ReplicationAction `json:"lastAction,omitempty"`
+	LastFailoverType FailoverAction `json:"lastFailoverType,omitempty"`
 
 	// CurrentPrimaryStorageClass is the StorageClass that is currently primary
 	// (may differ from spec.primaryStorageClass while an action is in progress).
@@ -208,7 +224,7 @@ type VastStorageClassReplicationStatus struct {
 // +kubebuilder:resource:scope=Namespaced,shortName=vscr
 // +kubebuilder:printcolumn:name="Storage Classes",type=string,JSONPath=`.status.storageClassesPreview`
 // +kubebuilder:printcolumn:name="Primary SC",type=string,JSONPath=`.spec.primaryStorageClass`
-// +kubebuilder:printcolumn:name="Action",type=string,JSONPath=`.spec.action`
+// +kubebuilder:printcolumn:name="Failover Type",type=string,JSONPath=`.spec.failoverType`
 // +kubebuilder:printcolumn:name="Current Primary",type=string,JSONPath=`.status.currentPrimaryStorageClass`
 // +kubebuilder:printcolumn:name="Sync Status",type=string,JSONPath=`.status.syncStatus`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`

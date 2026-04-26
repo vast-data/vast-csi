@@ -28,53 +28,50 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// ReplicationAction is the desired failover operation.
-type ReplicationAction int32
+// FailoverType describes how a failover should be executed.
+type FailoverType int32
 
 const (
-	ReplicationAction_REPLICATION_ACTION_UNGRACEFUL_FAILOVER ReplicationAction = 0
-	ReplicationAction_REPLICATION_ACTION_GRACEFUL_FAILOVER   ReplicationAction = 1
-	ReplicationAction_REPLICATION_ACTION_RESYNC              ReplicationAction = 2
+	FailoverType_FAILOVER_TYPE_UNGRACEFUL FailoverType = 0
+	FailoverType_FAILOVER_TYPE_GRACEFUL   FailoverType = 1
 )
 
-// Enum value maps for ReplicationAction.
+// Enum value maps for FailoverType.
 var (
-	ReplicationAction_name = map[int32]string{
-		0: "REPLICATION_ACTION_UNGRACEFUL_FAILOVER",
-		1: "REPLICATION_ACTION_GRACEFUL_FAILOVER",
-		2: "REPLICATION_ACTION_RESYNC",
+	FailoverType_name = map[int32]string{
+		0: "FAILOVER_TYPE_UNGRACEFUL",
+		1: "FAILOVER_TYPE_GRACEFUL",
 	}
-	ReplicationAction_value = map[string]int32{
-		"REPLICATION_ACTION_UNGRACEFUL_FAILOVER": 0,
-		"REPLICATION_ACTION_GRACEFUL_FAILOVER":   1,
-		"REPLICATION_ACTION_RESYNC":              2,
+	FailoverType_value = map[string]int32{
+		"FAILOVER_TYPE_UNGRACEFUL": 0,
+		"FAILOVER_TYPE_GRACEFUL":   1,
 	}
 )
 
-func (x ReplicationAction) Enum() *ReplicationAction {
-	p := new(ReplicationAction)
+func (x FailoverType) Enum() *FailoverType {
+	p := new(FailoverType)
 	*p = x
 	return p
 }
 
-func (x ReplicationAction) String() string {
+func (x FailoverType) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (ReplicationAction) Descriptor() protoreflect.EnumDescriptor {
+func (FailoverType) Descriptor() protoreflect.EnumDescriptor {
 	return file_vast_extensions_proto_enumTypes[0].Descriptor()
 }
 
-func (ReplicationAction) Type() protoreflect.EnumType {
+func (FailoverType) Type() protoreflect.EnumType {
 	return &file_vast_extensions_proto_enumTypes[0]
 }
 
-func (x ReplicationAction) Number() protoreflect.EnumNumber {
+func (x FailoverType) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use ReplicationAction.Descriptor instead.
-func (ReplicationAction) EnumDescriptor() ([]byte, []int) {
+// Deprecated: Use FailoverType.Descriptor instead.
+func (FailoverType) EnumDescriptor() ([]byte, []int) {
 	return file_vast_extensions_proto_rawDescGZIP(), []int{0}
 }
 
@@ -248,12 +245,10 @@ type GetReplicationInfoResponse struct {
 	IsPrimary bool `protobuf:"varint,4,opt,name=is_primary,json=isPrimary,proto3" json:"is_primary,omitempty"`
 	// storage_classes is the full list of StorageClass names that participate
 	// in this replication group (i.e. spec.storageClasses of the owner).
-	// Callers can use this to identify the remote StorageClass(es) by
-	// excluding the one they already know.
 	StorageClasses []string `protobuf:"bytes,5,rep,name=storage_classes,json=storageClasses,proto3" json:"storage_classes,omitempty"`
-	// action is the replication action configured on the owning resource
-	// (failover, resync, …).
-	Action        ReplicationAction `protobuf:"varint,6,opt,name=action,proto3,enum=vastextensions.v1.ReplicationAction" json:"action,omitempty"`
+	// failover_type is the failover type configured on the owning resource
+	// (ungraceful or graceful).
+	FailoverType  FailoverType `protobuf:"varint,6,opt,name=failover_type,json=failoverType,proto3,enum=vastextensions.v1.FailoverType" json:"failover_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -323,11 +318,11 @@ func (x *GetReplicationInfoResponse) GetStorageClasses() []string {
 	return nil
 }
 
-func (x *GetReplicationInfoResponse) GetAction() ReplicationAction {
+func (x *GetReplicationInfoResponse) GetFailoverType() FailoverType {
 	if x != nil {
-		return x.Action
+		return x.FailoverType
 	}
-	return ReplicationAction_REPLICATION_ACTION_UNGRACEFUL_FAILOVER
+	return FailoverType_FAILOVER_TYPE_UNGRACEFUL
 }
 
 var File_vast_extensions_proto protoreflect.FileDescriptor
@@ -343,19 +338,18 @@ const file_vast_extensions_proto_rawDesc = "" +
 	"tenantGuid\"^\n" +
 	"\x19GetReplicationInfoRequest\x12#\n" +
 	"\rstorage_class\x18\x01 \x01(\tR\fstorageClass\x12\x1c\n" +
-	"\tnamespace\x18\x02 \x01(\tR\tnamespace\"\x8a\x02\n" +
+	"\tnamespace\x18\x02 \x01(\tR\tnamespace\"\x92\x02\n" +
 	"\x1aGetReplicationInfoResponse\x12#\n" +
 	"\rresource_name\x18\x01 \x01(\tR\fresourceName\x12\x1c\n" +
 	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12#\n" +
 	"\rresource_kind\x18\x03 \x01(\tR\fresourceKind\x12\x1d\n" +
 	"\n" +
 	"is_primary\x18\x04 \x01(\bR\tisPrimary\x12'\n" +
-	"\x0fstorage_classes\x18\x05 \x03(\tR\x0estorageClasses\x12<\n" +
-	"\x06action\x18\x06 \x01(\x0e2$.vastextensions.v1.ReplicationActionR\x06action*\x88\x01\n" +
-	"\x11ReplicationAction\x12*\n" +
-	"&REPLICATION_ACTION_UNGRACEFUL_FAILOVER\x10\x00\x12(\n" +
-	"$REPLICATION_ACTION_GRACEFUL_FAILOVER\x10\x01\x12\x1d\n" +
-	"\x19REPLICATION_ACTION_RESYNC\x10\x022\xfc\x01\n" +
+	"\x0fstorage_classes\x18\x05 \x03(\tR\x0estorageClasses\x12D\n" +
+	"\rfailover_type\x18\x06 \x01(\x0e2\x1f.vastextensions.v1.FailoverTypeR\ffailoverType*H\n" +
+	"\fFailoverType\x12\x1c\n" +
+	"\x18FAILOVER_TYPE_UNGRACEFUL\x10\x00\x12\x1a\n" +
+	"\x16FAILOVER_TYPE_GRACEFUL\x10\x012\xfc\x01\n" +
 	"\x0eVastExtensions\x12w\n" +
 	"\x14GetReplicationTenant\x12..vastextensions.v1.GetReplicationTenantRequest\x1a/.vastextensions.v1.GetReplicationTenantResponse\x12q\n" +
 	"\x12GetReplicationInfo\x12,.vastextensions.v1.GetReplicationInfoRequest\x1a-.vastextensions.v1.GetReplicationInfoResponseB`Z^github.com/vast-data/vast-csi/extensions-controller/internal/server/extensions/v1;extensionsv1b\x06proto3"
@@ -375,14 +369,14 @@ func file_vast_extensions_proto_rawDescGZIP() []byte {
 var file_vast_extensions_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_vast_extensions_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_vast_extensions_proto_goTypes = []any{
-	(ReplicationAction)(0),               // 0: vastextensions.v1.ReplicationAction
+	(FailoverType)(0),                    // 0: vastextensions.v1.FailoverType
 	(*GetReplicationTenantRequest)(nil),  // 1: vastextensions.v1.GetReplicationTenantRequest
 	(*GetReplicationTenantResponse)(nil), // 2: vastextensions.v1.GetReplicationTenantResponse
 	(*GetReplicationInfoRequest)(nil),    // 3: vastextensions.v1.GetReplicationInfoRequest
 	(*GetReplicationInfoResponse)(nil),   // 4: vastextensions.v1.GetReplicationInfoResponse
 }
 var file_vast_extensions_proto_depIdxs = []int32{
-	0, // 0: vastextensions.v1.GetReplicationInfoResponse.action:type_name -> vastextensions.v1.ReplicationAction
+	0, // 0: vastextensions.v1.GetReplicationInfoResponse.failover_type:type_name -> vastextensions.v1.FailoverType
 	1, // 1: vastextensions.v1.VastExtensions.GetReplicationTenant:input_type -> vastextensions.v1.GetReplicationTenantRequest
 	3, // 2: vastextensions.v1.VastExtensions.GetReplicationInfo:input_type -> vastextensions.v1.GetReplicationInfoRequest
 	2, // 3: vastextensions.v1.VastExtensions.GetReplicationTenant:output_type -> vastextensions.v1.GetReplicationTenantResponse

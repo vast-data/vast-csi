@@ -109,10 +109,29 @@ func (r *VastStorageClassReplicationReconciler) Reconcile(ctx context.Context, r
 		}
 	}
 
-	if r.ensureStorageClassPreview(vscr) || r.ensurePrimaryStorageClass(vscr, emit) || r.ensureLastAction(vscr, emit) {
+	primaryChanged := r.ensurePrimaryStorageClass(vscr, emit)
+
+	if r.Config.ApplyExistingPVCs && primaryChanged {
+		scName := vscr.Spec.PrimaryStorageClass
+		if err := k8s.ApplyExistingPVCs(ctx, scName, scByStorageClass[scName], restByStorageClass[scName], log); err != nil {
+			log.Warn("PVC label backfill failed; continuing reconcile",
+				zap.String("sc", scName), zap.Error(err))
+		}
+	}
+
+	if r.ensureStorageClassPreview(vscr) || primaryChanged || r.ensureLastFailoverType(vscr, emit) {
 		if err := k8s.UpdateVastStorageClassReplicationStatus(ctx, vscr); err != nil {
 			return ctrl.Result{}, err
 		}
+	}
+
+	if vscr.Spec.Resync {
+		if err := r.ensureResync(ctx, k8s, emit, vscr); err != nil {
+			return ctrl.Result{}, err
+		}
+		// Return after triggering resync so that ensureVGR in this cycle does not
+		// immediately revert the replicationState back to Primary.
+		return ctrl.Result{}, nil
 	}
 
 	// Resolve any empty PeerName fields via live peer discovery.
@@ -198,7 +217,7 @@ func (r *VastStorageClassReplicationReconciler) Reconcile(ctx context.Context, r
 	// before any secondary VRC reconciles for the first time.
 	allSCs := vscr.Spec.AllStorageClassesPrimaryFirst()
 	for i, scName := range allSCs {
-		vgrName, created, err := r.ensureVGR(ctx, emit, vscr, scName, ppathName)
+		vgrName, created, err := r.ensureVGR(ctx, emit, vscr, scName, ppathName, primaryChanged)
 		if err != nil {
 			errs.Add(fmt.Errorf("SC %s: %w", scName, err))
 		}
@@ -564,7 +583,7 @@ func (r *VastStorageClassReplicationReconciler) syncVGRReplicationStates(
 		if scName == truePrimarySC {
 			continue
 		}
-		if err := r.ensureReplicationState(ctx, emit, vscr.Namespace, vgrNameForSC(vscr.Name, scName), scName, replicationv1alpha1.Secondary); err != nil {
+		if err := r.ensureReplicationState(ctx, emit, vscr.Namespace, vgrNameForSC(vscr.Name, scName), scName, replicationv1alpha1.Secondary, false); err != nil {
 			errs.Add(fmt.Errorf("SC %s: %w", scName, err))
 		}
 	}
@@ -574,12 +593,15 @@ func (r *VastStorageClassReplicationReconciler) syncVGRReplicationStates(
 // ensureVGR creates or updates the VolumeGroupReplication for the given StorageClass.
 // Returns (true, nil) when the VGR was freshly created, (false, nil) when it
 // already existed, and (false, err) on error.
+// primaryChanged must be true when the primary StorageClass switched this reconcile
+// cycle so that an in-progress resync can be overridden with the failover state.
 func (r *VastStorageClassReplicationReconciler) ensureVGR(
 	ctx context.Context,
 	emit *events.BoundReporter,
 	vscr *vastv1alpha1.VastStorageClassReplication,
 	scName string,
 	ppathName string,
+	primaryChanged bool,
 ) (vgrName string, created bool, err error) {
 	k8s := r.K8sFor(emit.Logger())
 
@@ -628,16 +650,19 @@ func (r *VastStorageClassReplicationReconciler) ensureVGR(
 	if scName != vscr.Spec.PrimaryStorageClass {
 		return vgrName, false, nil
 	}
-	return vgrName, false, r.ensureReplicationState(ctx, emit, vscr.Namespace, vgrName, scName, state)
+	return vgrName, false, r.ensureReplicationState(ctx, emit, vscr.Namespace, vgrName, scName, state, primaryChanged)
 }
 
 // ensureReplicationState syncs the replicationState of an existing VolumeGroupReplication
 // to the desired state (e.g. after a primary StorageClass switch).
+// primaryChanged must be true when the primary StorageClass switched this reconcile
+// cycle so that an in-progress resync is overridden with the failover state.
 func (r *VastStorageClassReplicationReconciler) ensureReplicationState(
 	ctx context.Context,
 	emit *events.BoundReporter,
 	namespace, vgrName, scName string,
 	desired replicationv1alpha1.ReplicationState,
+	primaryChanged bool,
 ) error {
 	k8s := r.K8sFor(emit.Logger())
 
@@ -646,6 +671,14 @@ func (r *VastStorageClassReplicationReconciler) ensureReplicationState(
 		return fmt.Errorf("failed to get VolumeGroupReplication %s/%s: %w", namespace, vgrName, err)
 	}
 	if existing.Spec.ReplicationState == desired {
+		return nil
+	}
+	// When promoting to Primary, don't override an in-progress resync unless a
+	// real failover (primaryStorageClass change) was detected in this reconcile cycle.
+	// Demotions to Secondary always proceed regardless.
+	if desired == replicationv1alpha1.Primary &&
+		existing.Spec.ReplicationState == replicationv1alpha1.Resync &&
+		!primaryChanged {
 		return nil
 	}
 	if err := k8s.PatchVolumeGroupReplicationState(ctx, existing, desired); err != nil {
@@ -689,22 +722,55 @@ func (r *VastStorageClassReplicationReconciler) ensurePrimaryStorageClass(vscr *
 	return true
 }
 
-func (r *VastStorageClassReplicationReconciler) ensureLastAction(vscr *vastv1alpha1.VastStorageClassReplication, emit *events.BoundReporter) bool {
-	if vscr.Status.LastAction == vscr.Spec.Action {
+func (r *VastStorageClassReplicationReconciler) ensureLastFailoverType(vscr *vastv1alpha1.VastStorageClassReplication, emit *events.BoundReporter) bool {
+	if vscr.Status.LastFailoverType == vscr.Spec.FailoverType {
 		return false
 	}
-	old := vscr.Status.LastAction
-	vscr.Status.LastAction = vscr.Spec.Action
-	if vscr.Spec.Action != "" {
+	old := vscr.Status.LastFailoverType
+	vscr.Status.LastFailoverType = vscr.Spec.FailoverType
+	if vscr.Spec.FailoverType != "" {
 		if old == "" {
-			emit.Normalf("ActionSet",
-				"action set to %q", vscr.Spec.Action)
+			emit.Normalf("FailoverTypeSet",
+				"failoverType set to %q", vscr.Spec.FailoverType)
 		} else {
-			emit.Normalf("ActionChanged",
-				"action changed from %q to %q", old, vscr.Spec.Action)
+			emit.Normalf("FailoverTypeChanged",
+				"failoverType changed from %q to %q", old, vscr.Spec.FailoverType)
 		}
 	}
 	return true
+}
+
+// ensureResync sets replicationState=resync on the primary VolumeGroupReplication
+// and immediately clears Spec.Resync so it acts as a one-shot trigger.
+func (r *VastStorageClassReplicationReconciler) ensureResync(
+	ctx context.Context,
+	k8s *k8sclient.K8sClient,
+	emit *events.BoundReporter,
+	vscr *vastv1alpha1.VastStorageClassReplication,
+) error {
+	vgrName := vgrNameForSC(vscr.Name, vscr.Spec.PrimaryStorageClass)
+	existing, err := k8s.GetVolumeGroupReplication(ctx, vgrName, vscr.Namespace)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			// VGR not yet created — normal on first reconcile; clear the flag
+			// so we don't loop.  The user can set Resync=true again once
+			// provisioning has completed.
+			emit.Logger().Info("resync skipped: VolumeGroupReplication not yet created; clearing Resync flag",
+				zap.String("vgr", vgrName))
+			return k8s.PatchVSCRResync(ctx, vscr)
+		}
+		return fmt.Errorf("ensureResync: failed to get VolumeGroupReplication %s/%s: %w", vscr.Namespace, vgrName, err)
+	}
+	if err := k8s.PatchVolumeGroupReplicationState(ctx, existing, replicationv1alpha1.Resync); err != nil {
+		return fmt.Errorf("ensureResync: failed to patch replicationState on VolumeGroupReplication %s/%s: %w", vscr.Namespace, vgrName, err)
+	}
+	emit.Normalf("ResyncTriggered",
+		"replicationState set to resync on VolumeGroupReplication %s/%s", vscr.Namespace, vgrName)
+
+	if err := k8s.PatchVSCRResync(ctx, vscr); err != nil {
+		return fmt.Errorf("ensureResync: failed to clear Resync flag on VSCR %s/%s: %w", vscr.Namespace, vscr.Name, err)
+	}
+	return nil
 }
 
 // SetupVastStorageClassReplicationController registers the reconciler with the manager.

@@ -70,7 +70,10 @@ func printVSCRStatus(obj *vastv1alpha1.VastStorageClassReplication) {
 	fmt.Printf("%s  %s/%s\n", cli.Bold("VastStorageClassReplication"), obj.Namespace, cli.Cyan(obj.Name))
 	fmt.Println(strings.Repeat("─", 60))
 	fmt.Printf("  %-28s %s\n", "Primary StorageClass:", highlightPrimary(obj.Spec.PrimaryStorageClass))
-	printAction("Action", string(obj.Spec.Action))
+	printAction("Failover Type", string(obj.Spec.FailoverType))
+	if obj.Spec.Resync {
+		fmt.Printf("  %-28s %s\n", "Resync:", cli.Yellow("pending"))
+	}
 	fmt.Printf("  %-28s %d cluster(s), %d target(s)\n", "Topology:", len(obj.Spec.AllStorageClasses()), len(obj.Spec.ProtectionTopology))
 	for _, t := range obj.Spec.ProtectionTopology {
 		printTopologyTarget(t.Source, t.Destination, t.PeerName)
@@ -94,7 +97,7 @@ func printVSCRStatus(obj *vastv1alpha1.VastStorageClassReplication) {
 	if obj.Status.PpathDir != "" {
 		fmt.Printf("  %-28s %s\n", "Ppath Dir:", obj.Status.PpathDir)
 	}
-	printAction("Last Action", string(obj.Status.LastAction))
+	printAction("Last Failover Type", string(obj.Status.LastFailoverType))
 	printSyncStatus(obj.Status.SyncStatus)
 }
 
@@ -104,7 +107,10 @@ func printVVRStatus(obj *vastv1alpha1.VastVolumeReplication) {
 	fmt.Printf("  %-28s %s\n", "Volume (PVC):", cli.Bold(obj.Spec.VolumeName))
 	fmt.Printf("  %-28s %s\n", "Storage Classes:", vastv1alpha1.DisplayableList(obj.Spec.AllStorageClasses()).String())
 	fmt.Printf("  %-28s %s\n", "Primary StorageClass:", highlightPrimary(obj.Spec.PrimaryStorageClass))
-	printAction("Action", string(obj.Spec.Action))
+	printAction("Failover Type", string(obj.Spec.FailoverType))
+	if obj.Spec.Resync {
+		fmt.Printf("  %-28s %s\n", "Resync:", cli.Yellow("pending"))
+	}
 	fmt.Printf("  %-28s %d cluster(s), %d target(s)\n", "Topology:", len(obj.Spec.AllStorageClasses()), len(obj.Spec.ProtectionTopology))
 	for _, t := range obj.Spec.ProtectionTopology {
 		printTopologyTarget(t.Source, t.Destination, t.PeerName)
@@ -127,7 +133,7 @@ func printVVRStatus(obj *vastv1alpha1.VastVolumeReplication) {
 	if obj.Status.PpathDir != "" {
 		fmt.Printf("  %-28s %s\n", "Ppath Dir:", obj.Status.PpathDir)
 	}
-	printAction("Last Action", string(obj.Status.LastAction))
+	printAction("Last Failover Type", string(obj.Status.LastFailoverType))
 	printSyncStatus(obj.Status.SyncStatus)
 }
 

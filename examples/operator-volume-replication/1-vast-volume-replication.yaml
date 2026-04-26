@@ -40,9 +40,9 @@ spec:
         keepLocal: 2d
         keepRemote: 7d
 
-  # action controls what failover / maintenance operation to trigger.
-  # Allowed values: ungracefulFailover | gracefulFailover | resync | reprotect
-  action: ungracefulFailover
+  # failoverType controls how a failover is executed when primaryStorageClass changes.
+  # Allowed values: ungracefulFailover (default) | gracefulFailover
+  failoverType: ungracefulFailover
 
   # syncIntervalSeconds is the maximum allowed gap between sync points (seconds).
   syncIntervalSeconds: 900

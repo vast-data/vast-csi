@@ -63,6 +63,16 @@ func (k *K8sClient) UpdateVastVolumeReplicationStatus(ctx context.Context, vvr *
 	return nil
 }
 
+// PatchVVRResync clears the Resync flag on a VastVolumeReplication.
+func (k *K8sClient) PatchVVRResync(ctx context.Context, vvr *vastv1alpha1.VastVolumeReplication) error {
+	if err := k.PatchWithRetry(ctx, vvr, func() {
+		vvr.Spec.Resync = false
+	}); err != nil {
+		return fmt.Errorf("failed to clear Resync on VastVolumeReplication %s/%s: %w", vvr.Namespace, vvr.Name, err)
+	}
+	return nil
+}
+
 // DeleteVastVolumeReplication issues a delete request for a VastVolumeReplication.
 // The controller's finalizer keeps the object alive until all owned resources
 // have been cleaned up.

@@ -40,9 +40,9 @@ func UpdateCRD[T ReplicationCRD](ctx context.Context, k8s *k8sclient.K8sClient, 
 	return k8s.Client().Update(ctx, obj)
 }
 
-// PatchReplicationSpec applies a merge-patch to update spec.action and/or
+// PatchReplicationSpec applies a merge-patch to update spec.failoverType and/or
 // spec.primaryStorageClass on the named VSCR or VVR object.
-func PatchReplicationSpec(ctx context.Context, k8s *k8sclient.K8sClient, vscr, vvr, namespace string, action vastv1alpha1.ReplicationAction, primary string) error {
+func PatchReplicationSpec(ctx context.Context, k8s *k8sclient.K8sClient, vscr, vvr, namespace string, failoverType vastv1alpha1.FailoverAction, primary string) error {
 	switch {
 	case vscr != "":
 		obj, err := k8s.GetVastStorageClassReplication(ctx, vscr, namespace)
@@ -50,8 +50,8 @@ func PatchReplicationSpec(ctx context.Context, k8s *k8sclient.K8sClient, vscr, v
 			return fmt.Errorf("VastStorageClassReplication %s/%s not found: %w", namespace, vscr, err)
 		}
 		return PatchCRD(ctx, k8s, obj, func(o *vastv1alpha1.VastStorageClassReplication) {
-			if action != "" {
-				o.Spec.Action = action
+			if failoverType != "" {
+				o.Spec.FailoverType = failoverType
 			}
 			if primary != "" {
 				o.Spec.PrimaryStorageClass = primary
@@ -63,8 +63,8 @@ func PatchReplicationSpec(ctx context.Context, k8s *k8sclient.K8sClient, vscr, v
 			return fmt.Errorf("VastVolumeReplication %s/%s not found: %w", namespace, vvr, err)
 		}
 		return PatchCRD(ctx, k8s, obj, func(o *vastv1alpha1.VastVolumeReplication) {
-			if action != "" {
-				o.Spec.Action = action
+			if failoverType != "" {
+				o.Spec.FailoverType = failoverType
 			}
 			if primary != "" {
 				o.Spec.PrimaryStorageClass = primary
@@ -75,10 +75,35 @@ func PatchReplicationSpec(ctx context.Context, k8s *k8sclient.K8sClient, vscr, v
 	}
 }
 
-// UpdateReplicationSpec updates spec.action and/or spec.primaryStorageClass on
+// PatchReplicationResync sets spec.resync=true on the named VSCR or VVR object
+// to trigger an immediate one-shot resync.
+func PatchReplicationResync(ctx context.Context, k8s *k8sclient.K8sClient, vscr, vvr, namespace string) error {
+	switch {
+	case vscr != "":
+		obj, err := k8s.GetVastStorageClassReplication(ctx, vscr, namespace)
+		if err != nil {
+			return fmt.Errorf("VastStorageClassReplication %s/%s not found: %w", namespace, vscr, err)
+		}
+		return PatchCRD(ctx, k8s, obj, func(o *vastv1alpha1.VastStorageClassReplication) {
+			o.Spec.Resync = true
+		})
+	case vvr != "":
+		obj, err := k8s.GetVastVolumeReplication(ctx, vvr, namespace)
+		if err != nil {
+			return fmt.Errorf("VastVolumeReplication %s/%s not found: %w", namespace, vvr, err)
+		}
+		return PatchCRD(ctx, k8s, obj, func(o *vastv1alpha1.VastVolumeReplication) {
+			o.Spec.Resync = true
+		})
+	default:
+		return fmt.Errorf("must specify --vscr or --vvr")
+	}
+}
+
+// UpdateReplicationSpec updates spec.failoverType and/or spec.primaryStorageClass on
 // the named VSCR or VVR object.  A full Update is used so the API server always
 // increments the resource generation and immediately triggers reconciliation.
-func UpdateReplicationSpec(ctx context.Context, k8s *k8sclient.K8sClient, vscr, vvr, namespace string, action vastv1alpha1.ReplicationAction, primary string) error {
+func UpdateReplicationSpec(ctx context.Context, k8s *k8sclient.K8sClient, vscr, vvr, namespace string, failoverType vastv1alpha1.FailoverAction, primary string) error {
 	switch {
 	case vscr != "":
 		obj, err := k8s.GetVastStorageClassReplication(ctx, vscr, namespace)
@@ -86,8 +111,8 @@ func UpdateReplicationSpec(ctx context.Context, k8s *k8sclient.K8sClient, vscr, 
 			return fmt.Errorf("VastStorageClassReplication %s/%s not found: %w", namespace, vscr, err)
 		}
 		return UpdateCRD(ctx, k8s, obj, func(o *vastv1alpha1.VastStorageClassReplication) {
-			if action != "" {
-				o.Spec.Action = action
+			if failoverType != "" {
+				o.Spec.FailoverType = failoverType
 			}
 			if primary != "" {
 				o.Spec.PrimaryStorageClass = primary
@@ -99,8 +124,8 @@ func UpdateReplicationSpec(ctx context.Context, k8s *k8sclient.K8sClient, vscr, 
 			return fmt.Errorf("VastVolumeReplication %s/%s not found: %w", namespace, vvr, err)
 		}
 		return UpdateCRD(ctx, k8s, obj, func(o *vastv1alpha1.VastVolumeReplication) {
-			if action != "" {
-				o.Spec.Action = action
+			if failoverType != "" {
+				o.Spec.FailoverType = failoverType
 			}
 			if primary != "" {
 				o.Spec.PrimaryStorageClass = primary
