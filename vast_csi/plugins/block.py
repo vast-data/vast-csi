@@ -52,6 +52,8 @@ from vast_csi.block_utils import (
     connect_nvme_targets,
     get_connected_session,
     get_nvme_device_by_nguid,
+    list_nvme_devices,
+    list_nvme_sessions,
     try_nvme_probes,
     change_io_policy,
     disable_nvme_timeout,
@@ -94,6 +96,40 @@ ServiceCapabilities = cap_lib.ServiceCapabilities(
 # Helpers
 #
 ################################################################
+
+def log_nvme_diagnostics() -> None:
+    """Log NVMe host state to aid debugging when a device lookup fails."""
+
+    try:
+        devices = list_nvme_devices()
+        if devices:
+            logger.info(f"NVMe devices present on host ({len(devices)}):")
+            for dev in devices:
+                logger.info(
+                    f"  {dev.DevicePath}  model={dev.get('ModelNumber', '?')}  "
+                    f"ns={dev.get('NameSpace', '?')}  size={dev.get('PhysicalSize', '?')}"
+                )
+    except Exception as exc:
+        logger.info(f"Failed to list NVMe devices: {exc}")
+
+    try:
+        sessions = list_nvme_sessions()
+        if sessions:
+            logger.info(f"NVMe subsystem sessions ({len(sessions)}):")
+            for session in sessions:
+                for subsys in getattr(session, "Subsystems", []):
+                    paths = getattr(subsys, "Paths", [])
+                    path_summary = ", ".join(
+                        f"{p.get('Address', '?')} [{p.get('State', '?')}]"
+                        for p in paths
+                    ) or "no paths"
+                    logger.info(
+                        f"  subsys={subsys.NQN}  name={subsys.Name}  paths=[{path_summary}]"
+                    )
+        else:
+            logger.info("NVMe subsystem sessions: none")
+    except Exception as exc:
+        logger.info(f"Failed to list NVMe sessions: {exc}")
 
 def nvme_connect(host_nqn, discovery_server, host_id, subsystem_nqn, metrics_registry=None):
     """Connect to NVMe targets with auto-instrumented metrics."""
@@ -631,6 +667,10 @@ class BlockNode(NodeBase, Instrumented):
 
         logger.info(f"Looking up NVMe device by NGUID {nguid}...")
         if not (device := get_nvme_device_by_nguid(nguid=nguid)):
+            logger.info(
+                "NVMe device lookup failed — dumping host NVMe state for diagnostics"
+            )
+            log_nvme_diagnostics()
             raise Abort(
                 NOT_FOUND,
                 f"NVMe device not found for subsystem {subsystem_nqn} and nguid {nguid}"
