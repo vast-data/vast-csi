@@ -325,10 +325,17 @@ class BlockController(ControllerBase, Instrumented):
     ):
         volume_capabilities = _validate_capabilities(volume_capabilities)
         if volume_capabilities.is_filesystem and volume_capabilities.multi_mode:
-            raise Abort(
-                INVALID_ARGUMENT,
-                "Filesystem volumes do not support multi-node attach."
-            )
+            if volume_capabilities.rw_mode:
+                raise Abort(
+                    INVALID_ARGUMENT,
+                    "Filesystem volumes do not support multi-node read-write (RWX) access. Use ReadOnlyMany (ROX) instead."
+                )
+            elif volume_capabilities.ro_mode and not CONF.allow_ro_many_block_fs_mode:
+                raise Abort(
+                    INVALID_ARGUMENT,
+                    "ReadOnlyMany (ROX) access mode for block filesystem volumes is disabled. "
+                    "To enable it, set 'allowROManyBlockFsMode: true' in the Helm chart values."
+                )
         parameters = parameters or dict()
         if not volume_content_source:
             builder_cls = EmptyBlockVolumeBuilder
@@ -766,8 +773,9 @@ class BlockNode(NodeBase, Instrumented):
         device_bind_path = get_device_bind_path(staging_target_path)
         logger.info(f"Device bind path: {device_bind_path}")
         mount_flags = volume_capabilities.mount_flags
-        if readonly:
+        if (readonly or volume_capabilities.ro_mode) and "ro" not in mount_flags:
             mount_flags.append("ro")
+            logger.info("Publishing volume as read-only (readonly parameter or ROX access mode)")
 
         is_file_system = volume_capabilities.is_filesystem
         fs_type = volume_capabilities.fs_type
