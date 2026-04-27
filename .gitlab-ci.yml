@@ -1,6 +1,7 @@
 stages:
   - build_base
   - build
+  - security
   - test
   - deploy
   - redhat
@@ -70,6 +71,40 @@ build_csi_operator:
     make operator-bundle-push
   tags:
     - vast-dev-builder
+
+
+# Security scanning jobs
+secrets_scan:
+  stage: security
+  image:
+    name: trufflesecurity/trufflehog:latest
+    entrypoint: [""]
+  script:
+    - trufflehog git file://. --only-verified --fail --json | tee trufflehog-report.json
+  artifacts:
+    when: always
+    paths:
+      - trufflehog-report.json
+    expire_in: 30 days
+  tags:
+    - vast-dev-builder
+
+
+vulnerability_scan:
+  stage: security
+  image:
+    name: ghcr.io/aquasecurity/trivy:latest
+    entrypoint: [""]
+  script:
+    - trivy image --exit-code 1 --severity CRITICAL --format json --output trivy-report.json $IMAGE_NAME
+  artifacts:
+    when: always
+    paths:
+      - trivy-report.json
+    expire_in: 30 days
+  tags:
+    - vast-dev-builder
+
 
 .common_vars: &common_vars
   INSTALL_IMAGE: "prev_version"
