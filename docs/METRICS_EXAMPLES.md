@@ -778,7 +778,90 @@ csi_plugin_operations_total{driver_name="block.csi.vastdata.com",grpc_status_cod
 
 ---
 
-## Example 12: Health Check Endpoint
+## Example 12: Block Driver NVMe Controller Info
+**Scenario:** Block driver node with multiple NVMe controllers connected for multipath.
+**Setup:**
+- Block volume attached via NVMe-TCP
+- Multipath enabled (2 controllers per subsystem)
+- 1 subsystem connected
+**Expected Output (port 9092):**
+```promql
+# ============================================================
+# NVMe Controller Info Metrics
+# ============================================================
+# TYPE csi_node_nvme_controller_info gauge
+# First controller - live and healthy
+csi_node_nvme_controller_info{
+  controller="nvme0",
+  subsysnqn="nqn.2024-08.com.vastdata:default:myblock",
+  hostnqn="nqn.2014-08.com.vastcsiblock:worker-node-1",
+  transport="tcp",
+  address="172.21.112.4",
+  state="live",
+  model="VastData",
+  serial="VastData"
+} 1.0
+# Second controller - live and healthy (multipath)
+csi_node_nvme_controller_info{
+  controller="nvme1",
+  subsysnqn="nqn.2024-08.com.vastdata:default:myblock",
+  hostnqn="nqn.2014-08.com.vastcsiblock:worker-node-1",
+  transport="tcp",
+  address="172.21.112.5",
+  state="live",
+  model="VastData",
+  serial="VastData"
+} 1.0
+# ============================================================
+# Key Observations
+# ============================================================
+# 1. Both controllers present (multipath)
+# 2. Same subsysnqn (same subsystem, different paths)
+# 3. Different controller names (nvme0, nvme1)
+# 4. Different target addresses (172.21.112.4 vs 172.21.112.5)
+# 5. Same host address (10.0.1.5 - the node's IP)
+# 6. All controllers in "live" state (healthy)
+```
+**Key Points:**
+1. **Info Metric Pattern:**
+   - Always set to `1` when controller exists
+   - All metadata as labels (not separate metrics)
+   - Time series disappears when controller removed
+2. **Multipath Configuration:**
+   - 2 controllers for same subsystem (high availability)
+   - Different `controller` names and `address` values
+   - Same `subsysnqn` and `hostnqn`
+3. **Controller States:**
+   - `live` - Controller healthy and ready
+   - `connecting` - Initial connection in progress
+   - `resetting` - Controller recovery/reset
+   - `deleting` - Controller being removed
+   - `dead` - Controller failed
+4. **Transport Details:**
+   - `transport="tcp"` - Using NVMe-TCP (VAST default for block)
+   - `address` is the target address (traddr) only, e.g. the data VIP or target IP
+5. **Port Configuration:**
+   - Available on port **9092** (vastblock node)
+   - **Not available** on port 9093 (controller service)
+   - **Not available** for NFS driver (vastcsi)
+6. **Automatic Collection:**
+   - Metrics updated every time `/metrics` is scraped
+   - No configuration needed (automatic for block driver)
+   - Controllers appear/disappear based on actual kernel state
+**Useful Queries:**
+```promql
+# Count total controllers on this node
+count(csi_node_nvme_controller_info)
+# Find unhealthy controllers
+csi_node_nvme_controller_info{state!="live"}
+# Controllers per subsystem (should be 2 for multipath)
+count by (subsysnqn) (csi_node_nvme_controller_info)
+# List unique controller states
+group by (state) (csi_node_nvme_controller_info)
+```
+---
+
+## Example 13: Health Check Endpoint
 
 **Scenario:** Test the `/health` endpoint.
 
