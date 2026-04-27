@@ -247,6 +247,93 @@ csi_node_nvme_connect_operations_total{status="failure",node_name="worker-node-1
 
 ---
 
+## NVMe Controller Metrics
+
+These metrics provide real-time information about NVMe controllers connected on the node.
+
+**Availability:**
+- **Automatically enabled** for **vastblock** (block driver) node pods
+- **Automatically disabled** for **vastcsi** (NFS driver) node pods, since NFS driver doesn't use NVMe
+- The driver automatically determines whether to collect these metrics based on the driver type at startup
+- **Only collected on node services** (DaemonSet pods), not available on controller pods
+- Updated every time `/metrics` is scraped
+
+For the NFS driver, the `csi_node_nvme_controller_info` metric will not appear in the `/metrics` output.
+
+### `csi_node_nvme_controller_info`
+
+**Type:** Gauge
+**Description:** NVMe controller information metric for **VAST controllers only**. Each connected VAST NVMe controller (model="VASTData") generates one time series with value `1`. Physical NVMe devices and other vendors are filtered out. When a controller is removed, its time series disappears.
+
+**When you see it:** On block driver node pods (port 9092) when VAST NVMe volumes are connected.
+
+**Labels:**
+
+| Label | Description | Example Values |
+|-------|-------------|----------------|
+| `controller` | NVMe controller name | `nvme0`, `nvme1`, `nvme2` |
+| `subsysnqn` | Subsystem NQN | `nqn.2024-08.com.vastdata:default:myblock` |
+| `hostnqn` | Host NQN used for connection | `nqn.2014-08.com.vastcsiblock:node1` |
+| `transport` | Transport type | `tcp`, `rdma` |
+| `address` | Target address (traddr) only | `172.21.112.4`, `10.95.40.74` |
+| `state` | Controller state from kernel | `live`, `connecting`, `resetting`, `deleting`, `dead` |
+| `model` | Device model name | `VastData` |
+| `serial` | Device serial number | `VastData` |
+
+**Typical values:**
+- **Value:** Always `1` when controller is present
+- **State:** `live` is healthy, `connecting`/`resetting` during transitions, `dead` indicates failure
+- **Transport:** Typically `tcp` (VAST block uses NVMe-TCP)
+
+**Example Metrics:**
+
+```promql
+csi_node_nvme_controller_info{
+  controller="nvme0",
+  subsysnqn="nqn.2024-08.com.vastdata:default:myblock",
+  hostnqn="nqn.2014-08.com.vastcsiblock:node1",
+  transport="tcp",
+  address="172.21.112.4",
+  state="live",
+  model="VastData",
+  serial="VastData"
+} 1
+
+csi_node_nvme_controller_info{
+  controller="nvme1",
+  subsysnqn="nqn.2024-08.com.vastdata:default:myblock",
+  hostnqn="nqn.2014-08.com.vastcsiblock:node1",
+  transport="tcp",
+  address="172.21.112.5",
+  state="live",
+  model="VastData",
+  serial="VastData"
+} 1
+```
+
+**When to investigate:**
+- If `state != "live"` for extended periods (indicates controller issues)
+- If expected controllers are missing (multipath issues)
+- If controller count changes unexpectedly
+
+**Useful Queries:**
+
+```promql
+# Count total NVMe controllers per node
+count by (node_name) (csi_node_nvme_controller_info)
+
+# Find controllers not in live state
+csi_node_nvme_controller_info{state!="live"}
+
+# Count controllers per subsystem
+count by (subsysnqn) (csi_node_nvme_controller_info)
+
+# List all unique controller states
+count by (state) (csi_node_nvme_controller_info)
+```
+
+---
+
 ## NFS Transport (xprt) Metrics
 
 These metrics are collected from the Linux kernel's NFS transport subsystem (`/sys/kernel/sunrpc/xprt-switches`).
