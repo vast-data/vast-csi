@@ -18,10 +18,18 @@ def try_nvme_probes():
     This function attempts to load the `nvme` and `nvme-tcp` kernel modules
     using the `modprobe` utility and logs the results. It then retrieves the
     NVMe version using the `nvme` command-line tool and logs the version.
+    If the nvme-tcp module is not available (e.g. on control-plane nodes with
+    minimal kernels), logs an error and returns without raising.
     """
-    hostcmd.modprobe.get_executable("nvme-tcp") & logger.pipe_info("nvme: ")
-    nvme_version = "; ".join(hostcmd.nvme('version').splitlines())
-    logger.info(f"nvme version: {nvme_version}")
+    try:
+        hostcmd.modprobe.get_executable("nvme-tcp") & logger.pipe_info("nvme: ")
+        nvme_version = "; ".join(hostcmd.nvme('version').splitlines())
+        logger.info(f"nvme version: {nvme_version}")
+    except Exception as e:
+        logger.error(
+            "nvme-tcp module not available: %s. Block volumes will not work on this node.",
+            e,
+        )
 
 
 def is_native_multipath_enabled():
