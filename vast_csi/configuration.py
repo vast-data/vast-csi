@@ -68,6 +68,7 @@ class Config(TypedEnv):
     timeout = TypedEnv.Int("X_CSI_VMS_TIMEOUT", default=30)
     mount_umount_timeout = TypedEnv.Int("X_CSI_MOUNT_UMOUNT_TIMEOUT", default=30)
     resolve_mount_symlinks = TypedEnv.Bool("X_CSI_RESOLVE_MOUNT_SYMLINKS", default=False)
+    allow_ro_many_block_fs_mode = TypedEnv.Bool("X_CSI_ALLOW_RO_MANY_BLOCK_FS_MODE", default=False)
 
     @cached_property
     def vms_user(self):

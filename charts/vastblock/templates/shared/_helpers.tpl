@@ -57,6 +57,10 @@
 - name: X_CSI_RESOLVE_MOUNT_SYMLINKS
   value: {{ $.Values.resolveMountSymlinks | quote }}
 {{- end }}
+{{ if $.Values.allowROManyBlockFsMode -}}
+- name: X_CSI_ALLOW_RO_MANY_BLOCK_FS_MODE
+  value: {{ $.Values.allowROManyBlockFsMode | quote }}
+{{- end }}
 {{- if .extraEnv }}
 {{- range $key, $value := .extraEnv }}
 - name: {{ $key }}
