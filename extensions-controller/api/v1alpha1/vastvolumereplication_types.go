@@ -219,12 +219,13 @@ type VastVolumeReplicationStatus struct {
 	// +optional
 	StorageClassesPreview string `json:"storageClassesPreview,omitempty"`
 
-	// PpathDir is the predicted source directory for ppath replication,
-	// derived from the primary StorageClass and the volume name.
-	// For block: the subsystem path joined with the volume name.
-	// For file: the view path matching the volume name.
+	// PpathDirMapping maps every StorageClass name in the constellation to its
+	// predicted ppath source directory.  For block StorageClasses the value is
+	// the subsystem path joined with the volume name; for file StorageClasses
+	// it is the view path matching the volume name.  Populated once on the
+	// first reconcile and treated as immutable thereafter.
 	// +optional
-	PpathDir string `json:"ppathDir,omitempty"`
+	PpathDirMapping map[string]string `json:"ppathDirMapping,omitempty"`
 
 	// PpathName is the VAST protected-path name created by the controller on
 	// the primary site.  ONE ppath is created per VVR; additional policies are

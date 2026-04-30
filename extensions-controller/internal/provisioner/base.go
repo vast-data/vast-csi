@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
@@ -146,6 +147,51 @@ func lookupPrimaryStorageClass(ctx context.Context, k8s *k8s_client.K8sClient, r
 		return vvr.Spec.PrimaryStorageClass, nil
 	}
 	panic("neither source VSCR not VVR exists")
+}
+
+// mirrorVolumeHandle computes the CSI volumeHandle for the static mirror PV
+// that will be created on the destination (sibling) StorageClass cluster.
+//
+// The handle is derived from the parent VSCR or VVR's PpathDirMapping:
+//
+//   - VSCR: ppathDirMapping[sibSc] joined with the base name of the source
+//     volume handle.  The VAST CSI driver uses the path's basename (the PVC
+//     UID component) to locate the replicated object on the destination cluster.
+//     Example: "/clusterB-source/foo/bar" + "pvc-8922fb1b-…" → "/clusterB-source/foo/bar/pvc-8922fb1b-…"
+//
+//   - VVR: ppathDirMapping[sibSc] used directly as the volume handle — the
+//     mapping already encodes the exact path of the replicated volume on that
+//     cluster (no basename suffix is appended).
+func (b *baseProvisioner) mirrorVolumeHandle(
+	ctx context.Context,
+	sourcePV *corev1.PersistentVolume,
+	sibSc *storagev1.StorageClass,
+) (string, error) {
+	if vscrName := b.rp.Labels[common.LabelSourceVSCR]; vscrName != "" {
+		vscr, err := b.k8sClient.GetVastStorageClassReplication(ctx, vscrName, b.rp.Namespace)
+		if err != nil {
+			return "", fmt.Errorf("get VastStorageClassReplication %s: %w", vscrName, err)
+		}
+		dir, ok := vscr.Status.PpathDirMapping[sibSc.Name]
+		if !ok {
+			return "", fmt.Errorf("StorageClass %q has no entry in VSCR %s PpathDirMapping", sibSc.Name, vscrName)
+		}
+		return path.Join(dir, path.Base(sourcePV.Spec.CSI.VolumeHandle)), nil
+	}
+	if vvrName := b.rp.Labels[common.LabelSourceVVR]; vvrName != "" {
+		vvr, err := b.k8sClient.GetVastVolumeReplication(ctx, vvrName, b.rp.Namespace)
+		if err != nil {
+			return "", fmt.Errorf("get VastVolumeReplication %s: %w", vvrName, err)
+		}
+		dir, ok := vvr.Status.PpathDirMapping[sibSc.Name]
+		if !ok {
+			return "", fmt.Errorf("StorageClass %q has no entry in VVR %s PpathDirMapping", sibSc.Name, vvrName)
+		}
+		return dir, nil
+	}
+
+	return "", fmt.Errorf("VastReplicationContent %s/%s has neither %s nor %s label",
+		b.rp.Namespace, b.rp.Name, common.LabelSourceVSCR, common.LabelSourceVVR)
 }
 
 // VolumeIDs implements VolumeMapper.  Returns a sorted list of bare volume
@@ -591,9 +637,9 @@ func (b *baseProvisioner) ensureMirrorPVCPV(
 		return false, fmt.Errorf("format mirror PV name: %w", err)
 	}
 
-	csiParams := b.k8sClient.ExtractPrefixedParams(common.CSIParameterPrefix, sibSc.Parameters)
-	secretName := csiParams["provisioner-secret-name"]
-	secretNS := csiParams["provisioner-secret-namespace"]
+	csiSecrets := b.k8sClient.ExtractPrefixedParams(common.CSIParameterPrefix, sibSc.Parameters)
+	secretName := csiSecrets["provisioner-secret-name"]
+	secretNS := csiSecrets["provisioner-secret-namespace"]
 	if secretName == "" || secretNS == "" {
 		return false, fmt.Errorf("StorageClass %s is missing provisioner secret parameters", sibSc.Name)
 	}
@@ -605,6 +651,15 @@ func (b *baseProvisioner) ensureMirrorPVCPV(
 	capacity := sourcePV.Spec.Capacity
 	if len(capacity) == 0 {
 		return false, fmt.Errorf("source PV %s has no capacity", sourcePV.Name)
+	}
+
+	// volumeAttributes must carry the VAST-specific (non-prefixed) parameters
+	// such as subsystem, vip_pool_name, volume_group, etc.
+	volumeAttrs := b.k8sClient.ExtractNonPrefixedParams(common.CSIParameterPrefix, sibSc.Parameters)
+
+	mirrorHandle, err := b.mirrorVolumeHandle(ctx, sourcePV, sibSc)
+	if err != nil {
+		return false, fmt.Errorf("compute mirror volume handle: %w", err)
 	}
 
 	pvLabels := map[string]string{
@@ -628,37 +683,43 @@ func (b *baseProvisioner) ensureMirrorPVCPV(
 		pvcLabels[common.LabelSourceVVR] = vvrName
 	}
 
-	destPV := builder.NewPersistentVolume(destPVName).
+	pvBuilder := builder.NewPersistentVolume(destPVName).
 		WithFinalizers(common.FinalizerPV).
 		WithManagedByLabel().
 		WithLabelsMap(pvLabels).
 		WithStorageClass(sibSc.Name).
-		WithVolumeHandle(sourcePV.Spec.CSI.VolumeHandle).
+		WithVolumeHandle(mirrorHandle).
 		WithCSIDriver(csiDriver).
-		WithVolumeAttributes(csiParams).
+		WithVolumeAttributes(volumeAttrs).
 		WithReclaimPolicy(corev1.PersistentVolumeReclaimRetain).
 		WithAccessModes(sourcePV.Spec.AccessModes...).
 		WithCapacity(capacity).
 		WithControllerPublishSecretRef(secretRef).
 		WithNodeStageSecretRef(secretRef).
 		WithNodePublishSecretRef(secretRef).
-		WithControllerExpandSecretRef(secretRef).
-		Result()
+		WithControllerExpandSecretRef(secretRef)
+	if sourcePV.Spec.VolumeMode != nil {
+		pvBuilder = pvBuilder.WithVolumeMode(*sourcePV.Spec.VolumeMode)
+	}
+	destPV := pvBuilder.Result()
 
 	pvCreated, err := b.k8sClient.EnsurePV(ctx, destPV)
 	if err != nil {
 		return false, fmt.Errorf("ensure mirror PV %s: %w", destPVName, err)
 	}
 
-	destPVC := builder.NewPersistentVolumeClaim(ns, destPVCName).
+	pvcBuilder := builder.NewPersistentVolumeClaim(ns, destPVCName).
 		WithManagedByLabel().
 		WithLabelsMap(pvcLabels).
 		WithFinalizers(common.FinalizerPVC).
 		WithStorageClass(sibSc.Name).
 		WithVolumeName(destPVName).
 		WithAccessModes(sourcePV.Spec.AccessModes...).
-		WithResources(capacity).
-		Result()
+		WithResources(capacity)
+	if sourcePV.Spec.VolumeMode != nil {
+		pvcBuilder = pvcBuilder.WithVolumeMode(*sourcePV.Spec.VolumeMode)
+	}
+	destPVC := pvcBuilder.Result()
 
 	pvcCreated, err := b.k8sClient.EnsurePVC(ctx, destPVC)
 	if err != nil {

@@ -186,6 +186,12 @@ func (b *PersistentVolumeClaimBuilder) WithPhase(phase corev1.PersistentVolumeCl
 	return b
 }
 
+// WithVolumeMode sets the PersistentVolumeClaim's volume mode (Filesystem or Block).
+func (b *PersistentVolumeClaimBuilder) WithVolumeMode(mode corev1.PersistentVolumeMode) *PersistentVolumeClaimBuilder {
+	b.object.Spec.VolumeMode = &mode
+	return b
+}
+
 // WithAccessModes sets the PersistentVolumeClaim's access modes.
 func (b *PersistentVolumeClaimBuilder) WithAccessModes(modes ...corev1.PersistentVolumeAccessMode) *PersistentVolumeClaimBuilder {
 	b.object.Spec.AccessModes = modes

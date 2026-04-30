@@ -193,12 +193,13 @@ type VastStorageClassReplicationStatus struct {
 	// +optional
 	StorageClassesPreview string `json:"storageClassesPreview,omitempty"`
 
-	// PpathDir is the predicted source directory for ppath replication,
-	// derived from the primary StorageClass parameters.
-	// For block: subsystem.Path joined with volume_group.
-	// For file: root_export parameter value.
+	// PpathDirMapping maps every StorageClass name in the constellation to its
+	// predicted ppath source directory.  For block StorageClasses the value is
+	// the subsystem path joined with volume_group; for file StorageClasses it
+	// is the root_export parameter value.  Populated once on the first
+	// reconcile and treated as immutable thereafter.
 	// +optional
-	PpathDir string `json:"ppathDir,omitempty"`
+	PpathDirMapping map[string]string `json:"ppathDirMapping,omitempty"`
 
 	// PpathName is the VAST protected-path name created by the controller on
 	// the primary site.  ONE ppath is created per VSCR; additional policies are

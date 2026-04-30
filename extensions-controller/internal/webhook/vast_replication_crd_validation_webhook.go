@@ -28,7 +28,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
-	"github.com/vast-data/vast-csi/extensions-controller/internal/common"
 	k8sclient "github.com/vast-data/vast-csi/extensions-controller/internal/common/k8s_client"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/logging"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/vmsrest"
@@ -362,16 +361,12 @@ func (v *replicationCRDValidator) validate(
 }
 
 // validateStorageClassConsistency ensures that all StorageClasses in the list
-// agree on the CSI driver type and on the key parameters that determine the
-// target storage path:
+// use the same CSI driver type (all block or all file).  Mixing block and file
+// StorageClasses within a single replication object is rejected because they
+// require fundamentally different replication mechanics.
 //
-//   - Block driver (StorageClass has a "subsystem" parameter): every class must
-//     share the same "subsystem" and "volume_group" values.
-//   - File driver (StorageClass has a "root_export" parameter): every class must
-//     share the same "root_export" value.
-//
-// Mixing block and file StorageClasses within a single replication object is
-// also rejected.
+// Path-level parameters (subsystem, volume_group, root_export) may differ
+// across clusters — each cluster's ppath directory is predicted independently.
 func (v *replicationCRDValidator) validateStorageClassConsistency(
 	ctx context.Context,
 	storageClasses []string,
@@ -380,74 +375,29 @@ func (v *replicationCRDValidator) validateStorageClassConsistency(
 		return admission.Allowed("")
 	}
 
-	type scParams struct {
-		isBlock     bool
-		subsystem   string
-		volumeGroup string
-		rootExport  string
+	driverType := func(isBlock bool) string {
+		if isBlock {
+			return "block"
+		}
+		return "file"
 	}
 
-	params := make([]scParams, 0, len(storageClasses))
-	for _, scName := range storageClasses {
+	firstSC, err := v.k8sClient.GetStorageClass(ctx, storageClasses[0])
+	if err != nil {
+		return admission.Denied(fmt.Sprintf("StorageClass %q not found: %v", storageClasses[0], err))
+	}
+	firstIsBlock := k8sclient.IsBlockStorageClass(firstSC)
+
+	for _, scName := range storageClasses[1:] {
 		sc, err := v.k8sClient.GetStorageClass(ctx, scName)
 		if err != nil {
 			return admission.Denied(fmt.Sprintf("StorageClass %q not found: %v", scName, err))
 		}
-
-		p := scParams{}
-
-		p.isBlock = k8sclient.IsBlockStorageClass(sc)
-		subsystem, _ := sc.Parameters[common.StorageClassParameterSubsystem]
-		rootExport, _ := sc.Parameters[common.StorageClassParameterRootExport]
-		p.subsystem = subsystem
-		p.volumeGroup = sc.Parameters[common.StorageClassParameterVolumeGroup]
-		p.rootExport = rootExport
-		params = append(params, p)
-	}
-
-	// All StorageClasses must be the same driver type.
-	first := params[0]
-	for i, p := range params[1:] {
-		scName := storageClasses[i+1]
-		if p.isBlock != first.isBlock {
-			driverType := func(isBlock bool) string {
-				if isBlock {
-					return "block"
-				}
-				return "file"
-			}
+		if k8sclient.IsBlockStorageClass(sc) != firstIsBlock {
 			return admission.Denied(fmt.Sprintf(
 				"StorageClass %q is a %s driver but %q is a %s driver; all StorageClasses must use the same driver type",
-				scName, driverType(p.isBlock), storageClasses[0], driverType(first.isBlock)))
-		}
-	}
-
-	// Validate that the routing parameters are identical across all classes.
-	if first.isBlock {
-		for i, p := range params[1:] {
-			scName := storageClasses[i+1]
-			if p.subsystem != first.subsystem {
-				return admission.Denied(fmt.Sprintf(
-					"StorageClass %q has %s=%q but %q has %s=%q; all StorageClasses must share the same subsystem",
-					scName, common.StorageClassParameterSubsystem, p.subsystem,
-					storageClasses[0], common.StorageClassParameterSubsystem, first.subsystem))
-			}
-			if p.volumeGroup != first.volumeGroup {
-				return admission.Denied(fmt.Sprintf(
-					"StorageClass %q has %s=%q but %q has %s=%q; all StorageClasses must share the same volume_group",
-					scName, common.StorageClassParameterVolumeGroup, p.volumeGroup,
-					storageClasses[0], common.StorageClassParameterVolumeGroup, first.volumeGroup))
-			}
-		}
-	} else {
-		for i, p := range params[1:] {
-			scName := storageClasses[i+1]
-			if p.rootExport != first.rootExport {
-				return admission.Denied(fmt.Sprintf(
-					"StorageClass %q has %s=%q but %q has %s=%q; all StorageClasses must share the same root_export",
-					scName, common.StorageClassParameterRootExport, p.rootExport,
-					storageClasses[0], common.StorageClassParameterRootExport, first.rootExport))
-			}
+				scName, driverType(k8sclient.IsBlockStorageClass(sc)),
+				storageClasses[0], driverType(firstIsBlock)))
 		}
 	}
 

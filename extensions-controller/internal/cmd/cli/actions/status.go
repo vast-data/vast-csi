@@ -94,8 +94,11 @@ func printVSCRStatus(obj *vastv1alpha1.VastStorageClassReplication) {
 	if obj.Status.PpathName != "" {
 		fmt.Printf("  %-28s %s\n", "Ppath Name:", obj.Status.PpathName)
 	}
-	if obj.Status.PpathDir != "" {
-		fmt.Printf("  %-28s %s\n", "Ppath Dir:", obj.Status.PpathDir)
+	if len(obj.Status.PpathDirMapping) > 0 {
+		fmt.Printf("  %-28s\n", "Ppath Dir Mapping:")
+		for sc, dir := range obj.Status.PpathDirMapping {
+			fmt.Printf("    %-26s %s\n", sc+":", dir)
+		}
 	}
 	printAction("Last Failover Type", string(obj.Status.LastFailoverType))
 	printSyncStatus(obj.Status.SyncStatus)
@@ -130,8 +133,11 @@ func printVVRStatus(obj *vastv1alpha1.VastVolumeReplication) {
 	if obj.Status.PpathName != "" {
 		fmt.Printf("  %-28s %s\n", "Ppath Name:", obj.Status.PpathName)
 	}
-	if obj.Status.PpathDir != "" {
-		fmt.Printf("  %-28s %s\n", "Ppath Dir:", obj.Status.PpathDir)
+	if len(obj.Status.PpathDirMapping) > 0 {
+		fmt.Printf("  %-28s\n", "Ppath Dir Mapping:")
+		for sc, dir := range obj.Status.PpathDirMapping {
+			fmt.Printf("    %-26s %s\n", sc+":", dir)
+		}
 	}
 	printAction("Last Failover Type", string(obj.Status.LastFailoverType))
 	printSyncStatus(obj.Status.SyncStatus)

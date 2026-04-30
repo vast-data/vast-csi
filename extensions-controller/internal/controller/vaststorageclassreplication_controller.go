@@ -153,20 +153,21 @@ func (r *VastStorageClassReplicationReconciler) Reconcile(ctx context.Context, r
 		return ctrl.Result{}, nil
 	}
 
-	// PpathDir is immutable once set: predict it only on the first reconcile.
-	primaryPpathDir := vscr.Status.PpathDir
-	if primaryPpathDir == "" {
-		primarySC, err := k8s.GetStorageClass(ctx, vscr.Spec.PrimaryStorageClass)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to get primary StorageClass %s: %w",
-				vscr.Spec.PrimaryStorageClass, err)
+	// PpathDirMapping is immutable once populated: predict dirs only on the first reconcile.
+	if len(vscr.Status.PpathDirMapping) == 0 {
+		mapping := make(map[string]string, len(vscr.Spec.AllStorageClasses()))
+		for _, scName := range vscr.Spec.AllStorageClasses() {
+			sc, err := k8s.GetStorageClass(ctx, scName)
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to get StorageClass %s: %w", scName, err)
+			}
+			dir, err := ppathdir.Predict(ctx, k8s, sc, r.Config.SSLVerify, log, "", "")
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to compute PpathDir for StorageClass %s: %w", scName, err)
+			}
+			mapping[scName] = dir
 		}
-		primaryPpathDir, err = ppathdir.Predict(ctx, k8s, primarySC, r.Config.SSLVerify, log, "", "")
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to compute PpathDir for StorageClass %s: %w",
-				vscr.Spec.PrimaryStorageClass, err)
-		}
-		vscr.Status.PpathDir = primaryPpathDir
+		vscr.Status.PpathDirMapping = mapping
 		if err := k8s.UpdateVastStorageClassReplicationStatus(ctx, vscr); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -199,7 +200,7 @@ func (r *VastStorageClassReplicationReconciler) Reconcile(ctx context.Context, r
 		}
 
 		ppathName, err = vmsrest.EnsureConstellationPpath(
-			restByStorageClass, policyPairs, vscr.Spec.PrimaryStorageClass, vscr.Name, primaryPpathDir, log,
+			restByStorageClass, policyPairs, vscr.Spec.PrimaryStorageClass, vscr.Name, vscr.Status.PpathDirMapping, log,
 		)
 		if err != nil {
 			emit.Warning(events.ReasonPpathNotReady, err.Error())
@@ -289,79 +290,13 @@ func (r *VastStorageClassReplicationReconciler) reconcileSyncStatus(
 }
 
 func (r *VastStorageClassReplicationReconciler) validateOnce(
-	ctx context.Context,
-	k8s *k8sclient.K8sClient,
+	_ context.Context,
+	_ *k8sclient.K8sClient,
 	vscr *vastv1alpha1.VastStorageClassReplication,
-	restByStorageClass map[string]*vast_client.TypedVMSRest,
+	_ map[string]*vast_client.TypedVMSRest,
 ) error {
 	if err := vscr.Spec.Validate(); err != nil {
 		return cerrors.NewValidationError("%s", err.Error())
-	}
-
-	primarySC, err := k8s.GetStorageClass(ctx, vscr.Spec.PrimaryStorageClass)
-	if err != nil {
-		return fmt.Errorf("get primary StorageClass %s: %w", vscr.Spec.PrimaryStorageClass, err)
-	}
-	if !k8sclient.IsBlockStorageClass(primarySC) {
-		return nil
-	}
-
-	primaryParams := k8s.ExtractNonPrefixedParams(common.CSIParameterPrefix, primarySC.Parameters)
-
-	// Only applies when volume_group is set (volume-level, not subsystem-level, replication).
-	if strings.TrimPrefix(primaryParams[common.StorageClassParameterVolumeGroup], "/") == "" {
-		return nil
-	}
-
-	// For every block SC (primary and siblings), fetch the subsystem by that
-	// SC's own "subsystem" param name via that SC's own REST client.  Names
-	// may differ across clusters; what must be equal is the subsystem path.
-	type subsystemEntry struct{ scName, path string }
-	var entries []subsystemEntry
-
-	for _, scName := range vscr.Spec.AllStorageClasses() {
-		sc, err := k8s.GetStorageClass(ctx, scName)
-		if err != nil {
-			return fmt.Errorf("get StorageClass %s: %w", scName, err)
-		}
-		params := k8s.ExtractNonPrefixedParams(common.CSIParameterPrefix, sc.Parameters)
-		subsystemName := params[common.StorageClassParameterSubsystem]
-		if subsystemName == "" {
-			return cerrors.NewValidationError("subsystem %s not found in StorageClass", common.StorageClassParameterSubsystem)
-		}
-		view, err := restByStorageClass[scName].Views.Get(&typed.ViewSearchParams{
-			RawData: vast_client.Params{
-				"name":   subsystemName,
-				"fields": "id,path",
-			},
-		})
-		if err != nil {
-			return cerrors.NewValidationError(
-				"subsystem %q for StorageClass %q not found on VAST cluster: %v",
-				subsystemName, scName, err)
-		}
-		entries = append(entries, subsystemEntry{scName, view.Path})
-	}
-
-	// Find primary path and verify all others match.
-	var primaryPath string
-	for _, e := range entries {
-		if e.scName == vscr.Spec.PrimaryStorageClass {
-			primaryPath = e.path
-			break
-		}
-	}
-	for _, e := range entries {
-		if e.scName == vscr.Spec.PrimaryStorageClass {
-			continue
-		}
-		if e.path != primaryPath {
-			return cerrors.NewValidationError(
-				"StorageClass %q subsystem path %q differs from primary StorageClass %q subsystem path %q: "+
-					"volume-group replication requires all StorageClasses to share the same subsystem path",
-				e.scName, e.path, vscr.Spec.PrimaryStorageClass, primaryPath,
-			)
-		}
 	}
 	return nil
 }

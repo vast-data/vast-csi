@@ -135,20 +135,21 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, nil
 	}
 
-	// PpathDir is immutable once set: predict it only on the first reconcile.
-	primaryPpathDir := vvr.Status.PpathDir
-	if primaryPpathDir == "" {
-		primarySC, err := k8s.GetStorageClass(ctx, vvr.Spec.PrimaryStorageClass)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to get primary StorageClass %s: %w",
-				vvr.Spec.PrimaryStorageClass, err)
+	// PpathDirMapping is immutable once populated: predict dirs only on the first reconcile.
+	if len(vvr.Status.PpathDirMapping) == 0 {
+		mapping := make(map[string]string, len(vvr.Spec.AllStorageClasses()))
+		for _, scName := range vvr.Spec.AllStorageClasses() {
+			sc, err := k8s.GetStorageClass(ctx, scName)
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to get StorageClass %s: %w", scName, err)
+			}
+			dir, err := ppathdir.Predict(ctx, k8s, sc, r.Config.SSLVerify, log, vvr.Spec.VolumeName, vvr.Namespace)
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to compute PpathDir for StorageClass %s: %w", scName, err)
+			}
+			mapping[scName] = dir
 		}
-		primaryPpathDir, err = ppathdir.Predict(ctx, k8s, primarySC, r.Config.SSLVerify, log, vvr.Spec.VolumeName, vvr.Namespace)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to compute PpathDir for StorageClass %s: %w",
-				vvr.Spec.PrimaryStorageClass, err)
-		}
-		vvr.Status.PpathDir = primaryPpathDir
+		vvr.Status.PpathDirMapping = mapping
 		if err := k8s.UpdateVastVolumeReplicationStatus(ctx, vvr); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -203,7 +204,7 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 		}
 
 		ppathName, err = vmsrest.EnsureConstellationPpath(
-			restByStorageClass, policyPairs, vvr.Spec.PrimaryStorageClass, vvr.Name, primaryPpathDir, log,
+			restByStorageClass, policyPairs, vvr.Spec.PrimaryStorageClass, vvr.Name, vvr.Status.PpathDirMapping, log,
 		)
 		if err != nil {
 			emit.Warning(events.ReasonPpathNotReady, err.Error())

@@ -268,6 +268,7 @@ func EnsurePpath(
 	rest *vast_client.TypedVMSRest,
 	ownerName string,
 	sourceDir string,
+	targetExportedDir string,
 	first ReplicationLink,
 	log *zap.Logger,
 ) (ppathName string, ppathId int64, err error) {
@@ -288,10 +289,18 @@ func EnsurePpath(
 		if err != nil {
 			return "", 0, fmt.Errorf("SC %s: failed to resolve remote tenant: %w", first.Edge.SideB, err)
 		}
+		if localTenant.Guid == remoteTenant.Guid {
+			return "", 0, fmt.Errorf(
+				"StorageClass %q and %q resolve to the same VAST cluster (tenant GUID %s); "+
+					"source and destination StorageClasses must point to different clusters — "+
+					"check that the secrets used by each StorageClass belong to distinct VAST systems",
+				first.Edge.SideA, first.Edge.SideB, localTenant.Guid,
+			)
+		}
 		record, err = rest.Untyped.ProtectedPaths.Create(core.Params{
 			"name":                 ownerName,
 			"source_dir":           sourceDir,
-			"target_exported_dir":  sourceDir,
+			"target_exported_dir":  targetExportedDir,
 			"tenant_id":            localTenant.Id,
 			"remote_tenant_guid":   remoteTenant.Guid,
 			"protection_policy_id": strconv.FormatInt(first.PolicyId, 10),
@@ -348,7 +357,7 @@ func EnsureConstellationPpath(
 	pairs map[string][]ReplicationLink,
 	primarySC string,
 	ownerName string,
-	sourceDir string,
+	ppathDirByStorageClass map[string]string,
 	log *zap.Logger,
 ) (ppathName string, err error) {
 	primaryPairs := pairs[primarySC]
@@ -356,9 +365,13 @@ func EnsureConstellationPpath(
 		return "", fmt.Errorf("no primary replication links for StorageClass %q", primarySC)
 	}
 	primaryRest := restByStorageClass[primarySC]
+	primarySourceDir := ppathDirByStorageClass[primarySC]
 
 	// Ensure ppath with first embedded stream and wait for active.
-	ppathName, ppathId, err := EnsurePpath(primaryRest, ownerName, sourceDir, primaryPairs[0], log)
+	// source_dir  = primary cluster's path
+	// target_exported_dir = first destination cluster's path
+	firstTargetDir := ppathDirByStorageClass[primaryPairs[0].Edge.SideB]
+	ppathName, ppathId, err := EnsurePpath(primaryRest, ownerName, primarySourceDir, firstTargetDir, primaryPairs[0], log)
 	if err != nil {
 		return ppathName, fmt.Errorf("primary ppath: %w", err)
 	}
@@ -381,7 +394,8 @@ func EnsureConstellationPpath(
 					zap.String("ppath", ppathName),
 					zap.String("source_cluster", primaryPair.Edge.SideA),
 					zap.String("destination_cluster", primaryPair.Edge.SideB))
-				if ferr := AddReplicationStream(primaryRest, primaryStreamName, ppathId, sourceDir, primaryPair, false); ferr != nil {
+				targetDir := ppathDirByStorageClass[primaryPair.Edge.SideB]
+				if ferr := AddReplicationStream(primaryRest, primaryStreamName, ppathId, targetDir, primaryPair, false); ferr != nil {
 					return ppathName, fmt.Errorf("add primary stream %q: %w", primaryStreamName, ferr)
 				}
 				log.Info("primary replication stream added successfully",
@@ -423,7 +437,8 @@ func EnsureConstellationPpath(
 						zap.String("ppath", ppathName),
 						zap.String("source_cluster", crossPair.Edge.SideA),
 						zap.String("destination_cluster", crossPair.Edge.SideB))
-					if ferr := AddReplicationStream(crossRest, crossStreamName, crossPpathId, sourceDir, crossPair, true); ferr != nil {
+					crossTargetDir := ppathDirByStorageClass[crossPair.Edge.SideB]
+					if ferr := AddReplicationStream(crossRest, crossStreamName, crossPpathId, crossTargetDir, crossPair, true); ferr != nil {
 						return ppathName, fmt.Errorf("SC %s: standby stream %q: %w", sc, crossStreamName, ferr)
 					}
 					log.Info("standby replication stream added successfully",

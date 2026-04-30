@@ -713,13 +713,16 @@ spec:
                 - ungracefulFailover
                 - gracefulFailover
                 type: string
-              ppathDir:
+              ppathDirMapping:
+                additionalProperties:
+                  type: string
                 description: |-
-                  PpathDir is the predicted source directory for ppath replication,
-                  derived from the primary StorageClass parameters.
-                  For block: subsystem.Path joined with volume_group.
-                  For file: root_export parameter value.
-                type: string
+                  PpathDirMapping maps every StorageClass name in the constellation to its
+                  predicted ppath source directory.  For block StorageClasses the value is
+                  the subsystem path joined with volume_group; for file StorageClasses it
+                  is the root_export parameter value.  Populated once on the first
+                  reconcile and treated as immutable thereafter.
+                type: object
               ppathName:
                 description: |-
                   PpathName is the VAST protected-path name created by the controller on
@@ -982,13 +985,16 @@ spec:
                 - ungracefulFailover
                 - gracefulFailover
                 type: string
-              ppathDir:
+              ppathDirMapping:
+                additionalProperties:
+                  type: string
                 description: |-
-                  PpathDir is the predicted source directory for ppath replication,
-                  derived from the primary StorageClass and the volume name.
-                  For block: the subsystem path joined with the volume name.
-                  For file: the view path matching the volume name.
-                type: string
+                  PpathDirMapping maps every StorageClass name in the constellation to its
+                  predicted ppath source directory.  For block StorageClasses the value is
+                  the subsystem path joined with the volume name; for file StorageClasses
+                  it is the view path matching the volume name.  Populated once on the
+                  first reconcile and treated as immutable thereafter.
+                type: object
               ppathName:
                 description: |-
                   PpathName is the VAST protected-path name created by the controller on
