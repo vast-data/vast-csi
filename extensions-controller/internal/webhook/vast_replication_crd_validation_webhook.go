@@ -27,9 +27,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	vast_client "github.com/vast-data/go-vast-client"
+	"github.com/vast-data/go-vast-client/resources/typed"
 	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
+	"github.com/vast-data/vast-csi/extensions-controller/internal/common"
 	k8sclient "github.com/vast-data/vast-csi/extensions-controller/internal/common/k8s_client"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/logging"
+	"github.com/vast-data/vast-csi/extensions-controller/internal/common/ppathdir"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/vmsrest"
 )
 
@@ -88,6 +92,31 @@ func (h *vscrAdmissionHandler) Handle(ctx context.Context, req admission.Request
 		if resp := h.validateAndDefaultTopology(ctx, log, req, obj.Spec.ProtectionTopology); !resp.Allowed {
 			return resp
 		}
+
+		primarySC, err := h.k8sClient.GetStorageClass(ctx, obj.Spec.PrimaryStorageClass)
+		if err != nil {
+			return admission.Denied(fmt.Sprintf("primaryStorageClass %q not found: %v", obj.Spec.PrimaryStorageClass, err))
+		}
+		if k8sclient.IsBlockStorageClass(primarySC) {
+			if ppathdir.IsSubsystemLevel(h.k8sClient, primarySC) {
+				if resp := h.validateSubsystemLevelTenantName(ctx, obj.Spec.PrimaryStorageClass, obj.Spec.AllStorageClasses()); !resp.Allowed {
+					return resp
+				}
+				var secondarySCNames []string
+				for _, scName := range obj.Spec.AllStorageClasses() {
+					if scName != obj.Spec.PrimaryStorageClass {
+						secondarySCNames = append(secondarySCNames, scName)
+					}
+				}
+				if resp := h.validateSubsystemPresence(ctx, log, secondarySCNames, false); !resp.Allowed {
+					return resp
+				}
+			} else {
+				if resp := h.validateSubsystemPresence(ctx, log, obj.Spec.AllStorageClasses(), true); !resp.Allowed {
+					return resp
+				}
+			}
+		}
 	}
 
 	if resp := h.validateStorageClassConsistency(ctx, obj.Spec.AllStorageClasses()); !resp.Allowed {
@@ -126,6 +155,10 @@ func (h *vvrAdmissionHandler) Handle(ctx context.Context, req admission.Request)
 			return resp
 		}
 		if resp := h.validateVVRPVCStorageClass(ctx, obj); !resp.Allowed {
+			return resp
+		}
+		// VVR is never subsystem-level: the subsystem must already exist on all clusters.
+		if resp := h.validateSubsystemPresence(ctx, log, obj.Spec.AllStorageClasses(), true); !resp.Allowed {
 			return resp
 		}
 	}
@@ -401,6 +434,96 @@ func (v *replicationCRDValidator) validateStorageClassConsistency(
 		}
 	}
 
+	return admission.Allowed("")
+}
+
+// validateSubsystemLevelTenantName checks that every secondary StorageClass in a
+// subsystem-level VSCR carries a "tenant_name" parameter.
+//
+// The subsystem does not yet exist on secondary clusters (VAST creates it via
+// the replication stream), so tenant resolution cannot fall back to a view
+// lookup — "tenant_name" must be provided explicitly.
+func (v *replicationCRDValidator) validateSubsystemLevelTenantName(
+	ctx context.Context,
+	primarySCName string,
+	allSCNames []string,
+) admission.Response {
+	for _, scName := range allSCNames {
+		if scName == primarySCName {
+			continue
+		}
+		sc, err := v.k8sClient.GetStorageClass(ctx, scName)
+		if err != nil {
+			return admission.Denied(fmt.Sprintf("StorageClass %q not found: %v", scName, err))
+		}
+		if sc.Parameters["tenant_name"] == "" {
+			return admission.Denied(fmt.Sprintf(
+				"StorageClass %q is missing required parameter \"tenant_name\": "+
+					"subsystem-level block replication cannot resolve the tenant on secondary clusters "+
+					"before the subsystem exists — set \"tenant_name\" to the target tenant's name",
+				scName,
+			))
+		}
+	}
+	return admission.Allowed("")
+}
+
+// validateSubsystemPresence checks whether the block subsystem (view) is present
+// or absent on each cluster in scNames.
+//
+//   - mustExist=true:  subsystem must be found    (VVR and non-subsystem-level VSCR).
+//   - mustExist=false: subsystem must be absent   (subsystem-level VSCR secondaries).
+func (v *replicationCRDValidator) validateSubsystemPresence(
+	ctx context.Context,
+	log *zap.Logger,
+	scNames []string,
+	mustExist bool,
+) admission.Response {
+	for _, scName := range scNames {
+		sc, err := v.k8sClient.GetStorageClass(ctx, scName)
+		if err != nil {
+			return admission.Denied(fmt.Sprintf("StorageClass %q not found: %v", scName, err))
+		}
+		if !k8sclient.IsBlockStorageClass(sc) {
+			continue
+		}
+		subsystemName := sc.Parameters[common.StorageClassParameterSubsystem]
+		if subsystemName == "" {
+			return admission.Denied(fmt.Sprintf(
+				"StorageClass %q is missing required parameter %q",
+				scName, common.StorageClassParameterSubsystem,
+			))
+		}
+		rest, err := vmsrest.NewFromStorageClass(ctx, v.k8sClient, sc, v.sslVerify, log)
+		if err != nil {
+			return admission.Errored(http.StatusInternalServerError,
+				fmt.Errorf("StorageClass %q: failed to build REST client: %w", scName, err))
+		}
+		params := vast_client.Params{"name": subsystemName}
+		if tn := sc.Parameters["tenant_name"]; tn != "" {
+			params["tenant_name"] = tn
+		}
+		exists, err := rest.Views.ExistsWithContext(ctx, &typed.ViewSearchParams{RawData: params})
+		if err != nil {
+			return admission.Errored(http.StatusInternalServerError,
+				fmt.Errorf("StorageClass %q: failed to check subsystem %q on cluster: %w", scName, subsystemName, err))
+		}
+		if mustExist && !exists {
+			return admission.Denied(fmt.Sprintf(
+				"StorageClass %q: subsystem %q does not exist on cluster; "+
+					"for block replication the subsystem must be pre-created on all clusters",
+				scName, subsystemName,
+			))
+		}
+		if !mustExist && exists {
+			return admission.Denied(fmt.Sprintf(
+				"subsystem-level block replication requires that subsystem %q does not pre-exist "+
+					"on secondary cluster (StorageClass %q): VAST creates it via replication; "+
+					"delete the subsystem from the secondary cluster and retry",
+				subsystemName, scName,
+			))
+		}
+	}
 	return admission.Allowed("")
 }
 

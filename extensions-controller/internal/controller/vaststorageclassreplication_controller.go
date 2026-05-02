@@ -156,17 +156,38 @@ func (r *VastStorageClassReplicationReconciler) Reconcile(ctx context.Context, r
 	// PpathDirMapping is immutable once populated: predict dirs only on the first reconcile.
 	if len(vscr.Status.PpathDirMapping) == 0 {
 		mapping := make(map[string]string, len(vscr.Spec.AllStorageClasses()))
-		for _, scName := range vscr.Spec.AllStorageClasses() {
-			sc, err := k8s.GetStorageClass(ctx, scName)
-			if err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to get StorageClass %s: %w", scName, err)
-			}
-			dir, err := ppathdir.Predict(ctx, k8s, sc, r.Config.SSLVerify, log, "", "")
-			if err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to compute PpathDir for StorageClass %s: %w", scName, err)
-			}
-			mapping[scName] = dir
+
+		primarySC, err := k8s.GetStorageClass(ctx, vscr.Spec.PrimaryStorageClass)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to get primary StorageClass %s: %w", vscr.Spec.PrimaryStorageClass, err)
 		}
+
+		if ppathdir.IsSubsystemLevel(k8s, primarySC) {
+			// Subsystem-level block replication: secondary clusters don't have a
+			// subsystem yet — VAST creates it via replication and preserves the
+			// source path.  Predict only from the primary and share the result
+			// across all StorageClasses in the constellation.
+			primaryDir, err := ppathdir.Predict(ctx, k8s, primarySC, r.Config.SSLVerify, log, "", "")
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to compute PpathDir for primary StorageClass %s: %w", vscr.Spec.PrimaryStorageClass, err)
+			}
+			for _, scName := range vscr.Spec.AllStorageClasses() {
+				mapping[scName] = primaryDir
+			}
+		} else {
+			for _, scName := range vscr.Spec.AllStorageClasses() {
+				sc, err := k8s.GetStorageClass(ctx, scName)
+				if err != nil {
+					return ctrl.Result{}, fmt.Errorf("failed to get StorageClass %s: %w", scName, err)
+				}
+				dir, err := ppathdir.Predict(ctx, k8s, sc, r.Config.SSLVerify, log, "", "")
+				if err != nil {
+					return ctrl.Result{}, fmt.Errorf("failed to compute PpathDir for StorageClass %s: %w", scName, err)
+				}
+				mapping[scName] = dir
+			}
+		}
+
 		vscr.Status.PpathDirMapping = mapping
 		if err := k8s.UpdateVastStorageClassReplicationStatus(ctx, vscr); err != nil {
 			return ctrl.Result{}, err
@@ -290,14 +311,99 @@ func (r *VastStorageClassReplicationReconciler) reconcileSyncStatus(
 }
 
 func (r *VastStorageClassReplicationReconciler) validateOnce(
-	_ context.Context,
-	_ *k8sclient.K8sClient,
+	ctx context.Context,
+	k8s *k8sclient.K8sClient,
 	vscr *vastv1alpha1.VastStorageClassReplication,
-	_ map[string]*vast_client.TypedVMSRest,
+	restByStorageClass map[string]*vast_client.TypedVMSRest,
 ) error {
 	if err := vscr.Spec.Validate(); err != nil {
 		return cerrors.NewValidationError("%s", err.Error())
 	}
+
+	primarySC, err := k8s.GetStorageClass(ctx, vscr.Spec.PrimaryStorageClass)
+	if err != nil {
+		return fmt.Errorf("failed to get primary StorageClass %s: %w", vscr.Spec.PrimaryStorageClass, err)
+	}
+
+	if ppathdir.IsSubsystemLevel(k8s, primarySC) {
+		// Subsystem-level block replication: VAST creates the subsystem on
+		// secondary clusters via the replication stream itself.  If a user
+		// pre-creates the subsystem on a secondary cluster, VAST replication
+		// will fail with a conflict.  Detect this early and surface a clear
+		// validation error.
+		for _, scName := range vscr.Spec.AllStorageClasses() {
+			if scName == vscr.Spec.PrimaryStorageClass {
+				continue
+			}
+			sc, err := k8s.GetStorageClass(ctx, scName)
+			if err != nil {
+				return fmt.Errorf("failed to get StorageClass %s: %w", scName, err)
+			}
+			scParams := k8s.ExtractNonPrefixedParams(common.CSIParameterPrefix, sc.Parameters)
+			scSubsystem := scParams[common.StorageClassParameterSubsystem]
+			if scSubsystem == "" {
+				return cerrors.NewValidationError("StorageClass %q is missing required parameter %q", scName, common.StorageClassParameterSubsystem)
+			}
+
+			if sc.Parameters["tenant_name"] == "" {
+				return cerrors.NewValidationError(
+					"subsystem-level block replication requires \"tenant_name\" parameter on secondary "+
+						"StorageClass %q: the subsystem does not exist yet on secondary clusters "+
+						"(VAST creates it via replication), so tenant resolution must use \"tenant_name\" directly",
+					scName,
+				)
+			}
+
+			rest := restByStorageClass[scName]
+			exists, err := rest.Views.Exists(&typed.ViewSearchParams{
+				RawData: vast_client.Params{
+					"name":        scSubsystem,
+					"tenant_name": sc.Parameters["tenant_name"],
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("StorageClass %s: failed to check subsystem %q on secondary cluster: %w", scName, scSubsystem, err)
+			}
+			if exists {
+				return cerrors.NewValidationError(
+					"subsystem-level block replication requires that the subsystem %q does not pre-exist "+
+						"on secondary cluster (StorageClass %q): VAST creates it via replication; "+
+						"delete the subsystem from the secondary cluster and retry",
+					scSubsystem, scName,
+				)
+			}
+		}
+	} else if k8sclient.IsBlockStorageClass(primarySC) {
+		// Non-subsystem-level block VSCR: volumes are replicated within a
+		// pre-existing subsystem.  The subsystem must be present on all clusters
+		// before replication can start.
+		for _, scName := range vscr.Spec.AllStorageClasses() {
+			sc, err := k8s.GetStorageClass(ctx, scName)
+			if err != nil {
+				return fmt.Errorf("failed to get StorageClass %s: %w", scName, err)
+			}
+			subsystemName := sc.Parameters[common.StorageClassParameterSubsystem]
+			if subsystemName == "" {
+				return cerrors.NewValidationError("StorageClass %q is missing required parameter %q", scName, common.StorageClassParameterSubsystem)
+			}
+			params := vast_client.Params{"name": subsystemName}
+			if tn := sc.Parameters["tenant_name"]; tn != "" {
+				params["tenant_name"] = tn
+			}
+			exists, err := restByStorageClass[scName].Views.Exists(&typed.ViewSearchParams{RawData: params})
+			if err != nil {
+				return fmt.Errorf("StorageClass %q: failed to check subsystem %q on cluster: %w", scName, subsystemName, err)
+			}
+			if !exists {
+				return cerrors.NewValidationError(
+					"StorageClass %q: subsystem %q does not exist on cluster; "+
+						"for block replication the subsystem must be pre-created on all clusters",
+					scName, subsystemName,
+				)
+			}
+		}
+	}
+
 	return nil
 }
 

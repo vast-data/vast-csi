@@ -152,21 +152,25 @@ func lookupPrimaryStorageClass(ctx context.Context, k8s *k8s_client.K8sClient, r
 // mirrorVolumeHandle computes the CSI volumeHandle for the static mirror PV
 // that will be created on the destination (sibling) StorageClass cluster.
 //
-// The handle is derived from the parent VSCR or VVR's PpathDirMapping:
+// For BLOCK StorageClasses the handle is subsystem-relative:
+//	/[volumeGroup/]path.Base(sourceVolumeHandle)
 //
-//   - VSCR: ppathDirMapping[sibSc] joined with the base name of the source
-//     volume handle.  The VAST CSI driver uses the path's basename (the PVC
-//     UID component) to locate the replicated object on the destination cluster.
-//     Example: "/clusterB-source/foo/bar" + "pvc-8922fb1b-…" → "/clusterB-source/foo/bar/pvc-8922fb1b-…"
-//
-//   - VVR: ppathDirMapping[sibSc] used directly as the volume handle — the
-//     mapping already encodes the exact path of the replicated volume on that
-//     cluster (no basename suffix is appended).
+// For FILE StorageClasses the handle is the full view path on the destination
+// cluster, taken from the parent VSCR or VVR's PpathDirMapping (which
+// encodes root_export[/volumeBaseName]).
 func (b *baseProvisioner) mirrorVolumeHandle(
 	ctx context.Context,
 	sourcePV *corev1.PersistentVolume,
 	sibSc *storagev1.StorageClass,
 ) (string, error) {
+	volumeBaseName := path.Base(sourcePV.Spec.CSI.VolumeHandle)
+
+	if k8s_client.IsBlockStorageClass(sibSc) {
+		sibParams := b.k8sClient.ExtractNonPrefixedParams(common.CSIParameterPrefix, sibSc.Parameters)
+		volumeGroup := strings.TrimPrefix(sibParams[common.StorageClassParameterVolumeGroup], "/")
+		return path.Join("/", volumeGroup, volumeBaseName), nil
+	}
+
 	if vscrName := b.rp.Labels[common.LabelSourceVSCR]; vscrName != "" {
 		vscr, err := b.k8sClient.GetVastStorageClassReplication(ctx, vscrName, b.rp.Namespace)
 		if err != nil {
@@ -176,7 +180,7 @@ func (b *baseProvisioner) mirrorVolumeHandle(
 		if !ok {
 			return "", fmt.Errorf("StorageClass %q has no entry in VSCR %s PpathDirMapping", sibSc.Name, vscrName)
 		}
-		return path.Join(dir, path.Base(sourcePV.Spec.CSI.VolumeHandle)), nil
+		return path.Join(dir, volumeBaseName), nil
 	}
 	if vvrName := b.rp.Labels[common.LabelSourceVVR]; vvrName != "" {
 		vvr, err := b.k8sClient.GetVastVolumeReplication(ctx, vvrName, b.rp.Namespace)

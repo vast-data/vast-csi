@@ -19,6 +19,7 @@ const (
 	ppathCapabilities         = "ASYNC_REPLICATION"
 	ppathActiveState          = "active"
 	ppathPartiallyActiveState = "partially active"
+	ppathFailedState          = "failed"
 
 	// ppathFields is the field projection used for all protected path GET
 	// requests in this package, covering state checks, role queries, and
@@ -32,6 +33,7 @@ const (
 	// Stream state strings returned by the VMS REST API.
 	streamStateActive            = "Active"
 	streamStateWaitingForStandby = "Waiting for a standby stream"
+	streamStateFailed            = "Failed"
 
 	// Polling timeouts for state transitions.
 	ppathActiveTimeout             = 5 * time.Minute
@@ -96,6 +98,11 @@ func checkPpathState(name, state, failureReason string) error {
 	switch strings.ToLower(state) {
 	case ppathActiveState, ppathPartiallyActiveState:
 		return nil
+	case ppathFailedState:
+		if failureReason != "" {
+			return fmt.Errorf("protected path %q failed: %s", name, failureReason)
+		}
+		return fmt.Errorf("protected path %q is in failed state (VAST provides no failure reason)", name)
 	}
 	if failureReason != "" {
 		return fmt.Errorf("protected path %q is not active (state=%q): %s", name, state, failureReason)
@@ -129,7 +136,6 @@ func IsPpathActive(
 // waitForStreamState polls the ppath until the named stream's State field
 // matches one of expectedStates.  An empty stream list or a missing stream is
 // treated as "not yet ready" (not an error) so the function keeps retrying.
-// A non-empty FailureReason on the ppath is treated as a permanent error.
 func waitForStreamState(
 	rest *vast_client.TypedVMSRest,
 	ppathName string,
@@ -156,13 +162,16 @@ func waitForStreamState(
 			if err := record.Fill(&obj); err != nil {
 				return false, err
 			}
-			if obj.FailureReason != "" {
-				return false, fmt.Errorf("ppath %q permanently failed: %s", ppathName, obj.FailureReason)
+			if err := checkPpathState(ppathName, obj.State, obj.FailureReason); err != nil {
+				return false, err
 			}
 			for _, s := range ppathStreams(record) {
 				if s.Name == streamName {
 					if expected.Has(s.State) {
 						return true, nil
+					}
+					if strings.EqualFold(s.State, streamStateFailed) {
+						return false, fmt.Errorf("stream %q in ppath %q is in Failed state", streamName, ppathName)
 					}
 					log.Info("waiting for stream state transition",
 						zap.String("ppath", ppathName),

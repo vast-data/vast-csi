@@ -27,6 +27,7 @@ import (
 	"github.com/vast-data/go-vast-client/core"
 	"github.com/vast-data/go-vast-client/resources/typed"
 	"go.uber.org/zap"
+	storagev1 "k8s.io/api/storage/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -104,7 +105,7 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 	}
 	if ensured {
-		if err := r.validateOnce(k8s, vvr); err != nil {
+		if err := r.validateOnce(ctx, k8s, vvr, restByStorageClass, scByStorageClass); err != nil {
 			_ = k8s.RemoveFinalizer(ctx, vvr, common.FinalizerVVR)
 			return ctrl.Result{}, err
 		}
@@ -127,12 +128,9 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	if vvr.Spec.Resync {
-		if err := r.ensureResync(ctx, k8s, emit, vvr); err != nil {
-			return ctrl.Result{}, err
-		}
 		// Return after triggering resync so that ensureVR in this cycle does not
 		// immediately revert the replicationState back to Primary.
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, r.ensureResync(ctx, k8s, emit, vvr)
 	}
 
 	// PpathDirMapping is immutable once populated: predict dirs only on the first reconcile.
@@ -293,13 +291,52 @@ func (r *VastVolumeReplicationReconciler) reconcileSyncStatus(
 	_ = k8s.UpdateVastVolumeReplicationStatus(ctx, vvr)
 }
 
-// validateOnce runs static spec validation exactly once — before the finalizer
-// is added (i.e. on the very first reconcile).  Any failure returns a
-// *provisioner.ValidationError, which sets SyncStatus=Invalid.
-func (r *VastVolumeReplicationReconciler) validateOnce(_ *k8sclient.K8sClient, vvr *vastv1alpha1.VastVolumeReplication) error {
+// validateOnce runs validation exactly once — before the finalizer is added
+// (i.e. on the very first reconcile).  Any failure returns a ValidationError,
+// which sets SyncStatus=Invalid.
+//
+// For block VVR it also verifies that the subsystem view exists on every
+// cluster in the constellation.  Unlike subsystem-level VSCR (where VAST
+// creates the subsystem via replication), VVR replicates individual volumes
+// within a pre-existing subsystem, so the subsystem must be present on all
+// clusters before replication can start.
+func (r *VastVolumeReplicationReconciler) validateOnce(
+	ctx context.Context,
+	_ *k8sclient.K8sClient,
+	vvr *vastv1alpha1.VastVolumeReplication,
+	restByStorageClass map[string]*vast_client.TypedVMSRest,
+	scByStorageClass map[string]*storagev1.StorageClass,
+) error {
 	if err := vvr.Spec.Validate(); err != nil {
 		return cerrors.NewValidationError("%s", err.Error())
 	}
+
+	for _, scName := range vvr.Spec.AllStorageClasses() {
+		sc := scByStorageClass[scName]
+		if !k8sclient.IsBlockStorageClass(sc) {
+			continue
+		}
+		subsystemName := sc.Parameters[common.StorageClassParameterSubsystem]
+		if subsystemName == "" {
+			return cerrors.NewValidationError("StorageClass %q is missing required parameter %q", scName, common.StorageClassParameterSubsystem)
+		}
+		params := vast_client.Params{"name": subsystemName}
+		if tn := sc.Parameters["tenant_name"]; tn != "" {
+			params["tenant_name"] = tn
+		}
+		exists, err := restByStorageClass[scName].Views.Exists(&typed.ViewSearchParams{RawData: params})
+		if err != nil {
+			return fmt.Errorf("StorageClass %q: failed to check subsystem %q on cluster: %w", scName, subsystemName, err)
+		}
+		if !exists {
+			return cerrors.NewValidationError(
+				"StorageClass %q: subsystem %q does not exist on cluster; "+
+					"for VVR block replication the subsystem must be pre-created on all clusters",
+				scName, subsystemName,
+			)
+		}
+	}
+
 	return nil
 }
 
