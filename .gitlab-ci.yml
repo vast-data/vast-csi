@@ -16,7 +16,7 @@ variables:
   DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
   IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:${CI_PIPELINE_ID}
   # source: packaging/base.Dockerfile
-  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2026-03-31
+  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2026-05-04
   ORION_BRANCH: comet/master
 
 
@@ -400,10 +400,12 @@ update_operators_redhat:
     export IMG_PULL_SECRET=null
     export PIPE=null
     export IMG=${RH_REGISTRY}/csi-operator
-    export OPERATOR_TAG=$(./scripts/img_to_digest.sh "${IMG}:${VERSION}")
+    OPERATOR_TAG=$(./scripts/img_to_digest.sh "${IMG}:${VERSION}") || exit 1
+    export OPERATOR_TAG
     
     export CSI_PLUGIN_IMG=${RH_REGISTRY}/csi
-    export CSI_TAG=$(./scripts/img_to_digest.sh "${CSI_PLUGIN_IMG}:${VERSION}")
+    CSI_TAG=$(./scripts/img_to_digest.sh "${CSI_PLUGIN_IMG}:${VERSION}") || exit 1
+    export CSI_TAG
     
     if [ -z "$OPERATOR_TAG" ]; then
         echo "Error: OPERATOR_TAG is empty."
