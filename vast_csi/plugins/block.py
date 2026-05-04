@@ -115,7 +115,7 @@ def nvme_connect(host_nqn, discovery_server, host_id, subsystem_nqn, metrics_reg
         raise NVMEConnectionFailed(detail=exc.stderr, host_nqn=host_nqn, discovery_server=discovery_server)
 
 
-def mount(src, tgt, flags=None, bind=False, fs_type=None, metrics_registry=None):
+def mount(src, tgt, flags=None, bind=False, fs_type=None, metrics_registry=None, enforce_ro=False):
     """
     Mount block device with auto-instrumented metrics.
 
@@ -126,15 +126,35 @@ def mount(src, tgt, flags=None, bind=False, fs_type=None, metrics_registry=None)
         bind (bool, optional): If True, the mount is performed as a bind mount using the --bind option.
         fs_type (str, optional): The filesystem type to be used for the mount (e.g., 'ext4', 'xfs').
         metrics_registry: Optional MetricsRegistry instance (injected by framework if metrics enabled)
+        enforce_ro (bool): If True on a bind mount, ensure 'ro' is in flags and issue a remount,ro
+            after the initial bind to actually enforce read-only (the kernel ignores 'ro' on the bind
+            syscall itself). Use for filesystem staging mounts.
     """
+    if enforce_ro:
+        flags = list(flags) if flags else []
+        if "ro" not in flags:
+            flags.append("ro")
+
+    # remount,ro is only needed for bind mounts — the kernel ignores 'ro' on the bind syscall itself.
+    # For fs_type mounts the kernel enforces 'ro' natively via the mount options.
+    need_ro_remount = enforce_ro and bind
+
     if bind:
+        # The Linux kernel silently ignores 'ro' on the initial bind mount syscall.
+        # Strip 'ro' here and enforce it via a separate remount below (only when enforce_ro=True).
+        bind_flags = [f for f in flags if f != "ro"] if need_ro_remount else flags
         executable = cmd.mount["--bind"]
+        if bind_flags:
+            executable = executable["-o", ",".join(bind_flags)]
     elif fs_type:
         executable = cmd.mount["-t", fs_type]
+        if flags:
+            executable = executable["-o", ",".join(flags)]
     else:
         executable = cmd.mount
-    if flags:
-        executable = executable["-o", ",".join(flags)]
+        if flags:
+            executable = executable["-o", ",".join(flags)]
+
     timeout = CONF.mount_umount_timeout
     flags_str = ",".join(flags) if flags else "(none)"
     mount_type = "bind" if bind else (f"fs_type={fs_type}" if fs_type else "default")
@@ -151,6 +171,11 @@ def mount(src, tgt, flags=None, bind=False, fs_type=None, metrics_registry=None)
             timing() as timer,
         ):
             executable['-v', src, tgt].run(timeout=timeout)
+            if need_ro_remount:
+                # A second remount is required to actually enforce read-only on bind mounts.
+                # The kernel ignores 'ro' on the initial --bind call.
+                logger.info(f"Remounting {tgt!r} as read-only")
+                cmd.mount["-o", "remount,ro", tgt].run(timeout=timeout)
     except ProcessTimedOut:
         raise MountFailed(detail=f"mount timed out after {timeout}s", src=src, tgt=tgt, mount_options=flags)
     except ProcessExecutionError as exc:
@@ -324,18 +349,11 @@ class BlockController(ControllerBase, Instrumented):
             volume_content_source=None,
     ):
         volume_capabilities = _validate_capabilities(volume_capabilities)
-        if volume_capabilities.is_filesystem and volume_capabilities.multi_mode:
-            if volume_capabilities.rw_mode:
-                raise Abort(
-                    INVALID_ARGUMENT,
-                    "Filesystem volumes do not support multi-node read-write (RWX) access. Use ReadOnlyMany (ROX) instead."
-                )
-            elif volume_capabilities.ro_mode and not CONF.allow_ro_many_block_fs_mode:
-                raise Abort(
-                    INVALID_ARGUMENT,
-                    "ReadOnlyMany (ROX) access mode for block filesystem volumes is disabled. "
-                    "To enable it, set 'allowROManyBlockFsMode: true' in the Helm chart values."
-                )
+        if volume_capabilities.is_filesystem and volume_capabilities.multi_mode and not volume_capabilities.ro_mode:
+            raise Abort(
+                INVALID_ARGUMENT,
+                "Filesystem volumes do not support multi-node read-write attach."
+            )
         parameters = parameters or dict()
         if not volume_content_source:
             builder_cls = EmptyBlockVolumeBuilder
@@ -679,10 +697,21 @@ class BlockNode(NodeBase, Instrumented):
         logger.info(f"Binding device at {device_path} to {device_bind_path}.")
         staging_target_path.mkdir()
         device_bind_path.open("a").close()
+        stage_flags = volume_capabilities.mount_flags
+        # enforce_ro=True makes mount() add 'ro' automatically and do a remount,ro after the bind.
+        # For filesystem volumes: enforce at staging (ro in mount options or ROX access mode).
+        # For raw block volumes: staging stays rw; ro is enforced at publish instead.
+        enforce_ro = volume_capabilities.is_filesystem and (
+            volume_capabilities.ro_mode or "ro" in stage_flags
+        )
+        if enforce_ro:
+            logger.info("Staging filesystem volume as read-only (readonly parameter or ROX access mode)")
         mount(
             src=device_path,
             tgt=device_bind_path,
+            flags=stage_flags,
             bind=True,
+            enforce_ro=enforce_ro,
             metrics_registry=None,  # Don't count staging as mount operation
         )
         return types.StageResp()
@@ -773,8 +802,8 @@ class BlockNode(NodeBase, Instrumented):
         device_bind_path = get_device_bind_path(staging_target_path)
         logger.info(f"Device bind path: {device_bind_path}")
         mount_flags = volume_capabilities.mount_flags
-        if (readonly or volume_capabilities.ro_mode) and "ro" not in mount_flags:
-            mount_flags.append("ro")
+        needs_ro = readonly or volume_capabilities.ro_mode
+        if needs_ro:
             logger.info("Publishing volume as read-only (readonly parameter or ROX access mode)")
 
         is_file_system = volume_capabilities.is_filesystem
@@ -811,6 +840,7 @@ class BlockNode(NodeBase, Instrumented):
                     tgt=target_path,
                     flags=mount_flags,
                     fs_type=fs_type,
+                    enforce_ro=needs_ro,
                     metrics_registry=metrics_registry,
                 )
             except Exception:
@@ -827,6 +857,7 @@ class BlockNode(NodeBase, Instrumented):
                 tgt=target_path,
                 flags=mount_flags,
                 bind=True,
+                enforce_ro=needs_ro,
                 metrics_registry=metrics_registry,
             )
 
