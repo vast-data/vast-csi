@@ -915,7 +915,9 @@ def test_list(mock_session):
 
     # Call the list method and check that it calls the session's get method
     result = resource.list(api_ver="v1", foo="bar")
-    mock_session.get.assert_called_once_with("test_resource", api_ver="v1", params={"foo": "bar"})
+    mock_session.get.assert_called_once_with(
+        "test_resource", api_ver="v1", params={"foo": "bar", "page_size": 1000}
+    )
     assert result == [Bunch(id=1, name="Test")]
 
 
@@ -966,7 +968,9 @@ def test_one_found(mock_session):
     resource.resource_name = "test_resource"
     mock_session.get.return_value = [Bunch(id=1, name="Test")]
     result = resource.one(api_ver="v1", foo="bar")
-    mock_session.get.assert_called_once_with("test_resource", api_ver="v1", params={"foo": "bar"})
+    mock_session.get.assert_called_once_with(
+        "test_resource", api_ver="v1", params={"foo": "bar", "page_size": 1000}
+    )
     assert result == Bunch(id=1, name="Test")
 
 
@@ -995,7 +999,7 @@ def test_ensure_exists(mock_session):
     mock_session.get.return_value = [Bunch(id=1, name="Test")]
     result = resource.ensure(name="Test", api_ver="v1", foo="bar")
     mock_session.get.assert_called_once_with(
-        "test_resource", api_ver="v1", params={'name': 'Test'}
+        "test_resource", api_ver="v1", params={'name': 'Test', 'page_size': 1000}
     )
     assert result == Bunch(id=1, name="Test")
 
