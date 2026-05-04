@@ -133,7 +133,7 @@ cosiplugin:
         cpu: 100m
         memory: 50Mi
   # priorityClassName is the name of priority class to be used for the pod.
-  priorityClassName: system-cluster-critical
+  priorityClassName: system-node-critical
 
 # Reference to one or more secrets to be used when pulling images
 # ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
