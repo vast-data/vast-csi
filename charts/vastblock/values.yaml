@@ -597,7 +597,7 @@ node:
         cpu: 200m
         memory: 300Mi
   # See controller.priorityClassName section for details
-  priorityClassName: system-cluster-critical
+  priorityClassName: system-node-critical
   # Metrics configuration for CSI node
   # Usage: see docs/METRICS_GUIDE.md (Prometheus Operator vs manual Prometheus)
   metrics:
