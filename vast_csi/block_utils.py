@@ -1,6 +1,7 @@
 import re
 import json
-from plumbum import local
+from contextlib import contextmanager
+from plumbum import local, cmd
 from easypy.bunch import Bunch, bunchify
 from easypy.collections import listify
 from vast_csi.filesystem_utils import hostcmd
@@ -310,3 +311,36 @@ def disable_nvme_timeout(subsystem):
             logger.info(f"Disabled timeout for NVMe controller {ctrl_name!r}")
         else:
             logger.warning(f"ctrl_loss_tmo not found for controller {ctrl_name!r}")
+
+
+def set_block_device_readonly(device_path):
+    """Set a block device read-only at the kernel level using blockdev --setro."""
+    cmd.blockdev["--setro", device_path].run()
+
+
+def set_block_device_readwrite(device_path):
+    """Clear the kernel-level read-only flag on a block device using blockdev --setrw."""
+    cmd.blockdev["--setrw", device_path].run()
+
+
+@contextmanager
+def device_rw(device_path, mount_path=None, enabled=True):
+    """Transiently lift read-only protection on a block device for resize operations.
+
+    When enabled=False this is a no-op (avoids caller-side conditionals).
+    """
+    if not enabled:
+        yield
+        return
+
+    set_block_device_readwrite(device_path)
+    if mount_path:
+        logger.info(f"Temporarily remounting {mount_path} as rw to clear SB_RDONLY for resize")
+        cmd.mount["-o", "remount,rw", mount_path].run()
+    try:
+        yield
+    finally:
+        if mount_path:
+            cmd.mount["-o", "remount,ro", mount_path].run()
+            logger.info(f"Remounted {mount_path} back to read-only after resize")
+        set_block_device_readonly(device_path)
