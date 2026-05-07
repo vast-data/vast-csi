@@ -40,7 +40,7 @@ annotations:
   operators.operatorframework.io.test.config.v1: tests/scorecard/
 
   # Annotations to specify supported OCP versions.
-  com.redhat.openshift.versions: v4.14
+  com.redhat.openshift.versions: v4.19-v4.21
 EOF
 
 echo "Generate scorecard testing template"
