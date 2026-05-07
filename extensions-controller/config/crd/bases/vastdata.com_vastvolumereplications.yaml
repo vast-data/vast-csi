@@ -67,6 +67,16 @@ spec:
           spec:
             description: VastVolumeReplicationSpec defines the desired state of VastVolumeReplication.
             properties:
+              destVolReclaimPolicy:
+                default: Retain
+                description: |-
+                  DestVolReclaimPolicy controls whether destination VAST objects (block
+                  volumes or file views/quotas) are deleted when the VVR is deleted.
+                  Defaults to Retain.
+                enum:
+                - Retain
+                - Delete
+                type: string
               failoverType:
                 default: ungracefulFailover
                 description: |-

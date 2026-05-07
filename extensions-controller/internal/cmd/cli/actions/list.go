@@ -67,14 +67,15 @@ Examples:
 
 // listRow holds the plain (uncolored) cell values for one table row.
 type listRow struct {
-	kind       string
-	namespace  string
-	name       string
-	scs        string
-	primary    string
-	action     string
-	syncStatus string
-	age        string
+	kind           string
+	namespace      string
+	name           string
+	scs            string
+	primary        string
+	action         string
+	destVolReclaim string
+	syncStatus     string
+	age            string
 }
 
 func vscrRow(obj *vastv1alpha1.VastStorageClassReplication) listRow {
@@ -83,14 +84,15 @@ func vscrRow(obj *vastv1alpha1.VastStorageClassReplication) listRow {
 		primary = obj.Spec.PrimaryStorageClass
 	}
 	return listRow{
-		kind:       "VSCR",
-		namespace:  obj.Namespace,
-		name:       obj.Name,
-		scs:        vastv1alpha1.DisplayableList(obj.Spec.AllStorageClasses()).String(),
-		primary:    primary,
-		action:     actionStr(string(obj.Spec.FailoverType)),
-		syncStatus: syncStatusStr(obj.Status.SyncStatus),
-		age:        age(obj.CreationTimestamp.Time),
+		kind:           "VSCR",
+		namespace:      obj.Namespace,
+		name:           obj.Name,
+		scs:            vastv1alpha1.DisplayableList(obj.Spec.AllStorageClasses()).String(),
+		primary:        primary,
+		action:         actionStr(string(obj.Spec.FailoverType)),
+		destVolReclaim: destVolReclaimStr(obj.Spec.DestVolReclaimPolicy),
+		syncStatus:     syncStatusStr(obj.Status.SyncStatus),
+		age:            age(obj.CreationTimestamp.Time),
 	}
 }
 
@@ -100,14 +102,15 @@ func vvrRow(obj *vastv1alpha1.VastVolumeReplication) listRow {
 		primary = obj.Spec.PrimaryStorageClass
 	}
 	return listRow{
-		kind:       "VVR",
-		namespace:  obj.Namespace,
-		name:       obj.Name,
-		scs:        vastv1alpha1.DisplayableList(obj.Spec.AllStorageClasses()).String(),
-		primary:    primary,
-		action:     actionStr(string(obj.Spec.FailoverType)),
-		syncStatus: syncStatusStr(obj.Status.SyncStatus),
-		age:        age(obj.CreationTimestamp.Time),
+		kind:           "VVR",
+		namespace:      obj.Namespace,
+		name:           obj.Name,
+		scs:            vastv1alpha1.DisplayableList(obj.Spec.AllStorageClasses()).String(),
+		primary:        primary,
+		action:         actionStr(string(obj.Spec.FailoverType)),
+		destVolReclaim: destVolReclaimStr(obj.Spec.DestVolReclaimPolicy),
+		syncStatus:     syncStatusStr(obj.Status.SyncStatus),
+		age:            age(obj.CreationTimestamp.Time),
 	}
 }
 
@@ -121,7 +124,7 @@ func actionStr(a string) string {
 // printListTable builds rows, computes max column widths from plain text, then
 // prints each row with manual padding so ANSI color codes don't shift columns.
 func printListTable(vscrs []vastv1alpha1.VastStorageClassReplication, vvrs []vastv1alpha1.VastVolumeReplication) {
-	headers := []string{"KIND", "NAMESPACE", "NAME", "STORAGE CLASSES", "PRIMARY", "FAILOVER TYPE", "SYNC STATUS", "AGE"}
+	headers := []string{"KIND", "NAMESPACE", "NAME", "STORAGE CLASSES", "PRIMARY", "FAILOVER TYPE", "VOL RECLAIM POLICY", "SYNC STATUS", "AGE"}
 
 	rows := make([]listRow, 0, len(vscrs)+len(vvrs))
 	for i := range vscrs {
@@ -173,9 +176,10 @@ func printListTable(vscrs []vastv1alpha1.VastStorageClassReplication, vvrs []vas
 			cli.Cyan(cols[2]),  // NAME
 			cols[3],            // STORAGE CLASSES
 			cli.Green(cols[4]), // PRIMARY
-			cols[5],            // ACTION
+			cols[5],            // FAILOVER TYPE
+			cols[6],
 			colorSyncStatusStr(r.syncStatus),
-			cols[7], // AGE
+			cols[8], // AGE
 		}
 		var sb strings.Builder
 		for i, c := range colored {
@@ -205,7 +209,14 @@ func printListTable(vscrs []vastv1alpha1.VastStorageClassReplication, vvrs []vas
 }
 
 func rowCols(r listRow) []string {
-	return []string{r.kind, r.namespace, r.name, r.scs, r.primary, r.action, r.syncStatus, r.age}
+	return []string{r.kind, r.namespace, r.name, r.scs, r.primary, r.action, r.destVolReclaim, r.syncStatus, r.age}
+}
+
+func destVolReclaimStr(p vastv1alpha1.DestVolReclaimPolicy) string {
+	if p == "" {
+		return string(vastv1alpha1.DestVolReclaimPolicyRetain)
+	}
+	return string(p)
 }
 
 func syncStatusStr(s string) string {

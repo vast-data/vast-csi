@@ -155,6 +155,9 @@ func (b *BlockProvisioner) CleanVolumeCb(ctx context.Context, _ *vastv1alpha1.Va
 	if !b.rp.Spec.SyncVastObjects {
 		return nil
 	}
+	if b.rp.Spec.DestVolReclaimPolicy == vastv1alpha1.DestVolReclaimPolicyRetain {
+		return nil
+	}
 	pvcs, err := b.k8sClient.ListPVCsByLabelSelector(ctx, b.rp.Namespace, map[string]string{
 		common.LabelManagedBy:    common.LabelManagedByValue,
 		common.LabelStorageClass: sibSc.Name,

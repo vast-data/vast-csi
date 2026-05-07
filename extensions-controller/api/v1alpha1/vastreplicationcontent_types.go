@@ -107,6 +107,15 @@ type VastReplicationContentSpec struct {
 	// +optional
 	SyncVastObjects bool `json:"syncVastObjects,omitempty"`
 
+	// DestVolReclaimPolicy mirrors the same field from the parent
+	// VastStorageClassReplication or VastVolumeReplication.
+	// Set at creation time and never changed.
+	// Controls whether destination VAST objects are deleted on VRC deletion.
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="destVolReclaimPolicy is immutable"
+	// +kubebuilder:default=Retain
+	// +optional
+	DestVolReclaimPolicy DestVolReclaimPolicy `json:"destVolReclaimPolicy,omitempty"`
+
 	// ReplicationPath is the sourceDir of the VAST protected path (ppath)
 	// associated with this replication.  Set at creation time; used by cleanup
 	// logic even after the parent object is gone.

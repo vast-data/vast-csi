@@ -351,6 +351,20 @@ spec:
               validation rules).  Only spec.pvcs and spec.replicationState may change after
               the object is first written.
             properties:
+              destVolReclaimPolicy:
+                default: Retain
+                description: |-
+                  DestVolReclaimPolicy mirrors the same field from the parent
+                  VastStorageClassReplication or VastVolumeReplication.
+                  Set at creation time and never changed.
+                  Controls whether destination VAST objects are deleted on VRC deletion.
+                enum:
+                - Retain
+                - Delete
+                type: string
+                x-kubernetes-validations:
+                - message: destVolReclaimPolicy is immutable
+                  rule: self == oldSelf
               kind:
                 description: |-
                   Kind identifies the kind of the mirrored destination object
@@ -556,6 +570,16 @@ spec:
             description: VastStorageClassReplicationSpec defines the desired state
               of VastStorageClassReplication.
             properties:
+              destVolReclaimPolicy:
+                default: Retain
+                description: |-
+                  DestVolReclaimPolicy controls whether destination VAST objects (block
+                  volumes or file views/quotas) are deleted when the VSCR is deleted.
+                  Defaults to Retain.
+                enum:
+                - Retain
+                - Delete
+                type: string
               failoverType:
                 default: ungracefulFailover
                 description: |-
@@ -824,6 +848,16 @@ spec:
           spec:
             description: VastVolumeReplicationSpec defines the desired state of VastVolumeReplication.
             properties:
+              destVolReclaimPolicy:
+                default: Retain
+                description: |-
+                  DestVolReclaimPolicy controls whether destination VAST objects (block
+                  volumes or file views/quotas) are deleted when the VVR is deleted.
+                  Defaults to Retain.
+                enum:
+                - Retain
+                - Delete
+                type: string
               failoverType:
                 default: ungracefulFailover
                 description: |-

@@ -29,6 +29,23 @@ import (
 // +kubebuilder:validation:Enum=ungracefulFailover;gracefulFailover
 type FailoverAction string
 
+// DestVolReclaimPolicy controls whether the destination VAST objects
+// (block volumes or file views/quotas) created by the operator are
+// deleted when the parent VVR or VSCR is deleted.
+//
+// +kubebuilder:validation:Enum=Retain;Delete
+type DestVolReclaimPolicy string
+
+const (
+	// DestVolReclaimPolicyRetain keeps destination VAST objects after the
+	// VVR/VSCR is deleted.  This is the default and the safe choice.
+	DestVolReclaimPolicyRetain DestVolReclaimPolicy = "Retain"
+
+	// DestVolReclaimPolicyDelete removes destination VAST objects when the
+	// VVR/VSCR is deleted.
+	DestVolReclaimPolicyDelete DestVolReclaimPolicy = "Delete"
+)
+
 const (
 	FailoverTypeUngraceful FailoverAction = "ungracefulFailover"
 	FailoverTypeGraceful   FailoverAction = "gracefulFailover"
@@ -125,6 +142,13 @@ type VastStorageClassReplicationSpec struct {
 	// destination cluster.  Defaults to true.
 	// +kubebuilder:default=true
 	SyncVastObjects bool `json:"syncVastObjects"`
+
+	// DestVolReclaimPolicy controls whether destination VAST objects (block
+	// volumes or file views/quotas) are deleted when the VSCR is deleted.
+	// Defaults to Retain.
+	// +kubebuilder:default=Retain
+	// +optional
+	DestVolReclaimPolicy DestVolReclaimPolicy `json:"destVolReclaimPolicy,omitempty"`
 }
 
 // AllStorageClasses returns every unique StorageClass name in the replication

@@ -153,6 +153,7 @@ func lookupPrimaryStorageClass(ctx context.Context, k8s *k8s_client.K8sClient, r
 // that will be created on the destination (sibling) StorageClass cluster.
 //
 // For BLOCK StorageClasses the handle is subsystem-relative:
+//
 //	/[volumeGroup/]path.Base(sourceVolumeHandle)
 //
 // For FILE StorageClasses the handle is the full view path on the destination
@@ -695,7 +696,7 @@ func (b *baseProvisioner) ensureMirrorPVCPV(
 		WithVolumeHandle(mirrorHandle).
 		WithCSIDriver(csiDriver).
 		WithVolumeAttributes(volumeAttrs).
-		WithReclaimPolicy(corev1.PersistentVolumeReclaimRetain).
+		WithReclaimPolicy(corev1.PersistentVolumeReclaimDelete).
 		WithAccessModes(sourcePV.Spec.AccessModes...).
 		WithCapacity(capacity).
 		WithControllerPublishSecretRef(secretRef).

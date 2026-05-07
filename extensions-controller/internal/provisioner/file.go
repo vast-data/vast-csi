@@ -178,6 +178,9 @@ func (f *FileProvisioner) CleanVolumeCb(ctx context.Context, _ *vastv1alpha1.Vas
 	if !f.rp.Spec.SyncVastObjects {
 		return nil
 	}
+	if f.rp.Spec.DestVolReclaimPolicy == vastv1alpha1.DestVolReclaimPolicyRetain {
+		return nil
+	}
 	pvcs, err := f.k8sClient.ListPVCsByLabelSelector(ctx, f.rp.Namespace, map[string]string{
 		common.LabelManagedBy:    common.LabelManagedByValue,
 		common.LabelStorageClass: sibSc.Name,

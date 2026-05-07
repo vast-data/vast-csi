@@ -79,6 +79,13 @@ type VastVolumeReplicationSpec struct {
 	// destination cluster.  Defaults to true.
 	// +kubebuilder:default=true
 	SyncVastObjects bool `json:"syncVastObjects"`
+
+	// DestVolReclaimPolicy controls whether destination VAST objects (block
+	// volumes or file views/quotas) are deleted when the VVR is deleted.
+	// Defaults to Retain.
+	// +kubebuilder:default=Retain
+	// +optional
+	DestVolReclaimPolicy DestVolReclaimPolicy `json:"destVolReclaimPolicy,omitempty"`
 }
 
 // AllStorageClasses returns every StorageClass name in the replication group.

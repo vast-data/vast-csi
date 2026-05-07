@@ -46,10 +46,7 @@ build_vastcsi_cli:
         -ldflags "${LDFLAGS}" \
         -a -o "${OUT_DIR}/${BIN_NAME}" cmd/main.go
 
-      (
-        cd "$OUT_DIR"
-        zip "../vcsi_${OS}_${ARCH}.zip" "$BIN_NAME"
-      )
+      tar -czf "artifacts/vcsi_${OS}_${ARCH}.tar.gz" -C "$OUT_DIR" "$BIN_NAME"
     done
   artifacts:
     name: "vcsi-cli-$CI_PIPELINE_ID"

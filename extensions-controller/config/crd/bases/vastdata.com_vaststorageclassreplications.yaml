@@ -65,6 +65,16 @@ spec:
             description: VastStorageClassReplicationSpec defines the desired state
               of VastStorageClassReplication.
             properties:
+              destVolReclaimPolicy:
+                default: Retain
+                description: |-
+                  DestVolReclaimPolicy controls whether destination VAST objects (block
+                  volumes or file views/quotas) are deleted when the VSCR is deleted.
+                  Defaults to Retain.
+                enum:
+                - Retain
+                - Delete
+                type: string
               failoverType:
                 default: ungracefulFailover
                 description: |-
