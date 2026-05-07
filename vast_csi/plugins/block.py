@@ -56,6 +56,9 @@ from vast_csi.block_utils import (
     change_io_policy,
     disable_nvme_timeout,
     is_native_multipath_enabled,
+    set_block_device_readonly,
+    set_block_device_readwrite,
+    device_rw,
 )
 from vast_csi.utils import (
     stringify_dict,
@@ -130,19 +133,16 @@ def mount(src, tgt, flags=None, bind=False, fs_type=None, metrics_registry=None,
             after the initial bind to actually enforce read-only (the kernel ignores 'ro' on the bind
             syscall itself). Use for filesystem staging mounts.
     """
-    if enforce_ro:
-        flags = list(flags) if flags else []
-        if "ro" not in flags:
-            flags.append("ro")
+    flags = list(flags) if flags else []
+    if enforce_ro and "ro" not in flags:
+        flags.append("ro")
 
     # remount,ro is only needed for bind mounts — the kernel ignores 'ro' on the bind syscall itself.
     # For fs_type mounts the kernel enforces 'ro' natively via the mount options.
     need_ro_remount = enforce_ro and bind
 
     if bind:
-        # The Linux kernel silently ignores 'ro' on the initial bind mount syscall.
-        # Strip 'ro' here and enforce it via a separate remount below (only when enforce_ro=True).
-        bind_flags = [f for f in flags if f != "ro"] if need_ro_remount else flags
+        bind_flags = [f for f in flags if f != "ro"]
         executable = cmd.mount["--bind"]
         if bind_flags:
             executable = executable["-o", ",".join(bind_flags)]
@@ -668,6 +668,11 @@ class BlockNode(NodeBase, Instrumented):
         if luks_manager.requires_encryption():
             device_path = luks_manager.init_host_encryption(device_path=device_path)
 
+        # Ensure the device is writable before any format/fsck/resize operations.
+        # A previous staging cycle may have left blockdev --setro in place (unstage
+        # does not reset it), so we always clear it here unconditionally.
+        set_block_device_readwrite(device_path)
+
         if volume_capabilities.is_filesystem:
             fs_type = volume_capabilities.fs_type
             logger.info(f"Formatting device {device_path} with {fs_type} filesystem (this may take several minutes for large volumes)...")
@@ -694,24 +699,17 @@ class BlockNode(NodeBase, Instrumented):
                     resize_device(device=device_path, target_mount=temp_mount, fs_type=fs_type)
                 logger.info(f"Filesystem resize completed for {device_path}")
 
+        # Apply blockdev --setro after all formatting/resize is done.
+        if volume_capabilities.is_readonly:
+            set_block_device_readonly(device_path)
+
         logger.info(f"Binding device at {device_path} to {device_bind_path}.")
         staging_target_path.mkdir()
         device_bind_path.open("a").close()
-        stage_flags = volume_capabilities.mount_flags
-        # enforce_ro=True makes mount() add 'ro' automatically and do a remount,ro after the bind.
-        # For filesystem volumes: enforce at staging (ro in mount options or ROX access mode).
-        # For raw block volumes: staging stays rw; ro is enforced at publish instead.
-        enforce_ro = volume_capabilities.is_filesystem and (
-            volume_capabilities.ro_mode or "ro" in stage_flags
-        )
-        if enforce_ro:
-            logger.info("Staging filesystem volume as read-only (readonly parameter or ROX access mode)")
         mount(
             src=device_path,
             tgt=device_bind_path,
-            flags=stage_flags,
             bind=True,
-            enforce_ro=enforce_ro,
             metrics_registry=None,  # Don't count staging as mount operation
         )
         return types.StageResp()
@@ -757,15 +755,21 @@ class BlockNode(NodeBase, Instrumented):
     ):
         volume_context = volume_context or dict()
         target_path = local.path(target_path)
+        volume_capabilities = _validate_capabilities(volume_capability, volume_context, publish_context)
+        is_rox_block = staging_target_path and volume_capabilities.is_readonly and not volume_capabilities.is_filesystem
 
         logger.info("Checking if volume is already published...")
         if MountInfo.get_mount_by_destination(
                 dest_path=target_path, resolve_symlink=CONF.resolve_mount_symlinks,
         ):
             logger.info(f"Volume already published at {target_path}")
+            if is_rox_block:
+                # Kubelet remounts the publish bind ro after losetup completes.
+                # On a subsequent NodePublishVolume retry the existing ro bind would
+                # cause losetup to fail.  Restore rw so the next losetup attempt works.
+                logger.info(f"ROX block: remounting existing publish bind {target_path} rw for losetup retry")
+                cmd.mount["-o", "remount,rw", target_path].run()
             return types.NodePublishResp()  # idempotent
-
-        volume_capabilities = _validate_capabilities(volume_capability, volume_context, publish_context)
         is_ephemeral = volume_context.get("csi.storage.k8s.io/ephemeral") == "true"
         logger.info(f"Volume type: {'Ephemeral' if is_ephemeral else 'Persistent'}")
         if is_ephemeral:
@@ -803,8 +807,6 @@ class BlockNode(NodeBase, Instrumented):
         logger.info(f"Device bind path: {device_bind_path}")
         mount_flags = volume_capabilities.mount_flags
         needs_ro = readonly or volume_capabilities.ro_mode
-        if needs_ro:
-            logger.info("Publishing volume as read-only (readonly parameter or ROX access mode)")
 
         is_file_system = volume_capabilities.is_filesystem
         fs_type = volume_capabilities.fs_type
@@ -834,13 +836,19 @@ class BlockNode(NodeBase, Instrumented):
                 vms_session=vms_session,
                 luks_manager=luks_manager,
             )
+
+            if needs_ro:
+                logger.info("Publishing volume as read-only (readonly parameter or ROX access mode)")
+
+            # For ROX volumes, blockdev --setro already enforces read-only at the block layer.
+            enforce_ro = readonly and not volume_capabilities.ro_mode
             try:
                 mount(
                     src=device_bind_path,
                     tgt=target_path,
                     flags=mount_flags,
                     fs_type=fs_type,
-                    enforce_ro=needs_ro,
+                    enforce_ro=enforce_ro,
                     metrics_registry=metrics_registry,
                 )
             except Exception:
@@ -850,14 +858,15 @@ class BlockNode(NodeBase, Instrumented):
                 f"Block device mode detected. "
                 f"Creating a placeholder file at {target_path} for binding device."
             )
-            # Block devices are raw storage devices that are accessed as single files by the operating system.
             target_path.open("a").close()
+            if is_rox_block:
+                cmd.mount["-o", "remount,rw", device_bind_path].run()
             mount(
                 src=device_bind_path,
                 tgt=target_path,
                 flags=mount_flags,
                 bind=True,
-                enforce_ro=needs_ro,
+                enforce_ro=False,
                 metrics_registry=metrics_registry,
             )
 
@@ -951,6 +960,7 @@ class BlockNode(NodeBase, Instrumented):
 
         if volume_capabilities.is_filesystem:
             fs_type = get_filesystem_type(device_bind_path)
+            is_ro = volume_capabilities.is_readonly
             if not MountInfo.get_mount_by_destination(
                     dest_path=volume_path, resolve_symlink=CONF.resolve_mount_symlinks,
             ):
@@ -960,17 +970,16 @@ class BlockNode(NodeBase, Instrumented):
                 #    1. Volume is created
                 #    2. Volume is expanded
                 #    3. Volume is published
-                # for such scenario we need to create temporary mount to resize the filesystem.
-                with temporary_mount(
-                        src=device_path, tgt_dir=staging_target_path, fs_type=fs_type
-                ) as temp_mount:
-                    resize_device(device=device_path, target_mount=temp_mount, fs_type=fs_type)
+                with device_rw(device_path, mount_path=None, enabled=is_ro):
+                    with temporary_mount(
+                            src=device_path, tgt_dir=staging_target_path, fs_type=fs_type
+                    ) as temp_mount:
+                        resize_device(device=device_path, target_mount=temp_mount, fs_type=fs_type)
             else:
-                resize_device(
-                    device=device_path,
-                    target_mount=volume_path,
-                    fs_type=fs_type,
-                )
+                # Existing mount was created while the device was blockdev --setro, so Linux
+                # auto-applied MS_RDONLY.
+                with device_rw(device_path, mount_path=volume_path, enabled=is_ro):
+                    resize_device(device=device_path, target_mount=volume_path, fs_type=fs_type)
         else:
             existing_capacity = get_device_size(origin_device_path)
             if existing_capacity < requested_capacity:
