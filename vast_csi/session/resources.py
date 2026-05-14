@@ -28,7 +28,7 @@ from ..exceptions import NoRecordsFound, ApiError, WaitResourceFailed
 from ..utils import generate_ip_range, parse_string_parameters
 from ..lru_cache import cache_on_arguments
 from .base import apiver, requisite, CannotUseTrashAPI
-from .iterator import ResourceIterator
+from .iterator import ResourceIterator, DEFAULT_PAGE_SIZE
 
 if TYPE_CHECKING:
     from .vms_session import VmsSession
@@ -48,7 +48,7 @@ class VastResource(ABC):
     def __init__(self, session: "VmsSession"):
         self.session = session
 
-    def iter(self, page_size=None, api_ver=None, **params):
+    def iter(self, page_size=DEFAULT_PAGE_SIZE, api_ver=None, **params):
         """
         Create an iterator for paginated list results.
         
