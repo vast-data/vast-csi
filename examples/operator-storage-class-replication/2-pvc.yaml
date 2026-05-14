@@ -1,0 +1,15 @@
+# Example PVCs with labels for Volume Group membership
+# These PVCs will be grouped together based on the 'appname: myapp' label
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: myapp-data-1
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: vastdata-filesystem

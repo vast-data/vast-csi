@@ -17,6 +17,10 @@ build:
     - image: base
       docker:
         dockerfile: packaging/base.Dockerfile
+    - image: extensions-controller
+      context: extensions-controller
+      docker:
+        dockerfile: Dockerfile
   local:
     push: false
     concurrency: 0
@@ -34,8 +38,16 @@ deploy:
             csiVastPlugin:
               repository: "{{.IMAGE_REPO_csi}}"
               tag: "{{.IMAGE_TAG_csi}}"
+            vastExtensionController:
+              repository: "{{.IMAGE_REPO_extensions_controller}}"
+              tag: "{{.IMAGE_TAG_extensions_controller}}"
           storageClasses: {} # This will be filled in by the profile
         setValues:
+          extensions:
+            enabled: true
+            pvcLabelWebhook:
+              filterConfig:
+                storageClassName: vastdata-filesystem
           storageClasses:
             vastdata-filesystem:
               secretName: vast-mgmt

@@ -1,3 +1,6 @@
+include:
+  - local: extensions-controller/.gitlab-ci.yml
+
 stages:
   - build_base
   - build
@@ -18,6 +21,8 @@ variables:
   # source: packaging/base.Dockerfile
   BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2026-05-07
   ORION_BRANCH: comet/master
+  # Pin the Docker client API version
+  DOCKER_API_VERSION: "1.41"
 
 
 build_csi_base:
