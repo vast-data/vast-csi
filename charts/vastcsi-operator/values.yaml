@@ -54,4 +54,4 @@ maturity: "stable"
 # This is required for OLM to understand the operator upgrade path.
 # Example: "2.6.3" will generate "replaces: vast-csi-operator.v2.6.3"
 # Leave empty for the first release or if no replacement is needed.
-replacesVersion: "2.6.3"
+replacesVersion: "2.6.5"
