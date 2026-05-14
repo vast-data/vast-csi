@@ -10,6 +10,9 @@ from easypy.bunch import Bunch
 from vast_csi.logging import logger
 
 
+DEFAULT_PAGE_SIZE = 1000
+
+
 class ResourceIterator:
     """
     Iterator for VAST API resources that handles pagination automatically.
@@ -18,20 +21,25 @@ class ResourceIterator:
     (with 'results', 'count', 'next', 'previous' fields) and non-paginated responses.
     """
     
-    def __init__(self, resource, initial_params=None, page_size=None, api_ver=None):
+    def __init__(self, resource, initial_params=None, page_size=DEFAULT_PAGE_SIZE, api_ver=None):
         """
         Initialize a ResourceIterator.
         
         Args:
             resource: VastResource instance (e.g., session.views)
             initial_params: Dict of query parameters for the first request
-            page_size: Number of items per page (0 or None means use API default)
+            page_size: Number of items per page.
+                       Default DEFAULT_PAGE_SIZE forces the server to paginate so
+                       VMS 5.5+ does not silently truncate large list responses
+                       (e.g. /views/ capped at 16K).
+                       Pass 0 to explicitly disable pagination (no page_size sent;
+                       server returns its own default shape).
             api_ver: API version to use for requests
         """
         self.resource = resource
         self.session = resource.session
         self.initial_params = initial_params or {}
-        self.page_size = page_size or 0
+        self.page_size = page_size
         self.api_ver = api_ver
         
         # Add page_size to params if specified
