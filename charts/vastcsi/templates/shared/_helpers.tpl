@@ -148,16 +148,23 @@ Usage: include "vastcsi.dictToJsonStringParam" (list $value "param_name")
 {{- end }}
 
 
+
 {{/*
-Return true if any CSI-Addons are enabled (replication or volume group replication)
+Return true if the extension controller feature is enabled.
+The extension controller (and all associated resources — CRDs, RBAC, service account) is
+activated exclusively by extensions.enabled.  Sub-flags such as
+extensions.webhook.disablePvcLabelsWebhook are forwarded as CLI arguments to the running
+process and do NOT affect whether resources are created.
 Usage:
-{{- include "vastcsi.addons-enabled" . -}}
+{{- include "vastcsi.extension-enabled" . -}}
 */}}
-{{- define "vastcsi.addons-enabled" -}}
-{{- if or .Values.enableReplication (gt (len .Values.volumeReplicationClasses) 0) -}}
+{{- define "vastcsi.extension-enabled" -}}
+{{- if .Values.extensions.enabled -}}
 {{- true -}}
 {{- end -}}
 {{- end -}}
+
+
 
 {{/*
 Build the comma-separated list of addons to enable.
@@ -167,11 +174,5 @@ Usage:
 */}}
 {{- define "vastcsi.addons-list" -}}
 {{- $type := .type -}}
-{{- $root := .root -}}
-{{- $addons := list -}}
-{{- if or $root.Values.enableReplication (gt (len $root.Values.volumeReplicationClasses) 0) -}}
-{{- $addons = append $addons (printf "replication[%s]" $type) -}}
-{{- $addons = append $addons (printf "volumegroup[%s]" $type) -}}
-{{- end -}}
-{{- join "," $addons -}}
+{{- join "," (list (printf "replication[%s]" $type) (printf "volumegroup[%s]" $type)) -}}
 {{- end -}}

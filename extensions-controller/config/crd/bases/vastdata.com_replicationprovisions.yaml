@@ -1,0 +1,244 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.18.0
+  name: replicationprovisions.vastdata.com
+spec:
+  group: vastdata.com
+  names:
+    kind: ReplicationProvision
+    listKind: ReplicationProvisionList
+    plural: replicationprovisions
+    shortNames:
+    - rp
+    singular: replicationprovision
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.provisionerType
+      name: Type
+      type: string
+    - jsonPath: .spec.destinationStorageClass
+      name: Dest SC
+      type: string
+    - jsonPath: .spec.destinationKind
+      name: Source Kind
+      type: string
+    - jsonPath: .spec.originRef.pvcsPreview
+      name: Source PVCs
+      type: string
+    - jsonPath: .spec.replicationState
+      name: State
+      type: string
+    - jsonPath: .status.provisioned
+      name: Provisioned
+      type: boolean
+    - jsonPath: .spec.originRef.replicationPath
+      name: Replication Path
+      type: string
+    - jsonPath: .spec.originRef.protectionPolicyName
+      name: Protection Policy
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          ReplicationProvision is a stable intermediate CRD that holds the full
+          provisioning state for one destination StorageClass mirroring a parent
+          VolumeReplication or VolumeGroupReplication.
+
+          Lifecycle:
+
+            - ReplicationObjectReconciler creates one ReplicationProvision per
+              destination StorageClass, sets an owner reference to the parent ("main")
+              VolumeReplication or VolumeGroupReplication, and keeps originRef.pvcs
+              up-to-date whenever the parent's membership changes.
+            - ReplicationProvisionReconciler provisions the mirrored resources when
+              metadata.generation > status.observedGeneration, then records
+              ReplicationPath and ProtectionPolicyName in the status so cleanup can
+              proceed even if the mirrored objects are already gone.
+            - Cleanup is driven by this object's finalizer.  The parent name (taken
+              from the owner reference) is used as a label key to find all managed
+              resources for that specific destination StorageClass.
+
+          Deletion scenarios:
+
+           1. Delete one ReplicationProvision → cleans only resources for that SC.
+           2. Delete the parent VR/VGR → Kubernetes GC cascades to all owned
+              ReplicationProvision objects via owner-reference garbage collection.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              ReplicationProvisionSpec defines the desired state of ReplicationProvision.
+              Fields are managed by the ReplicationObjectReconciler (parent controller).
+            properties:
+              destinationKind:
+                description: |-
+                  DestinationKind identifies the kind of the mirrored destination object
+                  (VolumeReplication or VolumeGroupReplication).  The name and namespace of
+                  the mirrored CRD are the same as this ReplicationProvision's own
+                  ObjectMeta.Name/Namespace.
+                  Set at creation time by the ReplicationObjectReconciler.
+                type: string
+              destinationStorageClass:
+                description: |-
+                  DestinationStorageClass is the name of the destination StorageClass this
+                  provision object is responsible for.
+                type: string
+              originRef:
+                description: |-
+                  OriginRef is a snapshot of the parent VolumeReplication or
+                  VolumeGroupReplication spec fields that the provisioner needs to construct
+                  mirrored resources without fetching the parent object.
+                properties:
+                  autoResync:
+                    description: |-
+                      AutoResync mirrors the autoResync field from the parent VolumeReplication
+                      or VolumeGroupReplication spec.
+                    type: boolean
+                  protectedPathName:
+                    description: |-
+                      ProtectedPathName is the name of the VAST protected path (ppath) on the
+                      source cluster that this replication tracks.  Resolved at RP creation time
+                      by querying the VAST cluster for a ppath whose name ends with the source
+                      PV / VolumeReplicationName suffix.
+                    type: string
+                  protectionPolicyName:
+                    description: |-
+                      ProtectionPolicyName is the name of the VAST protection policy associated
+                      with this replication.  Populated at RP creation time for the same reason
+                      as ReplicationPath.
+                    type: string
+                  pvcs:
+                    description: |-
+                      PVCs is the list of PVC names from the parent VolumeReplication or
+                      VolumeGroupReplication at the time this spec was last written.
+                      Updated by the ReplicationObjectReconciler whenever the parent's PVC
+                      membership changes (e.g. via ModifyReplicationMembership for a group).
+                      A change here bumps the object's metadata.generation, which triggers the
+                      ReplicationProvisionReconciler to re-provision the new members.
+                    items:
+                      type: string
+                    type: array
+                  pvcsPreview:
+                    description: |-
+                      PVCsPreview is a human-readable summary of the PVCs list, formatted by
+                      PVCList.String() (e.g. `["pvc1", "pvc2" ... +2 more]`).
+                      Used by the kubectl printcolumn since JSONPath cannot invoke Go methods.
+                    type: string
+                  replicationPath:
+                    description: |-
+                      ReplicationPath is the sourceDir of the protected path (ppath) associated
+                      with this replication.  Populated at RP creation time from the VAST cluster
+                      so that snapshot cleanup can proceed even after the source object is gone.
+                    type: string
+                  storageClass:
+                    description: |-
+                      StorageClass is the name of the source ("master") StorageClass whose PVCs
+                      are being replicated.  Stored so provisioners can reference source-cluster
+                      parameters without re-fetching the StorageClass.
+                    type: string
+                  volumeGroup:
+                    description: |-
+                      VolumeGroup is the VAST volume container on the source cluster.
+                      For block StorageClasses this is the value of the "volume_group" parameter;
+                      for file StorageClasses it is the value of the "root_export" parameter.
+                    type: string
+                  volumeGroupReplicationClassName:
+                    description: |-
+                      VolumeGroupReplicationClassName is the VolumeGroupReplicationClass name
+                      from the parent VolumeGroupReplication spec
+                      (vgr.Spec.VolumeGroupReplicationClassName).
+                      Used only for VolumeGroupReplication-based provisions.
+                    type: string
+                  volumeReplicationClass:
+                    description: |-
+                      VolumeReplicationClass is the VolumeReplicationClass name from the parent
+                      VolumeReplication spec (vr.Spec.VolumeReplicationClass).
+                      Used only for VolumeReplication-based provisions.
+                    type: string
+                  volumeReplicationClassName:
+                    description: |-
+                      VolumeReplicationClassName is the VolumeReplicationClass name from the
+                      parent VolumeGroupReplication spec (vgr.Spec.VolumeReplicationClassName).
+                      Used only for VolumeGroupReplication-based provisions.
+                    type: string
+                  volumeReplicationName:
+                    description: |-
+                      VolumeReplicationName is the VolumeReplicationName field from the parent
+                      VolumeGroupReplication spec (vgr.Spec.VolumeReplicationName).
+                      Used to derive the existing_volume_group suffix when ensuring the
+                      VolumeGroupReplicationClass.
+                      Used only for VolumeGroupReplication-based provisions.
+                    type: string
+                required:
+                - protectedPathName
+                - protectionPolicyName
+                - replicationPath
+                - storageClass
+                - volumeGroup
+                type: object
+              provisionerType:
+                description: |-
+                  ProvisionerType indicates whether this provision is managed by the block
+                  or file VAST CSI provisioner.  Determined once at creation time from the
+                  destination StorageClass (presence of the "subsystem" parameter → Block).
+                enum:
+                - Block
+                - File
+                type: string
+              replicationState:
+                description: |-
+                  ReplicationState mirrors the parent VR/VGR's spec.replicationState so
+                  the provisioner knows whether this cluster is the active source.
+                  Set and updated by the ReplicationObjectReconciler.
+                type: string
+            required:
+            - destinationStorageClass
+            - provisionerType
+            type: object
+          status:
+            description: |-
+              ReplicationProvisionStatus defines the observed state of ReplicationProvision.
+              Fields are managed by the ReplicationProvisionReconciler.
+            properties:
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the metadata.generation of the spec that was last
+                  successfully reconciled.  When ObservedGeneration < metadata.generation
+                  the reconciler knows the spec has changed and re-runs provisioning.
+                format: int64
+                type: integer
+              provisioned:
+                description: |-
+                  Provisioned is true once all resources for the destination StorageClass
+                  have been successfully created.
+                type: boolean
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

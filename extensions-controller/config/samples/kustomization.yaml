@@ -1,0 +1,6 @@
+## Append samples of your project ##
+resources:
+- vastdata_v1alpha1_vaststorageclassreplication.yaml
+- vastdata_v1alpha1_vastreplicationcontent.yaml
+- vastdata_v1alpha1_vastvolumereplication.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

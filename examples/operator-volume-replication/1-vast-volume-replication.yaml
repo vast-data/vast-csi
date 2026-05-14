@@ -1,0 +1,59 @@
+apiVersion: vastdata.com/v1alpha1
+kind: VastVolumeReplication
+metadata:
+  name: myapp-data-replication
+  namespace: default
+spec:
+  # volumeName is the name of the PVC (in the same namespace) to replicate.
+  # Unlike VastStorageClassReplication which groups all PVCs matching a
+  # StorageClass, VastVolumeReplication targets exactly one PVC.
+  volumeName: myapp-data
+
+  # primaryStorageClass is the StorageClass of the currently active (primary)
+  # cluster.  The operator sets replicationState=primary on its
+  # VolumeReplication and replicationState=secondary on all others.
+  primaryStorageClass: vastdata-filesystem4
+
+  # protectionTopology defines the undirected replication mesh.
+  # For 2 sites exactly 1 entry is required (A–B).
+  protectionTopology:
+    - source: vastdata-filesystem4
+      destination: vastdata-filesystem5
+    - source: vastdata-filesystem4
+      destination: vastdata-filesystem6
+    - source: vastdata-filesystem5
+      destination: vastdata-filesystem6
+
+  # protectionPolicyTemplate describes how the operator auto-creates one
+  # NATIVE_REPLICATION ProtectionPolicy per topology entry side.
+  protectionPolicyTemplate:
+    # Time unit suffixes (case-insensitive except M vs m):
+    #   s / S  – seconds  (e.g. "30s")
+    #   m      – minutes  (e.g. "15m")   ← lowercase only; uppercase M = months
+    #   h / H  – hours    (e.g. "1h", "6H")
+    #   d / D  – days     (e.g. "2d", "7D")
+    #   w / W  – weeks    (e.g. "1w", "4W")
+    #   M      – months   (= 30 days, e.g. "1M")
+    #   y / Y  – years    (= 365 days, e.g. "1y")
+    params:
+      - every: 15m
+        keepLocal: 2d
+        keepRemote: 7d
+
+  # failoverType controls how a failover is executed when primaryStorageClass changes.
+  # Allowed values: ungracefulFailover (default) | gracefulFailover
+  failoverType: ungracefulFailover
+
+  # syncIntervalSeconds is the maximum allowed gap between sync points (seconds).
+  syncIntervalSeconds: 900
+
+  # syncPVCPV controls whether the operator creates/deletes static PV+PVC
+  # pairs on each destination cluster so workloads can mount the replica.
+  syncPVCPV: true
+
+  # syncVastObjects controls whether the operator creates/deletes VAST backend
+  # resources (views/quotas for file, volumes for block) on destination clusters.
+  syncVastObjects: true
+
+  # pvcRemap controls whether PVCs are remapped to the new primary on failover.
+  pvcRemap: true

@@ -9,8 +9,6 @@ source "${SCRIPT_DIR}/misc.sh"
 
 PROFILE="vastcsi"
 MINIKUBE_DRIVER="${MINIKUBE_DRIVER:-}" # MINIKUBE_DRIVER remains empty unless explicitly provided
-NAMESPACE="${NAMESPACE:-default}"  # Default namespace
-
 
 unset KUBECONFIG
 # Function to check kubectl connectivity
@@ -51,10 +49,7 @@ if minikube status -p "$PROFILE" | grep -q "Running"; then
     fi
   else
     log_info "No driver change needed. Minikube is running with the correct driver."
-    if check_kubectl_connection; then
-      kubectl config set-context --current --namespace="$NAMESPACE"
-      log_info "Kubectl namespace set to '$NAMESPACE'."
-    else
+    if ! check_kubectl_connection; then
       log_warning "Kubectl cannot reach Minikube. Please check the cluster configuration."
     fi
   fi
@@ -78,12 +73,6 @@ else
 
   if [ $? -eq 0 ]; then
     log_info "Minikube started successfully with the profile '$PROFILE' and driver '$MINIKUBE_DRIVER'."
-    if check_kubectl_connection; then
-      kubectl config set-context --current --namespace="$NAMESPACE"
-      log_info "Kubectl namespace set to '$NAMESPACE'."
-    else
-      log_error "Failed to connect to Minikube after starting it."
-    fi
   else
     log_error "Failed to start Minikube. Please check the logs."
   fi

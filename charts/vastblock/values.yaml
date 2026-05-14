@@ -205,119 +205,148 @@ storageClasses: {}
 #    ....  other options
 
 ####################
-# VAST CSI VOLUME REPLICATION CLASS OPTIONS
+# EXTENSION CONTROLLER
 ####################
+# The extensions controller is a companion component to the CSI driver that provides
+# additional extended capabilities beyond the core CSI driver functionality.
+# It runs as a separate deployment alongside the CSI driver.
+#
+# Features (each can be independently enabled):
+# - PVC Label Injection Webhook: Automatically injects replication-related labels onto
+#   PVCs at creation time based on StorageClass parameters.
+# - Remote PVC Controller: Creates PVCs on destination cluster based on source PVCs
+# - VolumeReplication CRD Controller: Optionally creates VolumeReplication CRDs
+# - Pod Failover Controller: Terminates pods with source mounts, waits for replication
+#   switchover, and restarts pods with destination PVCs (not yet implemented).
+extensions:
+  # Master flag to enable/disable all extension features at once (webhooks, replication, etc.)
+  enabled: false
+  # devLogging enables human-readable console logging (colored levels, caller, ISO-8601 timestamps)
+  devLogging: true
+  
+  # PVC Label Injection Webhook
+  # Admission webhooks served by the extension controller.
+  # All webhook handlers share one HTTPS server (same port and TLS certificate).
+  webhook:
+    # Port for the webhook HTTPS server.
+    port: 9443
 
-# Enable volume replication support.
-# Set to true to enable the replication service even if no volumeReplicationClasses are defined in this Helm chart.
-# This is useful when VolumeReplicationClass resources are managed outside of Helm (e.g., via GitOps, operators, or separate manifests).
-# When false (default), replication is automatically enabled only if volumeReplicationClasses are defined below.
-enableReplication: false
+    # Set to true to disable the PVC label injection webhook.
+    # When false (default), labels (storageClass, subsystem, volumeGroup) are
+    # automatically injected onto PVCs at creation time based on StorageClass parameters.
+    # Note: replication CRD validation webhooks (VSCR/VVR) are always active
+    # whenever extensions.enabled is true.
+    disablePvcLabelsWebhook: false
 
-# volumeReplicationClassDefaults is set of options that will be using by default if option is not provided
-# for particular volumeReplicationClass in 'volumeReplicationClasses' section
-volumeReplicationClassDefaults:
-  # Any of the following options can be specified within the volumeReplicationClasses section on a per-class basis,
-  # or can be set here as default values for all volume replication classes.
+    # Failure policy applied to all webhook handlers.
+    # - Fail:   the operation is rejected when the webhook is unreachable or times out.
+    # - Ignore: the operation is allowed through (useful during cluster outages).
+    failurePolicy: Fail
 
-  # Optional protected path suffix for the replication.
-  # If provided, the protected path name will be: {volume_id}-{ppath_suffix}
-  # If not provided, the protected path name will be: {volume_id}
-  ppathSuffix: ""
-  # Secret name for replication credentials - required.
-  # The secret should contain VAST cluster authentication credentials:
-  #   - username: VMS username for source cluster
-  #   - password: VMS password for source cluster
-  #   - endpoint: VMS endpoint URL
-  #
-  # For cross-cluster replication, include destination cluster credentials with "secondary_" prefix:
-  #   - secondary_username: VMS username for destination cluster
-  #   - secondary_password: VMS password for destination cluster
-  #   - secondary_endpoint: VMS endpoint URL for destination cluster
-  #
-  # Example:
-  #   kubectl create secret generic vast-replication-secret \
-  #     --from-literal=username='admin' \
-  #     --from-literal=password='password123' \
-  #     --from-literal=endpoint='https://vms1.example.com' \
-  #     --from-literal=secondary_username='admin' \
-  #     --from-literal=secondary_password='password456' \
-  #     --from-literal=secondary_endpoint='https://vms2.example.com'
-  secretName: ""
-  # Secret namespace.
-  # If not specified, the secret will be searched in the same namespace as the VolumeReplicationClass
-  # Default: Same namespace as VolumeReplicationClass
-  secretNamespace: ""
-  # Name of pre-existing protection policy - required.
-  # This must be an existing protection policy configured on the source VAST cluster
-  # that defines the replication snapshot schedule and retention.
-  #
-  # The protection policy should be created beforehand on the source cluster using
-  # the VAST GUI or API and must include:
-  #   - Clone type: NATIVE_REPLICATION
-  #   - Target replication peer reference
-  #   - Frames (snapshot schedules): when snapshots are taken and retention periods
-  #
-  # Example: "hourly-replication-policy"
-  protectionPolicy: ""
-  # Destination subsystem name.
-  # NVMe-oF subsystem on the destination cluster.
-  # This is optional and should be specified only if the destination subsystem name
-  # differs from the source. If left empty, the source subsystem name is used.
-  secondarySubsystem: ""
-  # Destination tenant name.
-  # Required only when multiple subsystems share the same name across different tenants
-  # Used for additional filtering to identify the correct subsystem
-  secondaryTenantName: ""
-  # Destination QoS policy.
-  # Name of QoS policy to associate with the destination block volumes
-  secondaryQosPolicy: ""
-  # Sync interval in seconds.
-  # Controls how frequently data is synchronized between clusters
-  # This maps to the "sync_interval" parameter in VAST Protected Path configuration
-  #
-  # Default: 900 seconds (15 minutes)
-  #
-  # Lower values provide more frequent replication but increase network and storage overhead
-  # Higher values reduce overhead but increase potential data loss in disaster scenarios
-  syncIntervalSeconds: 900
-  # Delete destination snapshots when disabling replication.
-  # When true, the CSI driver will delete replication snapshots
-  # on both source and destination clusters during DisableVolumeReplication.
-  # When false, snapshots are preserved (honoring VMS default behavior).
-  deleteDestinationSnapshots: true
-  # Delete destination volumes when disabling replication.
-  # When true, the CSI driver will delete replicated block volumes
-  # on the destination cluster during DisableVolumeReplication.
-  # When false (default), destination volumes are preserved for manual management or failback.
-  deleteDestinationVolumes: false
+    # Admission deadline (seconds) passed to the API server for all webhooks.
+    timeoutSeconds: 30
 
-# Volume replication classes to create.
-# User can define multiple replication classes with different replication parameters.
-# Each class represents a different replication policy (e.g., production vs. development, different RPOs)
-volumeReplicationClasses: {}
-  # Example:
-  # vast-replication-production:
-  #   secretName: "vast-replication-secret"
-  #   secretNamespace: "kube-system"
-  #   protectionPolicy: "hourly-replication"
-  #   secondarySubsystem: "dr-subsystem"
-  #   syncIntervalSeconds: 900
+    # TLS certificate configuration.
+    # When certManager.enabled is false a self-signed CA+cert is generated by Helm
+    # and stored in a Secret (simple, but will not auto-renew).
+    # When certManager.enabled is true, cert-manager issues and rotates the cert.
+    certManager:
+      enabled: false
+      # cert-manager Issuer or ClusterIssuer reference
+      # issuerRef:
+      #   name: letsencrypt-prod
+      #   kind: ClusterIssuer
 
-####################
-# CSI-ADDONS CONTROLLER OPTIONS
-####################
+    # PVC filtering for the label injection webhook.
+    # By default only PVCs whose StorageClass provisioner matches csiDriverName are
+    # processed (see csiDriverName below, which defaults to .Values.csiDriverName).
+    # Use the additional options below to further restrict scope.
+    filterConfig:
+      # storageClassName and storageClassNameRegex are mutually exclusive.
+      # If set, only PVCs using this exact StorageClass name get labels injected.
+      storageClassName: ""
+      # If set, only PVCs whose StorageClass name matches this regex get labels.
+      # Example: "^vastdata-.*"
+      storageClassNameRegex: ""
+      # If set, only PVCs whose name matches this regex get labels.
+      # Example: "^repl-.*"
+      pvcNameRegex: ""
+      # Only inject labels into PVCs whose StorageClass provisioner matches this
+      # CSI driver name.  Supports Helm template strings.
+      # Set to "" to process PVCs from any provisioner.
+      csiDriverName: '{{ .Values.csiDriverName }}'
 
-addonsController:
-  # runOnMaster flag indicated if CSI-Addons Controller should be run on master.
+  # Each StorageClass represents a different VAST cluster (identified by credentials).
+  replication:
+    # Format string for destination PVC names. Available tokens:
+    #   {pvc_name}            - full source PVC name
+    #   {pvc_name_suf:<N>}    - last N characters of source PVC name
+    #   {pvc_name_pref:<N>}   - first N characters of source PVC name
+    #   {endpoint}            - VAST endpoint (slugified)
+    #   {sc_name}             - destination StorageClass name
+    #   {sc_name_suf:<N>}     - last N characters of StorageClass name
+    #   {sc_name_pref:<N>}    - first N characters of StorageClass name
+    pvcNameFormat: "{pvc_name}-repl-{endpoint}"
+    # Format string for destination PV names. Available tokens:
+    #   {pv_name}             - full source PV name
+    #   {pv_name_suf:<N>}     - last N characters of source PV name
+    #   {pv_name_pref:<N>}    - first N characters of source PV name
+    #   {endpoint}            - VAST endpoint (slugified)
+    #   {sc_name}             - destination StorageClass name
+    #   {sc_name_suf:<N>}     - last N characters of StorageClass name
+    #   {sc_name_pref:<N>}    - first N characters of StorageClass name
+    pvNameFormat: "{pv_name}-repl-{endpoint}"
+
+  # applyExistingPvcs, when true, instructs the replication controller to
+  # inject the storageClass label (and the subsystem label for block
+  # StorageClasses) onto existing PVCs whose backing VAST object is found in
+  # the VolumeMapping for the reconciled StorageClass.  This mirrors what the
+  # PVC label webhook does for newly created PVCs, but targets PVCs that were
+  # created before the webhook was enabled.
+  # Runs on every PrimaryStorageClass change.
+  applyExistingPvcs: true
+
+  # Scheduling and resource configuration for the replication controller deployment.
+  # runOnMaster flag indicated if replication controller should be run on master.
   runOnMaster: false
-  # runOnControlPlane flag indicated if CSI-Addons Controller should be run on control plane node.
+  # runOnControlPlane flag indicated if replication controller should be run on control plane node.
   runOnControlPlane: false
   # determine how DNS (Domain Name System) resolution should be handled within Pod.
   dnsPolicy: Default
-  # nodeSelector for the CSI-Addons controller pod
+  # nodeSelector for the replication controller pod
   nodeSelector: {}
-  # tolerations for the CSI-Addons controller pod
+  # tolerations for the replication controller pod
+  tolerations: []
+  # Allows to specify which nodes your pod is eligible to be scheduled based on labels on pods that are already running on the node.
+  podAffinity: {}
+  # Allows to specify conditions for preventing pods from being scheduled on nodes where certain labels are already present on other pods.
+  podAntiAffinity: {}
+  # Allows to specify which nodes your pod is eligible to be scheduled on based on labels on the node.
+  nodeAffinity: {}
+  # Resources for the replication controller container
+  resources:
+    limits:
+      memory: 128Mi
+    requests:
+      cpu: 10m
+      memory: 64Mi
+  # priorityClassName for the replication controller pod
+  priorityClassName: system-cluster-critical
+
+####################
+# EXTENSION CONTROLLER OPTIONS
+####################
+
+extensionController:
+  # runOnMaster flag indicated if Extension Controller should be run on master.
+  runOnMaster: false
+  # runOnControlPlane flag indicated if Extension Controller should be run on control plane node.
+  runOnControlPlane: false
+  # determine how DNS (Domain Name System) resolution should be handled within Pod.
+  dnsPolicy: Default
+  # nodeSelector for the extension controller pod
+  nodeSelector: {}
+  # tolerations for the extension controller pod
   tolerations: []
   # Allows to specify which nodes your pod is eligible to be scheduled based on labels on pods that are already running on the node.
   # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
@@ -328,7 +357,7 @@ addonsController:
   # Allows to specify which nodes your pod is eligible to be scheduled on based on labels on the node
   # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
   nodeAffinity: {}
-  # Resources for the CSI-Addons controller containers
+  # Resources for the extension controller containers
   resources:
     csiVastPlugin:
       limits:
@@ -342,7 +371,7 @@ addonsController:
       requests:
         cpu: 10m
         memory: 20Mi
-  # priorityClassName for the replication controller pod
+  # priorityClassName for the extension controller pod
   priorityClassName: system-cluster-critical
 
 ####################
@@ -451,6 +480,10 @@ image:
   csiAddonsSidecar:
     repository: quay.io/csiaddons/k8s-sidecar
     tag: v0.14.0
+    imagePullPolicy: IfNotPresent
+  vastExtensionController:
+    repository: ""
+    tag: ""
     imagePullPolicy: IfNotPresent
 
 ####################

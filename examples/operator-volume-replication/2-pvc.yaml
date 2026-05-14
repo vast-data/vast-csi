@@ -1,0 +1,15 @@
+# The single PVC that VastVolumeReplication watches.
+# volumeName in 1-vast-volume-replication.yaml must match this name exactly.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: myapp-data
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: vastdata-filesystem4
