@@ -412,7 +412,7 @@ image:
     imagePullPolicy: IfNotPresent
   csiSnapshotter:
     repository: registry.k8s.io/sig-storage/csi-snapshotter
-    tag: v7.0.1
+    tag: v8.5.0
     imagePullPolicy: IfNotPresent
   csiAddonsSidecar:
     repository: quay.io/csiaddons/k8s-sidecar
