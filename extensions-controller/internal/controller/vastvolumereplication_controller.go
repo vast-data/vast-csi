@@ -154,14 +154,22 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	// Resolve any empty PeerName fields via live peer discovery.
+	// Build the peer index once so each cluster is queried at most once,
+	// regardless of how many topology entries reference it.
 	needsUpdate := false
-	for i := range vvr.Spec.ProtectionTopology {
-		t := &vvr.Spec.ProtectionTopology[i]
-		if t.PeerName == "" {
-			if err := vmsrest.ResolvePeerName(t, restByStorageClass[t.Source], restByStorageClass[t.Destination]); err != nil {
-				return ctrl.Result{}, fmt.Errorf("protectionTopology[%d]: %w", i, err)
+	if hasUnresolvedPeers(vvr.Spec.ProtectionTopology) {
+		peersBySC, err := vmsrest.BuildPeerNamesBySC(restByStorageClass)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to list replication peers: %w", err)
+		}
+		for i := range vvr.Spec.ProtectionTopology {
+			t := &vvr.Spec.ProtectionTopology[i]
+			if t.PeerName == "" {
+				if err := vmsrest.ResolvePeerName(t, peersBySC); err != nil {
+					return ctrl.Result{}, fmt.Errorf("protectionTopology[%d]: %w", i, err)
+				}
+				needsUpdate = true
 			}
-			needsUpdate = true
 		}
 	}
 	if needsUpdate {
