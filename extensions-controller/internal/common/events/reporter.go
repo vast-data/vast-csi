@@ -132,11 +132,16 @@ func (er *EventReporter) For(ctx context.Context, object runtime.Object) *BoundR
 	return &BoundReporter{er: er, ctx: ctx, object: object}
 }
 
-// BoundReporter is an EventReporter with context and object pre-bound for convenience
+// BoundReporter is an EventReporter with context and object pre-bound for
+// convenience.  It also tracks whether a Warning event has been emitted during
+// the current reconcile; check HasWarned() in deferred cleanup blocks to avoid
+// emitting duplicate warnings when a specific error site has already described
+// the failure.
 type BoundReporter struct {
 	er     *EventReporter
 	ctx    context.Context
 	object runtime.Object
+	warned bool
 }
 
 // Logger returns the underlying *zap.Logger from the parent EventReporter.
@@ -166,14 +171,22 @@ func (br *BoundReporter) Eventf(eventType, reason, messageFmt string, args ...in
 	br.er.Eventf(br.ctx, br.object, eventType, reason, messageFmt, args...)
 }
 
-// Warning records a warning event with the given reason and message
+// Warning records a warning event with the given reason and message.
 func (br *BoundReporter) Warning(reason, message string) {
+	br.warned = true
 	br.Event(EventTypeWarning, reason, message)
 }
 
-// Warningf records a warning event with the given reason and formatted message
+// Warningf records a warning event with the given reason and formatted message.
 func (br *BoundReporter) Warningf(reason, messageFmt string, args ...interface{}) {
+	br.warned = true
 	br.Eventf(EventTypeWarning, reason, messageFmt, args...)
+}
+
+// HasWarned reports whether a Warning event has been emitted through this
+// reporter during the current reconcile.
+func (br *BoundReporter) HasWarned() bool {
+	return br.warned
 }
 
 // Normal records a normal event with the given reason and message
