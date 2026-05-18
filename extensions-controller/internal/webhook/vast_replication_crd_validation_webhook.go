@@ -211,30 +211,38 @@ func (h *replicationCRDValidator) validateAndDefaultTopology(
 	req admission.Request,
 	topology []vastv1alpha1.ReplicationTarget,
 ) admission.Response {
+	// Build one REST client per unique StorageClass, then fetch the peer list
+	// from each cluster exactly once.  Without this, clusters that appear in
+	// multiple topology entries (e.g. the primary in A→B and A→C) would be
+	// queried once per edge.
+	restByStorageClass := make(map[string]*vast_client.TypedVMSRest)
 	for i := range topology {
 		t := &topology[i]
+		for _, scName := range []string{t.Source, t.Destination} {
+			if _, ok := restByStorageClass[scName]; ok {
+				continue
+			}
+			sc, err := h.k8sClient.GetStorageClass(ctx, scName)
+			if err != nil {
+				return admission.Denied(fmt.Sprintf("protectionTopology[%d]: StorageClass %q not found: %v", i, scName, err))
+			}
+			rest, err := vmsrest.NewFromStorageClass(ctx, h.k8sClient, sc, h.sslVerify, log)
+			if err != nil {
+				return admission.Errored(http.StatusInternalServerError,
+					fmt.Errorf("protectionTopology[%d]: REST client for %q: %w", i, scName, err))
+			}
+			restByStorageClass[scName] = rest
+		}
+	}
+	peersBySC, err := vmsrest.BuildPeerNamesBySC(restByStorageClass)
+	if err != nil {
+		return admission.Errored(http.StatusInternalServerError,
+			fmt.Errorf("failed to list replication peers: %w", err))
+	}
 
-		scSrc, err := h.k8sClient.GetStorageClass(ctx, t.Source)
-		if err != nil {
-			return admission.Denied(fmt.Sprintf("protectionTopology[%d]: source StorageClass %q not found: %v", i, t.Source, err))
-		}
-		scDst, err := h.k8sClient.GetStorageClass(ctx, t.Destination)
-		if err != nil {
-			return admission.Denied(fmt.Sprintf("protectionTopology[%d]: destination StorageClass %q not found: %v", i, t.Destination, err))
-		}
-
-		restSrc, err := vmsrest.NewFromStorageClass(ctx, h.k8sClient, scSrc, h.sslVerify, log)
-		if err != nil {
-			return admission.Errored(http.StatusInternalServerError,
-				fmt.Errorf("protectionTopology[%d]: REST client for source %q: %w", i, t.Source, err))
-		}
-		restDst, err := vmsrest.NewFromStorageClass(ctx, h.k8sClient, scDst, h.sslVerify, log)
-		if err != nil {
-			return admission.Errored(http.StatusInternalServerError,
-				fmt.Errorf("protectionTopology[%d]: REST client for destination %q: %w", i, t.Destination, err))
-		}
-
-		if err := vmsrest.ResolvePeerName(t, restSrc, restDst); err != nil {
+	for i := range topology {
+		t := &topology[i]
+		if err := vmsrest.ResolvePeerName(t, peersBySC); err != nil {
 			return admission.Denied(fmt.Sprintf("protectionTopology[%d]: %v", i, err))
 		}
 	}

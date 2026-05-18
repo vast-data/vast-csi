@@ -266,21 +266,36 @@ func ensurePolicy(
 		return newReplicationLink(existing.Name, existing.Id, rest, scA, restB, scB, peerA, peerB, edge)
 	}
 
+	// Resolve both the local (source) and remote (destination) tenants so the
+	// policy is created with explicit tenant scoping on both sides.
+	localTenant, err := ResolveTenant(rest, scA)
+	if err != nil {
+		return ReplicationLink{}, fmt.Errorf("SC %s: failed to resolve local tenant: %w", edge.SideA, err)
+	}
+	remoteTenant, err := ResolveTenant(restB, scB)
+	if err != nil {
+		return ReplicationLink{}, fmt.Errorf("SC %s: failed to resolve remote tenant: %w", edge.SideB, err)
+	}
+
 	log.Info("creating protection policy",
 		zap.String("policy", policyName),
 		zap.String("source_cluster", edge.SideA),
-		zap.String("destination_cluster", edge.SideB))
+		zap.String("destination_cluster", edge.SideB),
+		zap.Int64("tenant_id", localTenant.Id),
+		zap.String("remote_tenant_guid", remoteTenant.Guid))
 
 	rawFrames := make([]any, len(tmpl.Frames))
 	for i, f := range tmpl.Frames {
 		rawFrames[i] = f
 	}
 	record, err := rest.Untyped.ProtectionPolicies.Create(core.Params{
-		"clone_type":       "NATIVE_REPLICATION",
-		"name":             policyName,
-		"target_object_id": peerA.Id,
-		"prefix":           prefix,
-		"frames":           rawFrames,
+		"clone_type":         "NATIVE_REPLICATION",
+		"name":               policyName,
+		"target_object_id":   peerA.Id,
+		"prefix":             prefix,
+		"frames":             rawFrames,
+		"tenant_id":          localTenant.Id,
+		"remote_tenant_guid": remoteTenant.Guid,
 	})
 	if err != nil {
 		return ReplicationLink{}, fmt.Errorf(

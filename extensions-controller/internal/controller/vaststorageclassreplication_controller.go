@@ -140,14 +140,22 @@ func (r *VastStorageClassReplicationReconciler) Reconcile(ctx context.Context, r
 	}
 
 	// Resolve any empty PeerName fields via live peer discovery.
+	// Build the peer index once so each cluster is queried at most once,
+	// regardless of how many topology entries reference it.
 	needsUpdate := false
-	for i := range vscr.Spec.ProtectionTopology {
-		t := &vscr.Spec.ProtectionTopology[i]
-		if t.PeerName == "" {
-			if err := vmsrest.ResolvePeerName(t, restByStorageClass[t.Source], restByStorageClass[t.Destination]); err != nil {
-				return ctrl.Result{}, fmt.Errorf("protectionTopology[%d]: %w", i, err)
+	if hasUnresolvedPeers(vscr.Spec.ProtectionTopology) {
+		peersBySC, err := vmsrest.BuildPeerNamesBySC(restByStorageClass)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to list replication peers: %w", err)
+		}
+		for i := range vscr.Spec.ProtectionTopology {
+			t := &vscr.Spec.ProtectionTopology[i]
+			if t.PeerName == "" {
+				if err := vmsrest.ResolvePeerName(t, peersBySC); err != nil {
+					return ctrl.Result{}, fmt.Errorf("protectionTopology[%d]: %w", i, err)
+				}
+				needsUpdate = true
 			}
-			needsUpdate = true
 		}
 	}
 	if needsUpdate {
@@ -825,6 +833,17 @@ func (r *VastStorageClassReplicationReconciler) ensureResync(
 		return fmt.Errorf("ensureResync: failed to clear Resync flag on VSCR %s/%s: %w", vscr.Namespace, vscr.Name, err)
 	}
 	return nil
+}
+
+// hasUnresolvedPeers reports whether any topology entry still has an empty
+// PeerName and therefore requires a live peer-listing round-trip.
+func hasUnresolvedPeers(topology []vastv1alpha1.ReplicationTarget) bool {
+	for _, t := range topology {
+		if t.PeerName == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // SetupVastStorageClassReplicationController registers the reconciler with the manager.
