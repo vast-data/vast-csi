@@ -118,11 +118,18 @@ func (k *K8sClient) PatchPVCLabels(ctx context.Context, pvc *corev1.PersistentVo
 //
 // PVCs that already carry both labels are skipped.  Per-PVC patch errors are
 // logged but do not abort the backfill of remaining PVCs.
+//
+// vscrSCs is the full list of StorageClass names that belong to the VSCR.  It
+// is used to emit diagnostic messages for PVCs whose volume lives in the
+// replicated path but whose StorageClass is not scName:
+//   - SC in vscrSCs (secondary) → Info: will be backfilled after failover to that SC.
+//   - SC not in vscrSCs          → Warn: shares path but is outside replication scope.
 func (k *K8sClient) ApplyExistingPVCs(
 	ctx context.Context,
 	scName string,
 	sc *storagev1.StorageClass,
 	rest *vast_client.TypedVMSRest,
+	vscrSCs []string,
 	log *zap.Logger,
 ) error {
 	mapping, err := k.backfillVolumeMapping(ctx, sc, rest)
@@ -143,16 +150,40 @@ func (k *K8sClient) ApplyExistingPVCs(
 	subsystem := sc.Parameters[common.StorageClassParameterSubsystem]
 	isBlock := IsBlockStorageClass(sc)
 
+	vscrSCSet := make(map[string]struct{}, len(vscrSCs))
+	for _, s := range vscrSCs {
+		vscrSCSet[s] = struct{}{}
+	}
+
 	patched := 0
 	for i := range pvcs {
 		pvc := &pvcs[i]
 
-		if pvc.Spec.StorageClassName == nil || *pvc.Spec.StorageClassName != scName {
+		if pvc.Spec.StorageClassName == nil {
+			continue
+		}
+		pvcSC := *pvc.Spec.StorageClassName
+		pvName := pvc.Spec.VolumeName
+
+		if !backfillMappingContainsPV(mapping, pvName) {
+			log.Debug("PV not found in replication mapping; skipping",
+				zap.String("pvc", pvc.Namespace+"/"+pvc.Name),
+				zap.String("pv", pvName),
+				zap.String("sc", pvcSC))
 			continue
 		}
 
-		pvName := pvc.Spec.VolumeName
-		if !backfillMappingContainsPV(mapping, pvName) {
+		// PV lives in the replicated path but belongs to a different StorageClass.
+		if pvcSC != scName {
+			if _, inVSCR := vscrSCSet[pvcSC]; inVSCR {
+				log.Info("PVC is in the replication path but owned by a secondary StorageClass; it will be backfilled after failover to that StorageClass",
+					zap.String("pvc", pvc.Namespace+"/"+pvc.Name),
+					zap.String("sc", pvcSC))
+			} else {
+				log.Warn("PVC shares the replication path but its StorageClass is not part of this replication; it will NOT be backfilled automatically",
+					zap.String("pvc", pvc.Namespace+"/"+pvc.Name),
+					zap.String("sc", pvcSC))
+			}
 			continue
 		}
 
