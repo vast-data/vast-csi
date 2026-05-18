@@ -114,9 +114,10 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 	primaryChanged := r.ensurePrimaryStorageClass(vvr, emit)
 
 	if r.Config.ApplyExistingPVCs && primaryChanged {
+		log.Info("ensuring existing PVCs have necessary labels")
 		scName := vvr.Spec.PrimaryStorageClass
-		if err := k8s.ApplyExistingPVCs(ctx, scName, scByStorageClass[scName], restByStorageClass[scName], log); err != nil {
-			log.Warn("PVC label backfill failed; continuing reconcile",
+		if err := k8s.ApplyExistingPVCs(ctx, scName, scByStorageClass[scName], restByStorageClass[scName], vvr.Spec.AllStorageClasses(), log); err != nil {
+			log.Info("PVC label backfill failed; continuing reconcile",
 				zap.String("sc", scName), zap.Error(err))
 		}
 	}
