@@ -323,7 +323,7 @@ def check_fs_integrity(device: str):
     except ProcessExecutionError as exc:
         # fsck returns 1 if it finds and fixes issues
         if exc.retcode == 1:
-            logger.warning(f"fsck found and fixed issues on {device}: {exc}")
+            logger.warning(f"fsck found and fixed issues on {device}")
         else:
             raise
 
