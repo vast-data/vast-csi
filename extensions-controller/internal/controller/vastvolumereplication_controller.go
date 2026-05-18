@@ -76,8 +76,12 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 	bo := r.BackoffFor(req.NamespacedName)
 
 	defer func() {
-		if result.RequeueAfter == 0 {
-			r.reconcileSyncStatus(ctx, k8s, vvr, retErr)
+		r.reconcileSyncStatus(ctx, k8s, vvr, retErr)
+		if retErr != nil {
+			if isPermanentError(retErr) && !emit.HasWarned() {
+				emit.Warning(events.ReasonReconcileFailed, retErr.Error())
+			}
+			result, retErr = r.maybeBackoffRetry(bo, retErr, log)
 		}
 	}()
 
@@ -188,8 +192,10 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 					return ctrl.Result{}, err
 				}
 			} else {
-				emit.Warning(events.ReasonPpathNotReady, err.Error())
-				return r.maybeBackoffRetry(bo, err, log)
+				if !isPermanentError(err) {
+					emit.Normal(events.ReasonPpathNotReady, err.Error())
+				}
+				return ctrl.Result{}, err
 			}
 		}
 	}
@@ -199,6 +205,7 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 		tmpl := vmsrest.SpecTemplateToParams(vvr.Name, vvr.Spec.ProtectionPolicyTemplate)
 		policyPairs, err := vmsrest.DiscoverLinkPolicies(restByStorageClass, scByStorageClass, edges, tmpl, log)
 		if err != nil {
+			emit.Warning(events.ReasonReconcileFailed, err.Error())
 			return ctrl.Result{}, fmt.Errorf("failed to ensure protection policies: %w", err)
 		}
 
@@ -206,8 +213,10 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 			restByStorageClass, policyPairs, vvr.Spec.PrimaryStorageClass, vvr.Name, vvr.Status.PpathDirMapping, log,
 		)
 		if err != nil {
-			emit.Warning(events.ReasonPpathNotReady, err.Error())
-			return r.maybeBackoffRetry(bo, err, log)
+			if !isPermanentError(err) {
+				emit.Normal(events.ReasonPpathNotReady, err.Error())
+			}
+			return ctrl.Result{}, err
 		}
 
 		vvr.Status.PpathName = ppathName
@@ -248,7 +257,7 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 	if errs.Err() == nil {
 		bo.Reset()
 	}
-	return r.maybeBackoffRetry(bo, errs.Err(), log)
+	return ctrl.Result{}, errs.Err()
 }
 
 // reconcileSyncStatus derives the desired SyncStatus from the overall
@@ -270,8 +279,11 @@ func (r *VastVolumeReplicationReconciler) reconcileSyncStatus(
 		desired = vastv1alpha1.SyncStatusUnreachable
 	case reconcileErr != nil && isValidationError(reconcileErr):
 		desired = vastv1alpha1.SyncStatusInvalid
-	case reconcileErr != nil:
-		desired = vastv1alpha1.SyncStatusError
+	case reconcileErr != nil && isPermanentError(reconcileErr):
+		// Permanent infrastructure failure (e.g. ppath settled in "failed"
+		// state).  Transient / retryable errors fall through to the default
+		// branch and reflect the VolumeReplication state instead.
+		desired = vastv1alpha1.SyncStatusFailed
 	default:
 		vrName := vrNameForSC(vvr.Name, vvr.Spec.PrimaryStorageClass)
 		vr, err := k8s.GetVolumeReplication(ctx, vrName, vvr.Namespace)

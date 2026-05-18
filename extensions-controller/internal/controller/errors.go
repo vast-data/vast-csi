@@ -16,3 +16,18 @@ func isValidationError(err error) bool {
 	var ve *cerrors.ValidationError
 	return errors.As(err, &ve)
 }
+
+// isPermanentError reports whether err is a permanent, non-transient failure
+// that requires user intervention.  Specifically it returns true for errors
+// that are neither network errors (temporary connectivity loss) nor retryable
+// errors (transient VAST states such as an initialising protected path).
+func isPermanentError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if isNetworkError(err) {
+		return false
+	}
+	var retryable cerrors.Retryable
+	return !errors.As(err, &retryable)
+}

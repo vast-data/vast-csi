@@ -116,7 +116,7 @@ func (b *BaseReconciler) maybeBackoffRetry(bo *backoff.BoundBackoff, err error, 
 		} else {
 			delay = bo.Next()
 		}
-		log.Warn("requesting with backoff",
+		log.Info("requesting with backoff",
 			zap.Duration("delay", delay), zap.Error(err))
 
 		return ctrl.Result{RequeueAfter: delay}, nil

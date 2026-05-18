@@ -87,6 +87,12 @@ const (
 	// SyncStatusDeleting means the resource has been marked for deletion and
 	// its finalizer cleanup is in progress.
 	SyncStatusDeleting = "Deleting"
+
+	// SyncStatusFailed means a permanent infrastructure error occurred (e.g.
+	// the VAST protected path settled in a "failed" state) and requires user
+	// intervention.  The controller keeps retrying, so the status will clear
+	// automatically once the underlying issue is resolved.
+	SyncStatusFailed = "Failed"
 )
 
 // VastStorageClassReplicationSpec defines the desired state of VastStorageClassReplication.
