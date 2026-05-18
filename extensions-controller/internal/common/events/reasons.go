@@ -91,6 +91,11 @@ const (
 	// reached an active state; the controller will requeue and retry.
 	ReasonPpathNotReady = "PpathNotReady"
 
+	// ReasonReconcileFailed is emitted when the reconcile loop encounters a
+	// hard (non-transient) error, such as a missing VAST view or a failed
+	// protection policy.  The controller will keep retrying with backoff.
+	ReasonReconcileFailed = "ReconcileFailed"
+
 	// ReasonPpathDisabled is emitted when the protected path is disabled as the
 	// first step of VSCR/VVR deletion, before any VAST objects are removed.
 	ReasonPpathDisabled = "PpathDisabled"
