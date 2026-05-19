@@ -3,6 +3,7 @@ package vmsrest
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	vast_client "github.com/vast-data/go-vast-client"
@@ -119,7 +120,7 @@ func SpecTemplateToParams(ownerName string, tpl vastv1alpha1.ProtectionPolicyTem
 	}
 }
 
-// buildNativeReplicaTargetsBySC lists all replication peers (NativeReplicationRemoteTargets)
+// buildNativeReplicaTargetsBySC lists replication peers (NativeReplicationRemoteTargets)
 // for every StorageClass and returns a two-level map:
 //
 //	scName → peerName → *typed.ReplicationPeersDetailsModel
@@ -129,11 +130,16 @@ func SpecTemplateToParams(ownerName string, tpl vastv1alpha1.ProtectionPolicyTem
 // cluster's own identifier for the local cluster.
 func buildNativeReplicaTargetsBySC(
 	restByStorageClass map[string]*vast_client.TypedVMSRest,
+	wantPeerNames []string,
 ) (map[string]map[string]*typed.ReplicationPeersDetailsModel, error) {
 	result := make(map[string]map[string]*typed.ReplicationPeersDetailsModel, len(restByStorageClass))
 	for scName, rest := range restByStorageClass {
+		params := vast_client.Params{
+			"fields":   "id,name,peer_name,status",
+			"name__in": strings.Join(wantPeerNames, ","),
+		}
 		peers, err := rest.ReplicationPeers.List(&typed.ReplicationPeersSearchParams{
-			RawData: vast_client.Params{"fields": "id,name,peer_name,status"},
+			RawData: params,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("SC %s: failed to list replication peers: %w", scName, err)
@@ -166,7 +172,14 @@ func DiscoverLinkPolicies(
 	tmpl PolicyTemplateParams,
 	log *zap.Logger,
 ) (map[string][]ReplicationLink, error) {
-	nativeTargets, err := buildNativeReplicaTargetsBySC(restByStorageClass)
+	// Collect the peer names actually referenced in this topology so that the
+	// API query (and its response log) contains only relevant peers.
+	wantPeerNames := make([]string, 0, len(edges))
+	for _, edge := range edges {
+		wantPeerNames = append(wantPeerNames, edge.PeerName)
+	}
+
+	nativeTargets, err := buildNativeReplicaTargetsBySC(restByStorageClass, wantPeerNames)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build native replication targets mapping: %w", err)
 	}
