@@ -330,11 +330,6 @@ class Tenant(VastResource):
 class View(VastResource):
     resource_name = "views"
 
-    @cache_on_arguments(expiration_time=5 * MINUTE)
-    def one_cached(self, **params):
-        """Cached version of one() method."""
-        return VastResource.one(self, **params)
-
     def ensure(self, path, protocols, view_policy, qos_policy, create_dir=True, qos_policy_id=None):
         if not (view := self.one(path=str(path), policy__name=view_policy)):
             view_policy = self.session.viewpolicies.one(name=view_policy, fail_if_missing=True)
@@ -478,16 +473,6 @@ class Quota(VastResource):
             path = path.rstrip("/") or "/"  # for root path
             kwargs.update(path=path)
         return super().one(**kwargs)
-
-    @cache_on_arguments(expiration_time=5 * MINUTE)
-    def one_cached(self, name=None, path=None, **kwargs):
-        """Cached version of one() method."""
-        if name:
-            kwargs.update(path__endswith=name)
-        elif path:
-            path = path.rstrip("/") or "/"  # for root path
-            kwargs.update(path=path)
-        return VastResource.one(self, **kwargs)
 
     def ensure(self, volume_id, view_path, tenant_id, requested_capacity=None):
         if quota := self.one(path=view_path, tenant_id=tenant_id):
@@ -637,11 +622,6 @@ class User(VastResource):
 @apiver.v5
 class Volume(VastResource):
     resource_name = "volumes"
-
-    @cache_on_arguments(expiration_time=MINUTE)
-    def one_cached(self, **params):
-        """Cached version of one() method."""
-        return VastResource.one(self, **params)
 
     @requisite(semver="5.3.0")
     def delete_by_id(self, _id, **params):
