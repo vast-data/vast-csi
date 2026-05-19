@@ -433,7 +433,11 @@ class BlockController(ControllerBase, Instrumented):
             snap_ids = ", ".join(str(s.id) for s in snaps)
             raise Exception(f"Unable to delete {volume_id} as it holds snapshots: [{snap_ids}]")
         # Unmap is occurring implicitly due to the use of the force flag.
-        vms_session.volumes.delete(name__endswith=volume_id)
+        # Use .one() (which raises on multi-match) + delete_by_id rather than
+        # a bulk delete: with name__contains, a substring collision would
+        # otherwise cascade-delete unrelated volumes. .one() guards against it.
+        if volume := vms_session.volumes.one(name__contains=volume_id):
+            vms_session.volumes.delete_by_id(volume.id)
         return types.DeleteResp()
 
     def ControllerPublishVolume(
@@ -536,7 +540,7 @@ class BlockController(ControllerBase, Instrumented):
         """
         volume_id = normalize_volume_id(volume_id)
         # Early return if volume not found
-        if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
+        if not (volume := vms_session.volumes.one(name__contains=volume_id)):
             logger.info(f"Volume not found with name: {volume_id}")
         else:
             block_host_name = f"{CONF.block_hosts_prefix}{node_id}"
@@ -561,7 +565,7 @@ class BlockController(ControllerBase, Instrumented):
         volume_id = normalize_volume_id(volume_id)
         requested_capacity = capacity_range.required_bytes
         logger.debug(f"Requested capacity for volume {volume_id}: {requested_capacity} bytes")
-        if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
+        if not (volume := vms_session.volumes.one(name__contains=volume_id)):
             raise Abort(NOT_FOUND, f"Volume not found with ID: {volume_id}")
         # Determine the current and new capacity
         existing_capacity = volume.size
@@ -582,7 +586,7 @@ class BlockController(ControllerBase, Instrumented):
         parameters = parameters or dict()
         cluster_name = parameters.get("cluster_name")
         volume_id = normalize_volume_id(source_volume_id)
-        if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
+        if not (volume := vms_session.volumes.one(name__contains=volume_id)):
             raise Abort(NOT_FOUND, f"Unknown volume: {volume_id}")
         if not (view := vms_session.views.get_subsystem_by_id(_id=volume.view_id)):
             raise Abort(NOT_FOUND, f"Unknown subsystem: {volume.view_id}")
