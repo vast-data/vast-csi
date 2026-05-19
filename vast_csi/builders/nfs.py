@@ -417,7 +417,7 @@ class StaticVolumeBuilder(BaseVolumeBuilder):
                 qos_policy_id=self.qos_policy_id,
             )
         else:
-            if not (view := self.vms_session.views.one_cached(path=self.view_path)):
+            if not (view := self.vms_session.views.one(path=self.view_path)):
                 raise SourceNotFound(f"View {self.view_path} does not exist but claimed as existing.")
 
         volume_context.update(view_id=str(view.id), tenant_id=str(view.tenant_id))
