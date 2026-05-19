@@ -18,6 +18,7 @@ package events
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -27,6 +28,36 @@ import (
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
 )
+
+// k8sMultiEventRecorder fans out every event to all contained EventRecorders.
+// Use NewMultiEventRecorder to construct one.
+type k8sMultiEventRecorder struct {
+	recorders []EventRecorder
+}
+
+// assert on EventRecorder interface
+var _ EventRecorder = &k8sMultiEventRecorder{}
+
+// NewMultiEventRecorder returns an EventRecorder that dispatches each event to
+// all provided recorders.  Errors from individual recorders are joined and
+// returned together so that a partial failure is still visible.
+func NewMultiEventRecorder(recorders ...EventRecorder) EventRecorder {
+	return &k8sMultiEventRecorder{recorders: recorders}
+}
+
+func (m *k8sMultiEventRecorder) Event(ctx context.Context, object runtime.Object, eventType, reason, message string) error {
+	var errs []error
+	for _, r := range m.recorders {
+		if err := r.Event(ctx, object, eventType, reason, message); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (m *k8sMultiEventRecorder) Eventf(ctx context.Context, object runtime.Object, eventType, reason, messageFmt string, args ...interface{}) error {
+	return m.Event(ctx, object, eventType, reason, fmt.Sprintf(messageFmt, args...))
+}
 
 type k8sEventRecorder struct {
 	recorder record.EventRecorder
