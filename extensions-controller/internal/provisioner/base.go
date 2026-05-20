@@ -259,9 +259,8 @@ func (b *baseProvisioner) ProvisionVolumes(ctx context.Context) error {
 	b.toDelete = toDelete
 
 	// Sync VAST objects (views/quotas, block volumes) on own cluster.
-	// We can sync VastObjects only for primary cluster.  Non-primary clusters are read-only
-	// so you cannot create views, volumes etc whatsoever.
-	if isPrimary && b.rp.Spec.SyncVastObjects {
+	// Only the primary cluster is writable; non-primary clusters are read-only.
+	if isPrimary {
 		b.logger.Info("syncing VAST objects",
 			zap.String("vrc", b.rp.Namespace+"/"+b.rp.Name),
 			zap.String("storageClass", b.rp.Spec.StorageClass),
@@ -580,7 +579,7 @@ func (b *baseProvisioner) ensureReplicaMirrors(
 		// For VolumeReplication (VVR) always create the mirror PVC regardless —
 		// the PVC must exist before csi-addons can track the replicated copy,
 		// and waiting for the backend object would break failover sequencing.
-		if b.rp.Spec.SyncVastObjects && isVolumeGroup && b.self.ShouldGateMirrorOnBackend() {
+		if isVolumeGroup && b.self.ShouldGateMirrorOnBackend() {
 			key := b.self.(VolumeMapper).BackendObjectKey(pair.PV.Spec.CSI.VolumeHandle)
 			exists, err := b.hasVolume(ctx, sc, key)
 			if err != nil {

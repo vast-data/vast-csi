@@ -51,9 +51,5 @@ spec:
   # pairs on each destination cluster so workloads can mount the replica.
   syncPVCPV: true
 
-  # syncVastObjects controls whether the operator creates/deletes VAST backend
-  # resources (views/quotas for file, volumes for block) on destination clusters.
-  syncVastObjects: true
-
   # pvcRemap controls whether PVCs are remapped to the new primary on failover.
   pvcRemap: true

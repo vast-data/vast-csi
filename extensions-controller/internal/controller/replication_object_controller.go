@@ -162,7 +162,6 @@ func (r *ReplicationObjectReconciler) reconcileVR(ctx context.Context, name, ns 
 		}
 		vrc := r.buildContent(sourceSCName, vastv1alpha1.DestinationKindVolumeReplication, name, ns, pvcs, vrcLabels)
 		vrc.Spec.SyncPVCPV = vvr.Spec.SyncPVCPV
-		vrc.Spec.SyncVastObjects = vvr.Spec.SyncVastObjects
 		vrc.Spec.DestVolReclaimPolicy = vvr.Spec.DestVolReclaimPolicy
 		vrc.Spec.ProvisionerType = provType
 		vrc.Spec.ReplicationState = initialStateFromPrimary(newState, sourceSCName, vvr.Spec.PrimaryStorageClass)
@@ -289,7 +288,6 @@ func (r *ReplicationObjectReconciler) reconcileVGR(ctx context.Context, name, ns
 		}
 		vrc := r.buildContent(sourceSCName, vastv1alpha1.DestinationKindVolumeGroupReplication, name, ns, pvcs, vrcLabels)
 		vrc.Spec.SyncPVCPV = vscr.Spec.SyncPVCPV
-		vrc.Spec.SyncVastObjects = vscr.Spec.SyncVastObjects
 		vrc.Spec.DestVolReclaimPolicy = vscr.Spec.DestVolReclaimPolicy
 		vrc.Spec.ProvisionerType = provType
 		vrc.Spec.ReplicationState = initialStateFromPrimary(newState, sourceSCName, vscr.Spec.PrimaryStorageClass)

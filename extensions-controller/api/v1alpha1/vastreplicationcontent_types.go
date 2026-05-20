@@ -98,15 +98,6 @@ type VastReplicationContentSpec struct {
 	// +optional
 	SyncPVCPV bool `json:"syncPVCPV,omitempty"`
 
-	// SyncVastObjects mirrors the same field from the parent
-	// VastStorageClassReplication or VastVolumeReplication.
-	// Set at creation time and never changed.
-	// When true the provisioner creates/deletes VAST backend resources
-	// (volumes for block, views/quotas for file) on the destination cluster.
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="syncVastObjects is immutable"
-	// +optional
-	SyncVastObjects bool `json:"syncVastObjects,omitempty"`
-
 	// DestVolReclaimPolicy mirrors the same field from the parent
 	// VastStorageClassReplication or VastVolumeReplication.
 	// Set at creation time and never changed.
