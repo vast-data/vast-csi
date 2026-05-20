@@ -22,6 +22,7 @@ import (
 
 	"go.uber.org/zap"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -70,6 +71,14 @@ func (r *VastReplicationContentReconciler) Reconcile(ctx context.Context, req ct
 	log := r.LogFor("vrc", vrcLoggerName(vrc))
 	k8s := r.K8sFor(log)
 	emit := r.EmitFor(ctx, log, vrc)
+
+	// Propagate every event emitted on this VRC to its owning parent (VVR or
+	// VSCR) so that the parent's event stream reflects child activity.
+	parent, err := r.lookupVRCParent(ctx, vrc, k8s)
+	if err != nil {
+		return r.maybeBackoffRetry(bo, fmt.Errorf("resolve VRC parent: %w", err), log)
+	}
+	emit = emit.Bind(parent)
 
 	log.Info("=== reconciling VastReplicationContent ===",
 		zap.String("kind", vrc.Spec.Kind),
@@ -340,6 +349,32 @@ func SetupVastReplicationContentController(mgr ctrl.Manager, k8sClient *k8sclien
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&vastv1alpha1.VastReplicationContent{}, builder.WithPredicates(VastReplicationContentPredicate())).
 		Complete(r)
+}
+
+// lookupVRCParent returns the VVR or VSCR that owns this VRC as a runtime.Object.
+// Every VastReplicationContent must carry exactly one of LabelSourceVVR or
+// LabelSourceVSCR — the absence of both is treated as a hard error.
+func (r *VastReplicationContentReconciler) lookupVRCParent(
+	ctx context.Context,
+	vrc *vastv1alpha1.VastReplicationContent,
+	k8s *k8sclient.K8sClient,
+) (k8sruntime.Object, error) {
+	if vvrName := vrc.Labels[common.LabelSourceVVR]; vvrName != "" {
+		vvr, err := k8s.GetVastVolumeReplication(ctx, vvrName, vrc.Namespace)
+		if err != nil {
+			return nil, fmt.Errorf("lookup parent VVR %s/%s: %w", vrc.Namespace, vvrName, err)
+		}
+		return vvr, nil
+	}
+	if vscrName := vrc.Labels[common.LabelSourceVSCR]; vscrName != "" {
+		vscr, err := k8s.GetVastStorageClassReplication(ctx, vscrName, vrc.Namespace)
+		if err != nil {
+			return nil, fmt.Errorf("lookup parent VSCR %s/%s: %w", vrc.Namespace, vscrName, err)
+		}
+		return vscr, nil
+	}
+	return nil, fmt.Errorf("VastReplicationContent %s/%s has neither %s nor %s label",
+		vrc.Namespace, vrc.Name, common.LabelSourceVVR, common.LabelSourceVSCR)
 }
 
 // vrcLoggerName returns a short named-logger identifier for the VRC, e.g.

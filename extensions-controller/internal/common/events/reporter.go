@@ -76,7 +76,20 @@ func NewEventReporterForManager(mgr ctrl.Manager, logger *zap.Logger, component 
 func (er *EventReporter) Event(ctx context.Context, object runtime.Object, eventType, reason, message string) {
 	for _, recorder := range er.recorders {
 		if err := recorder.Event(ctx, object, eventType, reason, message); err != nil {
-			// Log error but continue with other recorders
+			fmt.Printf("failed to record event: %v\n", err)
+		}
+	}
+}
+
+// eventK8sOnly records a Kubernetes event for object but skips any logRecorder
+// so that the event is visible on the K8s object without producing a duplicate
+// log line (used for propagation to bound parent objects).
+func (er *EventReporter) eventK8sOnly(ctx context.Context, object runtime.Object, eventType, reason, message string) {
+	for _, recorder := range er.recorders {
+		if _, ok := recorder.(*logRecorder); ok {
+			continue
+		}
+		if err := recorder.Event(ctx, object, eventType, reason, message); err != nil {
 			fmt.Printf("failed to record event: %v\n", err)
 		}
 	}
@@ -129,19 +142,20 @@ func (er *EventReporter) withLogger(l *zap.Logger) *EventReporter {
 //	emit.Warning(events.ReasonNodeValidationFailed, "Validation failed: %v", err)
 //	emit.Normal(events.ReasonNodeScheduled, "Node scheduled successfully")
 func (er *EventReporter) For(ctx context.Context, object runtime.Object) *BoundReporter {
-	return &BoundReporter{er: er, ctx: ctx, object: object}
+	return &BoundReporter{er: er, ctx: ctx, objects: []runtime.Object{object}}
 }
 
-// BoundReporter is an EventReporter with context and object pre-bound for
-// convenience.  It also tracks whether a Warning event has been emitted during
-// the current reconcile; check HasWarned() in deferred cleanup blocks to avoid
-// emitting duplicate warnings when a specific error site has already described
-// the failure.
+// BoundReporter is an EventReporter with context and one-or-more objects
+// pre-bound for convenience.  Every event is dispatched to all bound objects.
+//
+// Use Bind to add additional propagation targets (e.g. a parent VVR/VSCR so
+// that events emitted on a VastReplicationContent are also visible on the
+// owning parent resource).
 type BoundReporter struct {
-	er     *EventReporter
-	ctx    context.Context
-	object runtime.Object
-	warned bool
+	er      *EventReporter
+	ctx     context.Context
+	objects []runtime.Object
+	warned  bool
 }
 
 // Logger returns the underlying *zap.Logger from the parent EventReporter.
@@ -155,20 +169,46 @@ func (br *BoundReporter) Logger() *zap.Logger {
 // so that all event log lines carry the provisioner context in the logger field.
 func (br *BoundReporter) WithLogger(l *zap.Logger) *BoundReporter {
 	return &BoundReporter{
-		er:     br.er.withLogger(l),
-		ctx:    br.ctx,
-		object: br.object,
+		er:      br.er.withLogger(l),
+		ctx:     br.ctx,
+		objects: br.objects,
 	}
 }
 
-// Event records an event with the given type, reason, and message
+// Bind returns a new BoundReporter that propagates every event to parent in
+// addition to all already-bound objects.  Use this to mirror events emitted
+// on a child resource (e.g. VastReplicationContent) onto its parent (VVR/VSCR)
+// so that the parent's event stream also reflects child activity.
+func (br *BoundReporter) Bind(parent runtime.Object) *BoundReporter {
+	newObjects := make([]runtime.Object, len(br.objects), len(br.objects)+1)
+	copy(newObjects, br.objects)
+	newObjects = append(newObjects, parent)
+	return &BoundReporter{
+		er:      br.er,
+		ctx:     br.ctx,
+		objects: newObjects,
+	}
+}
+
+// Event records an event with the given type, reason, and message.
+// The primary (first) object receives a full emit — both a Kubernetes Event
+// and a log line.  Every additional bound object (e.g. a parent VVR/VSCR)
+// receives only the Kubernetes Event so that the log is not duplicated.
 func (br *BoundReporter) Event(eventType, reason, message string) {
-	br.er.Event(br.ctx, br.object, eventType, reason, message)
+	if len(br.objects) == 0 {
+		return
+	}
+	br.er.Event(br.ctx, br.objects[0], eventType, reason, message)
+	for _, obj := range br.objects[1:] {
+		br.er.eventK8sOnly(br.ctx, obj, eventType, reason, message)
+	}
 }
 
 // Eventf records an event with the given type, reason, and formatted message
+// on all bound objects.
 func (br *BoundReporter) Eventf(eventType, reason, messageFmt string, args ...interface{}) {
-	br.er.Eventf(br.ctx, br.object, eventType, reason, messageFmt, args...)
+	message := fmt.Sprintf(messageFmt, args...)
+	br.Event(eventType, reason, message)
 }
 
 // Warning records a warning event with the given reason and message.
@@ -180,7 +220,7 @@ func (br *BoundReporter) Warning(reason, message string) {
 // Warningf records a warning event with the given reason and formatted message.
 func (br *BoundReporter) Warningf(reason, messageFmt string, args ...interface{}) {
 	br.warned = true
-	br.Eventf(EventTypeWarning, reason, messageFmt, args...)
+	br.Event(EventTypeWarning, reason, fmt.Sprintf(messageFmt, args...))
 }
 
 // HasWarned reports whether a Warning event has been emitted through this
@@ -189,12 +229,14 @@ func (br *BoundReporter) HasWarned() bool {
 	return br.warned
 }
 
-// Normal records a normal event with the given reason and message
+// Normal records a normal event with the given reason and message on all
+// bound objects.
 func (br *BoundReporter) Normal(reason, message string) {
 	br.Event(EventTypeNormal, reason, message)
 }
 
 // Normalf records a normal event with the given reason and formatted message
+// on all bound objects.
 func (br *BoundReporter) Normalf(reason, messageFmt string, args ...interface{}) {
-	br.Eventf(EventTypeNormal, reason, messageFmt, args...)
+	br.Event(EventTypeNormal, reason, fmt.Sprintf(messageFmt, args...))
 }
