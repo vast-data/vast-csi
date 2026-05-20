@@ -444,17 +444,6 @@ spec:
                 x-kubernetes-validations:
                 - message: syncPVCPV is immutable
                   rule: self == oldSelf
-              syncVastObjects:
-                description: |-
-                  SyncVastObjects mirrors the same field from the parent
-                  VastStorageClassReplication or VastVolumeReplication.
-                  Set at creation time and never changed.
-                  When true the provisioner creates/deletes VAST backend resources
-                  (volumes for block, views/quotas for file) on the destination cluster.
-                type: boolean
-                x-kubernetes-validations:
-                - message: syncVastObjects is immutable
-                  rule: self == oldSelf
             required:
             - protectedPathName
             - protectionPolicyName
@@ -705,13 +694,6 @@ spec:
                   SyncPVCPV controls whether the controller creates/deletes static
                   PV+PVC pairs on each destination cluster.  Defaults to true.
                 type: boolean
-              syncVastObjects:
-                default: true
-                description: |-
-                  SyncVastObjects controls whether the controller creates/deletes VAST
-                  backend resources (volumes for block, views/quotas for file) on each
-                  destination cluster.  Defaults to true.
-                type: boolean
             required:
             - failoverType
             - primaryStorageClass
@@ -719,7 +701,6 @@ spec:
             - protectionTopology
             - syncIntervalSeconds
             - syncPVCPV
-            - syncVastObjects
             type: object
           status:
             description: VastStorageClassReplicationStatus defines the observed state
@@ -982,13 +963,6 @@ spec:
                   SyncPVCPV controls whether the controller creates/deletes static
                   PV+PVC pairs on each destination cluster.  Defaults to true.
                 type: boolean
-              syncVastObjects:
-                default: true
-                description: |-
-                  SyncVastObjects controls whether the controller creates/deletes VAST
-                  backend resources (volumes for block, views/quotas for file) on each
-                  destination cluster.  Defaults to true.
-                type: boolean
               volumeName:
                 description: |-
                   VolumeName is the name of the PVC (in the same namespace) that should be
@@ -1001,7 +975,6 @@ spec:
             - protectionTopology
             - syncIntervalSeconds
             - syncPVCPV
-            - syncVastObjects
             - volumeName
             type: object
           status:

@@ -201,13 +201,6 @@ spec:
                   SyncPVCPV controls whether the controller creates/deletes static
                   PV+PVC pairs on each destination cluster.  Defaults to true.
                 type: boolean
-              syncVastObjects:
-                default: true
-                description: |-
-                  SyncVastObjects controls whether the controller creates/deletes VAST
-                  backend resources (volumes for block, views/quotas for file) on each
-                  destination cluster.  Defaults to true.
-                type: boolean
               volumeName:
                 description: |-
                   VolumeName is the name of the PVC (in the same namespace) that should be
@@ -220,7 +213,6 @@ spec:
             - protectionTopology
             - syncIntervalSeconds
             - syncPVCPV
-            - syncVastObjects
             - volumeName
             type: object
           status:

@@ -125,10 +125,6 @@ func (b *BlockProvisioner) BackendObjectKey(volumeHandle string) string {
 	return strings.TrimRight(path.Join(volumeGroup, volumeHandle), "/")
 }
 
-// ---------------------------------------------------------------------------
-// ProvisionStep: syncVastObjects
-// ---------------------------------------------------------------------------
-
 // ProvisionVolumeCb implements Interface.  Called by ProvisionVolumes for this VRC's own cluster.
 // Ensures VAST block volumes exist on this VRC's own cluster and removes them for
 // PVCs no longer in the source list.
@@ -152,9 +148,6 @@ func (b *BlockProvisioner) ProvisionVolumeCb(ctx context.Context, sibVRC *vastv1
 // after this callback; the ordering ensures volume handles are still
 // resolvable via the mirror PVC's bound PV at the time they are cleaned up.
 func (b *BlockProvisioner) CleanVolumeCb(ctx context.Context, _ *vastv1alpha1.VastReplicationContent, sibRest *vast_client.TypedVMSRest, sibSc *storagev1.StorageClass) error {
-	if !b.rp.Spec.SyncVastObjects {
-		return nil
-	}
 	if b.rp.Spec.DestVolReclaimPolicy == vastv1alpha1.DestVolReclaimPolicyRetain {
 		return nil
 	}

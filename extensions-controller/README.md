@@ -71,7 +71,6 @@ spec:
         keepRemote: 1w
   syncIntervalSeconds: 900
   syncPVCPV: true          # create mirror PVC+PV on each secondary SC
-  syncVastObjects: true    # create VAST volumes/views on each secondary cluster
   pvcs: [myapp-data-1, myapp-data-2]
   action: ungracefulFailover
 ```
@@ -102,7 +101,6 @@ VastReplicationContent Controller in its spec:
 | `spec.replicationPath` | VAST target exported dir |
 | `spec.protectionPolicyName` | VAST protection policy name |
 | `spec.syncPVCPV` | Inherited from parent VSCR/VVR |
-| `spec.syncVastObjects` | Inherited from parent VSCR/VVR |
 | `status.pvcs` | PVC list as of last successful provision |
 | `status.provisioned` | True once first provision succeeded |
 
@@ -218,8 +216,8 @@ Phase 2 — PVC diff check
 
 Phase 3 — ProvisionVolume (only when diff is non-empty)
   Calls provisioner.ProvisionVolume(ctx, specSource, toDelete)
-  → syncVastObjects: for each sibling VRC, instantiate a REST client
-    for the sibling's StorageClass and ensure/delete VAST objects there
+  → for each sibling VRC, instantiate a REST client for the sibling's
+    StorageClass and ensure/delete VAST objects there
   → on success: recordProvisionMeta updates status.pvcs and status.provisioned
 ```
 
@@ -263,7 +261,7 @@ Embedded by both concrete provisioners.  Holds:
 - `sourceSc` — source StorageClass, cached alongside `sourceRest`
 - `ppath` — lazily populated VAST ProtectedPath details
 
-`syncVastObjects` (called via `ProvisionStep` interface) iterates over sibling
+VAST object provisioning (called via `ProvisionStep` interface) iterates over sibling
 VRCs, instantiates a REST client per sibling via `vmsrest.NewFromVastReplicationContent`,
 and calls `ensureBlockVastVolume` / `ensureFileVastObjects` for each PVC.
 
@@ -381,7 +379,7 @@ vcsi status --vvr  <name> [-n <namespace>]
 - Primary StorageClass (highlighted green)
 - Current `spec.action` (colour-coded: yellow for failover, cyan for resync)
 - Topology edges with peer names
-- `syncIntervalSeconds`, `syncPVCPV`, `syncVastObjects`, `pvcRemap`
+- `syncIntervalSeconds`, `syncPVCPV`, `pvcRemap`
 - Protection policy template (prefix + schedule frames)
 - Status section: current primary, `ppathName`, `ppathDir`, last executed action
 
