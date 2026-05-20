@@ -74,12 +74,6 @@ type VastVolumeReplicationSpec struct {
 	// +kubebuilder:default=true
 	SyncPVCPV bool `json:"syncPVCPV"`
 
-	// SyncVastObjects controls whether the controller creates/deletes VAST
-	// backend resources (volumes for block, views/quotas for file) on each
-	// destination cluster.  Defaults to true.
-	// +kubebuilder:default=true
-	SyncVastObjects bool `json:"syncVastObjects"`
-
 	// DestVolReclaimPolicy controls whether destination VAST objects (block
 	// volumes or file views/quotas) are deleted when the VVR is deleted.
 	// Defaults to Retain.

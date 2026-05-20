@@ -154,10 +154,6 @@ func (f *FileProvisioner) BackendObjectKey(volumeHandle string) string {
 	return strings.TrimRight(path.Join(rootExport, path.Base(volumeHandle)), "/")
 }
 
-// ---------------------------------------------------------------------------
-// ProvisionStep: syncVastObjects
-// ---------------------------------------------------------------------------
-
 // ProvisionVolumeCb implements Interface.  Called by ProvisionVolumes for this VRC's own cluster.
 // Ensures VAST NFS views and quotas exist on this VRC's own cluster and removes
 // them for PVCs no longer in the source list.
@@ -175,9 +171,6 @@ func (f *FileProvisioner) ProvisionVolumeCb(ctx context.Context, _ *vastv1alpha1
 // CleanVolumeCb implements Interface.  Deletes VAST NFS views and quotas for
 // all managed mirror PVCs on this VRC's own cluster.
 func (f *FileProvisioner) CleanVolumeCb(ctx context.Context, _ *vastv1alpha1.VastReplicationContent, sibRest *vast_client.TypedVMSRest, sibSc *storagev1.StorageClass) error {
-	if !f.rp.Spec.SyncVastObjects {
-		return nil
-	}
 	if f.rp.Spec.DestVolReclaimPolicy == vastv1alpha1.DestVolReclaimPolicyRetain {
 		return nil
 	}

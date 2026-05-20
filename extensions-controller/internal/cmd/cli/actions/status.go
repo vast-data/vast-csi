@@ -83,7 +83,6 @@ func printVSCRStatus(obj *vastv1alpha1.VastStorageClassReplication) {
 	}
 	fmt.Printf("  %-28s %s\n", "PVC Remap:", boolStr(obj.Spec.PVCRemap))
 	fmt.Printf("  %-28s %s\n", "Sync PVC/PV:", boolStr(obj.Spec.SyncPVCPV))
-	fmt.Printf("  %-28s %s\n", "Sync VAST Objects:", boolStr(obj.Spec.SyncVastObjects))
 	fmt.Printf("  %-28s %s\n", "Vol Reclaim Policy:", destVolReclaimStr(obj.Spec.DestVolReclaimPolicy))
 	printProtectionPolicyTemplate(obj.Spec.ProtectionPolicyTemplate)
 	printStorageClassList(obj.Spec.AllStorageClasses())
@@ -124,7 +123,6 @@ func printVVRStatus(obj *vastv1alpha1.VastVolumeReplication) {
 	}
 	fmt.Printf("  %-28s %s\n", "PVC Remap:", boolStr(obj.Spec.PVCRemap))
 	fmt.Printf("  %-28s %s\n", "Sync PVC/PV:", boolStr(obj.Spec.SyncPVCPV))
-	fmt.Printf("  %-28s %s\n", "Sync VAST Objects:", boolStr(obj.Spec.SyncVastObjects))
 	fmt.Printf("  %-28s %s\n", "Vol Reclaim Policy:", destVolReclaimStr(obj.Spec.DestVolReclaimPolicy))
 	printProtectionPolicyTemplate(obj.Spec.ProtectionPolicyTemplate)
 	fmt.Println()
