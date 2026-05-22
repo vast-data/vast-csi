@@ -66,8 +66,8 @@ type VastVolumeReplicationSpec struct {
 	SyncIntervalSeconds int64 `json:"syncIntervalSeconds"`
 
 	// PVCRemap controls whether PVCs are remapped to the new primary on failover.
-	// +optional
-	PVCRemap bool `json:"pvcRemap,omitempty"`
+	// +kubebuilder:default=false
+	PVCRemap bool `json:"pvcRemap"`
 
 	// SyncPVCPV controls whether the controller creates/deletes static
 	// PV+PVC pairs on each destination cluster.  Defaults to true.
@@ -78,8 +78,7 @@ type VastVolumeReplicationSpec struct {
 	// volumes or file views/quotas) are deleted when the VVR is deleted.
 	// Defaults to Retain.
 	// +kubebuilder:default=Retain
-	// +optional
-	DestVolReclaimPolicy DestVolReclaimPolicy `json:"destVolReclaimPolicy,omitempty"`
+	DestVolReclaimPolicy DestVolReclaimPolicy `json:"destVolReclaimPolicy"`
 }
 
 // AllStorageClasses returns every StorageClass name in the replication group.
