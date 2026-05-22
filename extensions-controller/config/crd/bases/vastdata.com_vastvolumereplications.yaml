@@ -196,12 +196,6 @@ spec:
                 format: int64
                 minimum: 0
                 type: integer
-              syncPVCPV:
-                default: true
-                description: |-
-                  SyncPVCPV controls whether the controller creates/deletes static
-                  PV+PVC pairs on each destination cluster.  Defaults to true.
-                type: boolean
               volumeName:
                 description: |-
                   VolumeName is the name of the PVC (in the same namespace) that should be
@@ -215,7 +209,6 @@ spec:
             - protectionTopology
             - pvcRemap
             - syncIntervalSeconds
-            - syncPVCPV
             - volumeName
             type: object
           status:

@@ -433,8 +433,9 @@ def parse_duration_to_timestamp(duration_str: str, from_time: datetime = None) -
     datetime.isoformat(timespec="seconds") for timestamp formatting.
     
     Args:
-        duration_str: Duration string (e.g., "2H", "30m", "1d", "1W")
-                     Supported units: m (minutes), H (hours), d (days), W (weeks)
+        duration_str: Duration string (e.g., "2H", "30m", "2D", "1W").
+                     Case-insensitive. Supported units: M/m (minutes), H/h (hours),
+                     D/d (days), W/w (weeks).
         from_time: Base datetime to add duration to (default: current time)
         
     Returns:
@@ -453,22 +454,23 @@ def parse_duration_to_timestamp(duration_str: str, from_time: datetime = None) -
         # Default to 1 hour if no duration specified
         duration_str = "1H"
     
-    # Parse the duration string using regex
-    # Format: <number><unit> where unit is m, H, d, W
-    match = re.match(r'^(\d+)([mHdW])$', duration_str.strip())
-    
+    # Parse the duration string using regex (case-insensitive units).
+    # VAST protection policies use uppercase (e.g. "2D", "1W") but lowercase
+    # variants ("2d", "1w") must also be accepted.
+    match = re.match(r'^(\d+)([mhdw])$', duration_str.strip(), re.IGNORECASE)
+
     if not match:
         raise ValueError(f"Invalid duration format: {duration_str}. Expected format: <number><unit> (e.g., '2H', '30m')")
-    
+
     amount = int(match.group(1))
-    unit = match.group(2)
-    
+    unit = match.group(2).upper()
+
     # Convert to timedelta
-    if unit == 'm':  # minutes
+    if unit == 'M':  # minutes
         delta = timedelta(minutes=amount)
     elif unit == 'H':  # hours
         delta = timedelta(hours=amount)
-    elif unit == 'd':  # days
+    elif unit == 'D':  # days
         delta = timedelta(days=amount)
     elif unit == 'W':  # weeks
         delta = timedelta(weeks=amount)

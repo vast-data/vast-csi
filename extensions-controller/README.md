@@ -100,7 +100,7 @@ VastReplicationContent Controller in its spec:
 | `spec.protectedPathName` | VAST ppath name (populated after first reconcile) |
 | `spec.replicationPath` | VAST target exported dir |
 | `spec.protectionPolicyName` | VAST protection policy name |
-| `spec.syncPVCPV` | Inherited from parent VSCR/VVR |
+| `spec.syncPVCPV` | Always `true` for VVR (mirror PVCs required for csi-addons); inherited from parent VSCR |
 | `status.pvcs` | PVC list as of last successful provision |
 | `status.provisioned` | True once first provision succeeded |
 

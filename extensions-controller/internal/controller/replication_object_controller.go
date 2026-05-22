@@ -161,7 +161,7 @@ func (r *ReplicationObjectReconciler) reconcileVR(ctx context.Context, name, ns 
 			return fmt.Errorf("VR %s/%s: %w", ns, name, err)
 		}
 		vrc := r.buildContent(sourceSCName, vastv1alpha1.DestinationKindVolumeReplication, name, ns, pvcs, vrcLabels)
-		vrc.Spec.SyncPVCPV = vvr.Spec.SyncPVCPV
+		vrc.Spec.SyncPVCPV = true // VVR always requires mirror PVCs for csi-addons VolumeReplication
 		vrc.Spec.DestVolReclaimPolicy = vvr.Spec.DestVolReclaimPolicy
 		vrc.Spec.ProvisionerType = provType
 		vrc.Spec.ReplicationState = initialStateFromPrimary(newState, sourceSCName, vvr.Spec.PrimaryStorageClass)
@@ -311,11 +311,28 @@ func (r *ReplicationObjectReconciler) reconcileVGR(ctx context.Context, name, ns
 	}
 
 	// VRC exists — apply any pending changes in one patch.
-	if syncVRCReplicationState(existing, newState, emit) || syncVRCPVCs(existing, pvcs, emit) {
+	pvcChanged := syncVRCPVCs(existing, pvcs, emit)
+	if syncVRCReplicationState(existing, newState, emit) || pvcChanged {
 		if err := k8s.PatchVastReplicationContentSpec(ctx, existing); err != nil {
 			return fmt.Errorf("failed to patch VRC for VGR %s/%s: %w", ns, name, err)
 		}
 	}
+
+	// When the primary VGR gains new PVCs, the secondary VRCs must be
+	// triggered immediately so they create mirror PVCs for the new primaries.
+	if pvcChanged && sourceSCName == vscr.Spec.PrimaryStorageClass {
+		touched, err := k8s.TouchSecondaryVRCs(ctx, vscr)
+		for _, vrcName := range touched {
+			log.Info("touched secondary VRC to trigger mirror PVC creation",
+				zap.String("vrc", ns+"/"+vrcName))
+		}
+		if err != nil {
+			// Non-fatal: secondary VRCs will reconcile again on their next
+			// periodic sync; log the error but don't fail the reconcile.
+			log.With(zap.Error(err)).Warn("failed to touch secondary VRCs after primary PVC list change")
+		}
+	}
+
 	bo.Reset()
 	return nil
 }

@@ -259,12 +259,15 @@ func (b *baseProvisioner) ProvisionVolumes(ctx context.Context) error {
 	b.toDelete = toDelete
 
 	// Sync VAST objects (views/quotas, block volumes) on own cluster.
-	// Only the primary cluster is writable; non-primary clusters are read-only.
-	if isPrimary {
+	// Primary VRCs create source objects; secondary VSCR VRCs create destination
+	// objects (e.g. NFS views without CreateDir so the replicated directory is
+	// exported).  Secondary VVR VRCs are skipped — csi-addons manages them.
+	if isPrimary || isVolumeGroupReplication {
 		b.logger.Info("syncing VAST objects",
 			zap.String("vrc", b.rp.Namespace+"/"+b.rp.Name),
 			zap.String("storageClass", b.rp.Spec.StorageClass),
 			zap.Bool("isVolumeGroup", isVolumeGroupReplication),
+			zap.Bool("isPrimary", isPrimary),
 			zap.Strings("toEnsure", pvcNames(b.toEnsure)),
 			zap.Strings("toDelete", b.toDelete),
 		)
@@ -573,13 +576,7 @@ func (b *baseProvisioner) ensureReplicaMirrors(
 		isVolumeGroup  = b.isVolumeGroup()
 	)
 	for _, pair := range pairs {
-		// For VolumeGroupReplication (VSCR) gate mirror creation on the VAST
-		// backend object being present on the destination cluster: volumes are
-		// replicated asynchronously and may not exist there yet.
-		// For VolumeReplication (VVR) always create the mirror PVC regardless —
-		// the PVC must exist before csi-addons can track the replicated copy,
-		// and waiting for the backend object would break failover sequencing.
-		if isVolumeGroup && b.self.ShouldGateMirrorOnBackend() {
+		if isVolumeGroup {
 			key := b.self.(VolumeMapper).BackendObjectKey(pair.PV.Spec.CSI.VolumeHandle)
 			exists, err := b.hasVolume(ctx, sc, key)
 			if err != nil {
@@ -592,11 +589,10 @@ func (b *baseProvisioner) ensureReplicaMirrors(
 				return err
 			}
 			if !exists {
-				b.emit.Warningf(events.ReasonProvisionSkipped,
-					"VAST backend object for PV %s not yet present on cluster %s, skipping mirror creation",
-					pair.PV.Name, sc.Name,
+				b.logger.Info("VAST backend object not yet present on destination cluster, ensuring mirror PVC anyway",
+					zap.String("pv", pair.PV.Name),
+					zap.String("cluster", sc.Name),
 				)
-				continue
 			}
 		}
 
@@ -804,6 +800,43 @@ func (b *baseProvisioner) cleanReplicaMirrorOrphans(
 		}
 	}
 	return errs.Err()
+}
+
+// sourcePairsFromSiblingVRCs gathers source PVC+PV pairs from all sibling
+// constellation VRCs — every VRC in the same constellation except this one.
+// Only unmanaged PVCs (those without LabelManagedBy) and bound PVs with a CSI
+// volume handle are included.
+func (b *baseProvisioner) sourcePairsFromSiblingVRCs(ctx context.Context) ([]VolumePair, error) {
+	vrcs, err := b.rp.GetConstellationVRCs(ctx, b.k8sClient.ListVastReplicationContentsByLabelSelector)
+	if err != nil {
+		return nil, fmt.Errorf("list constellation VRCs: %w", err)
+	}
+	var pairs []VolumePair
+	for _, vrc := range vrcs {
+		if vrc.Spec.StorageClass == b.rp.Spec.StorageClass {
+			continue // skip self
+		}
+		for _, pvcName := range vrc.Spec.PVCs {
+			pvc, pv, bound, err := b.k8sClient.GetPVCandPV(ctx, pvcName, vrc.Namespace)
+			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					continue
+				}
+				return nil, fmt.Errorf("get PVC+PV %s/%s: %w", vrc.Namespace, pvcName, err)
+			}
+			if !bound {
+				continue
+			}
+			if pvc.Labels[common.LabelManagedBy] == common.LabelManagedByValue {
+				continue // skip controller-managed mirrors
+			}
+			if pv.Spec.CSI == nil || pv.Spec.CSI.VolumeHandle == "" {
+				continue
+			}
+			pairs = append(pairs, VolumePair{PVC: pvc, PV: pv})
+		}
+	}
+	return pairs, nil
 }
 
 // cleanVolumeReplication deletes all destination resources (PVCs, PVs,

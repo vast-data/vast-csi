@@ -47,9 +47,5 @@ spec:
   # syncIntervalSeconds is the maximum allowed gap between sync points (seconds).
   syncIntervalSeconds: 900
 
-  # syncPVCPV controls whether the operator creates/deletes static PV+PVC
-  # pairs on each destination cluster so workloads can mount the replica.
-  syncPVCPV: true
-
   # pvcRemap controls whether PVCs are remapped to the new primary on failover.
   pvcRemap: true

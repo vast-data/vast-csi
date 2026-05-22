@@ -425,6 +425,27 @@ func (r *VastStorageClassReplicationReconciler) validateOnce(
 		}
 	}
 
+	currentPrimarySC := vscr.Status.CurrentPrimaryStorageClass
+	if currentPrimarySC == "" {
+		// Before attempting any ppath creation, verify that no protected path with
+		// the same name already exists on the primary cluster.  If it does (in any
+		// state — active, partially deleted, etc.) the user must remove it manually
+		// before creating this VSCR.
+		if primaryRest, ok := restByStorageClass[vscr.Spec.PrimaryStorageClass]; ok {
+			exists, err := primaryRest.ProtectedPaths.Exists(&typed.ProtectedPathSearchParams{Name: vscr.Name})
+			if err != nil {
+				return fmt.Errorf("failed to check if protected path %q exists on primary cluster: %w", vscr.Name, err)
+			}
+			if exists {
+				return cerrors.NewValidationError(
+					"protected path %q already exists on the primary VAST cluster; "+
+						"please remove it manually before creating this VSCR",
+					vscr.Name,
+				)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -645,7 +666,7 @@ func (r *VastStorageClassReplicationReconciler) syncVGRReplicationStates(
 		if scName == truePrimarySC {
 			continue
 		}
-		if err := r.ensureReplicationState(ctx, emit, vscr.Namespace, vgrNameForSC(vscr.Name, scName), scName, replicationv1alpha1.Secondary, false); err != nil {
+		if err := r.ensureReplicationState(ctx, emit, vscr.Namespace, vgrNameForSC(vscr.Name, scName), scName, replicationv1alpha1.Secondary); err != nil {
 			errs.Add(fmt.Errorf("SC %s: %w", scName, err))
 		}
 	}
@@ -655,8 +676,6 @@ func (r *VastStorageClassReplicationReconciler) syncVGRReplicationStates(
 // ensureVGR creates or updates the VolumeGroupReplication for the given StorageClass.
 // Returns (true, nil) when the VGR was freshly created, (false, nil) when it
 // already existed, and (false, err) on error.
-// primaryChanged must be true when the primary StorageClass switched this reconcile
-// cycle so that an in-progress resync can be overridden with the failover state.
 func (r *VastStorageClassReplicationReconciler) ensureVGR(
 	ctx context.Context,
 	emit *events.BoundReporter,
@@ -712,19 +731,16 @@ func (r *VastStorageClassReplicationReconciler) ensureVGR(
 	if scName != vscr.Spec.PrimaryStorageClass {
 		return vgrName, false, nil
 	}
-	return vgrName, false, r.ensureReplicationState(ctx, emit, vscr.Namespace, vgrName, scName, state, primaryChanged)
+	return vgrName, false, r.ensureReplicationState(ctx, emit, vscr.Namespace, vgrName, scName, state)
 }
 
 // ensureReplicationState syncs the replicationState of an existing VolumeGroupReplication
-// to the desired state (e.g. after a primary StorageClass switch).
-// primaryChanged must be true when the primary StorageClass switched this reconcile
-// cycle so that an in-progress resync is overridden with the failover state.
+// to the desired state (e.g. after a primary StorageClass switch or after a resync).
 func (r *VastStorageClassReplicationReconciler) ensureReplicationState(
 	ctx context.Context,
 	emit *events.BoundReporter,
 	namespace, vgrName, scName string,
 	desired replicationv1alpha1.ReplicationState,
-	primaryChanged bool,
 ) error {
 	k8s := r.K8sFor(emit.Logger())
 
@@ -733,14 +749,6 @@ func (r *VastStorageClassReplicationReconciler) ensureReplicationState(
 		return fmt.Errorf("failed to get VolumeGroupReplication %s/%s: %w", namespace, vgrName, err)
 	}
 	if existing.Spec.ReplicationState == desired {
-		return nil
-	}
-	// When promoting to Primary, don't override an in-progress resync unless a
-	// real failover (primaryStorageClass change) was detected in this reconcile cycle.
-	// Demotions to Secondary always proceed regardless.
-	if desired == replicationv1alpha1.Primary &&
-		existing.Spec.ReplicationState == replicationv1alpha1.Resync &&
-		!primaryChanged {
 		return nil
 	}
 	if err := k8s.PatchVolumeGroupReplicationState(ctx, existing, desired); err != nil {
@@ -835,22 +843,14 @@ func (r *VastStorageClassReplicationReconciler) ensureResync(
 	//   - primary VRC   → re-creates missing VAST objects (views/quotas/volumes)
 	//                     on the primary cluster.
 	//   - secondary VRCs → re-create missing mirror PVCs on destination clusters.
-	ts := time.Now().UTC().Format(time.RFC3339)
-	for _, scName := range vscr.Spec.AllStorageClasses() {
-		vrcName := vgrNameForSC(vscr.Name, scName)
-		vrc, err := k8s.GetVastReplicationContent(ctx, vrcName, vscr.Namespace)
-		if err != nil {
-			if k8serrors.IsNotFound(err) {
-				continue // not yet provisioned — skip
-			}
-			return fmt.Errorf("ensureResync: failed to get VastReplicationContent %s/%s: %w", vscr.Namespace, vrcName, err)
-		}
-		if err := k8s.SetAnnotationAndUpdate(ctx, vrc, common.AnnotationResyncRequestedAt, ts); err != nil {
-			return fmt.Errorf("ensureResync: failed to touch VastReplicationContent %s/%s: %w", vscr.Namespace, vrcName, err)
-		}
+	touched, err := k8s.TouchConstellationVRCs(ctx, vscr)
+	if err != nil {
+		return fmt.Errorf("ensureResync: failed to touch constellation VRCs: %w", err)
+	}
+	for _, vrcName := range touched {
 		emit.Normalf("ResyncTriggered",
-			"triggered reconcile of VastReplicationContent %s/%s (StorageClass %s)",
-			vscr.Namespace, vrcName, scName)
+			"triggered reconcile of VastReplicationContent %s/%s",
+			vscr.Namespace, vrcName)
 	}
 
 	if err := k8s.PatchVSCRResync(ctx, vscr); err != nil {

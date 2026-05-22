@@ -122,7 +122,6 @@ func printVVRStatus(obj *vastv1alpha1.VastVolumeReplication) {
 		fmt.Printf("  %-28s %ds\n", "Sync Interval:", obj.Spec.SyncIntervalSeconds)
 	}
 	fmt.Printf("  %-28s %s\n", "PVC Remap:", boolStr(obj.Spec.PVCRemap))
-	fmt.Printf("  %-28s %s\n", "Sync PVC/PV:", boolStr(obj.Spec.SyncPVCPV))
 	fmt.Printf("  %-28s %s\n", "Vol Reclaim Policy:", destVolReclaimStr(obj.Spec.DestVolReclaimPolicy))
 	printProtectionPolicyTemplate(obj.Spec.ProtectionPolicyTemplate)
 	fmt.Println()

@@ -332,6 +332,27 @@ func (r *VastVolumeReplicationReconciler) validateOnce(
 		return cerrors.NewValidationError("%s", err.Error())
 	}
 
+	currentPrimarySC := vvr.Status.CurrentPrimaryStorageClass
+	if currentPrimarySC == "" {
+		// Before attempting any ppath creation, verify that no protected path with
+		// the same name already exists on the primary cluster.  If it does (in any
+		// state — active, partially deleted, etc.) the user must remove it manually
+		// before creating this VVR.
+		if primaryRest, ok := restByStorageClass[vvr.Spec.PrimaryStorageClass]; ok {
+			exists, err := primaryRest.ProtectedPaths.Exists(&typed.ProtectedPathSearchParams{Name: vvr.Name})
+			if err != nil {
+				return fmt.Errorf("failed to check if protected path %q exists on primary cluster: %w", vvr.Name, err)
+			}
+			if exists {
+				return cerrors.NewValidationError(
+					"protected path %q already exists on the primary VAST cluster; "+
+						"please remove it manually before creating this VVR",
+					vvr.Name,
+				)
+			}
+		}
+	}
+
 	for _, scName := range vvr.Spec.AllStorageClasses() {
 		sc := scByStorageClass[scName]
 		if !k8sclient.IsBlockStorageClass(sc) {
@@ -619,10 +640,10 @@ func (r *VastVolumeReplicationReconciler) ensureVR(
 	}
 
 	// Determine the PVC name the VolumeReplication should point at:
-	//   - Primary SC  → the original source PVC (vvr.Spec.VolumeName).
+	//   - Primary SC   → the original source PVC (vvr.Spec.VolumeName).
 	//   - Secondary SC → the mirror PVC that VastReplicationContent created on
-	//     this cluster.  Its name is derived the same way as during PVC creation
-	//     so that csi-addons replicates the correct volume.
+	//     this cluster.  csi-addons requires a bound PVC to call PromoteVolume;
+	//     the VRC always creates mirror PVCs for VVR (SyncPVCPV=true).
 	dataSourcePVC := vvr.Spec.VolumeName
 	if !isPrimary {
 		mirrorPVCName, err := r.mirrorPVCName(ctx, k8s, vvr, scName)

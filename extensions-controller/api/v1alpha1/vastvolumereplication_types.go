@@ -69,11 +69,6 @@ type VastVolumeReplicationSpec struct {
 	// +kubebuilder:default=false
 	PVCRemap bool `json:"pvcRemap"`
 
-	// SyncPVCPV controls whether the controller creates/deletes static
-	// PV+PVC pairs on each destination cluster.  Defaults to true.
-	// +kubebuilder:default=true
-	SyncPVCPV bool `json:"syncPVCPV"`
-
 	// DestVolReclaimPolicy controls whether destination VAST objects (block
 	// volumes or file views/quotas) are deleted when the VVR is deleted.
 	// Defaults to Retain.

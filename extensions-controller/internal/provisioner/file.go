@@ -141,8 +141,6 @@ func (f *FileProvisioner) getViewPolicy(rest *vast_client.TypedVMSRest, sc *stor
 	})
 }
 
-func (f *FileProvisioner) ShouldGateMirrorOnBackend() bool { return true }
-
 // BackendObjectKey implements VolumeMapper.  Returns the full view path used
 // as a key in VolumeMapping
 func (f *FileProvisioner) BackendObjectKey(volumeHandle string) string {
@@ -158,41 +156,25 @@ func (f *FileProvisioner) BackendObjectKey(volumeHandle string) string {
 // Ensures VAST NFS views and quotas exist on this VRC's own cluster and removes
 // them for PVCs no longer in the source list.
 func (f *FileProvisioner) ProvisionVolumeCb(ctx context.Context, _ *vastv1alpha1.VastReplicationContent, sibRest *vast_client.TypedVMSRest, sibSc *storagev1.StorageClass) error {
-	ppath, err := f.getPPath(ctx, sibSc)
-	if err != nil {
-		return err
-	}
-	if isDestinationRole(ppath.Role) {
-		return nil
-	}
 	return f.syncFileObjects(ctx, sibRest, sibSc, f.toEnsure, f.toDelete)
 }
 
-// CleanVolumeCb implements Interface.  Deletes VAST NFS views and quotas for
-// all managed mirror PVCs on this VRC's own cluster.
+// CleanVolumeCb implements Interface.  Deletes VAST NFS views and quotas on
+// this VRC's own cluster.
+// View paths are derived from the source PVCs found in sibling constellation
+// VRCs: VAST replication preserves the relative volume path on the destination
+// cluster, so BackendObjectKey(sourceHandle) produces the correct view path there.
 func (f *FileProvisioner) CleanVolumeCb(ctx context.Context, _ *vastv1alpha1.VastReplicationContent, sibRest *vast_client.TypedVMSRest, sibSc *storagev1.StorageClass) error {
 	if f.rp.Spec.DestVolReclaimPolicy == vastv1alpha1.DestVolReclaimPolicyRetain {
 		return nil
 	}
-	pvcs, err := f.k8sClient.ListPVCsByLabelSelector(ctx, f.rp.Namespace, map[string]string{
-		common.LabelManagedBy:    common.LabelManagedByValue,
-		common.LabelStorageClass: sibSc.Name,
-	})
+	sourcePairs, err := f.sourcePairsFromSiblingVRCs(ctx)
 	if err != nil {
-		return fmt.Errorf("list managed mirror PVCs for %s: %w", sibSc.Name, err)
+		return fmt.Errorf("list source PVCs from sibling VRCs: %w", err)
 	}
 	var errs cerrors.DeferredError
-	for i := range pvcs {
-		pvc := &pvcs[i]
-		pv, pvErr := f.managedPVForPVC(ctx, pvc)
-		if pvErr != nil {
-			errs.Add(pvErr)
-			continue
-		}
-		if pv == nil || pv.Spec.CSI == nil || pv.Spec.CSI.VolumeHandle == "" {
-			continue
-		}
-		viewPath := f.BackendObjectKey(pv.Spec.CSI.VolumeHandle)
+	for _, pair := range sourcePairs {
+		viewPath := f.BackendObjectKey(pair.PV.Spec.CSI.VolumeHandle)
 		var pvcErrs cerrors.DeferredError
 		if err := f.deleteVastQuota(ctx, sibRest, sibSc, viewPath); err != nil {
 			pvcErrs.Add(fmt.Errorf("delete quota at %s: %w", viewPath, err))
@@ -201,7 +183,7 @@ func (f *FileProvisioner) CleanVolumeCb(ctx context.Context, _ *vastv1alpha1.Vas
 			pvcErrs.Add(fmt.Errorf("delete view at %s: %w", viewPath, err))
 		}
 		if pvcErrs.IsEmpty() {
-			f.emit.Normalf(events.ReasonVASTVolumeDeleted, "deleted VAST view+quota at %s for mirror PVC %s", viewPath, pvc.Name)
+			f.emit.Normalf(events.ReasonVASTVolumeDeleted, "deleted VAST view+quota at %s for source PVC %s", viewPath, pair.PVC.Name)
 		} else {
 			errs.Merge(&pvcErrs)
 		}
@@ -295,7 +277,7 @@ func (f *FileProvisioner) ensureView(
 		Path:      targetPath,
 		PolicyId:  viewPolicy.Id,
 		Protocols: &protocols,
-		CreateDir: true,
+		CreateDir: false,
 	}
 	if qosPolicy != "" {
 		viewBody.QosPolicy = qosPolicy

@@ -150,6 +150,66 @@ func (k *K8sClient) WaitForVRC(ctx context.Context, namespace, name string, time
 	}
 }
 
+// TouchConstellationVRCs annotates every VastReplicationContent in the VSCR
+// constellation (primary + all secondaries) with the current timestamp, which
+// causes the VRC controller to immediately re-queue each one.
+//
+// Returns the names of every VRC that was successfully touched so the caller
+// can emit per-VRC events or log them.  VRCs that do not exist yet are silently
+// skipped and are not included in the returned slice.
+func (k *K8sClient) TouchConstellationVRCs(
+	ctx context.Context,
+	vscr *vastv1alpha1.VastStorageClassReplication,
+) ([]string, error) {
+	return k.touchVRCsForStorageClasses(ctx, vscr, vscr.Spec.AllStorageClasses())
+}
+
+// TouchSecondaryVRCs annotates every non-primary VastReplicationContent in the
+// VSCR constellation with the current timestamp so the VRC controller
+// immediately re-queues them.
+//
+// Returns the names of every VRC that was successfully touched.  Used when new
+// primary PVCs appear and secondary VRCs must create their mirror PVCs without
+// waiting for their own VGR to change.
+func (k *K8sClient) TouchSecondaryVRCs(
+	ctx context.Context,
+	vscr *vastv1alpha1.VastStorageClassReplication,
+) ([]string, error) {
+	var secondarySCs []string
+	for _, sc := range vscr.Spec.AllStorageClasses() {
+		if sc != vscr.Spec.PrimaryStorageClass {
+			secondarySCs = append(secondarySCs, sc)
+		}
+	}
+	return k.touchVRCsForStorageClasses(ctx, vscr, secondarySCs)
+}
+
+// touchVRCsForStorageClasses is the shared implementation used by
+// TouchConstellationVRCs and TouchSecondaryVRCs.
+func (k *K8sClient) touchVRCsForStorageClasses(
+	ctx context.Context,
+	vscr *vastv1alpha1.VastStorageClassReplication,
+	storageClasses []string,
+) ([]string, error) {
+	ts := time.Now().UTC().Format(time.RFC3339)
+	var touched []string
+	for _, scName := range storageClasses {
+		vrcName := vscr.Name + "-" + scName
+		vrc, err := k.GetVastReplicationContent(ctx, vrcName, vscr.Namespace)
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				continue // not yet provisioned — skip silently
+			}
+			return touched, fmt.Errorf("get VRC %s/%s: %w", vscr.Namespace, vrcName, err)
+		}
+		if err := k.SetAnnotationAndUpdate(ctx, vrc, common.AnnotationResyncRequestedAt, ts); err != nil {
+			return touched, fmt.Errorf("touch VRC %s/%s: %w", vscr.Namespace, vrcName, err)
+		}
+		touched = append(touched, vrcName)
+	}
+	return touched, nil
+}
+
 // listVastReplicationContentsByLabelSet is an internal helper using typed label.Set.
 func (k *K8sClient) listVastReplicationContentsByLabelSet(ctx context.Context, namespace string, sel labels.Set) ([]vastv1alpha1.VastReplicationContent, error) {
 	list := &vastv1alpha1.VastReplicationContentList{}
