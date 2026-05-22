@@ -675,6 +675,7 @@ spec:
                 minItems: 1
                 type: array
               pvcRemap:
+                default: false
                 description: PVCRemap controls whether PVCs are remapped to the new
                   primary on failover.
                 type: boolean
@@ -695,10 +696,12 @@ spec:
                   PV+PVC pairs on each destination cluster.  Defaults to true.
                 type: boolean
             required:
+            - destVolReclaimPolicy
             - failoverType
             - primaryStorageClass
             - protectionPolicyTemplate
             - protectionTopology
+            - pvcRemap
             - syncIntervalSeconds
             - syncPVCPV
             type: object
@@ -944,6 +947,7 @@ spec:
                 minItems: 1
                 type: array
               pvcRemap:
+                default: false
                 description: PVCRemap controls whether PVCs are remapped to the new
                   primary on failover.
                 type: boolean
@@ -969,10 +973,12 @@ spec:
                   replicated across the listed StorageClasses.
                 type: string
             required:
+            - destVolReclaimPolicy
             - failoverType
             - primaryStorageClass
             - protectionPolicyTemplate
             - protectionTopology
+            - pvcRemap
             - syncIntervalSeconds
             - syncPVCPV
             - volumeName
