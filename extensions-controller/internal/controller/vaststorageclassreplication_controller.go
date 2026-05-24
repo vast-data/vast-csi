@@ -802,8 +802,10 @@ func (r *VastStorageClassReplicationReconciler) ensureLastFailoverType(vscr *vas
 	return true
 }
 
-// ensureResync sets replicationState=resync on the primary VolumeGroupReplication
-// and immediately clears Spec.Resync so it acts as a one-shot trigger.
+// ensureResync sets replicationState=resync on the primary VolumeGroupReplication,
+// triggers an immediate reconcile on all VastReplicationContents (so that
+// missing VAST objects and mirror PVCs are re-created on every cluster), and
+// immediately clears Spec.Resync so it acts as a one-shot trigger.
 func (r *VastStorageClassReplicationReconciler) ensureResync(
 	ctx context.Context,
 	k8s *k8sclient.K8sClient,
@@ -828,6 +830,28 @@ func (r *VastStorageClassReplicationReconciler) ensureResync(
 	}
 	emit.Normalf("ResyncTriggered",
 		"replicationState set to resync on VolumeGroupReplication %s/%s", vscr.Namespace, vgrName)
+
+	// Touch every VRC in the constellation so each one immediately reconciles:
+	//   - primary VRC   → re-creates missing VAST objects (views/quotas/volumes)
+	//                     on the primary cluster.
+	//   - secondary VRCs → re-create missing mirror PVCs on destination clusters.
+	ts := time.Now().UTC().Format(time.RFC3339)
+	for _, scName := range vscr.Spec.AllStorageClasses() {
+		vrcName := vgrNameForSC(vscr.Name, scName)
+		vrc, err := k8s.GetVastReplicationContent(ctx, vrcName, vscr.Namespace)
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				continue // not yet provisioned — skip
+			}
+			return fmt.Errorf("ensureResync: failed to get VastReplicationContent %s/%s: %w", vscr.Namespace, vrcName, err)
+		}
+		if err := k8s.SetAnnotationAndUpdate(ctx, vrc, common.AnnotationResyncRequestedAt, ts); err != nil {
+			return fmt.Errorf("ensureResync: failed to touch VastReplicationContent %s/%s: %w", vscr.Namespace, vrcName, err)
+		}
+		emit.Normalf("ResyncTriggered",
+			"triggered reconcile of VastReplicationContent %s/%s (StorageClass %s)",
+			vscr.Namespace, vrcName, scName)
+	}
 
 	if err := k8s.PatchVSCRResync(ctx, vscr); err != nil {
 		return fmt.Errorf("ensureResync: failed to clear Resync flag on VSCR %s/%s: %w", vscr.Namespace, vscr.Name, err)

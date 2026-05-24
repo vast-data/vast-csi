@@ -18,6 +18,7 @@ package controller
 
 import (
 	replicationv1alpha1 "github.com/csi-addons/kubernetes-csi-addons/api/replication.storage/v1alpha1"
+	vast_common "github.com/vast-data/vast-csi/extensions-controller/internal/common"
 	k8sclient "github.com/vast-data/vast-csi/extensions-controller/internal/common/k8s_client"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -43,16 +44,25 @@ func isOwnedByVSCROrVVR(obj client.Object) bool {
 //     restarts where VRCs arrive as synthetic Create events.  Secondary VRCs are
 //     included so the self-destruction check can fire (parent gone/terminating).
 //   - Update: reconcile when the object is being deleted (regardless of state),
-//     or when the spec generation changed.  Status-only updates are ignored.
+//     when the spec generation changed, or when the resync annotation is stamped
+//     (annotations do not change generation, so they are checked explicitly).
 //   - Delete: always reconcile — cleanup must run regardless of state.
 func VastReplicationContentPredicate() predicate.Predicate {
+	resyncAnnotationChanged := func(e event.UpdateEvent) bool {
+		oldVal := e.ObjectOld.GetAnnotations()[vast_common.AnnotationResyncRequestedAt]
+		newVal := e.ObjectNew.GetAnnotations()[vast_common.AnnotationResyncRequestedAt]
+		return newVal != "" && newVal != oldVal
+	}
 	return predicate.Funcs{
 		CreateFunc: func(_ event.CreateEvent) bool { return true },
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			if e.ObjectNew.GetDeletionTimestamp() != nil {
 				return true
 			}
-			return e.ObjectNew.GetGeneration() != e.ObjectOld.GetGeneration()
+			if e.ObjectNew.GetGeneration() != e.ObjectOld.GetGeneration() {
+				return true
+			}
+			return resyncAnnotationChanged(e)
 		},
 		DeleteFunc:  func(_ event.DeleteEvent) bool { return true },
 		GenericFunc: func(_ event.GenericEvent) bool { return false },

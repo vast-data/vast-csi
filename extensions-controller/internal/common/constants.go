@@ -74,6 +74,12 @@ const (
 	// mirrored VolumeReplication/VolumeGroupReplication objects) have been cleaned up.
 	FinalizerReplicationContent = Domain + "/replication-content-protection"
 
+	// AnnotationResyncRequestedAt is set on a VastReplicationContent to trigger
+	// an immediate reconcile, causing the provisioner to re-create any missing
+	// mirror PVCs.  The value is an RFC3339 timestamp recording when the resync
+	// was requested.
+	AnnotationResyncRequestedAt = Domain + "/resync-requested-at"
+
 	// AnnotationCleanupDone is set on a VastReplicationContent after its own
 	// CleanVolumes run completes successfully.  The VRC controller waits for ALL
 	// constellation peers to carry this annotation before removing the
