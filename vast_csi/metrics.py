@@ -59,6 +59,7 @@ Endpoints:
 """
 
 import json
+import os
 import re
 import time
 import queue
@@ -778,6 +779,47 @@ def _read_xprt_state_and_flags(xprt_dir):
     return state_raw, _parse_state_flags(state_raw)
 
 
+# Tracks whether the one-shot warning about an unpatched sunrpc sysfs kernel has
+# already been emitted, so we don't spam logs once per scrape.
+_sunrpc_srcaddr_warning_emitted = False
+_kernel_srcaddr_safe_cache = None
+
+
+def _kernel_has_sunrpc_srcaddr_fix():
+    """Return True if running kernel is believed to include the fix for
+    CVE-2022-48816 ("SUNRPC: lock against ->sock changing during sysfs read").
+
+    Reading /sys/kernel/sunrpc/xprt-switches/*/xprt-*/srcaddr on unpatched
+    kernels can race with xprt->sock being NULL'd, triggering a NULL deref in
+    rpc_sysfs_xprt_srcaddr_show() -> kernel_getsockname(). On nodes with
+    panic_on_oops=1 this becomes a kernel panic and reboot.
+
+    The upstream fix landed in mainline 5.17 (commit 1a44d846a9d7). Distros
+    backported it to various stable trees at unknown point releases, so we
+    cannot reliably tell from uname alone which 5.15.y or 5.16.y kernels are
+    patched. To stay safe we treat anything below 5.17 as potentially affected
+    (false-positive: patched 5.15/5.16 kernels lose the srcaddr-derived
+    label, but never panic). If the version cannot be parsed we also fail
+    closed and skip the read.
+    """
+    global _kernel_srcaddr_safe_cache
+    if _kernel_srcaddr_safe_cache is not None:
+        return _kernel_srcaddr_safe_cache
+
+    safe = False
+    try:
+        release = os.uname().release  # e.g. "5.15.0-122-generic", "6.8.0-40-generic"
+        m = re.match(r"(\d+)\.(\d+)", release)
+        if m:
+            major, minor = int(m.group(1)), int(m.group(2))
+            safe = (major, minor) >= (5, 17)
+    except (OSError, ValueError, AttributeError):
+        safe = False
+
+    _kernel_srcaddr_safe_cache = safe
+    return safe
+
+
 def _read_xprt_info(xprt_dir):
     """Read info file and return dict (srcaddr, dstaddr, etc.).
     
@@ -787,6 +829,11 @@ def _read_xprt_info(xprt_dir):
     
     Note: On older kernels, pending/backlog are in xprt_info as
     'pending_q_len' and 'backlog_q_len' instead of separate files.
+
+    Note (CVE-2022-48816): On kernels older than 5.17 (mainline) we skip the
+    'srcaddr' read because rpc_sysfs_xprt_srcaddr_show() can NULL-deref when
+    the xprt socket is torn down concurrently. See
+    _kernel_has_sunrpc_srcaddr_fix() for the rationale.
     """
     # Try newer kernel naming: single 'info' file with key=value pairs
     info_raw = _read_file_safe(xprt_dir / "info")
@@ -801,10 +848,24 @@ def _read_xprt_info(xprt_dir):
     if dstaddr:
         info["dstaddr"] = dstaddr.strip()
 
-    # Read source address
-    srcaddr = _read_file_safe(xprt_dir / "srcaddr")
-    if srcaddr:
-        info["srcaddr"] = srcaddr.strip()
+    # Read source address only on kernels with the CVE-2022-48816 fix; on
+    # unpatched kernels this read can crash the node.
+    if _kernel_has_sunrpc_srcaddr_fix():
+        srcaddr = _read_file_safe(xprt_dir / "srcaddr")
+        if srcaddr:
+            info["srcaddr"] = srcaddr.strip()
+    else:
+        global _sunrpc_srcaddr_warning_emitted
+        if not _sunrpc_srcaddr_warning_emitted:
+            _sunrpc_srcaddr_warning_emitted = True
+            logger.warning(
+                "Skipping NFS xprt 'srcaddr' metric reads: running kernel "
+                "may be affected by CVE-2022-48816 (SUNRPC sysfs NULL deref "
+                "in rpc_sysfs_xprt_srcaddr_show). The 'local_addr' label on "
+                "csi_node_nfs_xprt_* metrics will be reported as 'unknown'. "
+                "To restore the label, upgrade to a kernel >= 5.17 or a "
+                "distro kernel containing the backport."
+            )
 
     # Read xprt_info file (contains key=value pairs including pending_q_len, backlog_q_len)
     xprt_info_raw = _read_file_safe(xprt_dir / "xprt_info")
