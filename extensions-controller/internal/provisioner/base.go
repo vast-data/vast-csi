@@ -589,7 +589,7 @@ func (b *baseProvisioner) ensureReplicaMirrors(
 				return err
 			}
 			if !exists {
-				b.logger.Info("VAST backend object not yet present on destination cluster, ensuring mirror PVC anyway",
+				b.logger.Info("VAST backend object not yet present on destination cluster, creating mirror PVC anyway",
 					zap.String("pv", pair.PV.Name),
 					zap.String("cluster", sc.Name),
 				)
@@ -738,12 +738,16 @@ func (b *baseProvisioner) ensureMirrorPVCPV(
 // cleanReplicaMirrorOrphans removes mirrored PVCs+PVs in StorageClass that
 // were created by this VRC but whose source PVC is no longer in currentSourcePVCNames.
 // Passing nil or empty removes ALL mirrors owned by this VRC for the given peer.
+// No-ops when DestVolReclaimPolicy is Retain.
 func (b *baseProvisioner) cleanReplicaMirrorOrphans(
 	ctx context.Context,
 	vrc *vastv1alpha1.VastReplicationContent,
 	sc *storagev1.StorageClass,
 	currentSourcePVCNames sets.Set[string],
 ) error {
+	if b.rp.Spec.DestVolReclaimPolicy == vastv1alpha1.DestVolReclaimPolicyRetain {
+		return nil
+	}
 	ns := b.rp.Namespace
 
 	pvcs, err := b.k8sClient.ListPVCsByLabelSelector(ctx, ns, map[string]string{
