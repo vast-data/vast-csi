@@ -130,9 +130,11 @@ type VastStorageClassReplicationSpec struct {
 	Resync bool `json:"resync,omitempty"`
 
 	// SyncIntervalSeconds is the replication sync interval in seconds.
-	// +kubebuilder:validation:Required
+	// When omitted or zero, the interval is derived from the "every" field of
+	// the first protectionPolicyTemplate entry.
 	// +kubebuilder:validation:Minimum=0
-	SyncIntervalSeconds int64 `json:"syncIntervalSeconds"`
+	// +optional
+	SyncIntervalSeconds int64 `json:"syncIntervalSeconds,omitempty"`
 
 	// PVCRemap controls whether PVCs are remapped to the new primary on failover.
 	// +kubebuilder:default=false
@@ -148,6 +150,20 @@ type VastStorageClassReplicationSpec struct {
 	// Defaults to Retain.
 	// +kubebuilder:default=Retain
 	DestVolReclaimPolicy DestVolReclaimPolicy `json:"destVolReclaimPolicy"`
+}
+
+// EffectiveSyncIntervalSeconds returns the sync interval in seconds.
+// If SyncIntervalSeconds is explicitly set (> 0) it is returned as-is.
+// Otherwise the interval is derived from the "every" field of the first
+// protectionPolicyTemplate entry.
+func (s *VastStorageClassReplicationSpec) EffectiveSyncIntervalSeconds() (int64, error) {
+	if s.SyncIntervalSeconds > 0 {
+		return s.SyncIntervalSeconds, nil
+	}
+	if len(s.ProtectionPolicyTemplate.Params) == 0 {
+		return 0, fmt.Errorf("syncIntervalSeconds not set and protectionPolicyTemplate has no params")
+	}
+	return ParseEveryToSeconds(s.ProtectionPolicyTemplate.Params[0].Every)
 }
 
 // AllStorageClasses returns every unique StorageClass name in the replication
