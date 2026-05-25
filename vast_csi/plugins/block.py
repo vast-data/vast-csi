@@ -184,13 +184,17 @@ def mount(src, tgt, flags=None, bind=False, fs_type=None, metrics_registry=None,
     logger.info(f"Mount succeeded in {timer.elapsed}: {src!r} -> {tgt!r}")
 
 
-def umount(path, ignore_not_mounted=False, metrics_registry=None):
+def umount(path, ignore_not_mounted=False, lazy=False, metrics_registry=None):
     """
     Unmount block device with auto-instrumented metrics.
 
     Args:
         path: Path to unmount
         ignore_not_mounted: If True, ignore "not mounted" errors
+        lazy: If True, pass -l (lazy unmount — detach from VFS immediately,
+              clean up references when the path is no longer busy). Use as a
+              fallback when a normal umount times out, e.g. after failover on
+              a read-only filesystem.
         metrics_registry: Optional MetricsRegistry instance
 
     Returns:
@@ -200,7 +204,10 @@ def umount(path, ignore_not_mounted=False, metrics_registry=None):
     logger.info(f"Unmounting {path!r} with timeout: {timeout}s")
 
     def do_umount():
-        return cmd.umount['-v', path].run()
+        flags = ['-v']
+        if lazy:
+            flags.append('-l')
+        return cmd.umount[flags + [path]].run()
 
 
     if metrics_registry:
@@ -262,8 +269,13 @@ def temporary_mount(src, tgt_dir, fs_type):
 
 
 def umount_safe(path, metrics_registry=None):
-    """Unmounts a path if it is mounted (legacy wrapper for umount)."""
-    umount(path, ignore_not_mounted=True, metrics_registry=metrics_registry)
+    """Unmounts a path, ignoring 'not mounted' errors. Falls back to lazy
+    unmount (-l) if the normal umount times out."""
+    try:
+        umount(path, ignore_not_mounted=True, metrics_registry=metrics_registry)
+    except UmountTimedOut:
+        logger.warning(f"umount timed out for {path}, retrying with lazy unmount (-l).")
+        umount(path, lazy=True, ignore_not_mounted=True, metrics_registry=metrics_registry)
 
 def remove_path_if_not_mounted(path):
     path = local.path(path)
