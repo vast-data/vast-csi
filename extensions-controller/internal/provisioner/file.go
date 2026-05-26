@@ -19,6 +19,7 @@ package provisioner
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"path"
 	"strconv"
 	"strings"
@@ -239,7 +240,7 @@ func (f *FileProvisioner) ensureFileVastObject(
 		return fmt.Errorf("ensure view at %s: %w", targetPath, err)
 	}
 	if view == nil {
-		return nil // not source role, object absent — skip silently
+		return nil // object absent — skip silently
 	}
 
 	if storageRequest, found := sourcePVC.Spec.Resources.Requests[corev1.ResourceStorage]; found {
@@ -248,6 +249,21 @@ func (f *FileProvisioner) ensureFileVastObject(
 		}
 	}
 	return nil
+}
+
+// pathExists calls POST /folders/stat_path to check whether targetPath exists
+// on the cluster reached via rest.  Returns false (no error) when the cluster
+// responds with 503, which is the expected response for a path that has not
+// been replicated yet.  Any other error is returned to the caller.
+func (f *FileProvisioner) pathExists(ctx context.Context, rest *vast_client.TypedVMSRest, targetPath string, tenantId int64) (bool, error) {
+	_, err := rest.Folders.FolderStatPathWithContext_POST(ctx, targetPath, tenantId)
+	if err == nil {
+		return true, nil
+	}
+	if vast_client.ExpectStatusCodes(err, http.StatusServiceUnavailable) {
+		return false, nil
+	}
+	return false, err
 }
 
 // ensureView ensures a VAST View exists at targetPath on this VRC's own cluster.
@@ -289,6 +305,18 @@ func (f *FileProvisioner) ensureView(
 		}
 		viewBody.QosPolicyId = id
 	}
+	// POST /folders/stat_path returns 503 when the path is absent.
+	// We treat that as "not yet replicated" and defer view creation to the
+	// next reconcile, while still allowing mirror PVC creation to proceed.
+	if exists, err := f.pathExists(ctx, rest, targetPath, viewPolicy.TenantId); err != nil {
+		return nil, fmt.Errorf("stat_path %s: %w", targetPath, err)
+	} else if !exists {
+		f.emit.Normalf(events.ReasonProvisionSkipped,
+			"destination path %s not yet replicated, view creation deferred (StorageClass %s)",
+			targetPath, sc.Name)
+		return nil, nil
+	}
+
 	view, err := rest.Views.Create(viewBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create view %s: %w", targetPath, err)
