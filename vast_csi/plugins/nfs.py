@@ -381,8 +381,9 @@ class CsiController(ControllerBase, Instrumented):
         if quota := vms_session.quotas.one(name=volume_id):
             # this is a check we have to do until Vast provides access to orphaned snapshots (ORION-135599)
             might_use_trash_folder = not CONF.dont_use_trash_api
-            if might_use_trash_folder and vms_session.snapshots.has_snapshots(quota.path):
-                raise Exception(f"Unable to delete {volume_id} as it holds snapshots")
+            if might_use_trash_folder and (snaps := vms_session.snapshots.has_snapshots(quota.path)):
+                snap_ids = ", ".join(str(s.id) for s in snaps)
+                raise Exception(f"Unable to delete {volume_id} as it holds snapshots: [{snap_ids}]")
             try:
                 self._delete_data_from_storage(vms_session, quota.path, quota.tenant_id)
             except OSError as exc:

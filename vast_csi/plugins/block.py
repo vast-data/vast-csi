@@ -427,8 +427,9 @@ class BlockController(ControllerBase, Instrumented):
 
     def DeleteVolume(self, vms_session, volume_id):
         vms_session.globalsnapstreams.ensure_snapshot_stream_deleted(name__contains=volume_id)
-        if vms_session.snapshots.has_snapshots(volume_id):
-            raise Exception(f"Unable to delete {volume_id} as it holds snapshots")
+        if snaps := vms_session.snapshots.has_snapshots(volume_id):
+            snap_ids = ", ".join(str(s.id) for s in snaps)
+            raise Exception(f"Unable to delete {volume_id} as it holds snapshots: [{snap_ids}]")
         # Unmap is occurring implicitly due to the use of the force flag.
         vms_session.volumes.delete(name__endswith=volume_id)
         return types.DeleteResp()
