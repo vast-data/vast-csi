@@ -23,6 +23,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	vast_client "github.com/vast-data/go-vast-client"
 	"github.com/vast-data/go-vast-client/resources/typed"
@@ -33,8 +34,16 @@ import (
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/events"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/k8s_client"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/vmsrest"
+	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+)
+
+const (
+	// After a fresh resync-requested annotation, poll stat_path before deferring view creation.
+	resyncAnnotationMaxAge = time.Minute
+	resyncPathWaitTimeout  = 30 * time.Second
+	resyncPathWaitSleep    = 2 * time.Second
 )
 
 // FileProvisioner creates Views and Quotas on the VAST cluster.
@@ -131,14 +140,11 @@ func (f *FileProvisioner) getQuota(rest *vast_client.TypedVMSRest, sc *storagev1
 	return v.(*typed.QuotaDetailsModel), nil
 }
 
-// getViewPolicy returns the *typed.ViewPolicyDetailsModel for policyName on sc.
+// getViewPolicy returns the view policy for policyName. Cached per StorageClass
+// name on this provisioner (one VMS GET per SC per reconcile, not per PVC).
 func (f *FileProvisioner) getViewPolicy(rest *vast_client.TypedVMSRest, sc *storagev1.StorageClass, policyName string) (*typed.ViewPolicyDetailsModel, error) {
 	return f.viewPolicyCaches.get(sc.Name, func() (*typed.ViewPolicyDetailsModel, error) {
-		policy, err := rest.ViewPolicies.Get(&typed.ViewPolicySearchParams{Name: policyName})
-		if err != nil {
-			return nil, fmt.Errorf("failed to get view policy %q: %w", policyName, err)
-		}
-		return policy, nil
+		return vmsrest.GetViewPolicy(rest, policyName)
 	})
 }
 
@@ -266,6 +272,37 @@ func (f *FileProvisioner) pathExists(ctx context.Context, rest *vast_client.Type
 	return false, err
 }
 
+// resyncRecentlyRequested reports whether AnnotationResyncRequestedAt was set
+// within resyncAnnotationMaxAge (RFC3339 timestamp).
+func (f *FileProvisioner) resyncRecentlyRequested() bool {
+	raw, ok := f.rp.Annotations[common.AnnotationResyncRequestedAt]
+	if !ok || raw == "" {
+		return false
+	}
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return false
+	}
+	return time.Since(t) < resyncAnnotationMaxAge
+}
+
+// waitForReplicatedPath polls stat_path until the path exists or timeout elapses.
+func (f *FileProvisioner) waitForReplicatedPath(
+	ctx context.Context,
+	rest *vast_client.TypedVMSRest,
+	targetPath string,
+	tenantId int64,
+) error {
+	return vmsrest.WaitResource(
+		resyncPathWaitTimeout,
+		resyncPathWaitSleep,
+		fmt.Sprintf("destination path %q to be replicated", targetPath),
+		func() (bool, error) {
+			return f.pathExists(ctx, rest, targetPath, tenantId)
+		},
+	)
+}
+
 // ensureView ensures a VAST View exists at targetPath on this VRC's own cluster.
 func (f *FileProvisioner) ensureView(
 	ctx context.Context,
@@ -308,9 +345,22 @@ func (f *FileProvisioner) ensureView(
 	// POST /folders/stat_path returns 503 when the path is absent.
 	// We treat that as "not yet replicated" and defer view creation to the
 	// next reconcile, while still allowing mirror PVC creation to proceed.
-	if exists, err := f.pathExists(ctx, rest, targetPath, viewPolicy.TenantId); err != nil {
+	// After a fresh resync-requested annotation, poll stat_path for up to
+	// resyncPathWaitTimeout before deferring.
+	exists, err := f.pathExists(ctx, rest, targetPath, viewPolicy.TenantId)
+	if err != nil {
 		return nil, fmt.Errorf("stat_path %s: %w", targetPath, err)
-	} else if !exists {
+	}
+	if !exists && f.resyncRecentlyRequested() {
+		f.logger.Info("resync requested recently, waiting for destination path",
+			zap.String("path", targetPath),
+			zap.Duration("timeout", resyncPathWaitTimeout),
+		)
+		if waitErr := f.waitForReplicatedPath(ctx, rest, targetPath, viewPolicy.TenantId); waitErr == nil {
+			exists = true
+		}
+	}
+	if !exists {
 		f.emit.Normalf(events.ReasonProvisionSkipped,
 			"destination path %s not yet replicated, view creation deferred (StorageClass %s)",
 			targetPath, sc.Name)

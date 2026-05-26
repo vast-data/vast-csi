@@ -468,7 +468,11 @@ class BlockController(ControllerBase, Instrumented):
 
         if CONF.block_hosts_auto_prune:
             # Ensure map host operations are atomic based on the composite key (node ID + tenant name).
-            exit_stack.enter_context(resource_locked(f"{node_id}:{tenant_name}"))
+            lock = exit_stack.enter_context(resource_locked(f"{node_id}:{tenant_name}", abort_on_error=True))
+            lock.set_message(
+                f"Node {node_id} (tenant: {tenant_name}) is currently locked"
+                f" by volume {volume_id} — concurrent ControllerPublishVolume in progress"
+            )
         blockhost = vms_session.blockhosts.ensure(
             node_id=f"{CONF.block_hosts_prefix}{node_id}",
             transport_type=transport_type,

@@ -327,9 +327,7 @@ func (r *ReplicationObjectReconciler) reconcileVGR(ctx context.Context, name, ns
 				zap.String("vrc", ns+"/"+vrcName))
 		}
 		if err != nil {
-			// Non-fatal: secondary VRCs will reconcile again on their next
-			// periodic sync; log the error but don't fail the reconcile.
-			log.With(zap.Error(err)).Warn("failed to touch secondary VRCs after primary PVC list change")
+			return fmt.Errorf("touch secondary VRCs after primary PVC list change on VGR %s/%s: %w", ns, name, err)
 		}
 	}
 

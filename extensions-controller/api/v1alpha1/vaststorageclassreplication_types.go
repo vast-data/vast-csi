@@ -303,6 +303,12 @@ func (s *VastStorageClassReplicationSpec) Validate() error {
 		return err
 	}
 
+	if s.PVCRemap && !s.SyncPVCPV {
+		return fmt.Errorf(
+			"pvcRemap cannot be true when syncPVCPV is false: PVC remap needs mirror PVC/PV pairs on secondaries; set syncPVCPV to true or disable pvcRemap",
+		)
+	}
+
 	// Build the SC set from the topology and validate each entry.
 	type unorderedPair struct{ lo, hi string }
 	normPair := func(a, b string) unorderedPair {

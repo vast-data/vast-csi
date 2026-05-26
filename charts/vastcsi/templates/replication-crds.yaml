@@ -684,8 +684,10 @@ spec:
                   an immediate resync.'
                 type: boolean
               syncIntervalSeconds:
-                description: SyncIntervalSeconds is the replication sync interval
-                  in seconds.
+                description: |-
+                  SyncIntervalSeconds is the replication sync interval in seconds.
+                  When omitted or zero, the interval is derived from the "every" field of
+                  the first protectionPolicyTemplate entry.
                 format: int64
                 minimum: 0
                 type: integer
@@ -702,7 +704,6 @@ spec:
             - protectionPolicyTemplate
             - protectionTopology
             - pvcRemap
-            - syncIntervalSeconds
             - syncPVCPV
             type: object
           status:
@@ -956,8 +957,10 @@ spec:
                   an immediate resync.'
                 type: boolean
               syncIntervalSeconds:
-                description: SyncIntervalSeconds is the replication sync interval
-                  in seconds.
+                description: |-
+                  SyncIntervalSeconds is the replication sync interval in seconds.
+                  When omitted or zero, the interval is derived from the "every" field of
+                  the first protectionPolicyTemplate entry.
                 format: int64
                 minimum: 0
                 type: integer
@@ -973,7 +976,6 @@ spec:
             - protectionPolicyTemplate
             - protectionTopology
             - pvcRemap
-            - syncIntervalSeconds
             - volumeName
             type: object
           status:

@@ -98,12 +98,12 @@ func (r *VastReplicationContentReconciler) Reconcile(ctx context.Context, req ct
 				return ctrl.Result{}, err
 			}
 			if !parentGone {
+				next := bo.Next()
 				if unblocked, err := r.unblockParentDeletion(ctx, vrc, k8s); err != nil {
 					return ctrl.Result{}, fmt.Errorf("unblock parent deletion for VRC %s/%s: %w", vrc.Namespace, vrc.Name, err)
 				} else if unblocked {
-					return ctrl.Result{Requeue: true}, nil
+					return ctrl.Result{RequeueAfter: next}, nil
 				}
-				next := bo.Next()
 				log.Info("waiting for parent VGR/VR to be fully deleted before running cleanup",
 					zap.Duration("requeueAfter", next))
 				return ctrl.Result{RequeueAfter: next}, nil

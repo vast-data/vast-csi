@@ -161,7 +161,7 @@ func (k *K8sClient) TouchConstellationVRCs(
 	ctx context.Context,
 	vscr *vastv1alpha1.VastStorageClassReplication,
 ) ([]string, error) {
-	return k.touchVRCsForStorageClasses(ctx, vscr, vscr.Spec.AllStorageClasses())
+	return k.touchVRCsForStorageClasses(ctx, vscr, vscr.Spec.AllStorageClasses(), common.AnnotationResyncRequestedAt)
 }
 
 // TouchSecondaryVRCs annotates every non-primary VastReplicationContent in the
@@ -181,7 +181,7 @@ func (k *K8sClient) TouchSecondaryVRCs(
 			secondarySCs = append(secondarySCs, sc)
 		}
 	}
-	return k.touchVRCsForStorageClasses(ctx, vscr, secondarySCs)
+	return k.touchVRCsForStorageClasses(ctx, vscr, secondarySCs, common.AnnotationMirrorSyncRequestedAt)
 }
 
 // touchVRCsForStorageClasses is the shared implementation used by
@@ -190,6 +190,7 @@ func (k *K8sClient) touchVRCsForStorageClasses(
 	ctx context.Context,
 	vscr *vastv1alpha1.VastStorageClassReplication,
 	storageClasses []string,
+	annotationKey string,
 ) ([]string, error) {
 	ts := time.Now().UTC().Format(time.RFC3339)
 	var touched []string
@@ -202,7 +203,7 @@ func (k *K8sClient) touchVRCsForStorageClasses(
 			}
 			return touched, fmt.Errorf("get VRC %s/%s: %w", vscr.Namespace, vrcName, err)
 		}
-		if err := k.SetAnnotationAndUpdate(ctx, vrc, common.AnnotationResyncRequestedAt, ts); err != nil {
+		if err := k.SetAnnotationAndUpdate(ctx, vrc, annotationKey, ts); err != nil {
 			return touched, fmt.Errorf("touch VRC %s/%s: %w", vscr.Namespace, vrcName, err)
 		}
 		touched = append(touched, vrcName)

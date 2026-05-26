@@ -44,14 +44,19 @@ func isOwnedByVSCROrVVR(obj client.Object) bool {
 //     restarts where VRCs arrive as synthetic Create events.  Secondary VRCs are
 //     included so the self-destruction check can fire (parent gone/terminating).
 //   - Update: reconcile when the object is being deleted (regardless of state),
-//     when the spec generation changed, or when the resync annotation is stamped
-//     (annotations do not change generation, so they are checked explicitly).
+//     when the spec generation changed, or when a reconcile-trigger annotation
+//     is stamped (annotations do not change generation).
 //   - Delete: always reconcile — cleanup must run regardless of state.
 func VastReplicationContentPredicate() predicate.Predicate {
-	resyncAnnotationChanged := func(e event.UpdateEvent) bool {
-		oldVal := e.ObjectOld.GetAnnotations()[vast_common.AnnotationResyncRequestedAt]
-		newVal := e.ObjectNew.GetAnnotations()[vast_common.AnnotationResyncRequestedAt]
+	triggerAnnotationChanged := func(e event.UpdateEvent, key string) bool {
+		oldAnn := e.ObjectOld.GetAnnotations()
+		newAnn := e.ObjectNew.GetAnnotations()
+		oldVal, newVal := oldAnn[key], newAnn[key]
 		return newVal != "" && newVal != oldVal
+	}
+	reconcileTriggerAnnotationChanged := func(e event.UpdateEvent) bool {
+		return triggerAnnotationChanged(e, vast_common.AnnotationResyncRequestedAt) ||
+			triggerAnnotationChanged(e, vast_common.AnnotationMirrorSyncRequestedAt)
 	}
 	return predicate.Funcs{
 		CreateFunc: func(_ event.CreateEvent) bool { return true },
@@ -62,7 +67,7 @@ func VastReplicationContentPredicate() predicate.Predicate {
 			if e.ObjectNew.GetGeneration() != e.ObjectOld.GetGeneration() {
 				return true
 			}
-			return resyncAnnotationChanged(e)
+			return reconcileTriggerAnnotationChanged(e)
 		},
 		DeleteFunc:  func(_ event.DeleteEvent) bool { return true },
 		GenericFunc: func(_ event.GenericEvent) bool { return false },
