@@ -207,7 +207,12 @@ func (p *PVCLabelInjector) checkReplicationState(
 			zap.String("storageClass", scName), zap.Error(err))
 	} else {
 		for _, vgr := range vgrs {
-			if vgr.Status.State == replicationv1alpha1.SecondaryState {
+			if vgr.Status.State == replicationv1alpha1.SecondaryState &&
+				vgr.Spec.ReplicationState != replicationv1alpha1.Resync {
+				// csi-addons also reports status.State=Secondary while
+				// spec.ReplicationState=Resync (a labelling quirk in
+				// GetReplicationState).  That is a transient resync — the storage
+				// is still the SOURCE, so PVC creation must be allowed.
 				log.Info("denying PVC: StorageClass is on a secondary replication site",
 					zap.String("storageClass", scName),
 					zap.String("vgr", vgr.Name),
@@ -228,7 +233,8 @@ func (p *PVCLabelInjector) checkReplicationState(
 			zap.String("storageClass", scName), zap.Error(err))
 	} else {
 		for _, vr := range vrs {
-			if vr.Status.State == replicationv1alpha1.SecondaryState {
+			if vr.Status.State == replicationv1alpha1.SecondaryState &&
+				vr.Spec.ReplicationState != replicationv1alpha1.Resync {
 				log.Info("denying PVC: StorageClass is on a secondary replication site",
 					zap.String("storageClass", scName),
 					zap.String("vr", vr.Name),

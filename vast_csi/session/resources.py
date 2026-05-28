@@ -509,7 +509,7 @@ class Snapshot(VastResource):
     def has_snapshots(self, path):
         # we intentionally limit the number of results
         ret = self.list(path__contains=path.rstrip("/"), page_size=10)
-        return bool(ret)
+        return ret
 
     def create(self, name, path, tenant_id, expiration_delta=None):
         """Create new snapshot."""

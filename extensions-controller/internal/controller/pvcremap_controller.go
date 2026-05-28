@@ -73,6 +73,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -552,6 +553,7 @@ func SetupPVCRemapController(
 	pred := confirmedPrimaryTransitionPredicate()
 
 	return ctrl.NewControllerManagedBy(mgr).
+		WithOptions(controller.Options{MaxConcurrentReconciles: 5}).
 		Named("pvcremap").
 		Watches(&replicationv1alpha1.VolumeGroupReplication{}, vgrMapper,
 			builder.WithPredicates(pred)).

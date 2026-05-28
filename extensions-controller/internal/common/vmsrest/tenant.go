@@ -62,9 +62,9 @@ func resolveFileTenant(
 		return nil, fmt.Errorf("StorageClass %s is missing required parameter %q", sc.Name, "view_policy")
 	}
 
-	policy, err := rest.ViewPolicies.Get(&typed.ViewPolicySearchParams{Name: viewPolicy})
+	policy, err := GetViewPolicy(rest, viewPolicy)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get view policy %q: %w", viewPolicy, err)
+		return nil, err
 	}
 
 	return resolveTenantById(rest, policy.TenantId)

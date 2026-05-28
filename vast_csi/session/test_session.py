@@ -37,6 +37,16 @@ class TestVmsSession(RESTSession):
     This behavior is useful for testing scenarios where interactions with the `VmsSession` and its resources
     need to be simulated without actually invoking the underlying operations.
     """
+
+    # Identity-based hash/eq so each TestVmsSession instance is treated as a unique
+    # session by the dogpile.cache key generator (same semantics as object default,
+    # but explicit to survive any future __eq__ additions to base classes).
+    def __hash__(self):
+        return id(self)
+
+    def __eq__(self, other):
+        return self is other
+
     def __init__(self, config):
         from unittest.mock import create_autospec, Mock
 

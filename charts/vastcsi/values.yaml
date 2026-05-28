@@ -401,7 +401,7 @@ image:
     imagePullPolicy: IfNotPresent
   csiProvisioner:
     repository: registry.k8s.io/sig-storage/csi-provisioner
-    tag: v4.0.0
+    tag: v5.0.1
     imagePullPolicy: IfNotPresent
   csiResizer:
     repository: registry.k8s.io/sig-storage/csi-resizer

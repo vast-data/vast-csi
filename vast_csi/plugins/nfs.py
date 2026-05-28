@@ -33,6 +33,7 @@ from vast_csi.logging import logger
 from vast_csi.utils import (
     get_mount,
     normalize_mount_options,
+    normalize_volume_id,
     string_to_proto_timestamp,
     get_random_fqdn_prefix,
     wrap_ipv6,
@@ -377,12 +378,14 @@ class CsiController(ControllerBase, Instrumented):
                 os.rmdir(tmpdir)  # will fail if not empty directory
 
     def DeleteVolume(self, vms_session, volume_id):
+        volume_id = normalize_volume_id(volume_id)
         vms_session.globalsnapstreams.ensure_snapshot_stream_deleted(name=f"strm-{volume_id}")
         if quota := vms_session.quotas.one(name=volume_id):
             # this is a check we have to do until Vast provides access to orphaned snapshots (ORION-135599)
             might_use_trash_folder = not CONF.dont_use_trash_api
-            if might_use_trash_folder and vms_session.snapshots.has_snapshots(quota.path):
-                raise Exception(f"Unable to delete {volume_id} as it holds snapshots")
+            if might_use_trash_folder and (snaps := vms_session.snapshots.has_snapshots(quota.path)):
+                snap_ids = ", ".join(str(s.id) for s in snaps)
+                raise Exception(f"Unable to delete {volume_id} as it holds snapshots: [{snap_ids}]")
             try:
                 self._delete_data_from_storage(vms_session, quota.path, quota.tenant_id)
             except OSError as exc:
@@ -477,6 +480,7 @@ class CsiController(ControllerBase, Instrumented):
         return types.CtrlUnpublishResp()
 
     def ControllerExpandVolume(self, vms_session, volume_id, capacity_range):
+        volume_id = normalize_volume_id(volume_id)
         requested_capacity = capacity_range.required_bytes
 
         if not (quota := vms_session.quotas.one(name=volume_id)):
@@ -628,7 +632,7 @@ class CsiNode(NodeBase, Instrumented):
         volume_context=None,
         metrics_registry=None
     ):
-        exit_stack.enter_context(resource_locked(volume_id))
+        exit_stack.enter_context(resource_locked(volume_id, abort_on_error=True))
         volume_context = volume_context or dict()
         if (
             is_ephemeral := volume_context
@@ -764,7 +768,7 @@ class CsiNode(NodeBase, Instrumented):
             vms_session=None,
             metrics_registry=None,
     ):
-        exit_stack.enter_context(resource_locked(volume_id))
+        exit_stack.enter_context(resource_locked(volume_id, abort_on_error=True))
         target_path = local.path(target_path)
         meta_file = target_path[".vast-csi-meta"]
 

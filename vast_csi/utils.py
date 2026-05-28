@@ -18,6 +18,17 @@ from . import csi_types as types
 from .exceptions import Abort
 
 
+def normalize_volume_id(volume_id: str) -> str:
+    """Return the bare volume name from a volume_id that may be a full path.
+
+    Idempotent: works for both plain names and path-based IDs:
+        "pvc-abc123"                          → "pvc-abc123"
+        "/great-kodkod/pvc-abc123"            → "pvc-abc123"
+        "/foo/bar/pvc-abc123"                 → "pvc-abc123"
+    """
+    return volume_id.strip("/").rsplit("/", 1)[-1]
+
+
 @contextmanager
 def to_abort(code=types.ABORTED):
     """
@@ -424,62 +435,73 @@ def slugify(text: str, separator: str = "-") -> str:
 
 def parse_duration_to_timestamp(duration_str: str, from_time: datetime = None) -> str:
     """
-    Parse a duration string (like "2H", "10m", "1d") and convert it to a timestamp.
-    
-    This function takes VAST duration strings from protection policies and converts
-    them to absolute timestamps in the format required by the API: YYYY-mm-ddTHH:MM:SS
-    
-    Implementation matches VAST's internal replicate_now() method which uses
-    datetime.isoformat(timespec="seconds") for timestamp formatting.
-    
+    Parse a VAST duration string and return an absolute timestamp offset from now.
+
+        s / S  – seconds
+        m      – minutes  (lowercase only)
+        h / H  – hours
+        d / D  – days
+        w / W  – weeks
+        M      – months   (uppercase only; = 30 days)
+        y / Y  – years    (= 365 days)
+
     Args:
-        duration_str: Duration string (e.g., "2H", "30m", "1d", "1W")
-                     Supported units: m (minutes), H (hours), d (days), W (weeks)
-        from_time: Base datetime to add duration to (default: current time)
-        
+        duration_str: VAST duration string (e.g. "2H", "30m", "2D", "1W", "1M").
+        from_time: Base datetime (default: current local time).
+
     Returns:
-        Timestamp string in format "YYYY-mm-ddTHH:MM:SS"
-        
-    Example:
-        >>> parse_duration_to_timestamp("2H")  # 2 hours from now
+        Timestamp string in format "YYYY-mm-ddTHH:MM:SS" (same as VAST's
+        replicate_now() which uses datetime.isoformat(timespec="seconds")).
+
+    Examples:
+        >>> parse_duration_to_timestamp("2H")   # 2 hours from now
         '2025-11-22T18:30:00'
         >>> parse_duration_to_timestamp("30m")  # 30 minutes from now
         '2025-11-22T16:45:00'
+        >>> parse_duration_to_timestamp("1M")   # 1 month (30 days) from now
+        '2025-12-22T16:15:00'
     """
     if from_time is None:
         from_time = datetime.now()
-    
+
     if not duration_str:
-        # Default to 1 hour if no duration specified
         duration_str = "1H"
-    
-    # Parse the duration string using regex
-    # Format: <number><unit> where unit is m, H, d, W
-    match = re.match(r'^(\d+)([mHdW])$', duration_str.strip())
-    
+
+    # Validation regex mirrors vms/common/formatters.py validate_date_str().
+    # Note: re.IGNORECASE makes 'M' (months) pass the same pattern as 'm'
+    # (minutes); the actual unit is read from the preserved-case letter below.
+    match = re.match(r'^(\d+)([smhdwyM])$', duration_str.strip(), re.IGNORECASE)
     if not match:
-        raise ValueError(f"Invalid duration format: {duration_str}. Expected format: <number><unit> (e.g., '2H', '30m')")
-    
+        raise ValueError(
+            f"Invalid duration format: {duration_str!r}. "
+            "Expected <number><unit> (e.g. '2H', '30m', '1M', '1y')."
+        )
+
     amount = int(match.group(1))
-    unit = match.group(2)
-    
-    # Convert to timedelta
-    if unit == 'm':  # minutes
-        delta = timedelta(minutes=amount)
-    elif unit == 'H':  # hours
-        delta = timedelta(hours=amount)
-    elif unit == 'd':  # days
-        delta = timedelta(days=amount)
-    elif unit == 'W':  # weeks
-        delta = timedelta(weeks=amount)
-    else:
-        raise ValueError(f"Unsupported duration unit: {unit}")
-    
-    # Calculate expiration time
-    expiration_time = from_time + delta
-    
-    # Format as required by VAST API using isoformat (same as VAST's internal implementation)
-    # This produces format: YYYY-mm-ddTHH:MM:SS
+    unit = match.group(2)  # preserve case — 'm' ≠ 'M'
+
+    # Mapping mirrors date_str2seconds() unit2seconds dict exactly.
+    # 'm' (lowercase) = minutes; 'M' (uppercase) = months (30 days).
+    unit2seconds = {
+        's': 1,
+        'S': 1,
+        'm': 60,
+        'h': 3600,
+        'H': 3600,
+        'd': 86400,
+        'D': 86400,
+        'w': 7 * 86400,
+        'W': 7 * 86400,
+        'M': 30 * 86400,
+        'y': 365 * 86400,
+        'Y': 365 * 86400,
+    }
+
+    seconds = unit2seconds.get(unit)
+    if seconds is None:
+        raise ValueError(f"Unsupported duration unit {unit!r} in {duration_str!r}")
+
+    expiration_time = from_time + timedelta(seconds=amount * seconds)
     return expiration_time.isoformat(timespec="seconds")
 
 

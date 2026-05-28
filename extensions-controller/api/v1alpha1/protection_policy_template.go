@@ -120,6 +120,47 @@ type ProtectionPolicyTemplate struct {
 	Params []ProtectionPolicyFrame `json:"params"`
 }
 
+// ParseEveryToSeconds converts a VAST schedule duration string (e.g. "15m",
+// "1h", "2d") to a number of seconds.
+//
+//	s / S  – seconds   (1 s each)
+//	m      – minutes   (60 s; lowercase only — uppercase M means months)
+//	h / H  – hours     (3 600 s)
+//	d / D  – days      (86 400 s)
+//	w / W  – weeks     (604 800 s)
+//	M      – months    (2 592 000 s = 30 days; uppercase only)
+//	y / Y  – years     (31 536 000 s = 365 days)
+func ParseEveryToSeconds(s string) (int64, error) {
+	if !vastDurationRe.MatchString(s) {
+		return 0, fmt.Errorf("invalid VAST duration %q: expected <number><unit> (e.g. \"15m\", \"1h\", \"2d\")", s)
+	}
+	amount := int64(0)
+	for _, ch := range s {
+		if ch >= '0' && ch <= '9' {
+			amount = amount*10 + int64(ch-'0')
+		}
+	}
+	unit := s[len(s)-1]
+	switch unit {
+	case 's', 'S':
+		return amount, nil
+	case 'm': // lowercase only = minutes
+		return amount * 60, nil
+	case 'h', 'H':
+		return amount * 3600, nil
+	case 'd', 'D':
+		return amount * 86400, nil
+	case 'w', 'W':
+		return amount * 7 * 86400, nil
+	case 'M': // uppercase only = months (30 days)
+		return amount * 30 * 86400, nil
+	case 'y', 'Y':
+		return amount * 365 * 86400, nil
+	default:
+		return 0, fmt.Errorf("unsupported duration unit %q in %q", string(unit), s)
+	}
+}
+
 // Validate checks that the template is internally consistent.
 func (t *ProtectionPolicyTemplate) Validate() error {
 	if len(t.Params) == 0 {

@@ -112,8 +112,6 @@ func (b *BlockProvisioner) getVolume(ctx context.Context, sc *storagev1.StorageC
 	return v.(*typed.VolumeDetailsModel), nil
 }
 
-func (b *BlockProvisioner) ShouldGateMirrorOnBackend() bool { return false }
-
 // BackendObjectKey implements VolumeMapper.  Returns the full volume name used
 // as a key in VolumeMapping: volumeGroup/volId (or just volId when no group).
 func (b *BlockProvisioner) BackendObjectKey(volumeHandle string) string {
@@ -143,38 +141,26 @@ func (b *BlockProvisioner) ProvisionVolumeCb(ctx context.Context, sibVRC *vastv1
 }
 
 // CleanVolumeCb implements Interface.  Called by CleanVolumes for this VRC's own cluster.
-// Deletes VAST block volumes for all PVCs on this VRC's own cluster.
-// Mirror PVC/PV removal is handled separately by cleanOrphansCb, which runs
-// after this callback; the ordering ensures volume handles are still
-// resolvable via the mirror PVC's bound PV at the time they are cleaned up.
+// Deletes VAST block volumes on this VRC's own cluster.
+// Volume names are derived from the source PVCs found in sibling constellation
+// VRCs: VAST replication preserves volume names on the destination cluster, so
+// BackendObjectKey(sourceHandle) produces the correct name there as well.
 func (b *BlockProvisioner) CleanVolumeCb(ctx context.Context, _ *vastv1alpha1.VastReplicationContent, sibRest *vast_client.TypedVMSRest, sibSc *storagev1.StorageClass) error {
 	if b.rp.Spec.DestVolReclaimPolicy == vastv1alpha1.DestVolReclaimPolicyRetain {
 		return nil
 	}
-	pvcs, err := b.k8sClient.ListPVCsByLabelSelector(ctx, b.rp.Namespace, map[string]string{
-		common.LabelManagedBy:    common.LabelManagedByValue,
-		common.LabelStorageClass: sibSc.Name,
-	})
+	sourcePairs, err := b.sourcePairsFromSiblingVRCs(ctx)
 	if err != nil {
-		return fmt.Errorf("list managed mirror PVCs for %s: %w", sibSc.Name, err)
+		return fmt.Errorf("list source PVCs from sibling VRCs: %w", err)
 	}
 	var errs cerrors.DeferredError
-	for i := range pvcs {
-		pvc := &pvcs[i]
-		pv, pvErr := b.managedPVForPVC(ctx, pvc)
-		if pvErr != nil {
-			errs.Add(pvErr)
-			continue
-		}
-		if pv == nil || pv.Spec.CSI == nil || pv.Spec.CSI.VolumeHandle == "" {
-			continue
-		}
-		volumeName := b.BackendObjectKey(pv.Spec.CSI.VolumeHandle)
+	for _, pair := range sourcePairs {
+		volumeName := b.BackendObjectKey(pair.PV.Spec.CSI.VolumeHandle)
 		if err := b.deleteVastVolumeByName(ctx, sibRest, sibSc, volumeName); err != nil {
 			errs.Add(err)
 			continue
 		}
-		b.emit.Normalf(events.ReasonVASTVolumeDeleted, "deleted VAST block volume %s for mirror PVC %s", volumeName, pvc.Name)
+		b.emit.Normalf(events.ReasonVASTVolumeDeleted, "deleted VAST block volume %s for source PVC %s", volumeName, pair.PVC.Name)
 	}
 	return errs.Err()
 }

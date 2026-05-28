@@ -34,6 +34,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -161,7 +162,7 @@ func (r *ReplicationObjectReconciler) reconcileVR(ctx context.Context, name, ns 
 			return fmt.Errorf("VR %s/%s: %w", ns, name, err)
 		}
 		vrc := r.buildContent(sourceSCName, vastv1alpha1.DestinationKindVolumeReplication, name, ns, pvcs, vrcLabels)
-		vrc.Spec.SyncPVCPV = vvr.Spec.SyncPVCPV
+		vrc.Spec.SyncPVCPV = true // VVR always requires mirror PVCs for csi-addons VolumeReplication
 		vrc.Spec.DestVolReclaimPolicy = vvr.Spec.DestVolReclaimPolicy
 		vrc.Spec.ProvisionerType = provType
 		vrc.Spec.ReplicationState = initialStateFromPrimary(newState, sourceSCName, vvr.Spec.PrimaryStorageClass)
@@ -311,11 +312,26 @@ func (r *ReplicationObjectReconciler) reconcileVGR(ctx context.Context, name, ns
 	}
 
 	// VRC exists — apply any pending changes in one patch.
-	if syncVRCReplicationState(existing, newState, emit) || syncVRCPVCs(existing, pvcs, emit) {
+	pvcChanged := syncVRCPVCs(existing, pvcs, emit)
+	if syncVRCReplicationState(existing, newState, emit) || pvcChanged {
 		if err := k8s.PatchVastReplicationContentSpec(ctx, existing); err != nil {
 			return fmt.Errorf("failed to patch VRC for VGR %s/%s: %w", ns, name, err)
 		}
 	}
+
+	// When the primary VGR gains new PVCs, the secondary VRCs must be
+	// triggered immediately so they create mirror PVCs for the new primaries.
+	if pvcChanged && sourceSCName == vscr.Spec.PrimaryStorageClass {
+		touched, err := k8s.TouchSecondaryVRCs(ctx, vscr)
+		for _, vrcName := range touched {
+			log.Info("touched secondary VRC to trigger mirror PVC creation",
+				zap.String("vrc", ns+"/"+vrcName))
+		}
+		if err != nil {
+			return fmt.Errorf("touch secondary VRCs after primary PVC list change on VGR %s/%s: %w", ns, name, err)
+		}
+	}
+
 	bo.Reset()
 	return nil
 }
@@ -462,6 +478,7 @@ func SetupReplicationObjectProvisionerController(
 	r := &ReplicationObjectReconciler{BaseReconciler: base}
 
 	return ctrl.NewControllerManagedBy(mgr).
+		WithOptions(controller.Options{MaxConcurrentReconciles: 5}).
 		Named("replication").
 		Watches(
 			&replicationv1alpha1.VolumeReplication{},

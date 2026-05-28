@@ -628,7 +628,7 @@ class BaseReplicationController(replication_pb2_grpc.ControllerServicer):
         ppath_name = self._get_ppath_name(params)
 
         logger.info(f"{self.volume_type}: Resyncing {repl_source}, protected path: {ppath_name!r}")
-        exit_stack.enter_context(resource_locked(repl_source.identifier))
+        exit_stack.enter_context(resource_locked(repl_source.identifier, abort_on_error=True))
 
         ppath = vms_session.protectedpaths.wait(name=ppath_name)
 

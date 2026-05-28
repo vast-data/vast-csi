@@ -7,6 +7,7 @@ This module provides:
 - cache_on_arguments: Wrapper for caching methods with **kwargs support
 """
 
+import inspect
 import threading
 from typing import Callable
 
@@ -16,6 +17,44 @@ from dogpile.cache.backends.memory import MemoryBackend
 from dogpile.cache.backends.memory import NO_VALUE
 from cachetools import LRUCache
 from vast_csi.logging import logger
+
+
+def _session_scoped_key_generator(namespace, fn, to_str=str):
+    """
+    Key generator for VastResource instance methods that scopes the cache by VMS session.
+
+    Without this, two VmsSession objects pointing to different clusters but calling
+    the same method with the same kwargs (e.g. vippool.one(name='vippool-1')) would
+    share a cache entry, causing the wrong cluster's data to be returned.
+
+    Uses ``hash(self.session)`` which delegates to ``VmsSession.__hash__`` — a stable,
+    credential-based hash (sha256 of credentials + endpoint) that uniquely identifies
+    each cluster connection regardless of object identity.
+    """
+    sig = inspect.signature(fn)
+    params = list(sig.parameters.values())
+    if params and params[0].name in ("self", "cls"):
+        params = params[1:]
+
+    def _args_only_stub(*args, **kwargs):
+        pass
+
+    _args_only_stub.__signature__ = inspect.Signature(params)
+    _args_only_stub.__name__ = fn.__name__
+    _args_only_stub.__qualname__ = fn.__qualname__
+
+    base_gen = kwarg_function_key_generator(namespace, _args_only_stub, to_str=to_str)
+
+    def generate_key(*args, **kw):
+        if args:
+            self_obj = args[0]
+            session = getattr(self_obj, "session", None)
+            session_key = hash(session) if session is not None else id(self_obj)
+            base_key = base_gen(*args[1:], **kw)
+            return f"{session_key}:{base_key}"
+        return base_gen(*args, **kw)
+
+    return generate_key
 
 
 class LRUMemoryBackend(MemoryBackend):
@@ -54,9 +93,11 @@ _cache_region.backend = LRUMemoryBackend({"max_size": 200})
 
 def cache_on_arguments(expiration_time: int):
     """
-    Wrapper for cache_region.cache_on_arguments that uses kwarg_function_key_generator by default.
-    This allows caching methods with **kwargs without specifying the key generator each time.
-    
+    Wrapper for cache_region.cache_on_arguments that uses a session-scoped key generator.
+    This allows caching VastResource methods with **kwargs while correctly scoping
+    the cache by VMS endpoint so that two sessions to different clusters never share
+    a cache entry for the same resource name.
+
     Uses fn.__qualname__ as the cache namespace to prevent key collisions between
     different classes with the same method name (e.g. ViewPolicy.one vs VipPool.one).
 
@@ -89,7 +130,7 @@ def cache_on_arguments(expiration_time: int):
         return _cache_region.cache_on_arguments(
             namespace=namespace,
             expiration_time=expiration_time,
-            function_key_generator=kwarg_function_key_generator
+            function_key_generator=_session_scoped_key_generator
         )(fn)
 
     return wrapper

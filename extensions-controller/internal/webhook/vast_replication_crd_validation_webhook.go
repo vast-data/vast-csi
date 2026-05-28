@@ -51,7 +51,7 @@ const (
 //  2. The two VAST clusters must share exactly the named ReplicationPeer; if
 //     peerName is omitted, the single shared peer is discovered automatically
 //     and written back to the object (defaulting mutation).
-//  3. Each StorageClass may appear in at most one VSCR or VVR.
+//  3. Each StorageClass may appear in at most one VSCR; VVRs may reuse SCs.
 type replicationCRDValidator struct {
 	k8sClient *k8sclient.K8sClient
 	sslVerify bool
@@ -100,15 +100,6 @@ func (h *vscrAdmissionHandler) Handle(ctx context.Context, req admission.Request
 		if k8sclient.IsBlockStorageClass(primarySC) {
 			if ppathdir.IsSubsystemLevel(h.k8sClient, primarySC) {
 				if resp := h.validateSubsystemLevelTenantName(ctx, obj.Spec.PrimaryStorageClass, obj.Spec.AllStorageClasses()); !resp.Allowed {
-					return resp
-				}
-				var secondarySCNames []string
-				for _, scName := range obj.Spec.AllStorageClasses() {
-					if scName != obj.Spec.PrimaryStorageClass {
-						secondarySCNames = append(secondarySCNames, scName)
-					}
-				}
-				if resp := h.validateSubsystemPresence(ctx, log, secondarySCNames, false); !resp.Allowed {
 					return resp
 				}
 			} else {
@@ -167,8 +158,11 @@ func (h *vvrAdmissionHandler) Handle(ctx context.Context, req admission.Request)
 		return resp
 	}
 
-	return h.validate(ctx, log, obj.Namespace, obj.Name, "VastVolumeReplication",
-		obj.Spec.AllStorageClasses())
+	log.Info("replication CRD validation passed",
+		zap.String("kind", "VastVolumeReplication"),
+		zap.String("name", obj.Name),
+		zap.Strings("storageClasses", obj.Spec.AllStorageClasses()))
+	return admission.Allowed("")
 }
 
 // validateVVRPVCStorageClass checks that the PVC referenced by spec.volumeName
@@ -344,7 +338,7 @@ func validateTopologyImmutable(oldTopology, newTopology []vastv1alpha1.Replicati
 }
 
 // validate checks that none of storageClasses are already claimed by another
-// VSCR or VVR in the cluster, excluding the object being updated (self on UPDATE).
+// VSCR or VVR in the cluster (VSCR admission only), excluding self on UPDATE.
 func (v *replicationCRDValidator) validate(
 	ctx context.Context,
 	log *zap.Logger,

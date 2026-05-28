@@ -60,12 +60,6 @@ type Interface interface {
 	// CleanVolumeCb performs VAST-object cleanup for this VRC's own cluster.
 	CleanVolumeCb(context.Context, *vastv1alpha1.VastReplicationContent, *vast_client.TypedVMSRest, *storagev1.StorageClass) error
 
-	// ShouldGateMirrorOnBackend reports whether mirror PVC creation should be
-	// gated on the VAST backend object being present on the destination cluster.
-	// File provisioner returns true (views are replicated asynchronously and may
-	// not exist yet).  Block provisioner returns false (mirror PVCs are always
-	// created immediately regardless of backend state).
-	ShouldGateMirrorOnBackend() bool
 }
 
 // VolumeMapper provides lazy, cached access to the set of VAST volumes
