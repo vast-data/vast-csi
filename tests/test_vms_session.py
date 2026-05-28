@@ -1615,3 +1615,254 @@ class TestVmsSessionInitFromClustersSuite:
 #             assert call_args["endpoint"] == "legacy-vms.example.com"
 #             assert result == mock_session
 #
+
+
+#####################
+# VmsSession.__hash__ / __eq__ / _credential_hash
+#####################
+
+class TestVmsSessionHashSuite:
+    """Tests for VmsSession credential-based identity: __hash__, __eq__, _credential_hash."""
+
+    def _make(self, config, *, username="user", password="pass", token=None, endpoint="10.0.0.1"):
+        return VmsSession.create(
+            config=config, username=username, password=password,
+            token=token, tenant=None, endpoint=endpoint,
+            ssl_cert=None, cluster_name=None,
+        )
+
+    # ------------------------------------------------------------------
+    # __hash__ stability (credential-based)
+    # ------------------------------------------------------------------
+
+    def test_hash_stable_same_userpass(self, config):
+        """Same username/password/endpoint → identical hash."""
+        s1 = self._make(config)
+        s2 = self._make(config)
+        assert hash(s1) == hash(s2)
+
+    def test_hash_stable_same_token(self, config):
+        """Same token/endpoint → identical hash."""
+        s1 = self._make(config, username=None, password=None, token="tok123")
+        s2 = self._make(config, username=None, password=None, token="tok123")
+        assert hash(s1) == hash(s2)
+
+    def test_hash_differs_different_endpoint_basic(self, config):
+        s1 = self._make(config, endpoint="10.0.0.1")
+        s2 = self._make(config, endpoint="10.0.0.2")
+        assert hash(s1) != hash(s2)
+
+    def test_hash_differs_different_password_basic(self, config):
+        s1 = self._make(config, password="pass_A")
+        s2 = self._make(config, password="pass_B")
+        assert hash(s1) != hash(s2)
+
+    def test_hash_differs_different_username_basic(self, config):
+        s1 = self._make(config, username="user_A")
+        s2 = self._make(config, username="user_B")
+        assert hash(s1) != hash(s2)
+
+    def test_hash_differs_different_token_basic(self, config):
+        s1 = self._make(config, username=None, password=None, token="token_A")
+        s2 = self._make(config, username=None, password=None, token="token_B")
+        assert hash(s1) != hash(s2)
+
+    def test_hash_differs_token_vs_userpass_same_values(self, config):
+        """Token auth and username/password auth must never share a hash, even
+        if the token string happens to equal the password."""
+        s_pass = self._make(config, username="user", password="secret")
+        s_token = self._make(config, username=None, password=None, token="secret")
+        # token key   = "secret" + endpoint
+        # userpass key = "user" + "secret" + endpoint  →  different digest
+        assert hash(s_pass) != hash(s_token)
+
+    # ------------------------------------------------------------------
+    # __hash__ / __eq__
+    # ------------------------------------------------------------------
+
+    def test_hash_equal_same_credentials(self, config):
+        s1 = self._make(config)
+        s2 = self._make(config)
+        assert s1 is not s2          # separate Python objects
+        assert hash(s1) == hash(s2)
+        assert s1 == s2
+
+    def test_hash_differs_different_endpoint(self, config):
+        s1 = self._make(config, endpoint="10.0.0.1")
+        s2 = self._make(config, endpoint="10.0.0.2")
+        assert hash(s1) != hash(s2)
+        assert s1 != s2
+
+    def test_hash_differs_different_password(self, config):
+        s1 = self._make(config, password="pass_A")
+        s2 = self._make(config, password="pass_B")
+        assert hash(s1) != hash(s2)
+        assert s1 != s2
+
+    def test_session_usable_as_dict_key(self, config):
+        """Sessions with same credentials map to the same dict slot."""
+        s1 = self._make(config, endpoint="10.0.0.1")
+        s2 = self._make(config, endpoint="10.0.0.1")   # identical creds
+        s3 = self._make(config, endpoint="10.0.0.2")   # different endpoint
+
+        d = {s1: "cluster-1", s3: "cluster-2"}
+        # s2 has same hash/eq as s1, so it looks up the same entry
+        assert d[s2] == "cluster-1"
+
+    def test_session_usable_in_set(self, config):
+        """Sessions with same credentials are deduplicated in a set."""
+        s1 = self._make(config, endpoint="10.0.0.1")
+        s2 = self._make(config, endpoint="10.0.0.1")
+        s3 = self._make(config, endpoint="10.0.0.2")
+        assert len({s1, s2, s3}) == 2
+
+
+#####################
+# VipPool cache (per-session scoping)
+#####################
+
+class TestVipPoolCacheSuite:
+    """
+    Verify that the cache used by VipPool.one is scoped by session identity.
+    """
+
+    # Minimal vippool response list that VastResource.one / ResourceIterator can process.
+    _VIPPOOL_CLUSTER_A = Bunch(
+        id=1, name="vippool-1",
+        ip_ranges=[["10.1.0.1", "10.1.0.16"]],
+        tenant_id=1,
+    )
+    _VIPPOOL_CLUSTER_B = Bunch(
+        id=2, name="vippool-1",
+        ip_ranges=[["10.2.0.1", "10.2.0.16"]],
+        tenant_id=1,
+    )
+
+    def _make_session(self, config, *, username="user", password="pass",
+                      token=None, endpoint="10.0.0.1"):
+        return VmsSession.create(
+            config=config, username=username, password=password,
+            token=token, tenant=None, endpoint=endpoint,
+            ssl_cert=None, cluster_name=None,
+        )
+
+    # ------------------------------------------------------------------
+    # Cache hits (same session / same credentials)
+    # ------------------------------------------------------------------
+
+    def test_cache_hit_same_session_object(self, config):
+        """Two calls on the same session object should only hit the API once."""
+        session = self._make_session(config)
+
+        with patch.object(session, "get", return_value=[self._VIPPOOL_CLUSTER_A]) as mock_get:
+            session.vippools.one(name="vippool-1")
+            session.vippools.one(name="vippool-1")  # should be served from cache
+
+        assert mock_get.call_count == 1
+
+    def test_cache_hit_two_sessions_same_credentials(self, config):
+        """Two *different* session objects with identical credentials share the same
+        cache entry – the second call must not reach the API at all."""
+        session_a = self._make_session(config, endpoint="10.0.0.1")
+        session_b = self._make_session(config, endpoint="10.0.0.1")
+        assert session_a is not session_b    # distinct objects …
+        assert session_a == session_b        # … but same identity
+
+        with (
+            patch.object(session_a, "get", return_value=[self._VIPPOOL_CLUSTER_A]) as mock_a,
+            patch.object(session_b, "get", return_value=[self._VIPPOOL_CLUSTER_A]) as mock_b,
+        ):
+            session_a.vippools.one(name="vippool-1")
+            # session_b shares the hash → cache hit → session_b.get never called
+            session_b.vippools.one(name="vippool-1")
+
+        assert mock_a.call_count + mock_b.call_count == 1
+
+    # ------------------------------------------------------------------
+    # Cache misses (credentials differ → distinct cache entries)
+    # ------------------------------------------------------------------
+
+    def test_no_cache_sharing_different_endpoint(self, config):
+        """Sessions pointing to *different* clusters must have isolated caches.
+
+        This is the exact multi-cluster bug (VCSI-523): both clusters had a
+        vip pool named 'vippool-1', but the second ControllerPublishVolume
+        received the cached VIP from the first cluster.
+        """
+        session_a = self._make_session(config, endpoint="10.27.80.43")
+        session_b = self._make_session(config, endpoint="10.27.200.119")
+
+        with (
+            patch.object(session_a, "get", return_value=[self._VIPPOOL_CLUSTER_A]) as mock_a,
+            patch.object(session_b, "get", return_value=[self._VIPPOOL_CLUSTER_B]) as mock_b,
+        ):
+            result_a = session_a.vippools.one(name="vippool-1")
+            result_b = session_b.vippools.one(name="vippool-1")
+
+        assert mock_a.call_count == 1
+        assert mock_b.call_count == 1
+        # Each session returned its own cluster's pool
+        assert result_a.ip_ranges == [["10.1.0.1", "10.1.0.16"]]
+        assert result_b.ip_ranges == [["10.2.0.1", "10.2.0.16"]]
+
+    def test_no_cache_sharing_different_password(self, config):
+        """Sessions that differ only in password must not share cache entries."""
+        session_a = self._make_session(config, password="password_A")
+        session_b = self._make_session(config, password="password_B")
+
+        with (
+            patch.object(session_a, "get", return_value=[self._VIPPOOL_CLUSTER_A]) as mock_a,
+            patch.object(session_b, "get", return_value=[self._VIPPOOL_CLUSTER_B]) as mock_b,
+        ):
+            session_a.vippools.one(name="vippool-1")
+            session_b.vippools.one(name="vippool-1")
+
+        assert mock_a.call_count == 1
+        assert mock_b.call_count == 1
+
+    def test_no_cache_sharing_different_username(self, config):
+        """Sessions that differ only in username must not share cache entries."""
+        session_a = self._make_session(config, username="user_A")
+        session_b = self._make_session(config, username="user_B")
+
+        with (
+            patch.object(session_a, "get", return_value=[self._VIPPOOL_CLUSTER_A]) as mock_a,
+            patch.object(session_b, "get", return_value=[self._VIPPOOL_CLUSTER_B]) as mock_b,
+        ):
+            session_a.vippools.one(name="vippool-1")
+            session_b.vippools.one(name="vippool-1")
+
+        assert mock_a.call_count == 1
+        assert mock_b.call_count == 1
+
+    def test_no_cache_sharing_token_vs_userpass(self, config):
+        """Token-auth and username/password-auth sessions at the same endpoint
+        must not share cache entries."""
+        session_pass = self._make_session(config, endpoint="10.0.0.1")
+        session_token = self._make_session(
+            config, username=None, password=None, token="mytoken", endpoint="10.0.0.1"
+        )
+
+        with (
+            patch.object(session_pass, "get", return_value=[self._VIPPOOL_CLUSTER_A]) as mock_pass,
+            patch.object(session_token, "get", return_value=[self._VIPPOOL_CLUSTER_B]) as mock_token,
+        ):
+            session_pass.vippools.one(name="vippool-1")
+            session_token.vippools.one(name="vippool-1")
+
+        assert mock_pass.call_count == 1
+        assert mock_token.call_count == 1
+
+    # ------------------------------------------------------------------
+    # Cache miss by different pool name (sanity check)
+    # ------------------------------------------------------------------
+
+    def test_cache_miss_different_pool_name(self, config):
+        """Querying two pool names on the same session creates two separate entries."""
+        session = self._make_session(config)
+
+        with patch.object(session, "get", return_value=[self._VIPPOOL_CLUSTER_A]) as mock_get:
+            session.vippools.one(name="vippool-1")
+            session.vippools.one(name="vippool-2")
+
+        assert mock_get.call_count == 2
