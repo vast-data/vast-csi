@@ -22,6 +22,7 @@ import (
 
 	"go.uber.org/zap"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -98,6 +99,11 @@ func (r *VastReplicationContentReconciler) Reconcile(ctx context.Context, req ct
 			}
 			if !parentGone {
 				next := bo.Next()
+				if unblocked, err := r.unblockParentDeletion(ctx, vrc, k8s); err != nil {
+					return ctrl.Result{}, fmt.Errorf("unblock parent deletion for VRC %s/%s: %w", vrc.Namespace, vrc.Name, err)
+				} else if unblocked {
+					return ctrl.Result{RequeueAfter: next}, nil
+				}
 				log.Info("waiting for parent VGR/VR to be fully deleted before running cleanup",
 					zap.Duration("requeueAfter", next))
 				return ctrl.Result{RequeueAfter: next}, nil
@@ -278,6 +284,79 @@ func (r *VastReplicationContentReconciler) cleanResources(
 		return err
 	}
 	return prov.CleanVolumes(ctx)
+}
+
+// unblockParentDeletion clears blockOwnerDeletion on the VGR/VR owner
+// reference when the parent is terminating. Returns true when a patch was sent.
+func (r *VastReplicationContentReconciler) unblockParentDeletion(
+	ctx context.Context,
+	vrc *vastv1alpha1.VastReplicationContent,
+	k8s *k8sclient.K8sClient,
+) (bool, error) {
+	terminating, err := r.parentIsTerminating(ctx, vrc, k8s)
+	if err != nil || !terminating {
+		return false, err
+	}
+	ownerKind := vrc.Spec.Kind
+	var patched bool
+	err = k8s.PatchWithRetry(ctx, vrc, func() {
+		vrc.OwnerReferences, patched = clearParentBlockOwnerDeletion(vrc.OwnerReferences, ownerKind, vrc.Name)
+	})
+	if err != nil {
+		return false, err
+	}
+	return patched, nil
+}
+
+// clearParentBlockOwnerDeletion sets blockOwnerDeletion=false on the owner ref
+// that matches ownerKind/ownerName. Returns the (possibly) updated slice and
+// whether any ref was changed.
+func clearParentBlockOwnerDeletion(refs []metav1.OwnerReference, ownerKind, ownerName string) ([]metav1.OwnerReference, bool) {
+	changed := false
+	blockFalse := false
+	for i := range refs {
+		ref := &refs[i]
+		if ref.Kind != ownerKind || ref.Name != ownerName {
+			continue
+		}
+		if ref.BlockOwnerDeletion != nil && !*ref.BlockOwnerDeletion {
+			continue
+		}
+		ref.BlockOwnerDeletion = &blockFalse
+		changed = true
+	}
+	return refs, changed
+}
+
+// parentIsTerminating reports whether the mirrored VGR/VR exists and has a
+// deletion timestamp.
+func (r *VastReplicationContentReconciler) parentIsTerminating(
+	ctx context.Context,
+	vrc *vastv1alpha1.VastReplicationContent,
+	k8s *k8sclient.K8sClient,
+) (bool, error) {
+	switch vrc.Spec.Kind {
+	case vastv1alpha1.DestinationKindVolumeGroupReplication:
+		vgr, err := k8s.GetVolumeGroupReplication(ctx, vrc.Name, vrc.Namespace)
+		if k8serrors.IsNotFound(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return vgr.GetDeletionTimestamp() != nil, nil
+	case vastv1alpha1.DestinationKindVolumeReplication:
+		vr, err := k8s.GetVolumeReplication(ctx, vrc.Name, vrc.Namespace)
+		if k8serrors.IsNotFound(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return vr.GetDeletionTimestamp() != nil, nil
+	default:
+		return false, nil
+	}
 }
 
 // parentIsFullyGone returns true only when the parent VGR/VR no longer exists

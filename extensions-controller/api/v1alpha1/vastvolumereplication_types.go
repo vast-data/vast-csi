@@ -61,18 +61,15 @@ type VastVolumeReplicationSpec struct {
 	Resync bool `json:"resync,omitempty"`
 
 	// SyncIntervalSeconds is the replication sync interval in seconds.
-	// +kubebuilder:validation:Required
+	// When omitted or zero, the interval is derived from the "every" field of
+	// the first protectionPolicyTemplate entry.
 	// +kubebuilder:validation:Minimum=0
-	SyncIntervalSeconds int64 `json:"syncIntervalSeconds"`
+	// +optional
+	SyncIntervalSeconds int64 `json:"syncIntervalSeconds,omitempty"`
 
 	// PVCRemap controls whether PVCs are remapped to the new primary on failover.
 	// +kubebuilder:default=false
 	PVCRemap bool `json:"pvcRemap"`
-
-	// SyncPVCPV controls whether the controller creates/deletes static
-	// PV+PVC pairs on each destination cluster.  Defaults to true.
-	// +kubebuilder:default=true
-	SyncPVCPV bool `json:"syncPVCPV"`
 
 	// DestVolReclaimPolicy controls whether destination VAST objects (block
 	// volumes or file views/quotas) are deleted when the VVR is deleted.
@@ -82,6 +79,21 @@ type VastVolumeReplicationSpec struct {
 }
 
 // AllStorageClasses returns every StorageClass name in the replication group.
+// EffectiveSyncIntervalSeconds returns the sync interval in seconds.
+// If SyncIntervalSeconds is explicitly set (> 0) it is returned as-is.
+// Otherwise the interval is derived from the "every" field of the first
+// protectionPolicyTemplate entry.  Returns 0 and an error if the "every"
+// value cannot be parsed.
+func (s *VastVolumeReplicationSpec) EffectiveSyncIntervalSeconds() (int64, error) {
+	if s.SyncIntervalSeconds > 0 {
+		return s.SyncIntervalSeconds, nil
+	}
+	if len(s.ProtectionPolicyTemplate.Params) == 0 {
+		return 0, fmt.Errorf("syncIntervalSeconds not set and protectionPolicyTemplate has no params")
+	}
+	return ParseEveryToSeconds(s.ProtectionPolicyTemplate.Params[0].Every)
+}
+
 // AllStorageClasses returns every unique StorageClass name in the replication
 // group, derived from the ProtectionTopology entries and sorted.
 func (s *VastVolumeReplicationSpec) AllStorageClasses() []string {

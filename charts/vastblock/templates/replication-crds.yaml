@@ -684,8 +684,10 @@ spec:
                   an immediate resync.'
                 type: boolean
               syncIntervalSeconds:
-                description: SyncIntervalSeconds is the replication sync interval
-                  in seconds.
+                description: |-
+                  SyncIntervalSeconds is the replication sync interval in seconds.
+                  When omitted or zero, the interval is derived from the "every" field of
+                  the first protectionPolicyTemplate entry.
                 format: int64
                 minimum: 0
                 type: integer
@@ -702,7 +704,6 @@ spec:
             - protectionPolicyTemplate
             - protectionTopology
             - pvcRemap
-            - syncIntervalSeconds
             - syncPVCPV
             type: object
           status:
@@ -956,17 +957,13 @@ spec:
                   an immediate resync.'
                 type: boolean
               syncIntervalSeconds:
-                description: SyncIntervalSeconds is the replication sync interval
-                  in seconds.
+                description: |-
+                  SyncIntervalSeconds is the replication sync interval in seconds.
+                  When omitted or zero, the interval is derived from the "every" field of
+                  the first protectionPolicyTemplate entry.
                 format: int64
                 minimum: 0
                 type: integer
-              syncPVCPV:
-                default: true
-                description: |-
-                  SyncPVCPV controls whether the controller creates/deletes static
-                  PV+PVC pairs on each destination cluster.  Defaults to true.
-                type: boolean
               volumeName:
                 description: |-
                   VolumeName is the name of the PVC (in the same namespace) that should be
@@ -979,8 +976,6 @@ spec:
             - protectionPolicyTemplate
             - protectionTopology
             - pvcRemap
-            - syncIntervalSeconds
-            - syncPVCPV
             - volumeName
             type: object
           status:

@@ -78,8 +78,8 @@ func printVSCRStatus(obj *vastv1alpha1.VastStorageClassReplication) {
 	for _, t := range obj.Spec.ProtectionTopology {
 		printTopologyTarget(t.Source, t.Destination, t.PeerName)
 	}
-	if obj.Spec.SyncIntervalSeconds > 0 {
-		fmt.Printf("  %-28s %ds\n", "Sync Interval:", obj.Spec.SyncIntervalSeconds)
+	if secs, err := obj.Spec.EffectiveSyncIntervalSeconds(); err == nil {
+		fmt.Printf("  %-28s %ds\n", "Sync Interval:", secs)
 	}
 	fmt.Printf("  %-28s %s\n", "PVC Remap:", boolStr(obj.Spec.PVCRemap))
 	fmt.Printf("  %-28s %s\n", "Sync PVC/PV:", boolStr(obj.Spec.SyncPVCPV))
@@ -118,11 +118,10 @@ func printVVRStatus(obj *vastv1alpha1.VastVolumeReplication) {
 	for _, t := range obj.Spec.ProtectionTopology {
 		printTopologyTarget(t.Source, t.Destination, t.PeerName)
 	}
-	if obj.Spec.SyncIntervalSeconds > 0 {
-		fmt.Printf("  %-28s %ds\n", "Sync Interval:", obj.Spec.SyncIntervalSeconds)
+	if secs, err := obj.Spec.EffectiveSyncIntervalSeconds(); err == nil {
+		fmt.Printf("  %-28s %ds\n", "Sync Interval:", secs)
 	}
 	fmt.Printf("  %-28s %s\n", "PVC Remap:", boolStr(obj.Spec.PVCRemap))
-	fmt.Printf("  %-28s %s\n", "Sync PVC/PV:", boolStr(obj.Spec.SyncPVCPV))
 	fmt.Printf("  %-28s %s\n", "Vol Reclaim Policy:", destVolReclaimStr(obj.Spec.DestVolReclaimPolicy))
 	printProtectionPolicyTemplate(obj.Spec.ProtectionPolicyTemplate)
 	fmt.Println()

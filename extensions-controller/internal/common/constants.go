@@ -65,14 +65,20 @@ const (
 	// from deletion until cleanup operations complete
 	FinalizerPVC = Domain + "/pvc-protection"
 
-	// FinalizerPV is used to protect PersistentVolume resources
-	// from deletion until cleanup operations complete
-	FinalizerPV = Domain + "/pv-protection"
-
 	// FinalizerReplicationContent is used to protect VastReplicationContent CRDs
 	// from deletion until all related resources (PVCs, PVs, VAST volumes, snapshots,
 	// mirrored VolumeReplication/VolumeGroupReplication objects) have been cleaned up.
 	FinalizerReplicationContent = Domain + "/replication-content-protection"
+
+	// AnnotationMirrorSyncRequestedAt is set on secondary VastReplicationContents
+	// when the primary gains new PVCs, to trigger immediate mirror PVC/PV sync.
+	// The value is an RFC3339 timestamp.
+	AnnotationMirrorSyncRequestedAt = Domain + "/mirror-sync-requested-at"
+
+	// AnnotationResyncRequestedAt is set on every VastReplicationContent in the
+	// constellation when the user requests a full resync (VSCR spec.resync).
+	// The value is an RFC3339 timestamp.
+	AnnotationResyncRequestedAt = Domain + "/resync-requested-at"
 
 	// AnnotationCleanupDone is set on a VastReplicationContent after its own
 	// CleanVolumes run completes successfully.  The VRC controller waits for ALL

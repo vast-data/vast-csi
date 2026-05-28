@@ -158,7 +158,7 @@ class BaseVolumeGroupController(volumegroup_pb2_grpc.ControllerServicer):
         # This ensures consistent volume lookups regardless of whether IDs have leading slashes
         normalized_volume_ids = [os.path.basename(vol_id) for vol_id in volume_ids]
 
-        exit_stack.enter_context(resource_locked(name))
+        exit_stack.enter_context(resource_locked(name, abort_on_error=True))
 
         # Implementation-specific creation logic
         volume_group = self._create_volume_group_impl(
@@ -252,7 +252,7 @@ class BaseVolumeGroupController(volumegroup_pb2_grpc.ControllerServicer):
         Returns:
             DeleteVolumeGroupResponse (empty on success)
         """
-        exit_stack.enter_context(resource_locked(volume_group_id))
+        exit_stack.enter_context(resource_locked(volume_group_id, abort_on_error=True))
 
         # Implementation-specific deletion logic
         self._delete_volume_group_impl(
@@ -287,7 +287,7 @@ class BaseVolumeGroupController(volumegroup_pb2_grpc.ControllerServicer):
         Returns:
             ControllerGetVolumeGroupResponse with volume group information
         """
-        exit_stack.enter_context(resource_locked(volume_group_id))
+        exit_stack.enter_context(resource_locked(volume_group_id, abort_on_error=True))
 
         logger.info(f"{self.log_prefix}: Getting volume group '{volume_group_id}'")
 
