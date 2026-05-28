@@ -684,9 +684,11 @@ func (b *baseProvisioner) ensureMirrorPVCPV(
 	}
 
 	pvBuilder := builder.NewPersistentVolume(destPVName).
-		WithFinalizers(common.FinalizerPV).
 		WithManagedByLabel().
 		WithLabelsMap(pvLabels).
+		WithAnnotationsMap(map[string]string{
+			"pv.kubernetes.io/provisioned-by": csiDriver,
+		}).
 		WithStorageClass(sibSc.Name).
 		WithVolumeHandle(mirrorHandle).
 		WithCSIDriver(csiDriver).
@@ -735,19 +737,20 @@ func (b *baseProvisioner) ensureMirrorPVCPV(
 	return created, nil
 }
 
-// cleanReplicaMirrorOrphans removes mirrored PVCs+PVs in StorageClass that
+// cleanReplicaMirrorOrphans removes or releases mirrored PVCs+PVs in StorageClass that
 // were created by this VRC but whose source PVC is no longer in currentSourcePVCNames.
 // Passing nil or empty removes ALL mirrors owned by this VRC for the given peer.
-// No-ops when DestVolReclaimPolicy is Retain.
+//
+// DestVolReclaimPolicy controls what happens to the objects:
+//   - Delete: clear all finalizers and delete the PVC/PV objects.
+//   - Retain: only remove vastdata.com/pvc-protection finalizer.
 func (b *baseProvisioner) cleanReplicaMirrorOrphans(
 	ctx context.Context,
 	vrc *vastv1alpha1.VastReplicationContent,
 	sc *storagev1.StorageClass,
 	currentSourcePVCNames sets.Set[string],
 ) error {
-	if b.rp.Spec.DestVolReclaimPolicy == vastv1alpha1.DestVolReclaimPolicyRetain {
-		return nil
-	}
+	retain := b.rp.Spec.DestVolReclaimPolicy == vastv1alpha1.DestVolReclaimPolicyRetain
 	ns := b.rp.Namespace
 
 	pvcs, err := b.k8sClient.ListPVCsByLabelSelector(ctx, ns, map[string]string{
@@ -768,6 +771,19 @@ func (b *baseProvisioner) cleanReplicaMirrorOrphans(
 		if currentSourcePVCNames.Has(sourcePVCName) {
 			continue // still valid — keep it
 		}
+
+		if retain {
+			// Retain: release our hold on the PVC but leave the object alive.
+			b.logger.Info("releasing orphaned mirror PVC (retain policy)",
+				zap.String("mirrorPVC", pvc.Name),
+				zap.String("sourcePVC", sourcePVCName))
+			if err := b.k8sClient.RemoveFinalizer(ctx, pvc, common.FinalizerPVC); err != nil {
+				errs.Add(fmt.Errorf("release orphaned mirror PVC %s: remove finalizer: %w", pvc.Name, err))
+			}
+			continue
+		}
+
+		// Delete: clear all finalizers then delete PVC and its bound PV.
 		b.logger.Info("deleting orphaned mirror PVC",
 			zap.String("mirrorPVC", pvc.Name),
 			zap.String("sourcePVC", sourcePVCName))

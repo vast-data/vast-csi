@@ -29,7 +29,7 @@ def no_op_volume_lock(monkeypatch):
     calls = []
 
     @contextlib.contextmanager
-    def _fake_volume_locked(key):
+    def _fake_volume_locked(key, **kwargs):
         calls.append(key)
         yield
 

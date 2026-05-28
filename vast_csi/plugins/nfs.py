@@ -33,6 +33,7 @@ from vast_csi.logging import logger
 from vast_csi.utils import (
     get_mount,
     normalize_mount_options,
+    normalize_volume_id,
     string_to_proto_timestamp,
     get_random_fqdn_prefix,
     wrap_ipv6,
@@ -377,6 +378,7 @@ class CsiController(ControllerBase, Instrumented):
                 os.rmdir(tmpdir)  # will fail if not empty directory
 
     def DeleteVolume(self, vms_session, volume_id):
+        volume_id = normalize_volume_id(volume_id)
         vms_session.globalsnapstreams.ensure_snapshot_stream_deleted(name=f"strm-{volume_id}")
         if quota := vms_session.quotas.one(name=volume_id):
             # this is a check we have to do until Vast provides access to orphaned snapshots (ORION-135599)
@@ -478,6 +480,7 @@ class CsiController(ControllerBase, Instrumented):
         return types.CtrlUnpublishResp()
 
     def ControllerExpandVolume(self, vms_session, volume_id, capacity_range):
+        volume_id = normalize_volume_id(volume_id)
         requested_capacity = capacity_range.required_bytes
 
         if not (quota := vms_session.quotas.one(name=volume_id)):
@@ -629,7 +632,7 @@ class CsiNode(NodeBase, Instrumented):
         volume_context=None,
         metrics_registry=None
     ):
-        exit_stack.enter_context(resource_locked(volume_id))
+        exit_stack.enter_context(resource_locked(volume_id, abort_on_error=True))
         volume_context = volume_context or dict()
         if (
             is_ephemeral := volume_context
@@ -765,7 +768,7 @@ class CsiNode(NodeBase, Instrumented):
             vms_session=None,
             metrics_registry=None,
     ):
-        exit_stack.enter_context(resource_locked(volume_id))
+        exit_stack.enter_context(resource_locked(volume_id, abort_on_error=True))
         target_path = local.path(target_path)
         meta_file = target_path[".vast-csi-meta"]
 

@@ -5,6 +5,7 @@ import time
 from vast_csi.utils import (
     is_ver_nfs4_present,
     generate_ip_range,
+    normalize_volume_id,
     wrap_ipv6,
     string_to_static_uuid,
     parse_string_parameters,
@@ -12,6 +13,23 @@ from vast_csi.utils import (
     replace_path_prefix,
     get_mount,
 )
+
+
+@pytest.mark.parametrize("volume_id, expected", [
+    ("pvc-abc123",                          "pvc-abc123"),
+    ("/pvc-abc123",                         "pvc-abc123"),
+    ("pvc-abc123/",                         "pvc-abc123"),
+    ("/pvc-abc123/",                        "pvc-abc123"),
+    ("/great-kodkod/pvc-abc123",            "pvc-abc123"),
+    ("/foo/bar/pvc-abc123",                 "pvc-abc123"),
+    ("pvc-abc123",                          "pvc-abc123"),
+    ("pvc-abc123",                          "pvc-abc123"),
+    ("/great-kodkod/pvc-abc123/",           "pvc-abc123"),
+    ("/great-kodkod/pvc-7a13379f-b930-4c21-8459-aef283403fdf",
+     "pvc-7a13379f-b930-4c21-8459-aef283403fdf"),
+])
+def test_normalize_volume_id(volume_id, expected):
+    assert normalize_volume_id(volume_id) == expected
 
 
 @pytest.mark.parametrize(

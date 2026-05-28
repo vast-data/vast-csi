@@ -450,7 +450,7 @@ class LockedResource:
 
 
 @contextmanager
-def resource_locked(resource_id, _locks={}, _global_lock=RLock(), abort_on_error=False):
+def resource_locked(resource_id, _locks={}, _global_lock=RLock(), abort_on_error=False, message=None):
     """
     Ensures exclusive access to a resource (volume, volume group, etc.).
     
@@ -462,10 +462,16 @@ def resource_locked(resource_id, _locks={}, _global_lock=RLock(), abort_on_error
     
     Args:
         resource_id: Unique identifier for the resource to lock
-        abort_on_error: If True, abort the operation on error
+        abort_on_error: If True, raise Abort(ABORTED) on contention instead of
+                        ResourceLockedError, so the gRPC framework returns a clean
+                        ABORTED status without a traceback.
+        message: Optional message set atomically on the LockedResource before it is
+                 inserted into _locks, guaranteeing every concurrent caller that hits
+                 contention always sees the verbose message.
     
     Raises:
-        ResourceLockedError: If the resource is already locked
+        ResourceLockedError: If the resource is already locked (abort_on_error=False)
+        Abort: If the resource is already locked (abort_on_error=True)
     """
     logger.debug(f"Attempting to acquire lock for resource {resource_id}")
 
@@ -477,6 +483,8 @@ def resource_locked(resource_id, _locks={}, _global_lock=RLock(), abort_on_error
                 _locks[resource_id].fail()
 
         locked_resource = LockedResource(resource_id)
+        if message:
+            locked_resource.set_message(message)
         _locks[resource_id] = locked_resource
 
     try:

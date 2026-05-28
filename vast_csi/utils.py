@@ -18,6 +18,17 @@ from . import csi_types as types
 from .exceptions import Abort
 
 
+def normalize_volume_id(volume_id: str) -> str:
+    """Return the bare volume name from a volume_id that may be a full path.
+
+    Idempotent: works for both plain names and path-based IDs:
+        "pvc-abc123"                          → "pvc-abc123"
+        "/great-kodkod/pvc-abc123"            → "pvc-abc123"
+        "/foo/bar/pvc-abc123"                 → "pvc-abc123"
+    """
+    return volume_id.strip("/").rsplit("/", 1)[-1]
+
+
 @contextmanager
 def to_abort(code=types.ABORTED):
     """

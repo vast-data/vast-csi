@@ -63,6 +63,7 @@ from vast_csi.block_utils import (
     device_rw,
 )
 from vast_csi.utils import (
+    normalize_volume_id,
     stringify_dict,
     string_to_proto_timestamp,
     get_random_fqdn_prefix,
@@ -426,6 +427,7 @@ class BlockController(ControllerBase, Instrumented):
         return types.CreateResp(volume=volume)
 
     def DeleteVolume(self, vms_session, volume_id):
+        volume_id = normalize_volume_id(volume_id)
         vms_session.globalsnapstreams.ensure_snapshot_stream_deleted(name__contains=volume_id)
         if snaps := vms_session.snapshots.has_snapshots(volume_id):
             snap_ids = ", ".join(str(s.id) for s in snaps)
@@ -469,11 +471,14 @@ class BlockController(ControllerBase, Instrumented):
 
         if CONF.block_hosts_auto_prune:
             # Ensure map host operations are atomic based on the composite key (node ID + tenant name).
-            lock = exit_stack.enter_context(resource_locked(f"{node_id}:{tenant_name}", abort_on_error=True))
-            lock.set_message(
-                f"Node {node_id} (tenant: {tenant_name}) is currently locked"
-                f" by volume {volume_id} — concurrent ControllerPublishVolume in progress"
-            )
+            exit_stack.enter_context(resource_locked(
+                f"{node_id}:{tenant_name}",
+                abort_on_error=True,
+                message=(
+                    f"Node {node_id} (tenant: {tenant_name}) is currently locked"
+                    f" by volume {volume_id} — concurrent ControllerPublishVolume in progress"
+                ),
+            ))
         blockhost = vms_session.blockhosts.ensure(
             node_id=f"{CONF.block_hosts_prefix}{node_id}",
             transport_type=transport_type,
@@ -529,6 +534,7 @@ class BlockController(ControllerBase, Instrumented):
         Unpublishes a volume from a node and checks if the host has any remaining volumes.
         If no volumes remain and the host was created by the CSI driver, the host is removed to prevent NQN sprawl.
         """
+        volume_id = normalize_volume_id(volume_id)
         # Early return if volume not found
         if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
             logger.info(f"Volume not found with name: {volume_id}")
@@ -543,7 +549,7 @@ class BlockController(ControllerBase, Instrumented):
                 # A race condition may occur if ControllerUnpublishVolume unmaps the last volume from a host
                 # while ControllerPublishVolume simultaneously maps a new volume to the same host.
                 # In such cases, we must either delete and recreate the host, or wait for the new mapping and skip deletion.
-                exit_stack.enter_context(resource_locked(f"{node_id}:{volume.tenant_name}"))
+                exit_stack.enter_context(resource_locked(f"{node_id}:{volume.tenant_name}", abort_on_error=True))
                 if host := vms_session.blockhosts.one(name=block_host_name, tenant_name=volume.tenant_name):
                     if not host.mapped_volumes_preview and host.nqn.startswith(CONF.block_nqn_prefix):
                         logger.info(f"Host {block_host_name!r} has no remaining volumes, removing host")
@@ -552,6 +558,7 @@ class BlockController(ControllerBase, Instrumented):
         return types.CtrlUnpublishResp()
 
     def ControllerExpandVolume(self, vms_session, volume_id, capacity_range):
+        volume_id = normalize_volume_id(volume_id)
         requested_capacity = capacity_range.required_bytes
         logger.debug(f"Requested capacity for volume {volume_id}: {requested_capacity} bytes")
         if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
@@ -574,7 +581,7 @@ class BlockController(ControllerBase, Instrumented):
     def CreateSnapshot(self, vms_session, source_volume_id, name, parameters=None):
         parameters = parameters or dict()
         cluster_name = parameters.get("cluster_name")
-        volume_id = source_volume_id
+        volume_id = normalize_volume_id(source_volume_id)
         if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
             raise Abort(NOT_FOUND, f"Unknown volume: {volume_id}")
         if not (view := vms_session.views.get_subsystem_by_id(_id=volume.view_id)):
@@ -640,7 +647,7 @@ class BlockNode(NodeBase, Instrumented):
             volume_context=None,
             metrics_registry=None
     ):
-        exit_stack.enter_context(resource_locked(volume_id))
+        exit_stack.enter_context(resource_locked(volume_id, abort_on_error=True))
         volume_context = volume_context or dict()
         volume_capabilities = _validate_capabilities(volume_capability, volume_context, publish_context)
 
@@ -983,7 +990,7 @@ class BlockNode(NodeBase, Instrumented):
             exit_stack,
             luks_manager,
     ):
-        exit_stack.enter_context(resource_locked(volume_id))
+        exit_stack.enter_context(resource_locked(volume_id, abort_on_error=True))
         volume_capabilities = _validate_capabilities(volume_capability)
         device_bind_path = get_device_bind_path(staging_target_path)
         requested_capacity = capacity_range.required_bytes
