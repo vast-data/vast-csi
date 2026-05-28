@@ -31,6 +31,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common"
@@ -846,6 +847,7 @@ func SetupVastVolumeReplicationController(
 	r := &VastVolumeReplicationReconciler{BaseReconciler: base}
 
 	return ctrl.NewControllerManagedBy(mgr).
+		WithOptions(controller.Options{MaxConcurrentReconciles: 5}).
 		For(&vastv1alpha1.VastVolumeReplication{}).
 		Owns(&replicationv1alpha1.VolumeReplication{},
 			builder.WithPredicates(ownedVRPredicate())).
