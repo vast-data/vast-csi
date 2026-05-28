@@ -258,7 +258,7 @@ func (r *VastStorageClassReplicationReconciler) Reconcile(ctx context.Context, r
 	// before any secondary VRC reconciles for the first time.
 	allSCs := vscr.Spec.AllStorageClassesPrimaryFirst()
 	for i, scName := range allSCs {
-		vgrName, created, err := r.ensureVGR(ctx, emit, vscr, scName, ppathName, primaryChanged)
+		vgrName, created, err := r.ensureVGR(ctx, emit, vscr, scName, ppathName)
 		if err != nil {
 			errs.Add(fmt.Errorf("SC %s: %w", scName, err))
 		}
@@ -683,7 +683,6 @@ func (r *VastStorageClassReplicationReconciler) ensureVGR(
 	vscr *vastv1alpha1.VastStorageClassReplication,
 	scName string,
 	ppathName string,
-	primaryChanged bool,
 ) (vgrName string, created bool, err error) {
 	k8s := r.K8sFor(emit.Logger())
 

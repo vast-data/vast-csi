@@ -102,15 +102,6 @@ func (h *vscrAdmissionHandler) Handle(ctx context.Context, req admission.Request
 				if resp := h.validateSubsystemLevelTenantName(ctx, obj.Spec.PrimaryStorageClass, obj.Spec.AllStorageClasses()); !resp.Allowed {
 					return resp
 				}
-				var secondarySCNames []string
-				for _, scName := range obj.Spec.AllStorageClasses() {
-					if scName != obj.Spec.PrimaryStorageClass {
-						secondarySCNames = append(secondarySCNames, scName)
-					}
-				}
-				if resp := h.validateSubsystemPresence(ctx, log, secondarySCNames, false); !resp.Allowed {
-					return resp
-				}
 			} else {
 				if resp := h.validateSubsystemPresence(ctx, log, obj.Spec.AllStorageClasses(), true); !resp.Allowed {
 					return resp
