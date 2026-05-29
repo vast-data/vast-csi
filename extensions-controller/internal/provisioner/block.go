@@ -146,7 +146,11 @@ func (b *BlockProvisioner) ProvisionVolumeCb(ctx context.Context, sibVRC *vastv1
 // VRCs: VAST replication preserves volume names on the destination cluster, so
 // BackendObjectKey(sourceHandle) produces the correct name there as well.
 func (b *BlockProvisioner) CleanVolumeCb(ctx context.Context, _ *vastv1alpha1.VastReplicationContent, sibRest *vast_client.TypedVMSRest, sibSc *storagev1.StorageClass) error {
-	if b.rp.Spec.DestVolReclaimPolicy == vastv1alpha1.DestVolReclaimPolicyRetain {
+	retain, err := b.shouldRetainDestVolumes(ctx)
+	if err != nil {
+		return err
+	}
+	if retain {
 		return nil
 	}
 	sourcePairs, err := b.sourcePairsFromSiblingVRCs(ctx)

@@ -172,7 +172,11 @@ func (f *FileProvisioner) ProvisionVolumeCb(ctx context.Context, _ *vastv1alpha1
 // VRCs: VAST replication preserves the relative volume path on the destination
 // cluster, so BackendObjectKey(sourceHandle) produces the correct view path there.
 func (f *FileProvisioner) CleanVolumeCb(ctx context.Context, _ *vastv1alpha1.VastReplicationContent, sibRest *vast_client.TypedVMSRest, sibSc *storagev1.StorageClass) error {
-	if f.rp.Spec.DestVolReclaimPolicy == vastv1alpha1.DestVolReclaimPolicyRetain {
+	retain, err := f.shouldRetainDestVolumes(ctx)
+	if err != nil {
+		return err
+	}
+	if retain {
 		return nil
 	}
 	sourcePairs, err := f.sourcePairsFromSiblingVRCs(ctx)

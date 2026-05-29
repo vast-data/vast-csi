@@ -163,7 +163,6 @@ func (r *ReplicationObjectReconciler) reconcileVR(ctx context.Context, name, ns 
 		}
 		vrc := r.buildContent(sourceSCName, vastv1alpha1.DestinationKindVolumeReplication, name, ns, pvcs, vrcLabels)
 		vrc.Spec.SyncPVCPV = true // VVR always requires mirror PVCs for csi-addons VolumeReplication
-		vrc.Spec.DestVolReclaimPolicy = vvr.Spec.DestVolReclaimPolicy
 		vrc.Spec.ProvisionerType = provType
 		vrc.Spec.ReplicationState = initialStateFromPrimary(newState, sourceSCName, vvr.Spec.PrimaryStorageClass)
 		vrc.Spec.ProtectedPathName = ppath.Name
@@ -289,7 +288,6 @@ func (r *ReplicationObjectReconciler) reconcileVGR(ctx context.Context, name, ns
 		}
 		vrc := r.buildContent(sourceSCName, vastv1alpha1.DestinationKindVolumeGroupReplication, name, ns, pvcs, vrcLabels)
 		vrc.Spec.SyncPVCPV = vscr.Spec.SyncPVCPV
-		vrc.Spec.DestVolReclaimPolicy = vscr.Spec.DestVolReclaimPolicy
 		vrc.Spec.ProvisionerType = provType
 		vrc.Spec.ReplicationState = initialStateFromPrimary(newState, sourceSCName, vscr.Spec.PrimaryStorageClass)
 		vrc.Spec.ProtectedPathName = ppath.Name
