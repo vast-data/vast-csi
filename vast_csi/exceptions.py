@@ -66,6 +66,11 @@ class UmountTimedOut(Exception):
     pass
 
 
+class FilesystemIntegrityError(Exception):
+    """Raised when a filesystem fails its pre-staging integrity/mountability check."""
+    pass
+
+
 class BuilderFailed(Exception):
 
     @property

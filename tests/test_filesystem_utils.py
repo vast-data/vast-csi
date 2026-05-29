@@ -1,6 +1,6 @@
 import os.path
 from threading import Thread, Event
-from unittest.mock import patch, mock_open
+from unittest.mock import MagicMock, patch, mock_open
 import pytest
 from pathlib import Path
 from vast_csi.filesystem_utils import (
@@ -10,7 +10,13 @@ from vast_csi.filesystem_utils import (
     ResourceLockedError,
     get_ext_size,
     get_xfs_size,
+    mount,
+    umount,
+    temporary_mount,
+    umount_safe,
+    _normalize_mount_flags,
 )
+from vast_csi.exceptions import MountFailed, UmountTimedOut
 from plumbum import cmd
 
 PARENT = Path(__file__).parent.resolve()
@@ -401,3 +407,184 @@ def test_parse_xfs_output(*_):
     # Assertions
     assert block_size == 4096
     assert fs_size == 10737418240
+
+
+def _mock_plumbum_cmd():
+    """Chainable mock for plumbum cmd.mount / cmd.umount."""
+    mock_cmd = MagicMock()
+    mock_cmd.__getitem__ = MagicMock(return_value=mock_cmd)
+    return mock_cmd
+
+
+class TestNormalizeMountFlags:
+    def test_none_and_empty(self):
+        assert _normalize_mount_flags(None) == []
+        assert _normalize_mount_flags([]) == []
+
+    def test_string_split(self):
+        assert _normalize_mount_flags("ro,noexec") == ["ro", "noexec"]
+
+    def test_list_passthrough(self):
+        assert _normalize_mount_flags(["nouuid", "ro"]) == ["nouuid", "ro"]
+
+
+class TestFilesystemUtilsMount:
+    @patch("vast_csi.filesystem_utils.run_with_timeout")
+    def test_mount_fs_type_uses_run_with_timeout(self, mock_run_with_timeout):
+        mock_run_with_timeout.side_effect = lambda func, _timeout: func()
+        mock_mount_cmd = _mock_plumbum_cmd()
+
+        with patch.object(cmd, "mount", mock_mount_cmd):
+            mount("/dev/nvme0n1", "/mnt/probe", fs_type="xfs", flags=["nouuid", "ro"], timeout=30)
+
+        mock_run_with_timeout.assert_called_once()
+        assert mock_run_with_timeout.call_args[0][1] == 30
+
+    @patch("vast_csi.filesystem_utils.run_with_timeout", side_effect=TimeoutError("timed out"))
+    def test_mount_timeout_raises_mount_failed(self, _mock_run_with_timeout):
+        with patch.object(cmd, "mount", _mock_plumbum_cmd()):
+            with pytest.raises(MountFailed) as exc_info:
+                mount("/dev/nvme0n1", "/mnt/probe", fs_type="xfs", timeout=5)
+
+        assert "timed out after 5s" in exc_info.value.detail
+
+    @patch("vast_csi.filesystem_utils.run_with_timeout")
+    def test_mount_execution_error_raises_mount_failed(self, mock_run_with_timeout):
+        from plumbum import ProcessExecutionError
+
+        mock_mount_cmd = _mock_plumbum_cmd()
+        mock_mount_cmd.run.side_effect = ProcessExecutionError(
+            ["mount"], 1, "", "mount: bad superblock"
+        )
+        mock_run_with_timeout.side_effect = lambda func, _timeout: func()
+
+        with patch.object(cmd, "mount", mock_mount_cmd):
+            with pytest.raises(MountFailed) as exc_info:
+                mount("/dev/nvme0n1", "/mnt/probe", fs_type="xfs", timeout=10)
+
+        assert "bad superblock" in exc_info.value.detail
+
+    @patch("vast_csi.filesystem_utils.run_with_timeout")
+    def test_mount_bind_enforce_ro_remounts(self, mock_run_with_timeout):
+        mock_run_with_timeout.side_effect = lambda func, _timeout: func()
+        mock_mount_cmd = _mock_plumbum_cmd()
+
+        with patch.object(cmd, "mount", mock_mount_cmd):
+            mount("/dev/nvme0n1", "/staging/device", bind=True, enforce_ro=True, timeout=15)
+
+        assert mock_mount_cmd.run.call_count == 2
+
+    @patch("vast_csi.filesystem_utils.run_with_timeout")
+    def test_mount_without_timeout_runs_directly(self, mock_run_with_timeout):
+        mock_mount_cmd = _mock_plumbum_cmd()
+
+        with patch.object(cmd, "mount", mock_mount_cmd):
+            mount("server:/export", "/mnt/nfs", flags="vers=3")
+
+        mock_run_with_timeout.assert_not_called()
+        assert mock_mount_cmd.run.called
+
+
+class TestFilesystemUtilsUmount:
+    @patch("vast_csi.filesystem_utils.run_with_timeout")
+    def test_umount_success(self, mock_run_with_timeout):
+        mock_run_with_timeout.side_effect = lambda func, _timeout: func()
+        mock_umount_cmd = _mock_plumbum_cmd()
+
+        with patch.object(cmd, "umount", mock_umount_cmd):
+            assert umount("/mnt/test", timeout=20) is True
+
+        mock_run_with_timeout.assert_called_once()
+        assert mock_run_with_timeout.call_args[0][1] == 20
+
+    @patch("vast_csi.filesystem_utils.run_with_timeout", side_effect=TimeoutError("timed out"))
+    def test_umount_timeout_raises(self, _mock_run_with_timeout):
+        with patch.object(cmd, "umount", _mock_plumbum_cmd()):
+            with pytest.raises(UmountTimedOut) as exc_info:
+                umount("/mnt/test", timeout=12)
+
+        assert "12s" in str(exc_info.value)
+
+    @patch("vast_csi.filesystem_utils.run_with_timeout")
+    def test_umount_not_mounted_ignored(self, mock_run_with_timeout):
+        from plumbum import ProcessExecutionError
+
+        mock_umount_cmd = _mock_plumbum_cmd()
+        mock_umount_cmd.run.side_effect = ProcessExecutionError(
+            ["umount"], 1, "", "umount: /mnt/test: not mounted"
+        )
+        mock_run_with_timeout.side_effect = lambda func, _timeout: func()
+
+        with patch.object(cmd, "umount", mock_umount_cmd):
+            assert umount("/mnt/test", ignore_not_mounted=True, timeout=10) is False
+
+    @patch("vast_csi.filesystem_utils.run_with_timeout")
+    def test_umount_lazy_flag(self, mock_run_with_timeout):
+        index_args = []
+        mock_umount_cmd = _mock_plumbum_cmd()
+        mock_umount_cmd.__getitem__.side_effect = lambda key: (
+            index_args.append(key) or mock_umount_cmd
+        )
+        mock_run_with_timeout.side_effect = lambda func, _timeout: func()
+
+        with patch.object(cmd, "umount", mock_umount_cmd):
+            umount("/mnt/test", lazy=True, timeout=10)
+
+        assert ["-v", "-l", "/mnt/test"] in index_args
+
+
+class TestTemporaryMount:
+    @patch("vast_csi.filesystem_utils.umount")
+    @patch("vast_csi.filesystem_utils.mount")
+    @patch("vast_csi.filesystem_utils.TemporaryDirectory")
+    def test_temporary_mount_xfs(self, mock_td, mock_mount, mock_umount):
+        mock_td.return_value.__enter__.return_value = "/tmp/vast-csi-temp"
+
+        with temporary_mount("/dev/nvme0n1", "/staging", "xfs", readonly=True, timeout=30):
+            pass
+
+        mock_mount.assert_called_once_with(
+            src="/dev/nvme0n1",
+            tgt="/tmp/vast-csi-temp",
+            bind=False,
+            fs_type="xfs",
+            flags=["nouuid", "ro"],
+            timeout=30,
+        )
+        mock_umount.assert_called_once_with(
+            "/tmp/vast-csi-temp",
+            ignore_not_mounted=True,
+            timeout=30,
+        )
+
+    @patch("vast_csi.filesystem_utils.umount")
+    @patch("vast_csi.filesystem_utils.mount")
+    @patch("vast_csi.filesystem_utils.TemporaryDirectory")
+    @patch("builtins.open", new_callable=mock_open)
+    def test_temporary_mount_ext4_bind(self, _mock_file_open, mock_td, mock_mount, mock_umount):
+        mock_td.return_value.__enter__.return_value = "/tmp/vast-csi-temp"
+
+        with temporary_mount("/dev/nvme0n1", "/staging", "ext4", timeout=15):
+            pass
+
+        mock_mount.assert_called_once()
+        kwargs = mock_mount.call_args[1]
+        assert kwargs["bind"] is True
+        assert kwargs["fs_type"] is None
+        assert kwargs["tgt"].endswith("/device")
+        mock_umount.assert_called_once_with(
+            kwargs["tgt"],
+            ignore_not_mounted=True,
+            timeout=15,
+        )
+
+
+class TestUmountSafe:
+    @patch("vast_csi.filesystem_utils.umount")
+    def test_umount_safe_retries_lazy_on_timeout(self, mock_umount):
+        mock_umount.side_effect = [UmountTimedOut("timed out"), True]
+
+        umount_safe("/mnt/test", timeout=30)
+
+        assert mock_umount.call_count == 2
+        assert mock_umount.call_args_list[1][1]["lazy"] is True
