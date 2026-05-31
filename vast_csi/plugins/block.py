@@ -43,6 +43,7 @@ from vast_csi.exceptions import (
     VolumeAlreadyExists,
     SourceNotFound,
     NVMEConnectionFailed,
+    DeviceNotQuiesced,
 )
 from vast_csi.block_utils import (
     connect_nvme_targets,
@@ -55,6 +56,7 @@ from vast_csi.block_utils import (
     set_block_device_readonly,
     set_block_device_readwrite,
     device_rw,
+    verify_device_quiesced,
 )
 from vast_csi.utils import (
     stringify_dict,
@@ -634,6 +636,22 @@ class BlockNode(NodeBase, Instrumented):
             targets_mount_points = ", ".join(mount.mount_point for mount in target_mounts)
             logger.info(f"Staging path {device_bind_path} is being used by {targets_mount_points} targets.")
         if staging_mount:
+            if CONF.unstage_verify_device_idle:
+                if luks_manager.requires_encryption():
+                    device_path = luks_manager.luks_device_path
+                else:
+                    device_path = staging_mount.block_device
+
+                try:
+                    verify_device_quiesced(
+                        device_path,
+                        timeout_s=CONF.unstage_verify_timeout,
+                    )
+                except DeviceNotQuiesced as exc:
+                    raise Abort(
+                        FAILED_PRECONDITION,
+                        f"[NodeUnstageVolume]: refusing to unstage volume {volume_id}: {exc}",
+                    )
             umount_safe(
                 device_bind_path,
                 metrics_registry=None,  # Don't count unstaging as unmount operation
