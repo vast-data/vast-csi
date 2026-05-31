@@ -149,6 +149,41 @@ func lookupPrimaryStorageClass(ctx context.Context, k8s *k8s_client.K8sClient, r
 	panic("neither source VSCR not VVR exists")
 }
 
+// lookupDestVolReclaimPolicy reads spec.destVolReclaimPolicy from the parent
+// VSCR or VVR.  Empty means Retain (same default as the parent CRDs).
+func lookupDestVolReclaimPolicy(ctx context.Context, k8s *k8s_client.K8sClient, rp *vastv1alpha1.VastReplicationContent) (vastv1alpha1.DestVolReclaimPolicy, error) {
+	if vscrName := rp.Labels[common.LabelSourceVSCR]; vscrName != "" {
+		vscr, err := k8s.GetVastStorageClassReplication(ctx, vscrName, rp.Namespace)
+		if err != nil {
+			return "", fmt.Errorf("get VastStorageClassReplication %s: %w", vscrName, err)
+		}
+		if vscr.Spec.DestVolReclaimPolicy == "" {
+			return vastv1alpha1.DestVolReclaimPolicyRetain, nil
+		}
+		return vscr.Spec.DestVolReclaimPolicy, nil
+	}
+	if vvrName := rp.Labels[common.LabelSourceVVR]; vvrName != "" {
+		vvr, err := k8s.GetVastVolumeReplication(ctx, vvrName, rp.Namespace)
+		if err != nil {
+			return "", fmt.Errorf("get VastVolumeReplication %s: %w", vvrName, err)
+		}
+		if vvr.Spec.DestVolReclaimPolicy == "" {
+			return vastv1alpha1.DestVolReclaimPolicyRetain, nil
+		}
+		return vvr.Spec.DestVolReclaimPolicy, nil
+	}
+	return "", fmt.Errorf("VastReplicationContent %s/%s has neither %s nor %s label",
+		rp.Namespace, rp.Name, common.LabelSourceVSCR, common.LabelSourceVVR)
+}
+
+func (b *baseProvisioner) shouldRetainDestVolumes(ctx context.Context) (bool, error) {
+	policy, err := lookupDestVolReclaimPolicy(ctx, b.k8sClient, b.rp)
+	if err != nil {
+		return false, err
+	}
+	return policy == vastv1alpha1.DestVolReclaimPolicyRetain, nil
+}
+
 // mirrorVolumeHandle computes the CSI volumeHandle for the static mirror PV
 // that will be created on the destination (sibling) StorageClass cluster.
 //
@@ -741,7 +776,7 @@ func (b *baseProvisioner) ensureMirrorPVCPV(
 // were created by this VRC but whose source PVC is no longer in currentSourcePVCNames.
 // Passing nil or empty removes ALL mirrors owned by this VRC for the given peer.
 //
-// DestVolReclaimPolicy controls what happens to the objects:
+// Parent VSCR/VVR spec.destVolReclaimPolicy controls what happens to the objects:
 //   - Delete: clear all finalizers and delete the PVC/PV objects.
 //   - Retain: only remove vastdata.com/pvc-protection finalizer.
 func (b *baseProvisioner) cleanReplicaMirrorOrphans(
@@ -750,7 +785,10 @@ func (b *baseProvisioner) cleanReplicaMirrorOrphans(
 	sc *storagev1.StorageClass,
 	currentSourcePVCNames sets.Set[string],
 ) error {
-	retain := b.rp.Spec.DestVolReclaimPolicy == vastv1alpha1.DestVolReclaimPolicyRetain
+	retain, err := b.shouldRetainDestVolumes(ctx)
+	if err != nil {
+		return err
+	}
 	ns := b.rp.Namespace
 
 	pvcs, err := b.k8sClient.ListPVCsByLabelSelector(ctx, ns, map[string]string{
