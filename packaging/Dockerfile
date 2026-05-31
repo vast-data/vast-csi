@@ -25,4 +25,4 @@ LABEL \
     io.k8s.display-name="VAST CSI Driver" \
     io.openshift.tags="vastdata,csi,vastdata-csi-driver"
 
-ENTRYPOINT ["poetry", "run", "python", "-m", "vast_csi"]
+ENTRYPOINT ["/root/.venv/bin/python", "-m", "vast_csi"]
