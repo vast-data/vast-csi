@@ -201,11 +201,19 @@ update_dockerhub [prod]: &update_dockerhub
     export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}
     export DOCKERFILE=Dockerfile
     make build_image
+    export IMAGE_TAG=${DOCKER_REGISTRY}/dev/vast-csi:${VERSION}
+    docker tag docker.io/vastdataorg/csi:${VERSION} ${IMAGE_TAG}
+    docker push ${IMAGE_TAG}
+    echo "pushed ${IMAGE_TAG}"
     
     # Publish CSI Operator image
     export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}-operator
     export DOCKERFILE=operator.Dockerfile
     make build_image
+    export IMAGE_TAG=${DOCKER_REGISTRY}/dev/vast-csi:${VERSION}-operator
+    docker tag docker.io/vastdataorg/csi:${VERSION}-operator ${IMAGE_TAG}
+    docker push ${IMAGE_TAG}
+    echo "pushed ${IMAGE_TAG}"
   after_script:
   - docker logout $DOCKER_HUB
   when: manual
