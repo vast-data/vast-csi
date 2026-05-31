@@ -111,6 +111,7 @@ spec:
 {{- if $rc.devLogging }}
             - --dev-logging
 {{- end }}
+            - --max-concurrent-reconciles={{ $rc.maxConcurrentReconciles }}
 {{- if $filterConfig.storageClassName }}
             - --storage-class-name={{ $filterConfig.storageClassName }}
 {{- end }}
@@ -157,6 +158,7 @@ spec:
 {{- if $rc.applyExistingPvcs }}
             - --apply-existing-pvcs
 {{- end }}
+            - --max-concurrent-reconciles={{ $rc.maxConcurrentReconciles }}
           livenessProbe:
             httpGet:
               path: /healthz
