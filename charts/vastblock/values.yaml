@@ -482,8 +482,9 @@ image:
     tag: v0.14.0
     imagePullPolicy: IfNotPresent
   vastExtensionController:
-    repository: ""
-    tag: ""
+    # Defaults follow csiVastPlugin; override repository/tag to pin a different image.
+    repository: '{{ .Values.image.csiVastPlugin.repository }}'
+    tag: '{{ .Values.image.csiVastPlugin.tag }}-extensions'
     imagePullPolicy: IfNotPresent
 
 ####################

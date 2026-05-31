@@ -170,6 +170,15 @@ Usage:
 {{- end -}}
 
 
+{{- define "vastcsi.vastExtensionControllerImage" -}}
+{{- $images := .Values.image -}}
+{{- printf "%s:%s"
+    (required "image.vastExtensionController.repository is required when extensions.enabled is true" (tpl ($images.vastExtensionController.repository | default "") .))
+    (required "image.vastExtensionController.tag is required when extensions.enabled is true" (tpl ($images.vastExtensionController.tag | default "") .))
+-}}
+{{- end -}}
+
+
 {{/*
 Build the comma-separated list of addons to enable.
 VolumeGroupReplicationClass is always created alongside VolumeReplicationClass.

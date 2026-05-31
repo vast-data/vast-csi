@@ -13,12 +13,6 @@
 {{- $csiDriverName := tpl ($filterConfig.csiDriverName | default "") . -}}
 
 {{- if $rc.enabled }}
-{{- if not $csi_images.vastExtensionController.repository }}
-{{- fail "image.vastExtensionController.repository is required when extensions.enabled is true" }}
-{{- end }}
-{{- if not $csi_images.vastExtensionController.tag }}
-{{- fail "image.vastExtensionController.tag is required when extensions.enabled is true" }}
-{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -98,7 +92,7 @@ spec:
               mountPath: {{ $plugin_proxy_sock_path }}
           resources: {{- toYaml .Values.extensionController.resources.csiAddonsSidecar | nindent 12 }}
         - name: extensions-webhook
-          image: {{ printf "%s:%s" $csi_images.vastExtensionController.repository $csi_images.vastExtensionController.tag }}
+          image: {{ include "vastcsi.vastExtensionControllerImage" . }}
           imagePullPolicy: {{ $csi_images.vastExtensionController.imagePullPolicy | default "IfNotPresent" }}
           args:
             - pvc-label-webhook
@@ -143,7 +137,7 @@ spec:
               readOnly: true
           resources: {{- toYaml $rc.resources | nindent 12 }}
         - name: extensions-manager
-          image: {{ printf "%s:%s" $csi_images.vastExtensionController.repository $csi_images.vastExtensionController.tag }}
+          image: {{ include "vastcsi.vastExtensionControllerImage" . }}
           imagePullPolicy: {{ $csi_images.vastExtensionController.imagePullPolicy | default "IfNotPresent" }}
           args:
             - replication

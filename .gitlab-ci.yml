@@ -214,6 +214,17 @@ update_dockerhub [prod]: &update_dockerhub
     docker tag docker.io/vastdataorg/csi:${VERSION}-operator ${IMAGE_TAG}
     docker push ${IMAGE_TAG}
     echo "pushed ${IMAGE_TAG}"
+
+    if [[ "$CI_ENVIRONMENT_NAME" == "prod" ]]; then
+      # Publish Extensions Controller image (prod releases only, multi-arch via PLATFORMS)
+      export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}-extensions
+      export DOCKERFILE=extensions-controller/Dockerfile
+      export BUILD_CONTEXT=extensions-controller
+      export GIT_TAG=${VERSION}
+      make build_image
+      docker buildx imagetools create -t ${DOCKER_REGISTRY}/dev/vast-csi:${VERSION}-extensions docker.io/vastdataorg/csi:${VERSION}-extensions
+      echo "pushed ${DOCKER_REGISTRY}/dev/vast-csi:${VERSION}-extensions"
+    fi
   after_script:
   - docker logout $DOCKER_HUB
   when: manual
