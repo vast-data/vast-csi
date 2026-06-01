@@ -115,9 +115,12 @@ def get_host_realpath(path):
         return realpath_cmd(path).strip()
     except ProcessExecutionError as exc:
         if "No such file or directory" in exc.stderr:
-            # If the path doesn't exist, return the original path
+            logger.warning(f"{path} doesn't exist")
             return path
         raise
+    except Exception as exc:
+        logger.warning(f"realpath {path} exception {exc}")
+        return path
 
 
 class MountInfo:
