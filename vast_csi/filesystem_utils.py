@@ -119,10 +119,10 @@ def get_host_realpath(path):
     except ProcessExecutionError as exc:
         if "No such file or directory" in exc.stderr:
             logger.warning(f"{path} doesn't exist")
-            return path
-        raise
-    except Exception as exc:
-        logger.warning(f"realpath {path} exception {exc}")
+        else:
+            # e.g. "Input/output error" from a corrupted/stale mount — log and
+            # fall back to the unresolved path so callers can skip this entry.
+            logger.warning(f"realpath {path} failed: {exc.stderr.strip()}")
         return path
 
 
