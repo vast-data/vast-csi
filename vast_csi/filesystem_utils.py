@@ -118,7 +118,7 @@ def get_host_realpath(path):
             logger.warning(f"{path} doesn't exist")
             return path
         raise
-    except exc:
+    except Exception as exc:
         logger.warning(f"realpath {path} exception {exc}")
         return path
 
