@@ -188,7 +188,7 @@ class MetricFactory:
         return Counter(
             "csi_plugin_operations_total",
             "Total number of CSI operations by method and status",
-            ["driver_name", "method_name", "grpc_status_code", "hostname", "volume_id"],
+            ["driver_name", "method_name", "grpc_status_code", "hostname"],
         )
 
     @cached_property
@@ -197,7 +197,7 @@ class MetricFactory:
         return Histogram(
             "csi_plugin_operations_seconds",
             "Duration of CSI operations in seconds",
-            ["driver_name", "method_name", "grpc_status_code", "hostname", "volume_id"],
+            ["driver_name", "method_name", "grpc_status_code", "hostname"],
             buckets=DEFAULT_CSI_BUCKETS,
         )
 
