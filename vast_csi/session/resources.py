@@ -658,7 +658,7 @@ class BlockHostMapping(VastResource):
     def map(self, volume_id, host_id):
         data = {"pairs_to_add": [{"host_id": host_id, "volume_id": volume_id}]}
         task = self.session.patch(f"{self.resource_name}/bulk", data=data)
-        return self.session.wait_task(task)
+        return self.session.wait_task(task, retry_key=str(volume_id))
 
     def ensure_map(self, volume_id, host_id):
         if not self.one(volume__id=volume_id, block_host__id=host_id):
@@ -667,12 +667,13 @@ class BlockHostMapping(VastResource):
     def unmap(self, volume_id, host_id):
         data = {"pairs_to_remove": [{"host_id": host_id, "volume_id": volume_id}]}
         task = self.session.patch(f"{self.resource_name}/bulk", data=data)
-        return self.session.wait_task(task)
+        return self.session.wait_task(task, retry_key=str(volume_id))
 
     def ensure_unmap(self, **params):
         if mapping := self.one(**params):
             return self.unmap(
-                volume_id=mapping.volume["id"], host_id=mapping.block_host["id"]
+                volume_id=mapping.volume["id"],
+                host_id=mapping.block_host["id"],
             )
 
 @apiver.v5

@@ -9,15 +9,13 @@ import hashlib
 import threading
 from requests.exceptions import ConnectionError
 
-from easypy.bunch import Bunch, bunchify
-from easypy.sync import wait
-from urllib3.exceptions import MaxRetryError, ReadTimeoutError, TimeoutError
-from easypy.resilience import resilient as easypy_resilient
+from easypy.bunch import Bunch
 
 from ..logging import logger
-from ..exceptions import ApiError, LookupFieldError, TaskFailed
+from ..exceptions import ApiError, LookupFieldError
 from ..serialization_utils import SerializationMixin
 from .base import RESTSession, get_vms_session
+from .wait import wait_task as _wait_task
 
 # Import resources to register them
 from .resources import (
@@ -26,6 +24,7 @@ from .resources import (
     User, Volume, BlockHost, BlockHostMapping,
     ProtectionPolicy, ProtectedPath, Cluster
 )
+
 
 class VmsSession(RESTSession, SerializationMixin):
     """
@@ -303,60 +302,14 @@ class VmsSession(RESTSession, SerializationMixin):
                 self._authorizing = False
                 self._token_refresh_cond.notify_all()  # Wake up all waiting workers
 
-    def wait_task(self, task, latest=False, start_timeout=0, verbose=True, sleep=1):
-        """
-        Waits for a specific task to start and complete execution, monitoring its progress
-        and handling various failure scenarios.
-        """
-        task_id = None
-        task_line = 0
-
-        def is_task_started(task):
-            if isinstance(task, int):
-                return self.vtasks(task)
-            elif isinstance(task, dict):
-                if "async_task" in task:
-                    task = task["async_task"]
-                return bunchify(task)
-            elif tasks := self.vtasks(name=task, log_result=False):
-                if len(tasks) == 1:
-                    [task] = tasks
-                    return task
-                elif latest:
-                    return max(tasks, key=lambda t: t.id)
-                else:
-                    raise Exception(f"Too many tasks with name '{task}': {[t.id for t in tasks]}")
-            return False
-
-        def is_task_complete(task_id):
-            nonlocal task_line
-            task = self.vtasks(task_id, log_result=False)
-            if verbose:
-                for line in task.messages[task_line:]:
-                    logger.info(line)
-            task_line = len(task.messages)
-            if task.state == 'COMPLETED':
-                return task
-            elif task.state == 'FAILED':
-                raise Exception(f"Task {task_id}: {task.messages[-1]}")
-            elif task.state != 'RUNNING':
-                raise TaskFailed(task=task, name=task.name, id=task.id, reason=task.messages[-1])
-            else:
-                raise TaskFailed(task=task, name=task.name, id=task.id, reason="timeout")
-
-        if start_timeout:
-            is_task_started = easypy_resilient.debug(
-                acceptable=(
-                    MaxRetryError,
-                    ReadTimeoutError,
-                    TimeoutError,
-                    ConnectionResetError,
-                    ConnectionError,
-                    BrokenPipeError
-                ),
-                msg="Failed to fetch VMS task", default=False)(is_task_started)
-
-        task = wait(start_timeout, lambda: is_task_started(task), sleep=sleep, message=f"No such task found: {task}")
-        task_id = task.id
-        timeout = task.timeout_in_seconds + 10  # add a grace period
-        return wait(timeout, lambda: is_task_complete(task_id), sleep=sleep, message=False)
+    def wait_task(
+        self, task, latest=False, start_timeout=0, verbose=True, sleep=None, retry_key=None,
+    ):
+        return _wait_task(
+            self, task,
+            latest=latest,
+            start_timeout=start_timeout,
+            verbose=verbose,
+            sleep=sleep,
+            retry_key=retry_key,
+        )
