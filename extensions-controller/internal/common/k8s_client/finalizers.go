@@ -63,6 +63,8 @@ func (k *K8sClient) EnsureFinalizer(ctx context.Context, obj client.Object, fina
 
 // RemoveFinalizer removes a finalizer from a resource if it exists and updates it.
 // Uses controllerutil.RemoveFinalizer for consistency with standard Kubernetes patterns.
+// NotFound is treated as success: if the object is already gone the finalizer
+// is effectively removed (common when two reconciles race on deletion).
 func (k *K8sClient) RemoveFinalizer(ctx context.Context, obj client.Object, finalizer string) error {
 	if controllerutil.RemoveFinalizer(obj, finalizer) {
 		k.logger.Info("removing finalizer from resource",
@@ -70,7 +72,9 @@ func (k *K8sClient) RemoveFinalizer(ctx context.Context, obj client.Object, fina
 			zap.String("name", obj.GetName()),
 			zap.String("namespace", obj.GetNamespace()),
 			zap.String("finalizer", finalizer))
-		return k.updateFinalizerWithRetry(ctx, obj)
+		if err := k.updateFinalizerWithRetry(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
 	}
 	return nil
 }
@@ -95,7 +99,7 @@ func (k *K8sClient) updateFinalizerWithRetry(ctx context.Context, obj client.Obj
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		return k.finalizerRetryOnConflictFunc(ctx, obj)
 	})
-	if err != nil {
+	if err != nil && !apierrors.IsNotFound(err) {
 		k.logger.Error("failed to update finalizer on resource",
 			zap.Error(err),
 			zap.String("kind", obj.GetObjectKind().GroupVersionKind().Kind),

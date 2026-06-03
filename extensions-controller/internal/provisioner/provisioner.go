@@ -57,7 +57,6 @@ type Interface interface {
 
 	// CleanVolumeCb performs VAST-object cleanup for this VRC's own cluster.
 	CleanVolumeCb(context.Context, *vastv1alpha1.VastReplicationContent, *vast_client.TypedVMSRest, *storagev1.StorageClass) error
-
 }
 
 // VolumeMapper provides lazy, cached access to the set of VAST volumes
