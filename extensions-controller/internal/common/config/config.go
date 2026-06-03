@@ -69,6 +69,8 @@ type Config struct {
 	// DevLogging enables human-readable console logging instead of JSON.
 	// Use during development / debugging; leave false in production.
 	DevLogging bool
+	// MaxConcurrentReconciles is the worker count per controller-runtime controller.
+	MaxConcurrentReconciles int
 }
 
 // Display prints the configuration in an aligned key-value format.

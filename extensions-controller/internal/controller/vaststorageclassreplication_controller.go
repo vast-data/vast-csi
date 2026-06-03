@@ -36,7 +36,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	cerrors "github.com/vast-data/vast-csi/extensions-controller/internal/common/errors"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/ppathdir"
@@ -884,7 +883,7 @@ func SetupVastStorageClassReplicationController(
 	r := &VastStorageClassReplicationReconciler{BaseReconciler: base}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		WithOptions(controller.Options{MaxConcurrentReconciles: 5}).
+		WithOptions(controllerOptions(cfg)).
 		For(&vastv1alpha1.VastStorageClassReplication{}).
 		Owns(&replicationv1alpha1.VolumeGroupReplication{},
 			builder.WithPredicates(ownedVGRPredicate())).

@@ -426,7 +426,9 @@ func SetupVastReplicationContentController(mgr ctrl.Manager, k8sClient *k8sclien
 	r := &VastReplicationContentReconciler{BaseReconciler: base}
 
 	return ctrl.NewControllerManagedBy(mgr).
+		WithOptions(controllerOptions(cfg)).
 		For(&vastv1alpha1.VastReplicationContent{}, builder.WithPredicates(VastReplicationContentPredicate())).
+		Named("vastreplicationcontent").
 		Complete(r)
 }
 

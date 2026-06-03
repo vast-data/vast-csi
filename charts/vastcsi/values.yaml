@@ -192,7 +192,9 @@ extensions:
   enabled: false
   # devLogging enables human-readable console logging (colored levels, caller, ISO-8601 timestamps)
   devLogging: true
-  
+  # maxConcurrentReconciles is the worker count per controller-runtime controller.
+  maxConcurrentReconciles: 5
+
   # PVC Label Injection Webhook
   # Admission webhooks served by the extension controller.
   # All webhook handlers share one HTTPS server (same port and TLS certificate).

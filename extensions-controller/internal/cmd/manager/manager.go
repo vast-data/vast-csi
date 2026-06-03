@@ -86,6 +86,8 @@ func RegisterFlags(c *cobra.Command, cfg *config.Config) {
 		"If set, HTTP/2 will be enabled for the servers.")
 	c.PersistentFlags().BoolVar(&cfg.DevLogging, "dev-logging", false,
 		"If set, use human-readable console logging (timestamps, caller, coloured levels) instead of JSON production logs.")
+	c.PersistentFlags().IntVar(&cfg.MaxConcurrentReconciles, "max-concurrent-reconciles", 5,
+		"Maximum parallel reconcile workers per controller.")
 }
 
 // NewSharedManager creates a new SharedManager instance.
