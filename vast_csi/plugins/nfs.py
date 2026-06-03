@@ -16,15 +16,10 @@
 import os
 from datetime import datetime
 from tempfile import mkdtemp
-from contextlib import nullcontext
-
 from json import JSONDecodeError
-from plumbum import cmd
-from plumbum import local, ProcessExecutionError
-from plumbum.commands.processes import ProcessTimedOut
+from plumbum import local
 import grpc
 
-from easypy.timing import timing
 from easypy.tokens import CONTROLLER_AND_NODE, CONTROLLER, NODE
 from easypy.caching import cached_property
 from easypy.humanize import yesno_to_bool
@@ -39,9 +34,8 @@ from vast_csi.utils import (
     wrap_ipv6,
     string_to_static_uuid,
     path_exists,
-    run_with_timeout,
 )
-from vast_csi.filesystem_utils import resource_locked
+from vast_csi.filesystem_utils import resource_locked, mount as _mount, umount as _umount
 from vast_csi.proto import csi_pb2_grpc as csi_grpc
 from vast_csi import csi_types as types
 from vast_csi.csi_types import (
@@ -64,7 +58,6 @@ from vast_csi.builders import (
 from vast_csi.exceptions import (
     Abort,
     ApiError,
-    MountFailed,
     VolumeAlreadyExists,
     SourceNotFound,
     OperationNotSupported,
@@ -94,96 +87,28 @@ ServiceCapabilities = cap_lib.ServiceCapabilities(
 
 
 def mount(src, tgt, flags="", metrics_registry=None):
-    """
-    Mount NFS volume with auto-instrumented metrics.
-
-    Args:
-        src: Source path (NFS export)
-        tgt: Target path (mount point)
-        flags: Mount options
-        metrics_registry: Optional MetricsRegistry instance
-    """
-    executable = cmd.mount
-    flags = [f.strip() for f in flags.split(",")]
+    flags_list = [f.strip() for f in flags.split(",") if f.strip()]
     if CONF.mock_vast:
-        flags += "port=2049,nolock,vers=3".split(",")
-    flags = list(filter(None, flags))
-    if flags:
-        executable = executable["-o", ",".join(flags)]
-    timeout = CONF.mount_umount_timeout
-    flags_str = ",".join(flags) if flags else "(none)"
-    logger.info(f"Mounting {src!r} -> {tgt!r} with flags: {flags_str}, timeout: {timeout}s")
-    
-    if metrics_registry:
-        metrics_manager = metrics_registry.mount("nfs")
-    else:
-        metrics_manager = nullcontext()
-
-    try:
-        with (
-            metrics_manager,
-            timing() as timer,
-        ):
-            executable['-v', src, tgt].run(timeout=timeout)
-    except ProcessTimedOut:
-        raise MountFailed(detail=f"mount timed out after {timeout}s", src=src, tgt=tgt, mount_options=flags)
-    except ProcessExecutionError as exc:
-        raise MountFailed(detail=exc.stderr, src=src, tgt=tgt, mount_options=flags)
-    
-    logger.info(f"Mount succeeded in {timer.elapsed}: {src!r} -> {tgt!r}")
+        flags_list += "port=2049,nolock,vers=3".split(",")
+    return _mount(
+        src,
+        tgt,
+        flags=flags_list,
+        metrics_registry=metrics_registry,
+        metrics_operation="nfs",
+        timeout=CONF.mount_umount_timeout,
+    )
 
 
 def umount(path, ignore_not_mounted=False, lazy=False, metrics_registry=None):
-    """
-    Unmount volume with auto-instrumented metrics.
-
-    Args:
-        path: Path to unmount
-        ignore_not_mounted: If True, ignore "not mounted" errors
-        lazy: If True, pass -l (lazy unmount — detach from VFS immediately,
-              clean up references when the path is no longer busy)
-        metrics_registry: Optional MetricsRegistry instance (injected by framework if metrics enabled)
-
-    Returns:
-        True if unmounted, False if not mounted (when ignore_not_mounted=True)
-    """
-    timeout = CONF.mount_umount_timeout
-    logger.info(f"Unmounting {path!r} with timeout: {timeout}s")
-
-    def do_umount():
-        flags = ['-v']
-        if lazy:
-            flags.append('-l')
-        return cmd.umount[flags + [path]].run()
-
-    if metrics_registry:
-        metrics_manager = metrics_registry.umount("nfs")
-    else:
-        metrics_manager = nullcontext()
-
-    try:
-        with (
-            metrics_manager,
-            timing() as timer,
-        ):
-            if timeout:
-                run_with_timeout(do_umount, timeout)
-            else:
-                do_umount()
-    except (TimeoutError, ProcessTimedOut):
-        raise UmountTimedOut(f"umount timed out after {timeout}s for path: {path}")
-    except ProcessExecutionError as exc:
-        # Handle "not mounted" without recording metrics
-        if "not mounted" in exc.stderr:
-            if ignore_not_mounted:
-                logger.info(f"Umount: {path!r} is not mounted (ignored)")
-                return False
-            logger.warning(f"Umount failed - {path!r} is not mounted (race?)")
-            return False
-        raise  # Re-raise actual failures
-
-    logger.info(f"Umount succeeded in {timer.elapsed}: {path!r}")
-    return True
+    return _umount(
+        path,
+        ignore_not_mounted=ignore_not_mounted,
+        lazy=lazy,
+        metrics_registry=metrics_registry,
+        metrics_operation="nfs",
+        timeout=CONF.mount_umount_timeout,
+    )
 
 
 
