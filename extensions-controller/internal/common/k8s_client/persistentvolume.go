@@ -96,3 +96,15 @@ func (k *K8sClient) EnsurePV(ctx context.Context, pv *corev1.PersistentVolume) (
 	}
 	return true, nil
 }
+
+// PatchPVLabels persists the in-memory label map of pv back to the API server
+// using a merge patch, retrying on optimistic-lock conflicts.
+func (k *K8sClient) PatchPVLabels(ctx context.Context, pv *corev1.PersistentVolume) error {
+	desiredLabels := pv.GetLabels()
+	if err := k.PatchWithRetry(ctx, pv, func() {
+		pv.SetLabels(desiredLabels)
+	}); err != nil {
+		return fmt.Errorf("failed to patch labels on PV %s: %w", pv.Name, err)
+	}
+	return nil
+}
