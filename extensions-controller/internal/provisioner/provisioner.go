@@ -47,8 +47,6 @@ type Interface interface {
 	// constellation VRCs.  Before failover only the primary's own cluster has
 	// non-managed PVCs.  After failover the old primary's VRC carries the
 	// source PVCs and the new primary mirrors them onto itself.
-	//
-	// Secondary VRC: exits immediately (no-op).
 	ProvisionVolumes(ctx context.Context) error
 
 	// ProvisionVolumeCb performs the VAST-object sync for this VRC's own cluster.

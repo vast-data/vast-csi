@@ -295,10 +295,7 @@ func (b *baseProvisioner) ProvisionVolumes(ctx context.Context) error {
 	b.toDelete = toDelete
 
 	// Sync VAST objects (views/quotas, block volumes) on own cluster.
-	// Primary VRCs create source objects; secondary VSCR VRCs create destination
-	// objects (e.g. NFS views without CreateDir so the replicated directory is
-	// exported).  Secondary VVR VRCs are skipped — csi-addons manages them.
-	if isPrimary || isVolumeGroupReplication {
+	{
 		b.logger.Info("syncing VAST objects",
 			zap.String("vrc", b.rp.Namespace+"/"+b.rp.Name),
 			zap.String("storageClass", b.rp.Spec.StorageClass),
