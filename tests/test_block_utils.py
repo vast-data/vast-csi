@@ -1,9 +1,16 @@
 import json
 from unittest.mock import patch, MagicMock
 import pytest
+from plumbum import local
+from plumbum.commands.processes import ProcessExecutionError, ProcessTimedOut
 from easypy.bunch import bunchify
 from easypy.collections import listify
-from vast_csi.block_utils import get_connected_session, get_hostnqn_from_sysfs
+from vast_csi.block_utils import (
+    get_connected_session,
+    get_hostnqn_from_sysfs,
+    verify_device_quiesced,
+)
+from vast_csi.exceptions import DeviceNotQuiesced
 
 ver_2x_nvme_out = [
     {
@@ -313,3 +320,159 @@ def test_get_connected_session_multiple_sessions_different_hostnqn():
             host_nqn=host_nqn_1
         )
         assert session is None, "Should NOT find non-existent subsystem"
+
+
+def _make_fake_sysfs(tmp_path, device_name, *, inflight="0 0", holders=()):
+    """Build a /sys/block/<dev> stand-in under tmp_path.
+
+    Returns the local.path object to be patched in as BLOCK_DEVICE_INFO_PATH.
+    """
+    sys_block_root = local.path(str(tmp_path / "sys" / "block"))
+    sys_block_root.mkdir()
+    dev_dir = sys_block_root / device_name
+    dev_dir.mkdir()
+    (dev_dir / "inflight").write(inflight)
+    holders_dir = dev_dir / "holders"
+    holders_dir.mkdir()
+    for h in holders:
+        (holders_dir / h).write("")
+    return sys_block_root
+
+
+@pytest.fixture
+def fake_blockdev_cmd():
+    """Patch cmd.blockdev with a MagicMock supporting cmd.blockdev[...].run(timeout=...)."""
+    mock_blockdev = MagicMock()
+    mock_blockdev.__getitem__ = MagicMock(return_value=mock_blockdev)
+    mock_blockdev.run = MagicMock(return_value=None)
+    with patch("vast_csi.block_utils.cmd") as mock_cmd:
+        mock_cmd.blockdev = mock_blockdev
+        yield mock_blockdev
+
+
+class TestVerifyDeviceQuiesced:
+    """Cover all failure paths of verify_device_quiesced."""
+
+    def test_idle_device_passes(self, tmp_path, fake_blockdev_cmd):
+        sys_block = _make_fake_sysfs(tmp_path, "nvme3n40", inflight="0 0", holders=())
+        with patch("vast_csi.block_utils.BLOCK_DEVICE_INFO_PATH", sys_block):
+            verify_device_quiesced("/dev/nvme3n40", timeout_s=1)
+        fake_blockdev_cmd.__getitem__.assert_called_with(("--flushbufs", "/dev/nvme3n40"))
+        fake_blockdev_cmd.run.assert_called_once()
+
+    def test_raises_when_holders_present(self, tmp_path, fake_blockdev_cmd):
+        sys_block = _make_fake_sysfs(tmp_path, "nvme3n40", holders=("dm-7",))
+        with patch("vast_csi.block_utils.BLOCK_DEVICE_INFO_PATH", sys_block):
+            with pytest.raises(DeviceNotQuiesced) as exc:
+                verify_device_quiesced("/dev/nvme3n40", timeout_s=1)
+        assert "holders" in str(exc.value)
+        assert "dm-7" in str(exc.value)
+        # When holders fails we must not even attempt flushbufs.
+        fake_blockdev_cmd.run.assert_not_called()
+
+    def test_raises_when_flushbufs_times_out(self, tmp_path, fake_blockdev_cmd):
+        sys_block = _make_fake_sysfs(tmp_path, "nvme3n40")
+        fake_blockdev_cmd.run.side_effect = ProcessTimedOut("hang", ["blockdev"])
+        with patch("vast_csi.block_utils.BLOCK_DEVICE_INFO_PATH", sys_block):
+            with pytest.raises(DeviceNotQuiesced) as exc:
+                verify_device_quiesced("/dev/nvme3n40", timeout_s=1)
+        assert "flushbufs" in str(exc.value)
+
+    def test_raises_when_flushbufs_errors(self, tmp_path, fake_blockdev_cmd):
+        sys_block = _make_fake_sysfs(tmp_path, "nvme3n40")
+        fake_blockdev_cmd.run.side_effect = ProcessExecutionError(
+            ["blockdev"], 1, "", "I/O error"
+        )
+        with patch("vast_csi.block_utils.BLOCK_DEVICE_INFO_PATH", sys_block):
+            with pytest.raises(DeviceNotQuiesced) as exc:
+                verify_device_quiesced("/dev/nvme3n40", timeout_s=1)
+        assert "flushbufs" in str(exc.value)
+
+    def test_raises_when_inflight_never_drains(self, tmp_path, fake_blockdev_cmd):
+        sys_block = _make_fake_sysfs(tmp_path, "nvme3n40", inflight="5 12")
+        with patch("vast_csi.block_utils.BLOCK_DEVICE_INFO_PATH", sys_block):
+            with pytest.raises(DeviceNotQuiesced) as exc:
+                # timeout_s=0 makes the poll loop exit immediately.
+                verify_device_quiesced("/dev/nvme3n40", timeout_s=0)
+        msg = str(exc.value)
+        assert "inflight" in msg
+        assert "reads=5" in msg
+        assert "writes=12" in msg
+
+    def test_skips_when_no_sysfs_entry(self, tmp_path, fake_blockdev_cmd):
+        # If the resolved basename has no /sys/block/<name> entry (e.g., a
+        # partition like nvme0n1p1 which lives under its parent's directory,
+        # or a device already torn down), treat as out-of-scope and skip.
+        sys_block = _make_fake_sysfs(tmp_path, "nvme3n40")
+        with patch("vast_csi.block_utils.BLOCK_DEVICE_INFO_PATH", sys_block):
+            verify_device_quiesced("/dev/nvme0n1p1", timeout_s=1)  # must not raise
+        fake_blockdev_cmd.run.assert_not_called()
+
+    def test_resolves_luks_symlink_to_dm_device(self, tmp_path, fake_blockdev_cmd):
+        # LUKS volumes stage from /dev/mapper/luks-<uuid>, which is a symlink
+        # to /dev/dm-N. The check must resolve the symlink and operate on the
+        # dm-N node so dm-crypt's sysfs counters are read and blockdev runs
+        # against the resolved path.
+        import os as _os
+        sys_block = _make_fake_sysfs(tmp_path, "dm-7", inflight="0 0", holders=())
+        # Build fake /dev/mapper/luks-xxx -> /dev/dm-7
+        dev_dir = tmp_path / "dev"
+        dev_dir.mkdir()
+        (dev_dir / "dm-7").write_text("")  # target must exist for realpath
+        mapper_dir = dev_dir / "mapper"
+        mapper_dir.mkdir()
+        luks_link = mapper_dir / "luks-abcd-1234"
+        _os.symlink(str(dev_dir / "dm-7"), str(luks_link))
+
+        with patch("vast_csi.block_utils.BLOCK_DEVICE_INFO_PATH", sys_block):
+            verify_device_quiesced(str(luks_link), timeout_s=1)
+
+        # blockdev must be invoked against the RESOLVED path, not the symlink.
+        fake_blockdev_cmd.__getitem__.assert_called_with(
+            ("--flushbufs", str(dev_dir / "dm-7"))
+        )
+        fake_blockdev_cmd.run.assert_called_once()
+
+    def test_raises_when_luks_dm_has_inflight(self, tmp_path, fake_blockdev_cmd):
+        # Storm scenario on an encrypted volume: dm-N still has inflight I/O.
+        # Must raise just like the unencrypted case.
+        import os as _os
+        sys_block = _make_fake_sysfs(tmp_path, "dm-7", inflight="2 9", holders=())
+        dev_dir = tmp_path / "dev"
+        dev_dir.mkdir()
+        (dev_dir / "dm-7").write_text("")
+        mapper_dir = dev_dir / "mapper"
+        mapper_dir.mkdir()
+        luks_link = mapper_dir / "luks-abcd-1234"
+        _os.symlink(str(dev_dir / "dm-7"), str(luks_link))
+
+        with patch("vast_csi.block_utils.BLOCK_DEVICE_INFO_PATH", sys_block):
+            with pytest.raises(DeviceNotQuiesced) as exc:
+                verify_device_quiesced(str(luks_link), timeout_s=0)
+        msg = str(exc.value)
+        assert "dm-7" in msg
+        assert "reads=2" in msg and "writes=9" in msg
+
+    def test_skips_drain_when_inflight_unreadable(self, tmp_path, fake_blockdev_cmd):
+        # Regression: _read_inflight returns (-1, -1) when the file is missing
+        # or malformed. The drain loop must treat that as "unknown -> skip",
+        # NOT as "non-zero -> raise". Otherwise default-on quiescence breaks
+        # every unstage on kernels that don't expose /sys/block/<dev>/inflight
+        # in the expected format.
+        sys_block_root = local.path(str(tmp_path / "sys" / "block"))
+        sys_block_root.mkdir()
+        dev_dir = sys_block_root / "nvme3n40"
+        dev_dir.mkdir()
+        (dev_dir / "holders").mkdir()
+        # NOTE: deliberately no "inflight" file -> _read_inflight returns (-1,-1)
+        with patch("vast_csi.block_utils.BLOCK_DEVICE_INFO_PATH", sys_block_root):
+            verify_device_quiesced("/dev/nvme3n40", timeout_s=1)  # must not raise
+        fake_blockdev_cmd.run.assert_called_once()
+
+    def test_skips_when_sys_block_missing(self, tmp_path, fake_blockdev_cmd):
+        # Device gone from sysfs (already cleaned up) -- best-effort skip.
+        empty_sys_block = local.path(str(tmp_path / "empty"))
+        empty_sys_block.mkdir()
+        with patch("vast_csi.block_utils.BLOCK_DEVICE_INFO_PATH", empty_sys_block):
+            verify_device_quiesced("/dev/nvme3n40", timeout_s=1)  # must not raise
+        fake_blockdev_cmd.run.assert_not_called()
