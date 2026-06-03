@@ -14,10 +14,8 @@
 #    under the License.
 import os.path
 from contextlib import contextmanager, nullcontext
-from tempfile import TemporaryDirectory
 
 from plumbum import local, cmd, ProcessExecutionError
-from plumbum.commands.processes import ProcessTimedOut
 import grpc
 
 from easypy.timing import timing
@@ -44,9 +42,7 @@ from vast_csi.exceptions import (
     Abort,
     VolumeAlreadyExists,
     SourceNotFound,
-    MountFailed,
     NVMEConnectionFailed,
-    UmountTimedOut,
 )
 from vast_csi.block_utils import (
     connect_nvme_targets,
@@ -76,8 +72,11 @@ from vast_csi.filesystem_utils import (
     resize_device,
     get_device_size,
     check_fs_integrity,
-    run_with_timeout,
     resource_locked,
+    mount as _mount,
+    umount as _umount,
+    temporary_mount as _temporary_mount,
+    umount_safe as _umount_safe,
 )
 from vast_csi.configuration import Config
 import vast_csi.capabilities as cap_lib
@@ -156,163 +155,50 @@ def nvme_connect(host_nqn, discovery_server, host_id, subsystem_nqn, metrics_reg
 
 
 def mount(src, tgt, flags=None, bind=False, fs_type=None, metrics_registry=None, enforce_ro=False):
-    """
-    Mount block device with auto-instrumented metrics.
-
-    Args:
-        src (str): The source path to be mounted (e.g., a device or directory).
-        tgt (str): The target path where the source will be mounted.
-        flags (list, optional): Additional mount options (e.g., 'ro', 'noexec') to be passed with the -o flag.
-        bind (bool, optional): If True, the mount is performed as a bind mount using the --bind option.
-        fs_type (str, optional): The filesystem type to be used for the mount (e.g., 'ext4', 'xfs').
-        metrics_registry: Optional MetricsRegistry instance (injected by framework if metrics enabled)
-        enforce_ro (bool): If True on a bind mount, ensure 'ro' is in flags and issue a remount,ro
-            after the initial bind to actually enforce read-only (the kernel ignores 'ro' on the bind
-            syscall itself). Use for filesystem staging mounts.
-    """
-    flags = list(flags) if flags else []
-    if enforce_ro and "ro" not in flags:
-        flags.append("ro")
-
-    # remount,ro is only needed for bind mounts — the kernel ignores 'ro' on the bind syscall itself.
-    # For fs_type mounts the kernel enforces 'ro' natively via the mount options.
-    need_ro_remount = enforce_ro and bind
-
-    if bind:
-        bind_flags = [f for f in flags if f != "ro"]
-        executable = cmd.mount["--bind"]
-        if bind_flags:
-            executable = executable["-o", ",".join(bind_flags)]
-    elif fs_type:
-        executable = cmd.mount["-t", fs_type]
-        if flags:
-            executable = executable["-o", ",".join(flags)]
-    else:
-        executable = cmd.mount
-        if flags:
-            executable = executable["-o", ",".join(flags)]
-
-    timeout = CONF.mount_umount_timeout
-    flags_str = ",".join(flags) if flags else "(none)"
-    mount_type = "bind" if bind else (f"fs_type={fs_type}" if fs_type else "default")
-    logger.info(f"Mounting {src!r} -> {tgt!r} ({mount_type}) with flags: {flags_str}")
-
-    if metrics_registry:
-        metrics_manager = metrics_registry.mount("block_mount")
-    else:
-        metrics_manager = nullcontext()
-
-    try:
-        with (
-            metrics_manager,
-            timing() as timer,
-        ):
-            executable['-v', src, tgt].run(timeout=timeout)
-            if need_ro_remount:
-                # A second remount is required to actually enforce read-only on bind mounts.
-                # The kernel ignores 'ro' on the initial --bind call.
-                logger.info(f"Remounting {tgt!r} as read-only")
-                cmd.mount["-o", "remount,ro", tgt].run(timeout=timeout)
-    except ProcessTimedOut:
-        raise MountFailed(detail=f"mount timed out after {timeout}s", src=src, tgt=tgt, mount_options=flags)
-    except ProcessExecutionError as exc:
-        raise MountFailed(detail=exc.stderr, src=src, tgt=tgt, mount_options=flags)
-
-    logger.info(f"Mount succeeded in {timer.elapsed}: {src!r} -> {tgt!r}")
+    return _mount(
+        src,
+        tgt,
+        flags=flags,
+        bind=bind,
+        fs_type=fs_type,
+        enforce_ro=enforce_ro,
+        metrics_registry=metrics_registry,
+        metrics_operation="block_mount",
+        timeout=CONF.mount_umount_timeout,
+    )
 
 
 def umount(path, ignore_not_mounted=False, lazy=False, metrics_registry=None):
-    """
-    Unmount block device with auto-instrumented metrics.
-
-    Args:
-        path: Path to unmount
-        ignore_not_mounted: If True, ignore "not mounted" errors
-        lazy: If True, pass -l (lazy unmount — detach from VFS immediately,
-              clean up references when the path is no longer busy). Use as a
-              fallback when a normal umount times out, e.g. after failover on
-              a read-only filesystem.
-        metrics_registry: Optional MetricsRegistry instance
-
-    Returns:
-        True if unmounted, False if not mounted
-    """
-    timeout = CONF.mount_umount_timeout
-    logger.info(f"Unmounting {path!r} with timeout: {timeout}s")
-
-    def do_umount():
-        flags = ['-v']
-        if lazy:
-            flags.append('-l')
-        return cmd.umount[flags + [path]].run()
-
-
-    if metrics_registry:
-        metrics_manager = metrics_registry.umount("block_mount")
-    else:
-        metrics_manager = nullcontext()
-
-    try:
-        with (
-            metrics_manager,
-            timing() as timer,
-        ):
-            if timeout:
-                run_with_timeout(do_umount, timeout)
-            else:
-                do_umount()
-    except (TimeoutError, ProcessTimedOut):
-        raise UmountTimedOut(f"umount timed out after {timeout}s for path: {path}")
-    except ProcessExecutionError as exc:
-        if "not mounted" in exc.stderr:
-            if ignore_not_mounted:
-                logger.info(f"Umount: {path!r} is not mounted (ignored)")
-                return False
-            logger.warning(f"Umount failed - {path!r} is not mounted (race?)")
-            return False
-        raise
-
-    logger.info(f"Umount succeeded in {timer.elapsed}: {path!r}")
-    return True
+    return _umount(
+        path,
+        ignore_not_mounted=ignore_not_mounted,
+        lazy=lazy,
+        metrics_registry=metrics_registry,
+        metrics_operation="block_mount",
+        timeout=CONF.mount_umount_timeout,
+    )
 
 
 @contextmanager
-def temporary_mount(src, tgt_dir, fs_type):
-    """
-    Creates a temporary mount for the given source and target directory.
-    Primary usage of this context manager is to resize
-    the XFS filesystem because it requires the filesystem to be mounted.
-    Note: attempts to resize XFS fs on source device lead to error:
-     /dev/device is not a mounted XFS filesystem
-
-    Args:
-        src (str): The source path to be mounted (e.g., a device or directory).
-        tgt_dir (str): The target directory where the source will be temporarily mounted.
-        fs_type (str, optional): The filesystem type to be used for the mount (e.g., 'xfs').
-    """
-    # Create a temporary directory within the target directory
-    with TemporaryDirectory(dir=tgt_dir) as temp_mount_point:
-        bind = False if fs_type == "xfs" else True
-        if bind:
-            # Create tmp file for bind mount. It will be deleted on context exit.
-            temp_mount_point = os.path.join(temp_mount_point, "device")
-            open(temp_mount_point, "a").close()
-        # Perform the mount
-        mount(src=src, tgt=temp_mount_point, bind=bind, fs_type=fs_type)
-        try:
-            yield temp_mount_point
-        finally:
-            umount(temp_mount_point, ignore_not_mounted=True)
+def temporary_mount(src, tgt_dir, fs_type, readonly=False):
+    with _temporary_mount(
+        src,
+        tgt_dir,
+        fs_type,
+        readonly=readonly,
+        timeout=CONF.mount_umount_timeout,
+    ) as temp_mount_point:
+        yield temp_mount_point
 
 
 def umount_safe(path, metrics_registry=None):
-    """Unmounts a path, ignoring 'not mounted' errors. Falls back to lazy
-    unmount (-l) if the normal umount times out."""
-    try:
-        umount(path, ignore_not_mounted=True, metrics_registry=metrics_registry)
-    except UmountTimedOut:
-        logger.warning(f"umount timed out for {path}, retrying with lazy unmount (-l).")
-        umount(path, lazy=True, ignore_not_mounted=True, metrics_registry=metrics_registry)
+    return _umount_safe(
+        path,
+        metrics_registry=metrics_registry,
+        metrics_operation="block_mount",
+        timeout=CONF.mount_umount_timeout,
+    )
+
 
 def remove_path_if_not_mounted(path):
     path = local.path(path)
@@ -744,12 +630,21 @@ class BlockNode(NodeBase, Instrumented):
                 formatted = format_device(requested_fs=fs_type, device=device_path)
             if formatted:
                 logger.info(f"Device {device_path} formatted successfully in {timer.elapsed:.2f}s")
-            # - check fs integrity only if:
-            #   - device is not formatted. Can be if pvc is cloned from snapshot/volume or re-attached.
-            #   - fs_type is not xfs. xfs does not require fsck.
-            elif not fs_type == "xfs":
-                check_fs_integrity(device=device_path)
-                logger.info(f"Filesystem integrity check completed for {device_path}")
+
+            try:
+                check_fs_integrity(
+                    device_path,
+                    fs_type,
+                    mount_timeout=CONF.mount_umount_timeout,
+                    run_repair=not formatted,
+                )
+            except Exception as exc:
+                raise Abort(
+                    FAILED_PRECONDITION,
+                    f"Filesystem integrity check failed for {device_path}: {exc}",
+                )
+            logger.info(f"Filesystem integrity check completed for {device_path}")
+
             # The source PVC may have a different size but was never attached and, therefore, never formatted.
             # In this case, the cloned PVC will be formatted as if it were a brand-new PVC,
             # eliminating the need for resizing.
