@@ -40,6 +40,7 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // VolumePair is a bound PVC together with its PV, pre-fetched to avoid
@@ -772,13 +773,60 @@ func (b *baseProvisioner) ensureMirrorPVCPV(
 	return created, nil
 }
 
+// mirrorReplicationLabelKeys are labels stamped on mirror PVC/PV at creation.
+// Stripped on Retain detach so the volume is no longer part of the replication graph.
+var mirrorReplicationLabelKeys = []string{
+	common.LabelManagedBy,
+	common.LabelSourcePVC,
+	common.LabelSourcePVCNamespace,
+	common.LabelStorageClass,
+	common.LabelSourceVSCR,
+	common.LabelSourceVVR,
+}
+
+func stripMirrorReplicationLabels(k8s *k8s_client.K8sClient, obj client.Object) {
+	for _, key := range mirrorReplicationLabelKeys {
+		k8s.RemoveLabel(obj, key)
+	}
+}
+
+// detachMirrorFromReplication releases a retained mirror from extensions management:
+// removes pvc-protection and clears replication labels on the PVC and its bound PV.
+func (b *baseProvisioner) detachMirrorFromReplication(
+	ctx context.Context,
+	pvc *corev1.PersistentVolumeClaim,
+) error {
+	pv, err := b.managedPVForPVC(ctx, pvc)
+	if err != nil {
+		return err
+	}
+
+	if err := b.k8sClient.RemoveFinalizer(ctx, pvc, common.FinalizerPVC); err != nil {
+		return fmt.Errorf("remove finalizer on mirror PVC %s/%s: %w", pvc.Namespace, pvc.Name, err)
+	}
+
+	stripMirrorReplicationLabels(b.k8sClient, pvc)
+	if err := b.k8sClient.PatchPVCLabels(ctx, pvc); err != nil {
+		return fmt.Errorf("strip replication labels on mirror PVC %s/%s: %w", pvc.Namespace, pvc.Name, err)
+	}
+
+	if pv == nil {
+		return nil
+	}
+	stripMirrorReplicationLabels(b.k8sClient, pv)
+	if err := b.k8sClient.PatchPVLabels(ctx, pv); err != nil {
+		return fmt.Errorf("strip replication labels on mirror PV %s: %w", pv.Name, err)
+	}
+	return nil
+}
+
 // cleanReplicaMirrorOrphans removes or releases mirrored PVCs+PVs in StorageClass that
 // were created by this VRC but whose source PVC is no longer in currentSourcePVCNames.
 // Passing nil or empty removes ALL mirrors owned by this VRC for the given peer.
 //
 // Parent VSCR/VVR spec.destVolReclaimPolicy controls what happens to the objects:
 //   - Delete: clear all finalizers and delete the PVC/PV objects.
-//   - Retain: only remove vastdata.com/pvc-protection finalizer.
+//   - Retain: remove vastdata.com/pvc-protection and strip replication labels on PVC+PV.
 func (b *baseProvisioner) cleanReplicaMirrorOrphans(
 	ctx context.Context,
 	vrc *vastv1alpha1.VastReplicationContent,
@@ -811,12 +859,11 @@ func (b *baseProvisioner) cleanReplicaMirrorOrphans(
 		}
 
 		if retain {
-			// Retain: release our hold on the PVC but leave the object alive.
-			b.logger.Info("releasing orphaned mirror PVC (retain policy)",
+			b.logger.Info("detaching orphaned mirror PVC from replication (retain policy)",
 				zap.String("mirrorPVC", pvc.Name),
 				zap.String("sourcePVC", sourcePVCName))
-			if err := b.k8sClient.RemoveFinalizer(ctx, pvc, common.FinalizerPVC); err != nil {
-				errs.Add(fmt.Errorf("release orphaned mirror PVC %s: remove finalizer: %w", pvc.Name, err))
+			if err := b.detachMirrorFromReplication(ctx, pvc); err != nil {
+				errs.Add(fmt.Errorf("detach orphaned mirror PVC %s: %w", pvc.Name, err))
 			}
 			continue
 		}
