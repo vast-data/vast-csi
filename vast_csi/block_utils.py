@@ -313,6 +313,32 @@ def disable_nvme_timeout(subsystem):
             logger.warning(f"ctrl_loss_tmo not found for controller {ctrl_name!r}")
 
 
+def enable_passthru_err_log(device_name, subsystem):
+    """
+    Enable NVMe passthrough error logging for a specific device and its subsystem controllers.
+
+    Args:
+        device_name (str): NVMe namespace name (e.g. 'nvme0n1').
+        subsystem: Subsystem object with Paths containing controller names.
+    """
+    def _write_flag(path):
+        flag = path / "passthru_err_log_enabled"
+        if flag.exists():
+            try:
+                with flag.open("w") as f:
+                    f.write("1")
+            except Exception as e:
+                logger.warning(f"Failed to enable passthru_err_log for {path.name}: {e}")
+
+    _write_flag(BLOCK_DEVICE_INFO_PATH / device_name)
+
+    if not subsystem.Paths:
+        logger.warning(f"Subsystem {subsystem.Name} has no paths, skipping passthru_err_log for controllers")
+        return
+    for path in subsystem.Paths:
+        _write_flag(NVME_CLASS_PATH / path.Name)
+
+
 def set_block_device_readonly(device_path):
     """Set a block device read-only at the kernel level using blockdev --setro."""
     cmd.blockdev["--setro", device_path].run()
