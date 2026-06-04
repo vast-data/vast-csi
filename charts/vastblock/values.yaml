@@ -56,17 +56,6 @@ resolveMountSymlinks: false
 # to enforce read-only semantics at the OS level.
 # Default: false (ROX is disabled for block filesystem volumes)
 allowROManyBlockFsMode: false
-# When enabled, before unmounting in NodeUnstageVolume the
-# driver verifies the underlying NVMe block device is idle: no stacked holders,
-# `blockdev --flushbufs` succeeds, and /sys/block/<dev>/inflight drains to 0/0.
-# If the device is not quiesced (e.g., during an NVMe-oF path storm) the RPC
-# returns FAILED_PRECONDITION so kubelet retries, preventing a premature handoff
-# to another node that could surface as filesystem corruption.
-# Default: true. Set to false to disable the check (escape hatch).
-unstageVerifyDeviceIdle: true
-# Timeout (seconds) for the quiescence check above: caps both the
-# `blockdev --flushbufs` call and the inflight-drain wait.
-unstageVerifyTimeout: 10
 
 ####################
 # VAST CSI STORAGE CLASS OPTIONS
