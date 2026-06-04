@@ -51,6 +51,7 @@ from vast_csi.block_utils import (
     try_nvme_probes,
     change_io_policy,
     disable_nvme_timeout,
+    enable_passthru_err_log,
     is_native_multipath_enabled,
     set_block_device_readonly,
     set_block_device_readwrite,
@@ -561,6 +562,9 @@ class BlockNode(NodeBase, Instrumented):
 
         # Disable NVMe controller timeout to prevent removal on temporary network issues
         disable_nvme_timeout(nvme_session)
+
+        # Enable passthrough error logging for this device and its controllers.
+        enable_passthru_err_log(device_name=device.Name, subsystem=nvme_session)
 
         # Host encryption handling
         if luks_manager.requires_encryption():
