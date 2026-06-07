@@ -780,6 +780,7 @@ class BlockNode(NodeBase, Instrumented):
 
         is_file_system = volume_capabilities.is_filesystem
         fs_type = volume_capabilities.fs_type
+
         if is_file_system:
             logger.info(f"Verifying filesystem type {fs_type} on device...")
             if fs_type != get_filesystem_type(device_bind_path):
@@ -812,17 +813,20 @@ class BlockNode(NodeBase, Instrumented):
 
             # For ROX volumes, blockdev --setro already enforces read-only at the block layer.
             enforce_ro = readonly and not volume_capabilities.ro_mode
-            try:
-                mount(
-                    src=device_bind_path,
-                    tgt=target_path,
-                    flags=mount_flags,
-                    fs_type=fs_type,
-                    enforce_ro=enforce_ro,
-                    metrics_registry=metrics_registry,
-                )
-            except Exception:
-                meta_file.delete()
+            with resource_locked(str(target_path), abort_on_error=True) as lock:
+                lock.set_message(f"Mount already in progress for {target_path!r} — retry later")
+                try:
+                    mount(
+                        src=device_bind_path,
+                        tgt=target_path,
+                        flags=mount_flags,
+                        fs_type=fs_type,
+                        enforce_ro=enforce_ro,
+                        metrics_registry=metrics_registry,
+                    )
+                except Exception:
+                    meta_file.delete()
+                    raise
         else:
             logger.info(
                 f"Block device mode detected. "
@@ -831,14 +835,16 @@ class BlockNode(NodeBase, Instrumented):
             target_path.open("a").close()
             if is_rox_block:
                 cmd.mount["-o", "remount,rw", device_bind_path].run()
-            mount(
-                src=device_bind_path,
-                tgt=target_path,
-                flags=mount_flags,
-                bind=True,
-                enforce_ro=False,
-                metrics_registry=metrics_registry,
-            )
+            with resource_locked(str(target_path), abort_on_error=True) as lock:
+                lock.set_message(f"Mount already in progress for {target_path!r} — retry later")
+                mount(
+                    src=device_bind_path,
+                    tgt=target_path,
+                    flags=mount_flags,
+                    bind=True,
+                    enforce_ro=False,
+                    metrics_registry=metrics_registry,
+                )
 
         logger.info("Verifying mount...")
         if not MountInfo.get_mount_by_destination(
