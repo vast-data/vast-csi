@@ -30,6 +30,7 @@ from vast_csi.csi_types import (
     ALREADY_EXISTS,
     NOT_FOUND,
     FAILED_PRECONDITION,
+    ABORTED,
 )
 from vast_csi.builders import (
     EmptyBlockVolumeBuilder,
@@ -326,10 +327,16 @@ class BlockController(ControllerBase, Instrumented):
             tenant_name=tenant_name,
             subsystem=subsystem,
         )
-        vms_session.blockhostmappings.ensure_map(
-            volume_id=vol_id,
-            host_id=blockhost.id,
-        )
+        if volume_capabilities.multi_mode:
+            vms_session.blockhostmappings.ensure_map(
+                volume_id=vol_id,
+                host_id=blockhost.id,
+            )
+        else:
+            vms_session.blockhostmappings.ensure_map_exclusive(
+                volume_id=vol_id,
+                host_id=blockhost.id,
+            )
         vip_pool_name = volume_context.get("vip_pool_name")
         vip_pool_fqdn = volume_context.get("vip_pool_fqdn")
         if vip_pool_fqdn:
