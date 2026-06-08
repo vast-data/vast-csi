@@ -32,6 +32,7 @@ from vast_csi.csi_types import (
     FAILED_PRECONDITION,
     ABORTED,
     UNKNOWN,
+    INTERNAL,
 )
 from vast_csi.builders import (
     EmptyBlockVolumeBuilder,
@@ -46,6 +47,7 @@ from vast_csi.exceptions import (
     SourceNotFound,
     NVMEConnectionFailed,
     UmountTimedOut,
+    MountFailed,
 )
 from vast_csi.block_utils import (
     connect_nvme_targets,
@@ -820,6 +822,17 @@ class BlockNode(NodeBase, Instrumented):
                         enforce_ro=enforce_ro,
                         metrics_registry=metrics_registry,
                     )
+                except MountFailed as exc:
+                    meta_file.delete()
+                    err_msg = (
+                        f"An unexpected error occurred while attempting to mount"
+                        f" {device_bind_path} to {target_path}."
+                    )
+                    if is_file_system:
+                        err_msg += f" Check if mount options {mount_flags} are correct for chosen filesystem {fs_type}."
+                    if exc.detail:
+                        err_msg += f" Mount error: {exc.detail.strip()}"
+                    raise Abort(INTERNAL, err_msg)
                 except Exception:
                     meta_file.delete()
                     raise
@@ -852,7 +865,7 @@ class BlockNode(NodeBase, Instrumented):
             )
             if is_file_system:
                 err_msg += f" Check if mount options {mount_flags} are correct for chosen filesystem {fs_type}."
-            raise Abort(NOT_FOUND, err_msg)
+            raise Abort(INTERNAL, err_msg)
         return types.NodePublishResp()
 
     def NodeUnpublishVolume(self, volume_id, target_path, luks_manager, vms_session=None, metrics_registry=None):
