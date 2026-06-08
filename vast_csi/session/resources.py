@@ -623,9 +623,14 @@ class Volume(VastResource):
 
     @requisite(semver="5.3.0")
     def delete_by_id(self, _id, **params):
-        """Delete entry by id"""
-        params["params"] =  {"force": True}
-        return super().delete_by_id(_id=_id, **params)
+        """Delete entry by id. Retries with force=True if volume is still mapped to hosts."""
+        try:
+            return super().delete_by_id(_id=_id, **params)
+        except HTTPError as exc:
+            if exc.response.status_code == 400 and "Volume is mapped to hosts" in exc.response.text:
+                logger.warning(f"Volume {_id} is mapped to hosts, retrying delete with force=True.")
+                return super().delete_by_id(_id=_id, params={"force": True}, **params)
+            raise
 
 @apiver.v5
 class BlockHost(VastResource):
