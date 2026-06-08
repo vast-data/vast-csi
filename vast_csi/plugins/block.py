@@ -315,7 +315,7 @@ class BlockController(ControllerBase, Instrumented):
 
         if CONF.block_hosts_auto_prune:
             # Ensure map host operations are atomic based on the composite key (node ID + tenant name).
-            exit_stack.enter_context(resource_locked(f"{node_id}:{tenant_name}"))
+            exit_stack.enter_context(resource_locked(f"{node_id}:{tenant_name}", abort_on_error=True))
         blockhost = vms_session.blockhosts.ensure(
             node_id=f"{CONF.block_hosts_prefix}{node_id}",
             transport_type=transport_type,
@@ -391,7 +391,7 @@ class BlockController(ControllerBase, Instrumented):
                 # A race condition may occur if ControllerUnpublishVolume unmaps the last volume from a host
                 # while ControllerPublishVolume simultaneously maps a new volume to the same host.
                 # In such cases, we must either delete and recreate the host, or wait for the new mapping and skip deletion.
-                exit_stack.enter_context(resource_locked(f"{node_id}:{volume.tenant_name}"))
+                exit_stack.enter_context(resource_locked(f"{node_id}:{volume.tenant_name}", abort_on_error=True))
                 if host := vms_session.blockhosts.one(name=block_host_name, tenant_name=volume.tenant_name):
                     if not host.mapped_volumes_preview and host.nqn.startswith(CONF.block_nqn_prefix):
                         logger.info(f"Host {block_host_name!r} has no remaining volumes, removing host")
@@ -488,7 +488,7 @@ class BlockNode(NodeBase, Instrumented):
             volume_context=None,
             metrics_registry=None
     ):
-        exit_stack.enter_context(resource_locked(volume_id))
+        exit_stack.enter_context(resource_locked(volume_id, abort_on_error=True))
         volume_context = volume_context or dict()
         volume_capabilities = _validate_capabilities(volume_capability, volume_context, publish_context)
 
@@ -862,7 +862,7 @@ class BlockNode(NodeBase, Instrumented):
             exit_stack,
             luks_manager,
     ):
-        exit_stack.enter_context(resource_locked(volume_id))
+        exit_stack.enter_context(resource_locked(volume_id, abort_on_error=True))
         volume_capabilities = _validate_capabilities(volume_capability)
         device_bind_path = get_device_bind_path(staging_target_path)
         requested_capacity = capacity_range.required_bytes
