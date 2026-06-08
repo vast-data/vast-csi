@@ -51,6 +51,8 @@
 {{- end }}
 - name: X_CSI_BLOCK_HOSTS_AUTO_PRUNE
   value: {{ $.Values.blockHostsAutoPrune | quote }}
+- name: X_CSI_FORCE_LAZY_UMOUNT_ON_TIMEOUT
+  value: {{ $.Values.forceLazyUmountOnTimeout | quote }}
 - name: X_CSI_MOUNT_UMOUNT_TIMEOUT
   value: {{ $.Values.mountUmountTimeout | quote }}
 {{ if $.Values.resolveMountSymlinks -}}

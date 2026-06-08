@@ -51,6 +51,7 @@ class Config(TypedEnv):
     use_local_ip_for_mount = TypedEnv.Str("X_CSI_USE_LOCALIP_FOR_MOUNT", default="")
     attach_required = TypedEnv.Bool("X_CSI_ATTACH_REQUIRED", default=True)
     block_hosts_auto_prune = TypedEnv.Bool("X_CSI_BLOCK_HOSTS_AUTO_PRUNE", default=False)
+    force_lazy_umount_on_timeout = TypedEnv.Bool("X_CSI_FORCE_LAZY_UMOUNT_ON_TIMEOUT", default=False)
     disable_usage_stats = TypedEnv.Bool("X_CSI_DISABLE_USAGE_STATS", default=False)
     block_hosts_prefix = TypedEnv.Str("X_CSI_BLOCK_HOSTS_PREFIX", default="")
 

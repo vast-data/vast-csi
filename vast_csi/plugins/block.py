@@ -31,6 +31,7 @@ from vast_csi.csi_types import (
     NOT_FOUND,
     FAILED_PRECONDITION,
     ABORTED,
+    UNKNOWN,
 )
 from vast_csi.builders import (
     EmptyBlockVolumeBuilder,
@@ -44,6 +45,7 @@ from vast_csi.exceptions import (
     VolumeAlreadyExists,
     SourceNotFound,
     NVMEConnectionFailed,
+    UmountTimedOut,
 )
 from vast_csi.block_utils import (
     connect_nvme_targets,
@@ -78,7 +80,6 @@ from vast_csi.filesystem_utils import (
     mount as _mount,
     umount as _umount,
     temporary_mount as _temporary_mount,
-    umount_safe as _umount_safe,
 )
 from vast_csi.configuration import Config
 import vast_csi.capabilities as cap_lib
@@ -192,14 +193,6 @@ def temporary_mount(src, tgt_dir, fs_type, readonly=False):
     ) as temp_mount_point:
         yield temp_mount_point
 
-
-def umount_safe(path, metrics_registry=None):
-    return _umount_safe(
-        path,
-        metrics_registry=metrics_registry,
-        metrics_operation="block_mount",
-        timeout=CONF.mount_umount_timeout,
-    )
 
 
 def remove_path_if_not_mounted(path):
@@ -697,10 +690,13 @@ class BlockNode(NodeBase, Instrumented):
             targets_mount_points = ", ".join(mount.mount_point for mount in target_mounts)
             logger.info(f"Staging path {device_bind_path} is being used by {targets_mount_points} targets.")
         if staging_mount:
-            umount_safe(
-                device_bind_path,
-                metrics_registry=None,  # Don't count unstaging as unmount operation
-            )
+            try:
+                umount(device_bind_path, ignore_not_mounted=True, metrics_registry=None)
+            except UmountTimedOut as exc:
+                if not CONF.force_lazy_umount_on_timeout:
+                    raise Abort(UNKNOWN, str(exc))
+                logger.warning(f"umount timed out for {device_bind_path}, retrying with lazy unmount (-l).")
+                umount(device_bind_path, lazy=True, ignore_not_mounted=True, metrics_registry=None)
         else:
             logger.info(f"Device not found at {device_bind_path}")
 
@@ -865,10 +861,13 @@ class BlockNode(NodeBase, Instrumented):
         if MountInfo.get_mount_by_destination(
                 dest_path=target_path, resolve_symlink=CONF.resolve_mount_symlinks,
         ):
-            umount_safe(
-                target_path,
-                metrics_registry=metrics_registry,
-            )
+            try:
+                umount(target_path, ignore_not_mounted=True, metrics_registry=metrics_registry)
+            except UmountTimedOut as exc:
+                if not CONF.force_lazy_umount_on_timeout:
+                    raise Abort(UNKNOWN, str(exc))
+                logger.warning(f"umount timed out for {target_path}, retrying with lazy unmount (-l).")
+                umount(target_path, lazy=True, ignore_not_mounted=True, metrics_registry=metrics_registry)
         else:
             logger.info(f"Device not found at {target_path}")
         if meta_file.exists():

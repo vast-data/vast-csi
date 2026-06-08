@@ -337,7 +337,7 @@ def mount(
     )
 
     def do_mount():
-        executable["-v", src, tgt].run(timeout=timeout or None)
+        executable["-vvv", src, tgt].run(timeout=timeout or None)
         if need_ro_remount:
             logger.info(f"Remounting {tgt!r} as read-only")
             cmd.mount["-o", "remount,ro", tgt].run()
@@ -431,27 +431,6 @@ def temporary_mount(src, tgt_dir, fs_type, readonly=False, timeout=None):
         finally:
             umount(temp_mount_point, ignore_not_mounted=True, timeout=timeout)
 
-
-def umount_safe(path, metrics_registry=None, metrics_operation="block_mount", timeout=None):
-    """Unmount; on timeout retry with lazy unmount (-l)."""
-    try:
-        umount(
-            path,
-            ignore_not_mounted=True,
-            metrics_registry=metrics_registry,
-            metrics_operation=metrics_operation,
-            timeout=timeout,
-        )
-    except UmountTimedOut:
-        logger.warning(f"umount timed out for {path}, retrying with lazy unmount (-l).")
-        umount(
-            path,
-            lazy=True,
-            ignore_not_mounted=True,
-            metrics_registry=metrics_registry,
-            metrics_operation=metrics_operation,
-            timeout=timeout,
-        )
 
 
 def format_device(requested_fs: str, device: str, format_args: str = None):
