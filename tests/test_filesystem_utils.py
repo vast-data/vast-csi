@@ -13,7 +13,6 @@ from vast_csi.filesystem_utils import (
     mount,
     umount,
     temporary_mount,
-    umount_safe,
     _normalize_mount_flags,
 )
 from vast_csi.exceptions import MountFailed, UmountTimedOut
@@ -577,14 +576,3 @@ class TestTemporaryMount:
             ignore_not_mounted=True,
             timeout=15,
         )
-
-
-class TestUmountSafe:
-    @patch("vast_csi.filesystem_utils.umount")
-    def test_umount_safe_retries_lazy_on_timeout(self, mock_umount):
-        mock_umount.side_effect = [UmountTimedOut("timed out"), True]
-
-        umount_safe("/mnt/test", timeout=30)
-
-        assert mock_umount.call_count == 2
-        assert mock_umount.call_args_list[1][1]["lazy"] is True

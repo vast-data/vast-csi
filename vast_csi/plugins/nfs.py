@@ -709,7 +709,10 @@ class CsiNode(NodeBase, Instrumented):
                         metrics_registry=metrics_registry,
                     )
                 except UmountTimedOut as exc:
-                    raise Abort(UNKNOWN, str(exc))
+                    if not CONF.force_lazy_umount_on_timeout:
+                        raise Abort(UNKNOWN, str(exc))
+                    logger.warning(f"umount timed out for {target_path}, retrying with lazy unmount (-l).")
+                    umount(target_path, lazy=True, ignore_not_mounted=False, metrics_registry=metrics_registry)
             else:
                 raise Abort(
                     UNKNOWN,
