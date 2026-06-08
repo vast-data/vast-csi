@@ -180,7 +180,7 @@ class Instrumented:
                 with exit_stack:
                     ret = func(self, request=request, context=context, **params)
             except Abort as exc:
-                logger.info(
+                logger.error(
                     f'{peer} <<< [{uid}] {method} ABORTED with {exc.code} ("{exc.message}")'
                 )
                 logger.debug("Traceback", exc_info=True)
