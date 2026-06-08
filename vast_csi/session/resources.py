@@ -664,6 +664,25 @@ class BlockHostMapping(VastResource):
         if not self.one(volume__id=volume_id, block_host__id=host_id):
             return self.map(volume_id, host_id)
 
+    def ensure_map_exclusive(self, volume_id, host_id):
+        """Ensure volume is mapped to exactly one host (host_id) for single-node access modes.
+
+        Unlike ensure_map, this method queries all existing mappings for the
+        volume (not filtered by host) and enforces that only the requested host
+        has a mapping.
+        """
+        existing = self.list(volume__id=volume_id)
+
+        stale = [m for m in existing if m.block_host["id"] != host_id]
+        if stale:
+            host_names = [m.block_host.get("name", m.block_host["id"]) for m in stale]
+            raise Exception(
+                f"Volume {volume_id} is already mapped to {host_names} — "
+                f"unexpected for single-node access mode (expected host {host_id} only)"
+            )
+        if not any(m.block_host["id"] == host_id for m in existing):
+            return self.map(volume_id, host_id)
+
     def unmap(self, volume_id, host_id):
         data = {"pairs_to_remove": [{"host_id": host_id, "volume_id": volume_id}]}
         task = self.session.patch(f"{self.resource_name}/bulk", data=data)

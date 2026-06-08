@@ -30,6 +30,8 @@ from vast_csi.csi_types import (
     ALREADY_EXISTS,
     NOT_FOUND,
     FAILED_PRECONDITION,
+    ABORTED,
+    UNKNOWN,
 )
 from vast_csi.builders import (
     EmptyBlockVolumeBuilder,
@@ -43,6 +45,7 @@ from vast_csi.exceptions import (
     VolumeAlreadyExists,
     SourceNotFound,
     NVMEConnectionFailed,
+    UmountTimedOut,
 )
 from vast_csi.block_utils import (
     connect_nvme_targets,
@@ -74,7 +77,6 @@ from vast_csi.filesystem_utils import (
     mount as _mount,
     umount as _umount,
     temporary_mount as _temporary_mount,
-    umount_safe as _umount_safe,
 )
 from vast_csi.configuration import Config
 import vast_csi.capabilities as cap_lib
@@ -154,14 +156,6 @@ def temporary_mount(src, tgt_dir, fs_type, readonly=False):
     ) as temp_mount_point:
         yield temp_mount_point
 
-
-def umount_safe(path, metrics_registry=None):
-    return _umount_safe(
-        path,
-        metrics_registry=metrics_registry,
-        metrics_operation="block_mount",
-        timeout=CONF.mount_umount_timeout,
-    )
 
 
 def remove_path_if_not_mounted(path):
@@ -326,10 +320,16 @@ class BlockController(ControllerBase, Instrumented):
             tenant_name=tenant_name,
             subsystem=subsystem,
         )
-        vms_session.blockhostmappings.ensure_map(
-            volume_id=vol_id,
-            host_id=blockhost.id,
-        )
+        if volume_capabilities.multi_mode:
+            vms_session.blockhostmappings.ensure_map(
+                volume_id=vol_id,
+                host_id=blockhost.id,
+            )
+        else:
+            vms_session.blockhostmappings.ensure_map_exclusive(
+                volume_id=vol_id,
+                host_id=blockhost.id,
+            )
         vip_pool_name = volume_context.get("vip_pool_name")
         vip_pool_fqdn = volume_context.get("vip_pool_fqdn")
         if vip_pool_fqdn:
@@ -638,10 +638,13 @@ class BlockNode(NodeBase, Instrumented):
             targets_mount_points = ", ".join(mount.mount_point for mount in target_mounts)
             logger.info(f"Staging path {device_bind_path} is being used by {targets_mount_points} targets.")
         if staging_mount:
-            umount_safe(
-                device_bind_path,
-                metrics_registry=None,  # Don't count unstaging as unmount operation
-            )
+            try:
+                umount(device_bind_path, ignore_not_mounted=True, metrics_registry=None)
+            except UmountTimedOut as exc:
+                if not CONF.force_lazy_umount_on_timeout:
+                    raise Abort(UNKNOWN, str(exc))
+                logger.warning(f"umount timed out for {device_bind_path}, retrying with lazy unmount (-l).")
+                umount(device_bind_path, lazy=True, ignore_not_mounted=True, metrics_registry=None)
         else:
             logger.info(f"Device not found at {device_bind_path}")
 
@@ -721,6 +724,7 @@ class BlockNode(NodeBase, Instrumented):
 
         is_file_system = volume_capabilities.is_filesystem
         fs_type = volume_capabilities.fs_type
+
         if is_file_system:
             logger.info(f"Verifying filesystem type {fs_type} on device...")
             if fs_type != get_filesystem_type(device_bind_path):
@@ -753,17 +757,20 @@ class BlockNode(NodeBase, Instrumented):
 
             # For ROX volumes, blockdev --setro already enforces read-only at the block layer.
             enforce_ro = readonly and not volume_capabilities.ro_mode
-            try:
-                mount(
-                    src=device_bind_path,
-                    tgt=target_path,
-                    flags=mount_flags,
-                    fs_type=fs_type,
-                    enforce_ro=enforce_ro,
-                    metrics_registry=metrics_registry,
-                )
-            except Exception:
-                meta_file.delete()
+            with resource_locked(str(target_path), abort_on_error=True) as lock:
+                lock.set_message(f"Mount already in progress for {target_path!r} — retry later")
+                try:
+                    mount(
+                        src=device_bind_path,
+                        tgt=target_path,
+                        flags=mount_flags,
+                        fs_type=fs_type,
+                        enforce_ro=enforce_ro,
+                        metrics_registry=metrics_registry,
+                    )
+                except Exception:
+                    meta_file.delete()
+                    raise
         else:
             logger.info(
                 f"Block device mode detected. "
@@ -772,14 +779,16 @@ class BlockNode(NodeBase, Instrumented):
             target_path.open("a").close()
             if is_rox_block:
                 cmd.mount["-o", "remount,rw", device_bind_path].run()
-            mount(
-                src=device_bind_path,
-                tgt=target_path,
-                flags=mount_flags,
-                bind=True,
-                enforce_ro=False,
-                metrics_registry=metrics_registry,
-            )
+            with resource_locked(str(target_path), abort_on_error=True) as lock:
+                lock.set_message(f"Mount already in progress for {target_path!r} — retry later")
+                mount(
+                    src=device_bind_path,
+                    tgt=target_path,
+                    flags=mount_flags,
+                    bind=True,
+                    enforce_ro=False,
+                    metrics_registry=metrics_registry,
+                )
 
         logger.info("Verifying mount...")
         if not MountInfo.get_mount_by_destination(
@@ -800,10 +809,13 @@ class BlockNode(NodeBase, Instrumented):
         if MountInfo.get_mount_by_destination(
                 dest_path=target_path, resolve_symlink=CONF.resolve_mount_symlinks,
         ):
-            umount_safe(
-                target_path,
-                metrics_registry=metrics_registry,
-            )
+            try:
+                umount(target_path, ignore_not_mounted=True, metrics_registry=metrics_registry)
+            except UmountTimedOut as exc:
+                if not CONF.force_lazy_umount_on_timeout:
+                    raise Abort(UNKNOWN, str(exc))
+                logger.warning(f"umount timed out for {target_path}, retrying with lazy unmount (-l).")
+                umount(target_path, lazy=True, ignore_not_mounted=True, metrics_registry=metrics_registry)
         else:
             logger.info(f"Device not found at {target_path}")
         if meta_file.exists():

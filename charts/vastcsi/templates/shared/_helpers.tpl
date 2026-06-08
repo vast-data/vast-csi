@@ -40,6 +40,8 @@
   value: {{ $.Values.useLocalIpForMount | quote }}
 - name: X_CSI_MOUNT_UMOUNT_TIMEOUT
   value: {{ $.Values.mountUmountTimeout | quote }}
+- name: X_CSI_FORCE_LAZY_UMOUNT_ON_TIMEOUT
+  value: {{ $.Values.forceLazyUmountOnTimeout | quote }}
 {{ if $.Values.resolveMountSymlinks -}}
 - name: X_CSI_RESOLVE_MOUNT_SYMLINKS
   value: {{ $.Values.resolveMountSymlinks | quote }}
