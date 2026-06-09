@@ -452,9 +452,9 @@ class TestFilesystemUtilsMount:
         from plumbum import ProcessExecutionError
 
         mock_mount_cmd = _mock_plumbum_cmd()
-        mock_mount_cmd.run.side_effect = ProcessExecutionError(
+        mock_mount_cmd.__and__ = MagicMock(side_effect=ProcessExecutionError(
             ["mount"], 1, "", "mount: bad superblock"
-        )
+        ))
         mock_run_with_timeout.side_effect = lambda func, _timeout: func()
 
         with patch.object(cmd, "mount", mock_mount_cmd):
@@ -471,7 +471,7 @@ class TestFilesystemUtilsMount:
         with patch.object(cmd, "mount", mock_mount_cmd):
             mount("/dev/nvme0n1", "/staging/device", bind=True, enforce_ro=True, timeout=15)
 
-        assert mock_mount_cmd.run.call_count == 2
+        assert mock_mount_cmd.__and__.call_count == 2
 
     @patch("vast_csi.filesystem_utils.run_with_timeout")
     def test_mount_without_timeout_runs_directly(self, mock_run_with_timeout):
@@ -481,7 +481,7 @@ class TestFilesystemUtilsMount:
             mount("server:/export", "/mnt/nfs", flags="vers=3")
 
         mock_run_with_timeout.assert_not_called()
-        assert mock_mount_cmd.run.called
+        assert mock_mount_cmd.__and__.called
 
 
 class TestFilesystemUtilsUmount:
