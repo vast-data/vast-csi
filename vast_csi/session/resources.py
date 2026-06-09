@@ -626,7 +626,7 @@ class Volume(VastResource):
         """Delete entry by id. Retries with force=True if volume is still mapped to hosts."""
         try:
             return super().delete_by_id(_id=_id, **params)
-        except HTTPError as exc:
+        except ApiError as exc:
             if exc.response.status_code == 400 and "Volume is mapped to hosts" in exc.response.text:
                 logger.warning(f"Volume {_id} is mapped to hosts, retrying delete with force=True.")
                 return super().delete_by_id(_id=_id, params={"force": True}, **params)
