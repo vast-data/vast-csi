@@ -52,9 +52,7 @@ class VmsSession(RESTSession, SerializationMixin):
         certs_base_dir = "/etc/ssl/certs"
         if ssl_cert:
             # Store the certificate specified in StorageClass secret (unique for each StorageClass)
-            hash_obj = hashlib.sha256("".join([username, password, endpoint]).encode())
-            unique_hash = hash_obj.hexdigest()
-            cert_path = f"{certs_base_dir}/{endpoint}-{unique_hash}.crt"
+            cert_path = f"{certs_base_dir}/{endpoint}-{self.__hash__()}.crt"
             with open(cert_path, "w") as f:
                 f.write(ssl_cert)
             logger.info(f"Generated new ssl certificate: {cert_path!r}")
@@ -90,6 +88,18 @@ class VmsSession(RESTSession, SerializationMixin):
         self.protectionpolicies = ProtectionPolicy(self)
         self.protectedpaths = ProtectedPath(self)
         self.clusters = Cluster(self)
+
+    def __hash__(self):
+        if self.token:
+            key = f"{self.token}{self.endpoint}"
+        else:
+            key = f"{self.username}{self.password}{self.endpoint}"
+        return int.from_bytes(hashlib.sha256(key.encode()).digest(), "big") % (2 ** 61 - 1)
+
+    def __eq__(self, other):
+        if not isinstance(other, VmsSession):
+            return NotImplemented
+        return hash(self) == hash(other)
 
     def __str__(self):
         return f"{self.__class__.__name__}[{self.endpoint}]"
