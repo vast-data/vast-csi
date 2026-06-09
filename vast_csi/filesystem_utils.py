@@ -337,10 +337,10 @@ def mount(
     )
 
     def do_mount():
-        executable["-vvv", src, tgt].run(timeout=timeout or None)
+        executable["-vvv", src, tgt] & logger.pipe_info("mount: ")
         if need_ro_remount:
             logger.info(f"Remounting {tgt!r} as read-only")
-            cmd.mount["-o", "remount,ro", tgt].run()
+            cmd.mount["-o", "remount,ro", tgt] & logger.pipe_info("mount: ")
 
     if metrics_registry:
         metrics_manager = metrics_registry.mount(metrics_operation)
