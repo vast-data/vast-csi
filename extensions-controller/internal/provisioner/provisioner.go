@@ -47,8 +47,6 @@ type Interface interface {
 	// constellation VRCs.  Before failover only the primary's own cluster has
 	// non-managed PVCs.  After failover the old primary's VRC carries the
 	// source PVCs and the new primary mirrors them onto itself.
-	//
-	// Secondary VRC: exits immediately (no-op).
 	ProvisionVolumes(ctx context.Context) error
 
 	// ProvisionVolumeCb performs the VAST-object sync for this VRC's own cluster.
@@ -59,7 +57,6 @@ type Interface interface {
 
 	// CleanVolumeCb performs VAST-object cleanup for this VRC's own cluster.
 	CleanVolumeCb(context.Context, *vastv1alpha1.VastReplicationContent, *vast_client.TypedVMSRest, *storagev1.StorageClass) error
-
 }
 
 // VolumeMapper provides lazy, cached access to the set of VAST volumes
