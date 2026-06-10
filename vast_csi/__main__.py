@@ -14,7 +14,7 @@ def main():
     serve_parse = subparsers.add_parser("serve", help='Start the CSI Plugin Server (not for humans)')
     serve_parse.add_argument(
         "--plugin", "-p",
-        default=None,
+        default="nfs",
         choices=["nfs", "cosi", "block"],
         help="Specify the core plugin type. Mutually exclusive with --addons."
     )
