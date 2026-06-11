@@ -625,9 +625,14 @@ class Volume(VastResource):
 
     @requisite(semver="5.3.0")
     def delete_by_id(self, _id, **params):
-        """Delete entry by id"""
-        params["params"] =  {"force": True}
-        return super().delete_by_id(_id=_id, **params)
+        """Delete entry by id. Retries with force=True if volume is still mapped to hosts."""
+        try:
+            return super().delete_by_id(_id=_id, **params)
+        except ApiError as exc:
+            if exc.response.status_code == 400 and "Volume is mapped to hosts" in exc.response.text:
+                logger.warning(f"Volume {_id} is mapped to hosts, retrying delete with force=True.")
+                return super().delete_by_id(_id=_id, params={"force": True}, **params)
+            raise
 
 @apiver.v5
 class BlockHost(VastResource):
@@ -664,6 +669,25 @@ class BlockHostMapping(VastResource):
 
     def ensure_map(self, volume_id, host_id):
         if not self.one(volume__id=volume_id, block_host__id=host_id):
+            return self.map(volume_id, host_id)
+
+    def ensure_map_exclusive(self, volume_id, host_id):
+        """Ensure volume is mapped to exactly one host (host_id) for single-node access modes.
+
+        Unlike ensure_map, this method queries all existing mappings for the
+        volume (not filtered by host) and enforces that only the requested host
+        has a mapping.
+        """
+        existing = self.list(volume__id=volume_id)
+
+        stale = [m for m in existing if m.block_host["id"] != host_id]
+        if stale:
+            host_names = [m.block_host.get("name", m.block_host["id"]) for m in stale]
+            raise Exception(
+                f"Volume {volume_id} is already mapped to {host_names} — "
+                f"unexpected for single-node access mode (expected host {host_id} only)"
+            )
+        if not any(m.block_host["id"] == host_id for m in existing):
             return self.map(volume_id, host_id)
 
     def unmap(self, volume_id, host_id):

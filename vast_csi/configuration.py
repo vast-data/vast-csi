@@ -51,6 +51,7 @@ class Config(TypedEnv):
     use_local_ip_for_mount = TypedEnv.Str("X_CSI_USE_LOCALIP_FOR_MOUNT", default="")
     attach_required = TypedEnv.Bool("X_CSI_ATTACH_REQUIRED", default=True)
     block_hosts_auto_prune = TypedEnv.Bool("X_CSI_BLOCK_HOSTS_AUTO_PRUNE", default=False)
+    force_lazy_umount_on_timeout = TypedEnv.Bool("X_CSI_FORCE_LAZY_UMOUNT_ON_TIMEOUT", default=False)
     disable_usage_stats = TypedEnv.Bool("X_CSI_DISABLE_USAGE_STATS", default=False)
     block_hosts_prefix = TypedEnv.Str("X_CSI_BLOCK_HOSTS_PREFIX", default="")
 
@@ -68,8 +69,6 @@ class Config(TypedEnv):
     timeout = TypedEnv.Int("X_CSI_VMS_TIMEOUT", default=30)
     mount_umount_timeout = TypedEnv.Int("X_CSI_MOUNT_UMOUNT_TIMEOUT", default=30)
     resolve_mount_symlinks = TypedEnv.Bool("X_CSI_RESOLVE_MOUNT_SYMLINKS", default=False)
-    unstage_verify_device_idle = TypedEnv.Bool("X_CSI_UNSTAGE_VERIFY_DEVICE_IDLE", default=True)
-    unstage_verify_timeout = TypedEnv.Int("X_CSI_UNSTAGE_VERIFY_TIMEOUT", default=10)
     allow_ro_many_block_fs_mode = TypedEnv.Bool("X_CSI_ALLOW_RO_MANY_BLOCK_FS_MODE", default=False)
 
     @cached_property

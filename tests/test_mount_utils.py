@@ -22,7 +22,7 @@ def mock_conf():
 def _mock_mount_cmd(mock_run):
     mock_mount_cmd = MagicMock()
     mock_mount_cmd.__getitem__ = MagicMock(return_value=mock_mount_cmd)
-    mock_mount_cmd.run = mock_run
+    mock_mount_cmd.__and__ = MagicMock(side_effect=lambda _: mock_run())
     return mock_mount_cmd
 
 
