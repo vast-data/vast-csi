@@ -71,13 +71,6 @@ class FilesystemIntegrityError(Exception):
     pass
 
 
-class DeviceNotQuiesced(Exception):
-    """Raised by verify_device_quiesced when an NVMe block device is not
-    safely idle for unmount/handoff. Surfaces as a CSI FAILED_PRECONDITION
-    so kubelet retries instead of advancing to ControllerUnpublishVolume."""
-    pass
-
-
 class BuilderFailed(Exception):
 
     @property

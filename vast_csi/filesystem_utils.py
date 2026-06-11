@@ -119,10 +119,10 @@ def get_host_realpath(path):
     except ProcessExecutionError as exc:
         if "No such file or directory" in exc.stderr:
             logger.warning(f"{path} doesn't exist")
-            return path
-        raise
-    except Exception as exc:
-        logger.warning(f"realpath {path} exception {exc}")
+        else:
+            # e.g. "Input/output error" from a corrupted/stale mount — log and
+            # fall back to the unresolved path so callers can skip this entry.
+            logger.warning(f"realpath {path} failed: {exc.stderr.strip()}")
         return path
 
 
@@ -337,10 +337,10 @@ def mount(
     )
 
     def do_mount():
-        executable["-v", src, tgt].run()
+        executable["-vvv", src, tgt] & logger.pipe_info("mount: ")
         if need_ro_remount:
             logger.info(f"Remounting {tgt!r} as read-only")
-            cmd.mount["-o", "remount,ro", tgt].run()
+            cmd.mount["-o", "remount,ro", tgt] & logger.pipe_info("mount: ")
 
     if metrics_registry:
         metrics_manager = metrics_registry.mount(metrics_operation)
@@ -432,27 +432,6 @@ def temporary_mount(src, tgt_dir, fs_type, readonly=False, timeout=None):
             umount(temp_mount_point, ignore_not_mounted=True, timeout=timeout)
 
 
-def umount_safe(path, metrics_registry=None, metrics_operation="block_mount", timeout=None):
-    """Unmount; on timeout retry with lazy unmount (-l)."""
-    try:
-        umount(
-            path,
-            ignore_not_mounted=True,
-            metrics_registry=metrics_registry,
-            metrics_operation=metrics_operation,
-            timeout=timeout,
-        )
-    except UmountTimedOut:
-        logger.warning(f"umount timed out for {path}, retrying with lazy unmount (-l).")
-        umount(
-            path,
-            lazy=True,
-            ignore_not_mounted=True,
-            metrics_registry=metrics_registry,
-            metrics_operation=metrics_operation,
-            timeout=timeout,
-        )
-
 
 def format_device(requested_fs: str, device: str, format_args: str = None):
     """
@@ -494,7 +473,7 @@ def get_device_size(device: str):
 def _check_ext_integrity(device: str):
     """ext3/ext4: run fsck before mount on re-attached or cloned volumes."""
     try:
-        cmd.fsck["-a", "-f", device] & logger.pipe_info("fsck: ")
+        hostcmd.e2fsck.get_executable("-a", device) & logger.pipe_info("e2fsck: ")
     except ProcessExecutionError as exc:
         # fsck returns 1 if it finds and fixes issues
         if exc.retcode == 1:
@@ -600,8 +579,26 @@ def get_fs_size(device: str, target_mount: str, fs_type: str):
 
 
 def ext_resize(device: str):
-    """Resize ext3/ext4 filesystem."""
-    cmd.resize2fs[device] & logger.pipe_info("resize2fs: ")
+    """Resize ext3/ext4 filesystem.
+
+    When the device was restored from a snapshot taken of a live (mounted)
+    filesystem, the superblock retains the dirty flag.  resize2fs refuses to
+    proceed in that case and exits 1 with "Please run 'e2fsck -f' first."
+    We catch that specific failure, run a bounded e2fsck -f to replay the
+    journal and clear the flag, then retry resize2fs.
+    """
+    try:
+        cmd.resize2fs[device] & logger.pipe_info("resize2fs: ")
+    except ProcessExecutionError as exc:
+        if exc.retcode == 1 and "e2fsck -f" in (exc.stderr or ""):
+            logger.warning(
+                f"resize2fs requires e2fsck on {device} (snapshot of live fs detected) — "
+                f"running e2fsck -f with 5-minute timeout"
+            )
+            hostcmd.e2fsck.get_executable("-f", "-y", device).run(timeout=5 * 60, retcode=None)
+            cmd.resize2fs[device] & logger.pipe_info("resize2fs: ")
+        else:
+            raise
     logger.info(f"Device {device!r} resized successfully")
 
 

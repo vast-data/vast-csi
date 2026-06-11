@@ -51,6 +51,8 @@
 {{- end }}
 - name: X_CSI_BLOCK_HOSTS_AUTO_PRUNE
   value: {{ $.Values.blockHostsAutoPrune | quote }}
+- name: X_CSI_FORCE_LAZY_UMOUNT_ON_TIMEOUT
+  value: {{ $.Values.forceLazyUmountOnTimeout | quote }}
 - name: X_CSI_MOUNT_UMOUNT_TIMEOUT
   value: {{ $.Values.mountUmountTimeout | quote }}
 {{ if $.Values.resolveMountSymlinks -}}
@@ -61,10 +63,6 @@
 - name: X_CSI_ALLOW_RO_MANY_BLOCK_FS_MODE
   value: {{ $.Values.allowROManyBlockFsMode | quote }}
 {{- end }}
-- name: X_CSI_UNSTAGE_VERIFY_DEVICE_IDLE
-  value: {{ $.Values.unstageVerifyDeviceIdle | quote }}
-- name: X_CSI_UNSTAGE_VERIFY_TIMEOUT
-  value: {{ $.Values.unstageVerifyTimeout | quote }}
 {{- if .extraEnv }}
 {{- range $key, $value := .extraEnv }}
 - name: {{ $key }}
