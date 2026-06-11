@@ -69,6 +69,9 @@ def serve(plugin: str = None, addons: str = ""):
             f"Valid addons are: {', '.join(sorted(ADDONS))}"
         )
 
+    if plugin is None and not addon_list:
+        plugin = "nfs"
+
     # Validate core plugin (if provided)
     if plugin:
         assert plugin in PLUGINS, (
