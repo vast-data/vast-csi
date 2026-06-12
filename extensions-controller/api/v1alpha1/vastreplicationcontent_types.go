@@ -104,10 +104,13 @@ type VastReplicationContentSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="replicationPath is immutable"
 	ReplicationPath string `json:"replicationPath"`
 
-	// ProtectionPolicyName is the name of the VAST protection policy associated
-	// with this replication.  Set at creation time and never changed.
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="protectionPolicyName is immutable"
-	ProtectionPolicyName string `json:"protectionPolicyName"`
+	// ProtectionPolicyNames lists every operator-created protection policy whose
+	// snapshots may exist under replicationPath on this cluster.  Populated at
+	// VRC creation from the parent replication topology (both policy creator and
+	// mirror sides of each link).
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="protectionPolicyNames is immutable"
+	ProtectionPolicyNames []string `json:"protectionPolicyNames"`
 
 	// ProtectedPathName is the name of the VAST protected path (ppath) on the
 	// source cluster.  Resolved at creation time by querying the VAST cluster.
@@ -165,7 +168,7 @@ type VastReplicationContentStatus struct {
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.spec.replicationState`
 // +kubebuilder:printcolumn:name="Provisioned",type=boolean,JSONPath=`.status.provisioned`
 // +kubebuilder:printcolumn:name="Replication Path",type=string,JSONPath=`.spec.replicationPath`
-// +kubebuilder:printcolumn:name="Protection Policy",type=string,JSONPath=`.spec.protectionPolicyName`
+// +kubebuilder:printcolumn:name="Protection Policies",type=string,JSONPath=`.spec.protectionPolicyNames`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // VastReplicationContent is the internal CRD that holds the full provisioning
@@ -180,7 +183,7 @@ type VastReplicationContentStatus struct {
 //     up-to-date whenever the parent's membership changes.
 //   - VastReplicationContentReconciler provisions the mirrored resources when
 //     metadata.generation > status.observedGeneration, then records
-//     ReplicationPath and ProtectionPolicyName in the status so cleanup can
+//     ReplicationPath and ProtectionPolicyNames in the status so cleanup can
 //     proceed even if the mirrored objects are already gone.
 //   - Cleanup is driven by this object's finalizer.  The parent name (taken
 //     from the owner reference) is used as a label key to find all managed

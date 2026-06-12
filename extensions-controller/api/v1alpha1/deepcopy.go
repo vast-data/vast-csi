@@ -8,6 +8,11 @@ func (in *VastReplicationContentSpec) DeepCopyInto(out *VastReplicationContentSp
 		*out = make(PVCList, len(*in))
 		copy(*out, *in)
 	}
+	if in.ProtectionPolicyNames != nil {
+		in, out := &in.ProtectionPolicyNames, &out.ProtectionPolicyNames
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 }
 
 // DeepCopy returns a deep copy of this VastReplicationContentSpec.
