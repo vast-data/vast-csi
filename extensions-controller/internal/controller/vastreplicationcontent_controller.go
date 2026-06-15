@@ -41,10 +41,10 @@ import (
 // # Each VastReplicationContent manages the lifecycle of one StorageClass
 //
 // All data needed by the provisioner is carried in the VastReplicationContent
-// spec (PVCs, ReplicationPath, ProtectionPolicyName, ProtectedPathName).
+// spec (PVCs, ReplicationPath, ProtectionPolicyNames, ProtectedPathName).
 // The reconciler constructs a minimal VolumeReplication or
 // VolumeGroupReplication object from those spec fields.
-// ProtectionPolicyName is read from the newly-created mirrored VR/VGR and
+// ProtectionPolicyNames are set at VRC creation from the parent topology and
 // stored in the status so that snapshot cleanup can proceed even if the
 // mirrored object is later deleted.
 type VastReplicationContentReconciler struct {
@@ -275,9 +275,9 @@ func (r *VastReplicationContentReconciler) cleanResources(
 	emit *events.BoundReporter,
 ) error {
 	emit.Normalf(events.ReasonCleanupStarted,
-		"cleaning %s resources for StorageClass %q (replicationPath=%q, protectionPolicy=%q)",
+		"cleaning %s resources for StorageClass %q (replicationPath=%q, protectionPolicies=%v)",
 		vrc.Spec.Kind, vrc.Spec.StorageClass,
-		vrc.Spec.ReplicationPath, vrc.Spec.ProtectionPolicyName)
+		vrc.Spec.ReplicationPath, vrc.Spec.ProtectionPolicyNames)
 
 	prov, err := provisioner.NewProvisioner(ctx, r.K8sFor(emit.Logger()), vrc, emit, r.Config)
 	if err != nil {
