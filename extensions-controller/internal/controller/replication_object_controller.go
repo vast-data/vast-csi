@@ -166,7 +166,11 @@ func (r *ReplicationObjectReconciler) reconcileVR(ctx context.Context, name, ns 
 		vrc.Spec.ReplicationState = initialStateFromPrimary(newState, sourceSCName, vvr.Spec.PrimaryStorageClass)
 		vrc.Spec.ProtectedPathName = ppath.Name
 		vrc.Spec.ReplicationPath = ppath.SourceDir
-		vrc.Spec.ProtectionPolicyName = ppath.ProtectionPolicyName
+		vrc.Spec.ProtectionPolicyNames, err = protectionPolicyNamesForVRC(
+			vvr.Name, vvr.Spec.PrimaryStorageClass, vvr.Spec.ProtectionTopology, sourceSCName)
+		if err != nil {
+			return fmt.Errorf("VR %s/%s: %w", ns, name, err)
+		}
 		if err := controllerutil.SetOwnerReference(vr, vrc, k8s.Client().Scheme()); err != nil {
 			return fmt.Errorf("failed to set owner reference on VRC %s: %w", vrc.Name, err)
 		}
@@ -291,7 +295,11 @@ func (r *ReplicationObjectReconciler) reconcileVGR(ctx context.Context, name, ns
 		vrc.Spec.ReplicationState = initialStateFromPrimary(newState, sourceSCName, vscr.Spec.PrimaryStorageClass)
 		vrc.Spec.ProtectedPathName = ppath.Name
 		vrc.Spec.ReplicationPath = ppath.SourceDir
-		vrc.Spec.ProtectionPolicyName = ppath.ProtectionPolicyName
+		vrc.Spec.ProtectionPolicyNames, err = protectionPolicyNamesForVRC(
+			vscr.Name, vscr.Spec.PrimaryStorageClass, vscr.Spec.ProtectionTopology, sourceSCName)
+		if err != nil {
+			return fmt.Errorf("VGR %s/%s: %w", ns, name, err)
+		}
 		if err := controllerutil.SetOwnerReference(vgr, vrc, k8s.Client().Scheme()); err != nil {
 			return fmt.Errorf("failed to set owner reference on VRC %s: %w", vrc.Name, err)
 		}
@@ -420,6 +428,24 @@ func resolveSourcePPath(
 			ppathName, sourceSC.Name, err)
 	}
 	return ppath, nil
+}
+
+// protectionPolicyNamesForVRC returns every protection policy whose snapshots
+// may exist on scName's cluster.  Derived once at VRC creation from the parent
+// replication topology so cleanup can use spec alone.
+func protectionPolicyNamesForVRC(
+	ownerName string,
+	primarySC string,
+	topology []vastv1alpha1.ReplicationTarget,
+	scName string,
+) ([]string, error) {
+	names := vmsrest.ProtectionPolicyNamesByStorageClass(ownerName, primarySC, topology)[scName]
+	if len(names) == 0 {
+		return nil, fmt.Errorf(
+			"no protection policies for StorageClass %q in topology of %q (primary %q)",
+			scName, ownerName, primarySC)
+	}
+	return names, nil
 }
 
 // handlePPathNetworkError returns a Retryable error with an exponential backoff

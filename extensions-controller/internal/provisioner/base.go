@@ -425,8 +425,7 @@ func (b *baseProvisioner) CleanVolumes(ctx context.Context) error {
 			zap.Duration("interval", common.VMS_SNAPSHOT_DISCOVERY_INTERVAL))
 		time.Sleep(common.VMS_SNAPSHOT_DISCOVERY_INTERVAL)
 	}
-	if err := b.deleteReplicationSnapshots(ctx, b.sourceRest,
-		b.rp.Spec.ReplicationPath, b.rp.Spec.ProtectionPolicyName); err != nil {
+	if err := b.deleteSnapshots(ctx, b.sourceRest, b.rp.Spec.ReplicationPath, b.rp.Spec.ProtectionPolicyNames); err != nil {
 		return err
 	}
 
@@ -538,38 +537,30 @@ func (b *baseProvisioner) managedPVForPVC(ctx context.Context, pvc *corev1.Persi
 // Delete helpers
 // ---------------------------------------------------------------------------
 
-// deleteSnapshots deletes all replication snapshots matching snapshotPath and ppolicyName.
-func (b *baseProvisioner) deleteSnapshots(_ context.Context, rest *vast_client.TypedVMSRest, snapshotPath, ppolicyName string) error {
+// deleteSnapshots deletes replication snapshots under snapshotPath for each protection policy.
+func (b *baseProvisioner) deleteSnapshots(_ context.Context, rest *vast_client.TypedVMSRest, snapshotPath string, policyNames []string) error {
 	snapshotPath = strings.TrimRight(snapshotPath, "/") + "/"
-	snapshotSearch := &typed.SnapshotSearchParams{
-		RawData: vast_client.Params{
-			"path":                    snapshotPath,
-			"protection_policy__name": ppolicyName,
-		},
-	}
-	snapshots, err := rest.Snapshots.List(snapshotSearch)
-	if err != nil {
-		return fmt.Errorf("failed to list snapshots for path %s: %w", snapshotPath, err)
-	}
-	for _, snapshot := range snapshots {
-		if err := vast_client.IgnoreStatusCodes(rest.Snapshots.DeleteById(snapshot.Id), 404); err != nil {
-			b.emit.Warningf(events.ReasonCleanupFailed,
-				"failed to delete snapshot %s: %v", snapshot.Name, err)
-		} else {
-			b.emit.Normalf(events.ReasonSnapshotsDeleted, "deleted snapshot %s", snapshot.Name)
+	for _, policyName := range policyNames {
+		snapshotSearch := &typed.SnapshotSearchParams{
+			RawData: vast_client.Params{
+				"path":                    snapshotPath,
+				"protection_policy__name": policyName,
+			},
+		}
+		snapshots, err := rest.Snapshots.List(snapshotSearch)
+		if err != nil {
+			return fmt.Errorf("failed to list snapshots for path %s policy %s: %w", snapshotPath, policyName, err)
+		}
+		for _, snapshot := range snapshots {
+			if err := vast_client.IgnoreStatusCodes(rest.Snapshots.DeleteById(snapshot.Id), 404); err != nil {
+				b.emit.Warningf(events.ReasonCleanupFailed,
+					"failed to delete snapshot %s: %v", snapshot.Name, err)
+			} else {
+				b.emit.Normalf(events.ReasonSnapshotsDeleted, "deleted snapshot %s", snapshot.Name)
+			}
 		}
 	}
 	return nil
-}
-
-// deleteReplicationSnapshots deletes snapshots under replicationPath.
-// Returns early without error when the required fields are not yet populated.
-func (b *baseProvisioner) deleteReplicationSnapshots(
-	ctx context.Context,
-	rest *vast_client.TypedVMSRest,
-	replicationPath, protectionPolicyName string,
-) error {
-	return vast_client.IgnoreStatusCodes(b.deleteSnapshots(ctx, rest, replicationPath, protectionPolicyName), 404)
 }
 
 // ---------------------------------------------------------------------------

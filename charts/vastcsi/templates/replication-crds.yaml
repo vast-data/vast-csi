@@ -291,8 +291,8 @@ spec:
     - jsonPath: .spec.replicationPath
       name: Replication Path
       type: string
-    - jsonPath: .spec.protectionPolicyName
-      name: Protection Policy
+    - jsonPath: .spec.protectionPolicyNames
+      name: Protection Policies
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -313,7 +313,7 @@ spec:
               up-to-date whenever the parent's membership changes.
             - VastReplicationContentReconciler provisions the mirrored resources when
               metadata.generation > status.observedGeneration, then records
-              ReplicationPath and ProtectionPolicyName in the status so cleanup can
+              ReplicationPath and ProtectionPolicyNames in the status so cleanup can
               proceed even if the mirrored objects are already gone.
             - Cleanup is driven by this object's finalizer.  The parent name (taken
               from the owner reference) is used as a label key to find all managed
@@ -368,13 +368,16 @@ spec:
                 x-kubernetes-validations:
                 - message: protectedPathName is immutable
                   rule: self == oldSelf
-              protectionPolicyName:
+              protectionPolicyNames:
                 description: |-
-                  ProtectionPolicyName is the name of the VAST protection policy associated
-                  with this replication.  Set at creation time and never changed.
-                type: string
+                  ProtectionPolicyNames lists every operator-created protection policy whose
+                  snapshots may exist under replicationPath on this cluster.  Populated at
+                  VRC creation from the parent replication topology.
+                items:
+                  type: string
+                type: array
                 x-kubernetes-validations:
-                - message: protectionPolicyName is immutable
+                - message: protectionPolicyNames is immutable
                   rule: self == oldSelf
               provisionerType:
                 description: |-
@@ -432,7 +435,7 @@ spec:
                   rule: self == oldSelf
             required:
             - protectedPathName
-            - protectionPolicyName
+            - protectionPolicyNames
             - provisionerType
             - replicationPath
             - storageClass

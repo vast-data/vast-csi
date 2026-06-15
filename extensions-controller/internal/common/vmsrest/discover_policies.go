@@ -326,6 +326,32 @@ func ensurePolicy(
 	return newReplicationLink(policy.Name, policy.Id, rest, scA, restB, scB, peerA, peerB, edge)
 }
 
+// ProtectionPolicyNamesByStorageClass returns operator-created protection policy
+// names grouped by StorageClass.  Each link's policy is created on SideA and
+// mirrored to SideB, so both clusters may host snapshots under that policy name.
+func ProtectionPolicyNamesByStorageClass(
+	ownerName string,
+	primarySC string,
+	topology []vastv1alpha1.ReplicationTarget,
+) map[string][]string {
+	policyNamesBySC := make(map[string][]string)
+	for _, t := range topology {
+		if t.PeerName == "" {
+			continue
+		}
+		policyName := ownerName + "-" + t.PeerName
+		sideA := t.Source
+		sideB := t.Destination
+		if t.Destination == primarySC {
+			sideA = t.Destination
+			sideB = t.Source
+		}
+		policyNamesBySC[sideA] = append(policyNamesBySC[sideA], policyName)
+		policyNamesBySC[sideB] = append(policyNamesBySC[sideB], policyName)
+	}
+	return policyNamesBySC
+}
+
 // DeleteProtectionPolicies deletes every NATIVE_REPLICATION ProtectionPolicy
 // that was created for ownerName/topology.
 func DeleteProtectionPolicies(
@@ -337,20 +363,7 @@ func DeleteProtectionPolicies(
 	sslVerify bool,
 	log *zap.Logger,
 ) {
-	// Group policy names by the SC whose cluster owns them.
-	policyNamesBySC := make(map[string][]string)
-	for _, t := range topology {
-		if t.PeerName == "" {
-			continue
-		}
-		sideA := t.Source
-		if t.Destination == primarySC {
-			sideA = t.Destination
-		}
-		policyNamesBySC[sideA] = append(policyNamesBySC[sideA], ownerName+"-"+t.PeerName)
-	}
-
-	for scName, policyNames := range policyNamesBySC {
+	for scName, policyNames := range ProtectionPolicyNamesByStorageClass(ownerName, primarySC, topology) {
 		rest, _, err := NewFromStorageClassName(ctx, k8s, scName, sslVerify, log)
 		if err != nil {
 			log.With(zap.Error(err)).Info("skipping protection policy deletion: cannot build REST client",
