@@ -51,6 +51,7 @@ class Config(TypedEnv):
     use_local_ip_for_mount = TypedEnv.Str("X_CSI_USE_LOCALIP_FOR_MOUNT", default="")
     attach_required = TypedEnv.Bool("X_CSI_ATTACH_REQUIRED", default=True)
     block_hosts_auto_prune = TypedEnv.Bool("X_CSI_BLOCK_HOSTS_AUTO_PRUNE", default=False)
+    force_lazy_umount_on_timeout = TypedEnv.Bool("X_CSI_FORCE_LAZY_UMOUNT_ON_TIMEOUT", default=False)
     disable_usage_stats = TypedEnv.Bool("X_CSI_DISABLE_USAGE_STATS", default=False)
     block_hosts_prefix = TypedEnv.Str("X_CSI_BLOCK_HOSTS_PREFIX", default="")
 
@@ -58,7 +59,7 @@ class Config(TypedEnv):
     _endpoint = TypedEnv.Str("CSI_ENDPOINT", default="unix:///var/run/csi.sock")
     _mount_options = TypedEnv.Str("X_CSI_MOUNT_OPTIONS", default="")  # For example: "port=2049,nolock,vers=3"
     _vms_host = TypedEnv.Str("X_CSI_VMS_HOST", default="")
-    name_fmt = "csi:{namespace}:{name}:{id}"
+    name_fmt = "csi:{id}:{namespace}:{name}"
     block_nqn_prefix = "nqn.2014-08.com.vastcsiblock:"
     max_cache_control_seconds = TypedEnv.Int("X_CSI_CACHE_MAX_AGE", default=0)
 
@@ -68,6 +69,7 @@ class Config(TypedEnv):
     timeout = TypedEnv.Int("X_CSI_VMS_TIMEOUT", default=30)
     mount_umount_timeout = TypedEnv.Int("X_CSI_MOUNT_UMOUNT_TIMEOUT", default=30)
     resolve_mount_symlinks = TypedEnv.Bool("X_CSI_RESOLVE_MOUNT_SYMLINKS", default=False)
+    allow_ro_many_block_fs_mode = TypedEnv.Bool("X_CSI_ALLOW_RO_MANY_BLOCK_FS_MODE", default=False)
 
     @cached_property
     def vms_user(self):

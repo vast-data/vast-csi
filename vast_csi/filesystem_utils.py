@@ -1,15 +1,20 @@
 import os
 import re
+import tempfile
 from shlex import split
 from threading import RLock
 from collections import defaultdict
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
+from tempfile import TemporaryDirectory
 
 from easypy.units import MINUTE
+from easypy.timing import timing
 from requests.exceptions import HTTPError  # noqa
 from plumbum import local, cmd, ProcessExecutionError
 from plumbum.commands.processes import ProcessTimedOut
 from vast_csi.logging import logger
+from vast_csi.exceptions import Abort, FilesystemIntegrityError, MountFailed, UmountTimedOut
+from vast_csi import csi_types as types
 from vast_csi.utils import run_with_timeout
 
 
@@ -113,9 +118,12 @@ def get_host_realpath(path):
         return realpath_cmd(path).strip()
     except ProcessExecutionError as exc:
         if "No such file or directory" in exc.stderr:
-            # If the path doesn't exist, return the original path
-            return path
-        raise
+            logger.warning(f"{path} doesn't exist")
+        else:
+            # e.g. "Input/output error" from a corrupted/stale mount — log and
+            # fall back to the unresolved path so callers can skip this entry.
+            logger.warning(f"realpath {path} failed: {exc.stderr.strip()}")
+        return path
 
 
 class MountInfo:
@@ -277,6 +285,154 @@ def get_filesystem_type(path: str):
     return stdout.strip() if retcode == 0 else None
 
 
+def _normalize_mount_flags(flags):
+    if not flags:
+        return []
+    if isinstance(flags, str):
+        return [f.strip() for f in flags.split(",") if f.strip()]
+    return list(flags)
+
+
+def mount(
+    src,
+    tgt,
+    flags=None,
+    bind=False,
+    fs_type=None,
+    enforce_ro=False,
+    metrics_registry=None,
+    metrics_operation="block_mount",
+    timeout=None,
+):
+    """
+    Mount a path with optional timeout via run_with_timeout (avoids hung mount on I/O issues).
+
+    Used by block (bind / filesystem), NFS, staging probes, and temporary_mount.
+    """
+    flags = _normalize_mount_flags(flags)
+    if enforce_ro and "ro" not in flags:
+        flags.append("ro")
+
+    need_ro_remount = enforce_ro and bind
+
+    if bind:
+        bind_flags = [f for f in flags if f != "ro"]
+        executable = cmd.mount["--bind"]
+        if bind_flags:
+            executable = executable["-o", ",".join(bind_flags)]
+    elif fs_type:
+        executable = cmd.mount["-t", fs_type]
+        if flags:
+            executable = executable["-o", ",".join(flags)]
+    else:
+        executable = cmd.mount
+        if flags:
+            executable = executable["-o", ",".join(flags)]
+
+    flags_str = ",".join(flags) if flags else "(none)"
+    mount_type = "bind" if bind else (f"fs_type={fs_type}" if fs_type else "default")
+    logger.info(
+        f"Mounting {src!r} -> {tgt!r} ({mount_type}) with flags: {flags_str}"
+        + (f", timeout: {timeout}s" if timeout else "")
+    )
+
+    def do_mount():
+        executable["-vvv", src, tgt] & logger.pipe_info("mount: ")
+        if need_ro_remount:
+            logger.info(f"Remounting {tgt!r} as read-only")
+            cmd.mount["-o", "remount,ro", tgt] & logger.pipe_info("mount: ")
+
+    if metrics_registry:
+        metrics_manager = metrics_registry.mount(metrics_operation)
+    else:
+        metrics_manager = nullcontext()
+
+    with metrics_manager, timing() as timer:
+        try:
+            if timeout:
+                run_with_timeout(do_mount, timeout)
+            else:
+                do_mount()
+        except (TimeoutError, ProcessTimedOut):
+            raise MountFailed(
+                detail=f"mount timed out after {timeout}s",
+                src=src,
+                tgt=tgt,
+                mount_options=flags,
+            )
+        except ProcessExecutionError as exc:
+            raise MountFailed(detail=exc.stderr, src=src, tgt=tgt, mount_options=flags)
+
+    logger.info(f"Mount succeeded in {timer.elapsed}: {src!r} -> {tgt!r}")
+
+
+def umount(path, ignore_not_mounted=False, lazy=False, metrics_registry=None, metrics_operation="block_mount", timeout=None):
+    """Unmount a path with run_with_timeout when timeout is set."""
+    logger.info(f"Unmounting {path!r}" + (f" with timeout: {timeout}s" if timeout else ""))
+
+    def do_umount():
+        flags = ["-v"]
+        if lazy:
+            flags.append("-l")
+        return cmd.umount[flags + [path]].run()
+
+    if metrics_registry:
+        metrics_manager = metrics_registry.umount(metrics_operation)
+    else:
+        metrics_manager = nullcontext()
+
+    with metrics_manager, timing() as timer:
+        try:
+            if timeout:
+                run_with_timeout(do_umount, timeout)
+            else:
+                do_umount()
+        except TimeoutError:
+            raise UmountTimedOut(f"umount timed out after {timeout}s for path: {path}")
+        except ProcessExecutionError as exc:
+            if "not mounted" in exc.stderr:
+                if ignore_not_mounted:
+                    logger.info(f"Umount: {path!r} is not mounted (ignored)")
+                    return False
+                logger.warning(f"Umount failed - {path!r} is not mounted (race?)")
+                return False
+            raise
+
+    logger.info(f"Umount succeeded in {timer.elapsed}: {path!r}")
+    return True
+
+
+@contextmanager
+def temporary_mount(src, tgt_dir, fs_type, readonly=False, timeout=None):
+    """
+    Temporary filesystem mount (e.g. resize, integrity probe on block devices).
+    """
+    mount_flags = []
+    if readonly:
+        mount_flags.append("ro")
+    if fs_type == "xfs":
+        mount_flags.insert(0, "nouuid")
+
+    with TemporaryDirectory(dir=tgt_dir) as temp_mount_point:
+        bind = fs_type != "xfs"
+        if bind:
+            temp_mount_point = os.path.join(temp_mount_point, "device")
+            open(temp_mount_point, "a").close()
+        mount(
+            src=src,
+            tgt=temp_mount_point,
+            bind=bind,
+            fs_type=fs_type if not bind else None,
+            flags=mount_flags or None,
+            timeout=timeout,
+        )
+        try:
+            yield temp_mount_point
+        finally:
+            umount(temp_mount_point, ignore_not_mounted=True, timeout=timeout)
+
+
+
 def format_device(requested_fs: str, device: str, format_args: str = None):
     """
       Formats a given block device with the specified filesystem type.
@@ -314,16 +470,99 @@ def get_device_size(device: str):
         raise ValueError(f"Failed to parse size of device {device}: {output}")
 
 
-def check_fs_integrity(device: str):
-    """Check the integrity of the filesystem on the given device."""
+def _check_ext_integrity(device: str):
+    """ext3/ext4: run fsck before mount on re-attached or cloned volumes."""
     try:
-        cmd.fsck["-a", "-f", device] & logger.pipe_info(f"fsck: ")
+        hostcmd.e2fsck.get_executable("-a", device) & logger.pipe_info("e2fsck: ")
     except ProcessExecutionError as exc:
         # fsck returns 1 if it finds and fixes issues
         if exc.retcode == 1:
             logger.warning(f"fsck found and fixed issues on {device}: {exc}")
         else:
             raise
+
+
+def _get_xfs_superblock_inprogress(device: str):
+    """Return XFS superblock inprogress field as a string, or None if unavailable."""
+    retcode, stdout, stderr = cmd.xfs_db[
+        "-r", "-c", "sb 0", "-c", "p", device
+    ].run(retcode=None, timeout=10)
+    if retcode != 0:
+        logger.warning(
+            f"Could not read XFS superblock on {device} (xfs_db exit {retcode}): {stderr}"
+        )
+        return None
+    for line in stdout.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("inprogress"):
+            return stripped.split("=", 1)[1].strip()
+    return None
+
+
+def _check_xfs_integrity(device: str):
+    """
+    Interrupted mkfs detection for XFS (superblock inprogress != 0).
+    """
+    inprogress = _get_xfs_superblock_inprogress(device)
+    if inprogress in (None, "0"):
+        return
+    raise FilesystemIntegrityError(
+        f"XFS on {device} has superblock inprogress={inprogress} "
+        "(interrupted mkfs); refusing to continue staging"
+    )
+
+
+@contextmanager
+def _probe_filesystem_mount(device: str, fs_type: str, timeout: int = 120):
+    """
+    Read-only mount probe — same class of check as NodePublishVolume mount.
+    Staging bind-mounts the block device only and does not validate the filesystem.
+    """
+    mount_flags = ["ro"]
+    if fs_type == "xfs":
+        mount_flags.insert(0, "nouuid")
+
+    with tempfile.TemporaryDirectory(prefix="vast-csi-fs-probe-") as tmpdir:
+        mount_point = os.path.join(tmpdir, "mnt")
+        os.makedirs(mount_point)
+        mount(
+            device,
+            mount_point,
+            fs_type=fs_type,
+            flags=mount_flags,
+            timeout=timeout,
+        )
+        try:
+            yield mount_point
+        finally:
+            umount(mount_point, ignore_not_mounted=True, timeout=timeout)
+
+
+def _probe_mount_readonly(device: str, fs_type: str, timeout: int = 120):
+    logger.info(f"Probing {fs_type} mount readiness on {device}...")
+    try:
+        with _probe_filesystem_mount(device, fs_type, timeout=timeout):
+            logger.info(f"{fs_type} mount readiness probe succeeded on {device}")
+    except (MountFailed, UmountTimedOut) as exc:
+        raise FilesystemIntegrityError(
+            f"{fs_type} on {device} is not mountable: {exc}. "
+            "Staging cannot complete until the underlying issue is resolved."
+        ) from exc
+
+
+def check_fs_integrity(device: str, fs_type: str, mount_timeout: int = 20, run_repair: bool = True):
+    """Validate filesystem health before staging completes."""
+    if run_repair:
+        if fs_type in ("ext3", "ext4"):
+            _check_ext_integrity(device)
+        elif fs_type == "xfs":
+            _check_xfs_integrity(device)
+        else:
+            raise FilesystemIntegrityError(
+                f"Unsupported filesystem type {fs_type!r} for integrity check. "
+                f"Supported: ext3, ext4, xfs"
+            )
+    _probe_mount_readonly(device, fs_type, timeout=mount_timeout)
 
 
 def get_fs_size(device: str, target_mount: str, fs_type: str):
@@ -340,8 +579,26 @@ def get_fs_size(device: str, target_mount: str, fs_type: str):
 
 
 def ext_resize(device: str):
-    """Resize ext3/ext4 filesystem."""
-    cmd.resize2fs[device] & logger.pipe_info("resize2fs: ")
+    """Resize ext3/ext4 filesystem.
+
+    When the device was restored from a snapshot taken of a live (mounted)
+    filesystem, the superblock retains the dirty flag.  resize2fs refuses to
+    proceed in that case and exits 1 with "Please run 'e2fsck -f' first."
+    We catch that specific failure, run a bounded e2fsck -f to replay the
+    journal and clear the flag, then retry resize2fs.
+    """
+    try:
+        cmd.resize2fs[device] & logger.pipe_info("resize2fs: ")
+    except ProcessExecutionError as exc:
+        if exc.retcode == 1 and "e2fsck -f" in (exc.stderr or ""):
+            logger.warning(
+                f"resize2fs requires e2fsck on {device} (snapshot of live fs detected) — "
+                f"running e2fsck -f with 5-minute timeout"
+            )
+            hostcmd.e2fsck.get_executable("-f", "-y", device).run(timeout=5 * 60, retcode=None)
+            cmd.resize2fs[device] & logger.pipe_info("resize2fs: ")
+        else:
+            raise
     logger.info(f"Device {device!r} resized successfully")
 
 
@@ -419,18 +676,67 @@ def resize_device(device: str, target_mount: str, fs_type: str):
         logger.info(f"Device {device!r} does not need resizing")
 
 
-class VolumeLockedError(Exception):
+class ResourceLockedError(Exception):
+    """Raised when a resource is already locked by another operation."""
     pass
 
 
-@contextmanager
-def volume_locked(volume_id, _locks=set(), _global_lock=RLock()):
-    """helps ensure formatting/resizing of a volume does not happen concurrently"""
-    with _global_lock:
-        if volume_id in _locks:
-            raise VolumeLockedError(f"Volume {volume_id} is locked")
-        _locks.add(volume_id)
-    try:
+class LockedResource:
+    """Context manager for locking a resource."""
+    def __init__(self, resource_id):
+        self.resource_id = resource_id
+        self.message = f"Resource {resource_id} is currently locked"
+
+    def set_message(self, message: str):
+        self.message = message
+
+    @contextmanager
+    def with_message(self, message: str):
+        prev_message = self.message
+        self.set_message(message)
         yield
+        self.set_message(prev_message)
+
+    def fail(self):
+        raise ResourceLockedError(self.message)
+
+    def abort(self):
+        raise Abort(types.ABORTED, self.message)
+
+
+@contextmanager
+def resource_locked(resource_id, _locks={}, _global_lock=RLock(), abort_on_error=False):
+    """
+    Ensures exclusive access to a resource (volume, volume group, etc.).
+    
+    Prevents concurrent operations on the same resource such as:
+    - Volume formatting/resizing
+    - Volume group creation/modification
+    - Replication operations
+    - Any operation requiring exclusive access
+    
+    Args:
+        resource_id: Unique identifier for the resource to lock
+        abort_on_error: If True, abort the operation on error
+    
+    Raises:
+        ResourceLockedError: If the resource is already locked
+    """
+    logger.debug(f"Attempting to acquire lock for resource {resource_id}")
+
+    with _global_lock:
+        if resource_id in _locks:
+            if abort_on_error:
+                _locks[resource_id].abort()
+            else:
+                _locks[resource_id].fail()
+
+        locked_resource = LockedResource(resource_id)
+        _locks[resource_id] = locked_resource
+
+    try:
+        yield locked_resource
     finally:
-        _locks.discard(volume_id)
+        with _global_lock:
+            _locks.pop(resource_id, None)
+        logger.debug(f"Lock released for resource {resource_id}")

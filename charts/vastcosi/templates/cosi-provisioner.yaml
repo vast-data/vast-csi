@@ -49,6 +49,15 @@ spec:
         volumeMounts:
         - mountPath: /var/lib/cosi
           name: socket-dir
+        startupProbe:
+          exec:
+            command:
+            - test
+            - -S
+            - /var/lib/cosi/cosi.sock
+          initialDelaySeconds: 5
+          periodSeconds: 2
+          failureThreshold: 30
         resources: {{- toYaml .Values.cosiplugin.resources.objectstorageProvisioner | nindent 10 }}
       dnsPolicy: {{ .Values.cosiplugin.dnsPolicy }}
       nodeSelector:

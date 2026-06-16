@@ -16,7 +16,7 @@ with local.cwd(gettempdir()) as tempdir:
     # Temporary change working directory and create version.info file in order to allow reading
     # driver name, version and git commit by Config.
     tempdir["version.info"].open("w").write("csi.vastdata.com v0.0.0 #### local")
-    from vast_csi.plugins.csi import CsiController, CsiNode, Config
+    from vast_csi.plugins.nfs import CsiController, CsiNode, Config
     from vast_csi.plugins.cosi import CosiProvisioner
     from vast_csi.plugins.block import BlockController, BlockNode
     import vast_csi.csi_types as types
@@ -35,7 +35,7 @@ for cls in (CsiController, CsiNode, CosiProvisioner, BlockController, BlockNode)
 
 # Load configuration
 CONF = Config()
-for pkg_name in ("vast_csi.plugins.csi", "vast_csi.plugins.cosi",  "vast_csi.plugins.block"):
+for pkg_name in ("vast_csi.plugins.nfs", "vast_csi.plugins.cosi",  "vast_csi.plugins.block"):
     if module := sys.modules.get(pkg_name):
         module.CONF = CONF
 
@@ -61,11 +61,11 @@ def mock_credentials(tmpdir):
 
 @pytest.fixture
 def vms_session(monkeypatch, mock_credentials):
-    from vast_csi.plugins.base import get_vms_session
+    from vast_csi.session import get_vms_session
     from vast_csi.configuration import Config
 
     monkeypatch.setattr(Config, "vms_credentials_store", mock_credentials)
-    with patch("vast_csi.vms_session.VmsSession.refresh_auth_token", MagicMock()):
+    with patch("vast_csi.session.VmsSession.refresh_auth_token", MagicMock()):
         get_vms_session.cache_clear()
         yield get_vms_session()
 

@@ -69,6 +69,7 @@ spec:
           image: {{ printf "%s:%s" $csi_images.csiVastPlugin.repository (toString $csi_images.csiVastPlugin.tag) }}
           args:
             - "serve"
+            - "--plugin=nfs"
           imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default  "IfNotPresent" }}
           env:
 {{- include "vastcsi.commonEnv" . | indent 12 }}
@@ -116,7 +117,7 @@ spec:
 {{- include "vastcsi.vmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 12 }}
           resources: {{- toYaml .Values.node.resources.csiVastPlugin | nindent 12 }}
       hostNetwork: true
-      hostPID: true
+      hostPID: true  # Required for NFS mTLS: access host's kernel keyring namespace
       dnsPolicy: {{ .Values.node.dnsPolicy }}
       nodeSelector:
 {{ toYaml .Values.node.nodeSelector | indent 8 }}

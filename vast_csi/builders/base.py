@@ -14,7 +14,11 @@ CreatedVolumeT = TypeVar("CreatedVolumeT")
 VOLUME_ID_SEPARATOR = "@"
 
 
-__all__ = ["BaseVolumeBuilder", "parse_volume_id", "to_volume_id_with_metadata"]
+__all__ = [
+    "BaseVolumeBuilder",
+    "parse_volume_id",
+    "to_volume_id_with_metadata",
+]
 
 
 def parse_volume_id(volume_id: str) -> Tuple[str, Optional[str]]:
@@ -124,7 +128,7 @@ class CommonPropsMixin:
         return self.capacity_range.required_bytes if self.capacity_range else 0
 
     def build_volume_name(self) -> str:
-        """Build volume name using format csi:{namespace}:{name}:{id}"""
+        """Build volume name using format csi:{id}:{namespace}:{name}"""
         volume_id = self.name
         if ephemeral_volume_name := getattr(self, "ephemeral_volume_name", None):
             return ephemeral_volume_name

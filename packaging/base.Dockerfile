@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.6-1760515502
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
 WORKDIR /root
 
@@ -10,7 +10,16 @@ RUN microdnf upgrade -y \
     && ln -sf /usr/bin/pip3.12 /usr/bin/pip3 \
     && microdnf clean all
 
-RUN microdnf update -y expat-2.5.0-5.el9_7.1 sqlite-libs-3.34.1-9.el9_7 \
+RUN microdnf update -y expat sqlite-libs openssl openssl-libs \
+    curl curl-minimal libcurl-minimal \
+    glib2 \
+    glibc \
+    gnutls \
+    libarchive \
+    libblkid libfdisk libmount libsmartcols libuuid util-linux util-linux-core \
+    python3 python3-libs python3.12 python3.12-devel python3.12-libs \
+    libcap \
+    libnghttp2 \
     && microdnf clean all
 
 # Add CentOS Stream 9 repository for nfs-utils installation
@@ -27,6 +36,8 @@ COPY pyproject.toml poetry.lock* ./
 COPY LICENSE /licenses/LICENSE
 
 # Install Poetry and python dependencies
+# PIP_DEFAULT_TIMEOUT: arm64 QEMU emulation is slow — large wheels (grpcio) need more time to download
+ENV PIP_DEFAULT_TIMEOUT=300
 RUN curl -sSL https://install.python-poetry.org | python3 - --version 1.8.5 \
     && mv /root/.local/bin/poetry /usr/local/bin/poetry \
     && poetry config virtualenvs.create false \
@@ -36,7 +47,10 @@ RUN curl -sSL https://install.python-poetry.org | python3 - --version 1.8.5 \
     && poetry install --only main \
     && rm -f poetry.lock* \
     && /root/.local/share/pypoetry/venv/bin/pip install --upgrade setuptools \
-    && pip3 install --upgrade setuptools \
+    && pip3 install --upgrade setuptools jaraco.context wheel \
+    && /root/.venv/bin/python -m ensurepip --upgrade \
+    && /root/.venv/bin/python -m pip install --upgrade setuptools \
+    && /root/.venv/bin/python -m pip uninstall pip -y \
     && ln -sf /usr/bin/python3.12 /usr/bin/python3
 
 

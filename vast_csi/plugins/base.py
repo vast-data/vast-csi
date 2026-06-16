@@ -21,7 +21,6 @@ from pprint import pformat
 import inspect
 from contextlib import ExitStack
 
-import easypy.sync
 from requests.exceptions import HTTPError
 from plumbum.commands.processes import ProcessExecutionError
 
@@ -30,6 +29,7 @@ from easypy.exceptions import TException
 from easypy.collections import separate
 from easypy.bunch import Bunch
 from vast_csi.proto import csi_pb2_grpc as csi_grpc
+from vast_csi.proto import addons_identity_pb2, addons_identity_pb2_grpc
 from vast_csi import csi_types as types
 from vast_csi.csi_types import FAILED_PRECONDITION
 
@@ -38,11 +38,12 @@ from vast_csi.utils import stringify_dict
 from vast_csi.csi_types import INVALID_ARGUMENT, UNKNOWN
 from vast_csi.builders import  parse_volume_id
 from vast_csi.exceptions import Abort, LookupFieldError
-from vast_csi.vms_session import get_vms_session, VmsSession
+from vast_csi.session import instantiate_session_from_secret, VmsSession
 from vast_csi.luks_utils import get_luks_manager, LuksManager
 from vast_csi.metrics import get_metrics_registry
+from vast_csi.mtls_utils import get_mtls_manager
 from vast_csi.quantity import parse_quantity
-
+from vast_csi.logging import logger
 
 CONF = None
 
@@ -75,7 +76,6 @@ class Instrumented:
         required_params, non_required_params = map(
             set, separate(parameters, key=lambda k: parameters[k].default is inspect._empty)
         )
-        vms_session_args = inspect.signature(get_vms_session).parameters.keys()
         required_params.discard("self")
 
         func = kwargs_resilient(func)
@@ -87,7 +87,7 @@ class Instrumented:
             params = {fld.name: value for fld, value in request.ListFields()}
             # secrets are not logged and not the part of function signature.
             secrets = params.pop("secrets", {})
-            missing_params = required_params - {"request", "context", "vms_session", "exit_stack", "luks_manager", "metrics_registry"} - set(params)
+            missing_params = required_params - {"request", "context", "vms_session", "secondary_vms_session", "exit_stack", "luks_manager", "metrics_registry", "mtls_manager"} - set(params)
 
             # Get cluster_name from volume_id, snapshot_id or source_volume_id in case of id identifier with metadata
             cluster_names = set()
@@ -112,19 +112,26 @@ class Instrumented:
                 for line in stringify_dict(params):
                     log(f"({method})    {line}")
 
+            # Handle source session (vms_session)
             if "vms_session" in required_params:
-                # If secret exist and method signature requires `vms_session`
-                # then `vms_session` with secret will be injected into function parameters
-                params["vms_session"] = get_vms_session(**{k: secrets.get(k) for k in vms_session_args})
+                params["vms_session"] = instantiate_session_from_secret(secrets)
             elif "vms_session" in non_required_params:
-                # Try to take vms_session from secret. Set None on error.
                 try:
-                    params["vms_session"] = get_vms_session(**{k: secrets.get(k) for k in vms_session_args})
+                    params["vms_session"] = instantiate_session_from_secret(secrets)
                 except LookupFieldError:
                     params["vms_session"] = None
 
+            # Handle secondary/destination session (secondary_vms_session)
+            if "secondary_vms_session" in required_params:
+                params["secondary_vms_session"] = instantiate_session_from_secret(secrets, key_prefix=("secondary_",))
+            elif "secondary_vms_session" in non_required_params:
+                try:
+                    params["secondary_vms_session"] = instantiate_session_from_secret(secrets, key_prefix=("secondary_",))
+                except LookupFieldError:
+                    params["secondary_vms_session"] = None
+
             if "luks_manager" in required_params:
-                # If method signature requires `luks_manager`
+                # If method signature requires `luks_manager` parameter
                 params["luks_manager"] = get_luks_manager(
                     volume_id=params["volume_id"],
                     passphrase=secrets.get("passphrase", None),
@@ -132,16 +139,30 @@ class Instrumented:
                     cluster_name=secrets.get("cluster_name", None),
                 )
 
+            if "mtls_manager" in required_params:
+                # If method signature requires `mtls_manager` parameter
+                # Extract mount_flags from volume_capability (xprtsec comes from mount options)
+                mount_flags = ""
+                volume_capability = params.get("volume_capability")
+                if volume_capability and hasattr(volume_capability, "mount"):
+                    mount_flags = ",".join(volume_capability.mount.mount_flags or [])
+                params["mtls_manager"] = get_mtls_manager(
+                    mtls_client_cert=secrets.get("mtls_client_cert", None),
+                    mtls_client_privkey=secrets.get("mtls_client_privkey", None),
+                    mount_flags=mount_flags,
+                    cluster_name=secrets.get("cluster_name", None),
+                )
+
             exit_stack = ExitStack()
-            
+
             if CONF.metrics_enabled:
                 metrics_registry = get_metrics_registry(
                     params, hostname=CONF.node_id, driver_name=CONF.plugin_name
                 )
-                
+
                 if "metrics_registry" in required_params or "metrics_registry" in non_required_params:
                     params["metrics_registry"] = metrics_registry
-                
+
                 # Track CSI operation metrics (execution time + status code)
                 exit_stack.enter_context(
                     metrics_registry.csi_operation(method)
@@ -159,7 +180,7 @@ class Instrumented:
                 with exit_stack:
                     ret = func(self, request=request, context=context, **params)
             except Abort as exc:
-                logger.info(
+                logger.error(
                     f'{peer} <<< [{uid}] {method} ABORTED with {exc.code} ("{exc.message}")'
                 )
                 logger.debug("Traceback", exc_info=True)
@@ -239,6 +260,109 @@ class IdentityBase(csi_grpc.IdentityServicer):
     def Probe(self, request, context):
         """Check the health and readiness of the plugin."""
         return types.ProbeRespOK
+
+
+
+class AddonsIdentity(addons_identity_pb2_grpc.IdentityServicer):
+    """
+    Shared Identity service for all CSI-Addons.
+
+    This is a singleton-like class with class-level capabilities that are
+    shared across all addon registrations. Each addon adds its capabilities
+    when it's loaded.
+
+    CONTROLLER_SERVICE capability is added by default.
+    """
+
+    # Class-level list to store capability types (not protobuf objects)
+    # Format: ("service", CONTROLLER_SERVICE), ("volume_replication", VOLUME_REPLICATION), etc.
+    _capability_types = [("service", "CONTROLLER_SERVICE")]
+    _registered = False
+
+    @classmethod
+    def add_replication_capabilities(cls):
+        """Add VOLUME_REPLICATION capability."""
+        entry = ("volume_replication", "VOLUME_REPLICATION")
+        if entry not in cls._capability_types:
+            cls._capability_types.append(entry)
+            from vast_csi.logging import logger
+            logger.info(f"Added CSI-Addons capability: {entry}")
+
+    @classmethod
+    def add_volume_group_capabilities(cls):
+        """Add all VolumeGroup capabilities."""
+        entries = [
+            ("volume_group", "CREATE_GET_DELETE_VOLUME_GROUP"),
+            ("volume_group", "MODIFY_VOLUME_GROUP"),
+        ]
+        for entry in entries:
+            if entry not in cls._capability_types:
+                cls._capability_types.append(entry)
+                logger.info(f"Added CSI-Addons capability: {entry}")
+
+    @classmethod
+    def _build_capabilities(cls):
+        """Build protobuf capability objects from stored types."""
+        Service = addons_identity_pb2.Capability.Service
+        VolumeReplication = addons_identity_pb2.Capability.VolumeReplication
+        VolumeGroup = addons_identity_pb2.Capability.VolumeGroup
+
+        capabilities = []
+        for category, cap_name in cls._capability_types:
+            if category == "service":
+                cap_enum = getattr(Service, cap_name)
+                capabilities.append(
+                    addons_identity_pb2.Capability(
+                        service=Service(type=cap_enum)
+                    )
+                )
+            elif category == "volume_replication":
+                cap_enum = getattr(VolumeReplication, cap_name)
+                capabilities.append(
+                    addons_identity_pb2.Capability(
+                        volume_replication=VolumeReplication(type=cap_enum)
+                    )
+                )
+            elif category == "volume_group":
+                cap_enum = getattr(VolumeGroup, cap_name)
+                capabilities.append(
+                    addons_identity_pb2.Capability(
+                        volume_group=VolumeGroup(type=cap_enum)
+                    )
+                )
+        return capabilities
+
+    @classmethod
+    def register(cls, server):
+        """Register the identity service on the gRPC server (only once)."""
+        if not cls._registered:
+            addons_identity_pb2_grpc.add_IdentityServicer_to_server(cls(), server)
+            cls._registered = True
+
+    def GetIdentity(self, request, context):
+        """
+        Retrieve the CSI-Addons identity information.
+        Returns the plugin name and version.
+        """
+        return addons_identity_pb2.GetIdentityResponse(
+            name=CONF.plugin_name,
+            vendor_version=CONF.plugin_version,
+        )
+
+    def GetCapabilities(self, request, context):
+        """
+        Retrieve the CSI-Addons capabilities.
+        Returns capabilities like volume replication support.
+        """
+        # Build capabilities fresh each time to avoid protobuf issues
+        capabilities = self.__class__._build_capabilities()
+        return addons_identity_pb2.GetCapabilitiesResponse(
+            capabilities=capabilities
+        )
+
+    def Probe(self, request, context):
+        """Check the health and readiness of the CSI-Addons plugin."""
+        return addons_identity_pb2.ProbeResponse(ready=types.Bool(value=True))
 
 
 ################################################################
@@ -403,15 +527,22 @@ class NodeBase(csi_grpc.NodeServicer):
             is_ephemeral,
             vms_session,
             luks_manager=None,
+            extra_data=None,
     ):
         """
         Stores metadata about a volume in a file, including information about
         whether the volume is ephemeral, host_encryption and, if so, serialized session data.
+
+        Args:
+            extra_data: Optional dict of additional data to store (for protocol-specific needs)
         """
         payload = {
         "volume_id": volume_id,
         "is_ephemeral": is_ephemeral,
         }
+
+        if extra_data:
+            payload.update(extra_data)
 
         if is_ephemeral:
             payload["vms_session"] = vms_session.serialize(salt=volume_id)

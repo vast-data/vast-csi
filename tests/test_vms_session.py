@@ -4,10 +4,11 @@ import requests
 from plumbum import local
 from io import BytesIO
 from unittest.mock import patch, PropertyMock, MagicMock
-from vast_csi.plugins.csi import CsiController
+from vast_csi.plugins.nfs import CsiController
 from requests import Response
-from vast_csi.vms_session import apiver, get_vms_session, Config, VmsSession, VastResource, LookupFieldError
-from vast_csi.exceptions import OperationNotSupported, ApiError
+from vast_csi.session import apiver, get_vms_session, VmsSession, VastResource, instantiate_session_from_secret
+from vast_csi.configuration import Config
+from vast_csi.exceptions import OperationNotSupported, ApiError, LookupFieldError
 from easypy.semver import SemVer
 from easypy.resilience import _Retry
 from easypy.bunch import Bunch
@@ -24,7 +25,7 @@ def version_mock(version):
 
 @patch("vast_csi.configuration.Config.vms_user", PropertyMock("test"))
 @patch("vast_csi.configuration.Config.vms_password", PropertyMock("test"))
-@patch("vast_csi.vms_session.VmsSession.refresh_auth_token", MagicMock())
+@patch("vast_csi.session.VmsSession.refresh_auth_token", MagicMock())
 class TestVmsSessionRequisiteSuite:
 
     @pytest.mark.parametrize(
@@ -86,7 +87,7 @@ class TestVmsSessionRequisiteSuite:
         # Execution
         with (
             patch.object(vms_session, "versions", version_mock("5.0.0.25")),
-            patch("vast_csi.vms_session.VmsSession.delete", side_effect=raise_http_err),
+            patch("vast_csi.session.VmsSession.delete", side_effect=raise_http_err),
         ):
             with pytest.raises(OperationNotSupported) as exc:
                 vms_session.folders.delete("/abc", 1)
@@ -130,7 +131,7 @@ class TestVmsSessionRequisiteSuite:
         with (
             patch.object(vms_session, "versions", version_mock("4.7.0")),
             patch(
-                "vast_csi.vms_session.VmsSession.delete", side_effect=raise_http_err
+                "vast_csi.session.VmsSession.delete", side_effect=raise_http_err
             ) as mocked_request,
         ):
             with pytest.raises(AssertionError):
@@ -1302,3 +1303,566 @@ class TestVmsSessionInitFromClustersSuite:
                 config=config, username=None, password=None, token=None, tenant=None, endpoint=None, ssl_cert=None, cluster_name="cluster1"
             )
 
+
+#####################
+# instantiate_session_from_secret with tuple-based prefixes
+#####################
+#
+#
+# class TestInstantiateSessionFromSecretWithPrefixes:
+#     """Test the new tuple-based prefix functionality for instantiate_session_from_secret."""
+#
+#     def test_default_no_prefix(self):
+#         """Test with default tuple ("",) - no prefix."""
+#         secrets = {
+#             "username": "admin",
+#             "password": "secret123",
+#             "endpoint": "vms.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_session = MagicMock()
+#             mock_create.return_value = mock_session
+#
+#             result = instantiate_session_from_secret(secrets, key_prefix=("",))
+#
+#             # Should call get_vms_session with unprefixed keys
+#             assert mock_create.called  # VmsSession.create was called
+#             assert result == mock_session
+#
+#     def test_source_prefix_with_fallback(self):
+#         """Test with source prefix and fallback ("src_", "")."""
+#         # Secrets with src_ prefix
+#         secrets = {
+#             "src_username": "admin",
+#             "src_password": "secret123",
+#             "src_endpoint": "vms-primary.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_session = MagicMock()
+#             mock_create.return_value = mock_session
+#
+#             result = instantiate_session_from_secret(secrets, key_prefix=("src_", ""))
+#
+#             # Should use src_ prefixed keys
+#             assert mock_create.called  # VmsSession.create was called
+#             assert result == mock_session
+#
+#     def test_source_prefix_fallback_to_no_prefix(self):
+#         """Test fallback from src_ to no prefix when src_ keys don't exist."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         # Old-style secrets without prefix
+#         secrets = {
+#             "username": "admin",
+#             "password": "secret123",
+#             "endpoint": "vms.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             # First call with src_ prefix fails
+#             # Second call with no prefix succeeds
+#             mock_session = MagicMock()
+#             mock_create.side_effect = [
+#                 LookupFieldError("Could not find src_username"),
+#                 mock_session
+#             ]
+#
+#             result = instantiate_session_from_secret(secrets, key_prefix=("src_", ""))
+#
+#             # Should be called twice: first with src_ prefix, then without
+#             assert mock_create.call_count == 2
+#
+#             # First call with src_ prefix
+#             first_call = mock_create.call_args_list[0]
+#             assert first_call[1]["username"] is None  # src_username doesn't exist
+#
+#             # Second call without prefix
+#             second_call = mock_create.call_args_list[1]
+#             assert second_call[1]["username"] == "admin"
+#             assert second_call[1]["password"] == "secret123"
+#             assert second_call[1]["endpoint"] == "vms.example.com"
+#
+#             assert result == mock_session
+#
+#     def test_destination_prefix_only_no_fallback(self):
+#         """Test with destination prefix only ("dst_",) - no fallback."""
+#         secrets = {
+#             "dst_username": "admin",
+#             "dst_password": "secret456",
+#             "dst_endpoint": "vms-secondary.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_session = MagicMock()
+#             mock_create.return_value = mock_session
+#
+#             result = instantiate_session_from_secret(secrets, key_prefix=("dst_",))
+#
+#             # Should call get_vms_session with dst_ prefixed keys
+#             assert mock_create.called  # VmsSession.create was called
+#             assert result == mock_session
+#
+#     def test_destination_prefix_fails_without_dst_keys(self):
+#         """Test that dst_ prefix fails when dst_ keys don't exist (no fallback)."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         # Secrets without dst_ prefix
+#         secrets = {
+#             "username": "admin",
+#             "password": "secret123",
+#             "endpoint": "vms.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_create.side_effect = LookupFieldError("Could not find dst_username")
+#
+#             # Should raise error - no fallback for dst_
+#             with pytest.raises(LookupFieldError, match="Could not find dst_username"):
+#                 instantiate_session_from_secret(secrets, key_prefix=("dst_",))
+#
+#             # Should only be called once (no fallback)
+#             assert mock_create.call_count == 1
+#
+#     def test_mixed_secrets_both_src_and_dst(self):
+#         """Test with both source and destination secrets present."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         secrets = {
+#             # Source
+#             "src_username": "admin",
+#             "src_password": "secret123",
+#             "src_endpoint": "vms-primary.example.com",
+#             # Destination
+#             "dst_username": "admin",
+#             "dst_password": "secret456",
+#             "dst_endpoint": "vms-secondary.example.com",
+#             # Old-style (for fallback testing)
+#             "username": "fallback-admin",
+#             "password": "fallback-secret",
+#             "endpoint": "vms-fallback.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_src_session = MagicMock(name="src_session")
+#             mock_dst_session = MagicMock(name="dst_session")
+#             mock_create.side_effect = [mock_src_session, mock_dst_session]
+#
+#             # Get source session
+#             src_result = instantiate_session_from_secret(secrets, key_prefix=("src_", ""))
+#             assert src_result == mock_src_session
+#
+#             # Get destination session
+#             dst_result = instantiate_session_from_secret(secrets, key_prefix=("dst_",))
+#             assert dst_result == mock_dst_session
+#
+#             # Verify both calls used correct prefixes
+#             src_call = mock_create.call_args_list[0]
+#             assert src_call[1]["username"] == "admin"
+#             assert src_call[1]["endpoint"] == "vms-primary.example.com"
+#
+#             dst_call = mock_create.call_args_list[1]
+#             assert dst_call[1]["username"] == "admin"
+#             assert dst_call[1]["endpoint"] == "vms-secondary.example.com"
+#
+#     def test_multiple_prefixes_tries_all_in_order(self):
+#         """Test that multiple prefixes are tried in order until one succeeds."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         secrets = {
+#             "username": "admin",
+#             "password": "secret",
+#             "endpoint": "vms.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_session = MagicMock()
+#             # First three attempts fail, fourth succeeds
+#             mock_create.side_effect = [
+#                 LookupFieldError("prefix1 failed"),
+#                 LookupFieldError("prefix2 failed"),
+#                 LookupFieldError("prefix3 failed"),
+#                 mock_session
+#             ]
+#
+#             result = instantiate_session_from_secret(
+#                 secrets,
+#                 key_prefix=("prefix1_", "prefix2_", "prefix3_", "")
+#             )
+#
+#             # Should try all 4 prefixes
+#             assert mock_create.call_count == 4
+#             assert result == mock_session
+#
+#     def test_all_prefixes_fail_raises_last_error(self):
+#         """Test that when all prefixes fail, the last error is raised."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         secrets = {
+#             "wrong_key": "value"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             error1 = LookupFieldError("First prefix failed")
+#             error2 = LookupFieldError("Second prefix failed")
+#             last_error = LookupFieldError("Last prefix failed - this should be raised")
+#
+#             mock_create.side_effect = [error1, error2, last_error]
+#
+#             # Should raise the last error
+#             with pytest.raises(LookupFieldError, match="Last prefix failed"):
+#                 instantiate_session_from_secret(
+#                     secrets,
+#                     key_prefix=("src_", "dst_", "")
+#                 )
+#
+#             # Should have tried all three prefixes
+#             assert mock_create.call_count == 3
+#
+#     def test_with_token_authentication(self):
+#         """Test prefix handling with token-based authentication."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         secrets = {
+#             "src_token": "source-token-123",
+#             "src_endpoint": "vms-primary.example.com",
+#             "dst_token": "dest-token-456",
+#             "dst_endpoint": "vms-secondary.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_src_session = MagicMock(name="src_session")
+#             mock_dst_session = MagicMock(name="dst_session")
+#             mock_create.side_effect = [mock_src_session, mock_dst_session]
+#
+#             # Get source session with token
+#             src_result = instantiate_session_from_secret(secrets, key_prefix=("src_",))
+#             assert src_result == mock_src_session
+#
+#             # Get destination session with token
+#             dst_result = instantiate_session_from_secret(secrets, key_prefix=("dst_",))
+#             assert dst_result == mock_dst_session
+#
+#             # Verify tokens were used
+#             src_call = mock_create.call_args_list[0]
+#             assert src_call[1]["token"] == "source-token-123"
+#             assert src_call[1]["endpoint"] == "vms-primary.example.com"
+#
+#             dst_call = mock_create.call_args_list[1]
+#             assert dst_call[1]["token"] == "dest-token-456"
+#             assert dst_call[1]["endpoint"] == "vms-secondary.example.com"
+#
+#     def test_with_tenant_and_ssl_cert(self):
+#         """Test prefix handling with tenant and SSL certificate."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         secrets = {
+#             "src_username": "admin",
+#             "src_password": "secret",
+#             "src_endpoint": "vms-primary.example.com",
+#             "src_tenant": "source-tenant",
+#             "src_ssl_cert": "-----BEGIN CERTIFICATE-----\nsrc cert\n-----END CERTIFICATE-----",
+#             "src_cluster_name": "primary-cluster"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_session = MagicMock()
+#             mock_create.return_value = mock_session
+#
+#             result = instantiate_session_from_secret(secrets, key_prefix=("src_",))
+#
+#             # Verify all parameters including tenant and ssl_cert
+#             assert mock_create.called  # VmsSession.create was called
+#             assert result == mock_session
+#
+#     def test_empty_prefix_tuple_raises_error(self):
+#         """Test that empty prefix tuple raises appropriate error."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         secrets = {
+#             "username": "admin",
+#             "password": "secret",
+#             "endpoint": "vms.example.com"
+#         }
+#
+#         with pytest.raises(LookupFieldError, match="Unable to instantiate session"):
+#             instantiate_session_from_secret(secrets, key_prefix=())
+#
+#     def test_backward_compatibility_default_behavior(self):
+#         """Test that default behavior (no prefix) maintains backward compatibility."""
+#         from vast_csi.vms_session import get_vms_session
+#         get_vms_session.cache_clear()
+#         # Old-style secrets without any prefix
+#         secrets = {
+#             "username": "legacy-admin",
+#             "password": "legacy-secret",
+#             "endpoint": "legacy-vms.example.com"
+#         }
+#
+#         with patch("vast_csi.vms_session.VmsSession.create") as mock_create:
+#             mock_session = MagicMock()
+#             mock_create.return_value = mock_session
+#
+#             # Call without specifying key_prefix (uses default)
+#             result = instantiate_session_from_secret(secrets)
+#
+#             # Should use unprefixed keys
+#             mock_create.assert_called_once()
+#             call_args = mock_create.call_args[1]
+#             assert call_args["username"] == "legacy-admin"
+#             assert call_args["password"] == "legacy-secret"
+#             assert call_args["endpoint"] == "legacy-vms.example.com"
+#             assert result == mock_session
+#
+
+
+#####################
+# VmsSession.__hash__ / __eq__ / _credential_hash
+#####################
+
+class TestVmsSessionHashSuite:
+    """Tests for VmsSession credential-based identity: __hash__, __eq__, _credential_hash."""
+
+    def _make(self, config, *, username="user", password="pass", token=None, endpoint="10.0.0.1"):
+        return VmsSession.create(
+            config=config, username=username, password=password,
+            token=token, tenant=None, endpoint=endpoint,
+            ssl_cert=None, cluster_name=None,
+        )
+
+    # ------------------------------------------------------------------
+    # __hash__ stability (credential-based)
+    # ------------------------------------------------------------------
+
+    def test_hash_stable_same_userpass(self, config):
+        """Same username/password/endpoint → identical hash."""
+        s1 = self._make(config)
+        s2 = self._make(config)
+        assert hash(s1) == hash(s2)
+
+    def test_hash_stable_same_token(self, config):
+        """Same token/endpoint → identical hash."""
+        s1 = self._make(config, username=None, password=None, token="tok123")
+        s2 = self._make(config, username=None, password=None, token="tok123")
+        assert hash(s1) == hash(s2)
+
+    def test_hash_differs_different_endpoint_basic(self, config):
+        s1 = self._make(config, endpoint="10.0.0.1")
+        s2 = self._make(config, endpoint="10.0.0.2")
+        assert hash(s1) != hash(s2)
+
+    def test_hash_differs_different_password_basic(self, config):
+        s1 = self._make(config, password="pass_A")
+        s2 = self._make(config, password="pass_B")
+        assert hash(s1) != hash(s2)
+
+    def test_hash_differs_different_username_basic(self, config):
+        s1 = self._make(config, username="user_A")
+        s2 = self._make(config, username="user_B")
+        assert hash(s1) != hash(s2)
+
+    def test_hash_differs_different_token_basic(self, config):
+        s1 = self._make(config, username=None, password=None, token="token_A")
+        s2 = self._make(config, username=None, password=None, token="token_B")
+        assert hash(s1) != hash(s2)
+
+    def test_hash_differs_token_vs_userpass_same_values(self, config):
+        """Token auth and username/password auth must never share a hash, even
+        if the token string happens to equal the password."""
+        s_pass = self._make(config, username="user", password="secret")
+        s_token = self._make(config, username=None, password=None, token="secret")
+        # token key   = "secret" + endpoint
+        # userpass key = "user" + "secret" + endpoint  →  different digest
+        assert hash(s_pass) != hash(s_token)
+
+    # ------------------------------------------------------------------
+    # __hash__ / __eq__
+    # ------------------------------------------------------------------
+
+    def test_hash_equal_same_credentials(self, config):
+        s1 = self._make(config)
+        s2 = self._make(config)
+        assert s1 is not s2          # separate Python objects
+        assert hash(s1) == hash(s2)
+        assert s1 == s2
+
+    def test_hash_differs_different_endpoint(self, config):
+        s1 = self._make(config, endpoint="10.0.0.1")
+        s2 = self._make(config, endpoint="10.0.0.2")
+        assert hash(s1) != hash(s2)
+        assert s1 != s2
+
+    def test_hash_differs_different_password(self, config):
+        s1 = self._make(config, password="pass_A")
+        s2 = self._make(config, password="pass_B")
+        assert hash(s1) != hash(s2)
+        assert s1 != s2
+
+    def test_session_usable_as_dict_key(self, config):
+        """Sessions with same credentials map to the same dict slot."""
+        s1 = self._make(config, endpoint="10.0.0.1")
+        s2 = self._make(config, endpoint="10.0.0.1")   # identical creds
+        s3 = self._make(config, endpoint="10.0.0.2")   # different endpoint
+
+        d = {s1: "cluster-1", s3: "cluster-2"}
+        # s2 has same hash/eq as s1, so it looks up the same entry
+        assert d[s2] == "cluster-1"
+
+    def test_session_usable_in_set(self, config):
+        """Sessions with same credentials are deduplicated in a set."""
+        s1 = self._make(config, endpoint="10.0.0.1")
+        s2 = self._make(config, endpoint="10.0.0.1")
+        s3 = self._make(config, endpoint="10.0.0.2")
+        assert len({s1, s2, s3}) == 2
+
+
+#####################
+# VipPool cache (per-session scoping)
+#####################
+
+class TestVipPoolCacheSuite:
+    """
+    Verify that the cache used by VipPool.one is scoped by session identity.
+    """
+
+    # Minimal vippool response list that VastResource.one / ResourceIterator can process.
+    _VIPPOOL_CLUSTER_A = Bunch(
+        id=1, name="vippool-1",
+        ip_ranges=[["10.1.0.1", "10.1.0.16"]],
+        tenant_id=1,
+    )
+    _VIPPOOL_CLUSTER_B = Bunch(
+        id=2, name="vippool-1",
+        ip_ranges=[["10.2.0.1", "10.2.0.16"]],
+        tenant_id=1,
+    )
+
+    def _make_session(self, config, *, username="user", password="pass",
+                      token=None, endpoint="10.0.0.1"):
+        return VmsSession.create(
+            config=config, username=username, password=password,
+            token=token, tenant=None, endpoint=endpoint,
+            ssl_cert=None, cluster_name=None,
+        )
+
+    # ------------------------------------------------------------------
+    # Cache hits (same session / same credentials)
+    # ------------------------------------------------------------------
+
+    def test_cache_hit_same_session_object(self, config):
+        """Two calls on the same session object should only hit the API once."""
+        session = self._make_session(config)
+
+        with patch.object(session, "get", return_value=[self._VIPPOOL_CLUSTER_A]) as mock_get:
+            session.vippools.one(name="vippool-1")
+            session.vippools.one(name="vippool-1")  # should be served from cache
+
+        assert mock_get.call_count == 1
+
+    def test_cache_hit_two_sessions_same_credentials(self, config):
+        """Two *different* session objects with identical credentials share the same
+        cache entry – the second call must not reach the API at all."""
+        session_a = self._make_session(config, endpoint="10.0.0.1")
+        session_b = self._make_session(config, endpoint="10.0.0.1")
+        assert session_a is not session_b    # distinct objects …
+        assert session_a == session_b        # … but same identity
+
+        with (
+            patch.object(session_a, "get", return_value=[self._VIPPOOL_CLUSTER_A]) as mock_a,
+            patch.object(session_b, "get", return_value=[self._VIPPOOL_CLUSTER_A]) as mock_b,
+        ):
+            session_a.vippools.one(name="vippool-1")
+            # session_b shares the hash → cache hit → session_b.get never called
+            session_b.vippools.one(name="vippool-1")
+
+        assert mock_a.call_count + mock_b.call_count == 1
+
+    # ------------------------------------------------------------------
+    # Cache misses (credentials differ → distinct cache entries)
+    # ------------------------------------------------------------------
+
+    def test_no_cache_sharing_different_endpoint(self, config):
+        """Sessions pointing to *different* clusters must have isolated caches.
+
+        This is the exact multi-cluster bug (VCSI-523): both clusters had a
+        vip pool named 'vippool-1', but the second ControllerPublishVolume
+        received the cached VIP from the first cluster.
+        """
+        session_a = self._make_session(config, endpoint="10.27.80.43")
+        session_b = self._make_session(config, endpoint="10.27.200.119")
+
+        with (
+            patch.object(session_a, "get", return_value=[self._VIPPOOL_CLUSTER_A]) as mock_a,
+            patch.object(session_b, "get", return_value=[self._VIPPOOL_CLUSTER_B]) as mock_b,
+        ):
+            result_a = session_a.vippools.one(name="vippool-1")
+            result_b = session_b.vippools.one(name="vippool-1")
+
+        assert mock_a.call_count == 1
+        assert mock_b.call_count == 1
+        # Each session returned its own cluster's pool
+        assert result_a.ip_ranges == [["10.1.0.1", "10.1.0.16"]]
+        assert result_b.ip_ranges == [["10.2.0.1", "10.2.0.16"]]
+
+    def test_no_cache_sharing_different_password(self, config):
+        """Sessions that differ only in password must not share cache entries."""
+        session_a = self._make_session(config, password="password_A")
+        session_b = self._make_session(config, password="password_B")
+
+        with (
+            patch.object(session_a, "get", return_value=[self._VIPPOOL_CLUSTER_A]) as mock_a,
+            patch.object(session_b, "get", return_value=[self._VIPPOOL_CLUSTER_B]) as mock_b,
+        ):
+            session_a.vippools.one(name="vippool-1")
+            session_b.vippools.one(name="vippool-1")
+
+        assert mock_a.call_count == 1
+        assert mock_b.call_count == 1
+
+    def test_no_cache_sharing_different_username(self, config):
+        """Sessions that differ only in username must not share cache entries."""
+        session_a = self._make_session(config, username="user_A")
+        session_b = self._make_session(config, username="user_B")
+
+        with (
+            patch.object(session_a, "get", return_value=[self._VIPPOOL_CLUSTER_A]) as mock_a,
+            patch.object(session_b, "get", return_value=[self._VIPPOOL_CLUSTER_B]) as mock_b,
+        ):
+            session_a.vippools.one(name="vippool-1")
+            session_b.vippools.one(name="vippool-1")
+
+        assert mock_a.call_count == 1
+        assert mock_b.call_count == 1
+
+    def test_no_cache_sharing_token_vs_userpass(self, config):
+        """Token-auth and username/password-auth sessions at the same endpoint
+        must not share cache entries."""
+        session_pass = self._make_session(config, endpoint="10.0.0.1")
+        session_token = self._make_session(
+            config, username=None, password=None, token="mytoken", endpoint="10.0.0.1"
+        )
+
+        with (
+            patch.object(session_pass, "get", return_value=[self._VIPPOOL_CLUSTER_A]) as mock_pass,
+            patch.object(session_token, "get", return_value=[self._VIPPOOL_CLUSTER_B]) as mock_token,
+        ):
+            session_pass.vippools.one(name="vippool-1")
+            session_token.vippools.one(name="vippool-1")
+
+        assert mock_pass.call_count == 1
+        assert mock_token.call_count == 1
+
+    # ------------------------------------------------------------------
+    # Cache miss by different pool name (sanity check)
+    # ------------------------------------------------------------------
+
+    def test_cache_miss_different_pool_name(self, config):
+        """Querying two pool names on the same session creates two separate entries."""
+        session = self._make_session(config)
+
+        with patch.object(session, "get", return_value=[self._VIPPOOL_CLUSTER_A]) as mock_get:
+            session.vippools.one(name="vippool-1")
+            session.vippools.one(name="vippool-2")
+
+        assert mock_get.call_count == 2

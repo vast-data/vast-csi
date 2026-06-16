@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## Version 2.6.6
+* Added `ReadOnlyMany` (ROX) access mode support for the block CSI driver
+* Changed default node pod `priorityClass` to `system-node-critical` to ensure node workloads are not evicted under resource pressure (VCSI-358)
+* Added `ReadWriteOncePod` access mode support (VCSI-464)
+* Added `csi_node_nvme_controller_info` Prometheus metric exposing NVMe controller state and metadata (`controller`, `subsysnqn`, `hostnqn`, etc) for block driver node pods. Auto-enabled for the block driver, sourced from nvme-cli and sysfs (VCSI-388)
+* Added mTLS support for NFS mounts via a new `mtls_manager` component, enabling mutual TLS credential handling for secure NFS transport
+* Added async volume replication support via the extensions operator. Introduces `VolumeReplication` and `VolumeGroupReplication` CRDs, an addons controller, and supporting Helm configuration for both NFS and block drivers
+* Fixed an issue causing too many quotaS in response (VCSI-380)
+
 ## Version 2.6.5
 * Additional logging and timeout for mount/unmount operations (VCSI-343)
 * Added `EXPAND_VOLUME` node capability and implemented `NodeExpandVolume` as a no-op for NFS filesystem volumes. (VCSI-345)

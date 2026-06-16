@@ -1,0 +1,31 @@
+# Pod with Generic Ephemeral Volume (Kubernetes v1.23+)
+# The volume is created when the pod is created and deleted when the pod is deleted
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-with-generic-ephemeral
+spec:
+  containers:
+  - name: my-frontend
+    image: busybox
+    command:
+    - sh
+    - -c
+    - while true; do date -Iseconds >> /data/$HOSTNAME; sleep 1; done
+    volumeMounts:
+    - mountPath: /data
+      name: ephemeral-volume
+  volumes:
+  - name: ephemeral-volume
+    ephemeral:
+      volumeClaimTemplate:
+        metadata:
+          labels:
+            type: ephemeral-volume
+        spec:
+          accessModes:
+            - ReadWriteMany
+          storageClassName: vastdata-filesystem
+          resources:
+            requests:
+              storage: 1Gi
