@@ -292,6 +292,30 @@ func backfillMappingContainsPV(mapping map[string]struct{}, pvName string) bool 
 	return false
 }
 
+// IsPVCUsedByPod returns true when at least one non-terminated Pod in the same
+// namespace has a volume that references this PVC by name.  An error listing
+// pods is treated conservatively: the function returns (true, err) so callers
+// can decide whether to skip deletion.
+func (k *K8sClient) IsPVCUsedByPod(ctx context.Context, pvc *corev1.PersistentVolumeClaim) (bool, error) {
+	podList := &corev1.PodList{}
+	if err := k.client.List(ctx, podList, client.InNamespace(pvc.Namespace)); err != nil {
+		return true, fmt.Errorf("list pods in namespace %s: %w", pvc.Namespace, err)
+	}
+	for i := range podList.Items {
+		pod := &podList.Items[i]
+		// Skip already-terminated pods; they no longer hold the volume.
+		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+			continue
+		}
+		for _, vol := range pod.Spec.Volumes {
+			if vol.PersistentVolumeClaim != nil && vol.PersistentVolumeClaim.ClaimName == pvc.Name {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
 // EnsurePVC ensures a PersistentVolumeClaim exists.
 // Returns (true, nil) when the PVC was freshly created, (false, nil) when it
 // already existed, and (false, err) on any API error.
