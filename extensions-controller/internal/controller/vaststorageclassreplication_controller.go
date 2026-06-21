@@ -39,6 +39,7 @@ import (
 
 	cerrors "github.com/vast-data/vast-csi/extensions-controller/internal/common/errors"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/ppathdir"
+	"github.com/vast-data/vast-csi/extensions-controller/internal/common/utils"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/vmsrest"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/provisioner"
 	vbuilder "github.com/vast-data/vast-csi/extensions-controller/internal/provisioner/builder"
@@ -558,7 +559,7 @@ func (r *VastStorageClassReplicationReconciler) countOwnedVGRs(
 func (r *VastStorageClassReplicationReconciler) ensureReplicationClasses(
 	ctx context.Context,
 	emit *events.BoundReporter,
-	_ *vastv1alpha1.VastStorageClassReplication,
+	vscr *vastv1alpha1.VastStorageClassReplication,
 	scName string,
 	ppathName string,
 ) (className string, err error) {
@@ -569,10 +570,14 @@ func (r *VastStorageClassReplicationReconciler) ensureReplicationClasses(
 		return "", fmt.Errorf("failed to get StorageClass %s: %w", scName, err)
 	}
 
-	className, err = provisioner.FormatReplicationClassName(ctx, k8s, provisioner.VSCRReplicationClassFormat, sc)
+	// Include the VSCR name in the class name so that two VSCRs sharing the
+	// same source StorageClass (but with different ppath names) each get their
+	// own immutable replication class with the correct ppath-name parameter.
+	baseClassName, err := provisioner.FormatReplicationClassName(ctx, k8s, provisioner.VSCRReplicationClassFormat, sc)
 	if err != nil {
 		return "", fmt.Errorf("failed to format replication class name for SC %s: %w", scName, err)
 	}
+	className = utils.SanitizeK8sName(vscr.Name + "-" + baseClassName)
 
 	csiParams := k8s.ExtractPrefixedParams(common.CSIParameterPrefix, sc.Parameters)
 	secretName := csiParams["provisioner-secret-name"]

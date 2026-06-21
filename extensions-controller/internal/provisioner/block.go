@@ -145,7 +145,14 @@ func (b *BlockProvisioner) ProvisionVolumeCb(ctx context.Context, sibVRC *vastv1
 // Volume names are derived from the source PVCs found in sibling constellation
 // VRCs: VAST replication preserves volume names on the destination cluster, so
 // BackendObjectKey(sourceHandle) produces the correct name there as well.
-func (b *BlockProvisioner) CleanVolumeCb(ctx context.Context, _ *vastv1alpha1.VastReplicationContent, sibRest *vast_client.TypedVMSRest, sibSc *storagev1.StorageClass) error {
+func (b *BlockProvisioner) CleanVolumeCb(ctx context.Context, vrc *vastv1alpha1.VastReplicationContent, sibRest *vast_client.TypedVMSRest, sibSc *storagev1.StorageClass) error {
+	// When SyncPVCPV=true, a mirror PVC+PV was created for each source PVC.
+	// The standard k8s PVC→PV→DeleteVolume lifecycle triggers the CSI driver's
+	// DeleteVolume, which handles VAST block volume cleanup.  Deleting volumes
+	// here would race with the CSI driver and break in-use workloads.
+	if vrc.Spec.SyncPVCPV {
+		return nil
+	}
 	retain, err := b.shouldRetainDestVolumes(ctx)
 	if err != nil {
 		return err
@@ -214,9 +221,13 @@ func (b *BlockProvisioner) syncBlockObjects(
 		}
 	}
 
-	for _, pvcName := range toDelete {
-		if err := b.deleteBlockVastVolume(ctx, sibRest, sibSc, pvcName); err != nil {
-			errs.Add(fmt.Errorf("delete VAST volume for source %s: %w", pvcName, err))
+	// When SyncPVCPV=true, each removed source PVC has a mirror PVC+PV whose
+	// deletion triggers CSI DeleteVolume, which cleans up the VAST block volume.
+	if !sibVRC.Spec.SyncPVCPV {
+		for _, pvcName := range toDelete {
+			if err := b.deleteBlockVastVolume(ctx, sibRest, sibSc, pvcName); err != nil {
+				errs.Add(fmt.Errorf("delete VAST volume for source %s: %w", pvcName, err))
+			}
 		}
 	}
 	return errs.Err()

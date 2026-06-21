@@ -162,8 +162,8 @@ func (f *FileProvisioner) BackendObjectKey(volumeHandle string) string {
 // ProvisionVolumeCb implements Interface.  Called by ProvisionVolumes for this VRC's own cluster.
 // Ensures VAST NFS views and quotas exist on this VRC's own cluster and removes
 // them for PVCs no longer in the source list.
-func (f *FileProvisioner) ProvisionVolumeCb(ctx context.Context, _ *vastv1alpha1.VastReplicationContent, sibRest *vast_client.TypedVMSRest, sibSc *storagev1.StorageClass) error {
-	return f.syncFileObjects(ctx, sibRest, sibSc, f.toEnsure, f.toDelete)
+func (f *FileProvisioner) ProvisionVolumeCb(ctx context.Context, vrc *vastv1alpha1.VastReplicationContent, sibRest *vast_client.TypedVMSRest, sibSc *storagev1.StorageClass) error {
+	return f.syncFileObjects(ctx, sibRest, sibSc, vrc.Spec.SyncPVCPV, f.toEnsure, f.toDelete)
 }
 
 // CleanVolumeCb implements Interface.  Deletes VAST NFS views and quotas on
@@ -171,7 +171,14 @@ func (f *FileProvisioner) ProvisionVolumeCb(ctx context.Context, _ *vastv1alpha1
 // View paths are derived from the source PVCs found in sibling constellation
 // VRCs: VAST replication preserves the relative volume path on the destination
 // cluster, so BackendObjectKey(sourceHandle) produces the correct view path there.
-func (f *FileProvisioner) CleanVolumeCb(ctx context.Context, _ *vastv1alpha1.VastReplicationContent, sibRest *vast_client.TypedVMSRest, sibSc *storagev1.StorageClass) error {
+func (f *FileProvisioner) CleanVolumeCb(ctx context.Context, vrc *vastv1alpha1.VastReplicationContent, sibRest *vast_client.TypedVMSRest, sibSc *storagev1.StorageClass) error {
+	// When SyncPVCPV=true, a mirror PVC+PV was created for each source PVC.
+	// The standard k8s PVC→PV→DeleteVolume lifecycle triggers the CSI driver's
+	// DeleteVolume, which handles VAST view+quota cleanup.  Deleting views here
+	// races with in-use NFS mounts and destroys active pods on sibling PVCs.
+	if vrc.Spec.SyncPVCPV {
+		return nil
+	}
 	retain, err := f.shouldRetainDestVolumes(ctx)
 	if err != nil {
 		return err
@@ -208,6 +215,7 @@ func (f *FileProvisioner) syncFileObjects(
 	ctx context.Context,
 	sibRest *vast_client.TypedVMSRest,
 	sibSc *storagev1.StorageClass,
+	syncPVCPV bool,
 	toEnsure []VolumePair, toDelete vastv1alpha1.PVCList,
 ) error {
 	sibParams := f.k8sClient.ExtractNonPrefixedParams(common.CSIParameterPrefix, sibSc.Parameters)
@@ -223,9 +231,14 @@ func (f *FileProvisioner) syncFileObjects(
 		}
 	}
 
-	for _, pvcName := range toDelete {
-		if err := f.deleteFileVastObject(ctx, sibRest, sibSc, pvcName); err != nil {
-			errs.Add(fmt.Errorf("delete view+quota for source %s: %w", pvcName, err))
+	// When SyncPVCPV=true, each removed source PVC has a mirror PVC+PV whose
+	// deletion triggers CSI DeleteVolume, which cleans up the VAST view+quota.
+	// Deleting views here directly would race with active NFS mounts.
+	if !syncPVCPV {
+		for _, pvcName := range toDelete {
+			if err := f.deleteFileVastObject(ctx, sibRest, sibSc, pvcName); err != nil {
+				errs.Add(fmt.Errorf("delete view+quota for source %s: %w", pvcName, err))
+			}
 		}
 	}
 	return errs.Err()

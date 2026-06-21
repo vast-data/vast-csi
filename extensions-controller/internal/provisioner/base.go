@@ -827,10 +827,20 @@ func (b *baseProvisioner) cleanReplicaMirrorOrphans(
 	}
 	ns := b.rp.Namespace
 
-	pvcs, err := b.k8sClient.ListPVCsByLabelSelector(ctx, ns, map[string]string{
+	// Scope the query to the current VVR/VSCR owner so that independent
+	// VVRs sharing the same destination StorageClass do not accidentally treat
+	// each other's mirror PVCs as orphans.
+	selector := map[string]string{
 		common.LabelManagedBy:    common.LabelManagedByValue,
 		common.LabelStorageClass: sc.Name,
-	})
+	}
+	if vvrName := vrc.Labels[common.LabelSourceVVR]; vvrName != "" {
+		selector[common.LabelSourceVVR] = vvrName
+	} else if vscrName := vrc.Labels[common.LabelSourceVSCR]; vscrName != "" {
+		selector[common.LabelSourceVSCR] = vscrName
+	}
+
+	pvcs, err := b.k8sClient.ListPVCsByLabelSelector(ctx, ns, selector)
 	if err != nil {
 		return fmt.Errorf("failed to list mirror PVCs for %s: %w", vrc.Name, err)
 	}
@@ -856,18 +866,31 @@ func (b *baseProvisioner) cleanReplicaMirrorOrphans(
 			continue
 		}
 
-		// Delete: clear all finalizers then delete PVC and its bound PV.
+		// Check whether a pod is currently mounting the PVC so we can emit a
+		// warning before issuing the Delete.  We always proceed with deletion
+		// regardless: removing our vastdata.com/pvc-protection finalizer and
+		// calling Delete sets DeletionTimestamp on the PVC but does NOT force
+		// it to disappear immediately.  Kubernetes keeps the PVC alive via its
+		// own kubernetes.io/pvc-protection finalizer, which it removes
+		// automatically once no pod holds the volume — no extra controller
+		// needed.  The bound PV is reclaimed via reclaimPolicy=Delete after
+		// the PVC is fully gone.
+		inUse, podErr := b.k8sClient.IsPVCUsedByPod(ctx, pvc)
+		if podErr != nil {
+			return podErr
+		}
+		if inUse {
+			b.emit.Warningf(events.ReasonPVCDeleteSkipped,
+				"mirror PVC %s/%s is still in use by a pod; deletion will complete automatically once the pod is removed",
+				pvc.Namespace, pvc.Name)
+		}
+
 		b.logger.Info("deleting orphaned mirror PVC",
 			zap.String("mirrorPVC", pvc.Name),
 			zap.String("sourcePVC", sourcePVCName))
 
-		pv, pvErr := b.managedPVForPVC(ctx, pvc)
-		if pvErr != nil {
-			b.logger.Warn("could not find managed PV for orphaned mirror PVC",
-				zap.String("pvc", pvc.Name), zap.Error(pvErr))
-		}
-		if err := b.k8sClient.ClearFinalizers(ctx, pvc); err != nil {
-			errs.Add(fmt.Errorf("delete orphaned mirror PVC %s: clear finalizers: %w", pvc.Name, err))
+		if err := b.k8sClient.RemoveFinalizer(ctx, pvc, common.FinalizerPVC); err != nil {
+			errs.Add(fmt.Errorf("delete orphaned mirror PVC %s: remove vastdata finalizer: %w", pvc.Name, err))
 			continue
 		}
 		if err := b.k8sClient.Client().Delete(ctx, pvc); err != nil {
@@ -877,19 +900,6 @@ func (b *baseProvisioner) cleanReplicaMirrorOrphans(
 			}
 		} else {
 			b.emit.Normalf(events.ReasonPVCDeleted, "deleted orphaned mirror PVC %s/%s", pvc.Namespace, pvc.Name)
-		}
-		if pv != nil {
-			if err := b.k8sClient.ClearFinalizers(ctx, pv); err != nil {
-				errs.Add(fmt.Errorf("delete orphaned mirror PV for %s: clear finalizers: %w", pvc.Name, err))
-				continue
-			}
-			if err := b.k8sClient.Client().Delete(ctx, pv); err != nil {
-				if !k8serrors.IsNotFound(err) {
-					errs.Add(fmt.Errorf("delete orphaned mirror PV for %s: %w", pvc.Name, err))
-				}
-			} else {
-				b.emit.Normalf(events.ReasonPVDeleted, "deleted orphaned mirror PV %s", pv.Name)
-			}
 		}
 	}
 	return errs.Err()
