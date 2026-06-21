@@ -569,3 +569,4 @@ update_operators_operatorhub:
   when: manual
   tags:
     - vast-dev-builder
+
