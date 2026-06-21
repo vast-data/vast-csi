@@ -27,7 +27,6 @@
 
 {{- $tenant_name := pluck "tenantName" $options $.Values.storageClassDefaults | first | quote -}}
 {{- $volume_group := pluck "volumeGroup" $options $.Values.storageClassDefaults | first | quote -}}
-{{- $volume_name_fmt := pluck "volumeNameFormat" $options $.Values.storageClassDefaults | first | quote -}}
 {{- $mount_options :=  pluck "mountOptions" $options $.Values.storageClassDefaults | first -}}
 {{- $reclaim_policy :=  pluck "reclaimPolicy" $options $.Values.storageClassDefaults | first | quote -}}
 {{-
@@ -62,7 +61,6 @@ parameters:
   "vip_pool_name" $vip_pool_name
   "vip_pool_fqdn" $vip_pool_fqdn
   "volume_group" $volume_group
-  "volume_name_fmt" $volume_name_fmt
   "transport_type" $transport_type
   "fsType" $fstype
   "tenant_name" $tenant_name
