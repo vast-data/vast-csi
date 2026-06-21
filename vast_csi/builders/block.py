@@ -1,13 +1,52 @@
 import os
 import json
+import string
 from datetime import timedelta
 from dataclasses import dataclass
 from typing import final, Optional
 
+from vast_csi.csi_types import INVALID_ARGUMENT
 from vast_csi import csi_types as types
-from vast_csi.exceptions import SourceNotFound
+from vast_csi.exceptions import Abort, SourceNotFound
 from vast_csi.capabilities import Capabilities
 from vast_csi.builders.base import BaseVolumeBuilder, parse_volume_id
+
+
+_ALLOWED_VOLUME_NAME_FMT_FIELDS = frozenset({"id", "namespace", "name"})
+
+
+def _validate_volume_name_fmt(fmt: str) -> None:
+    """Validate ``volume_name_fmt`` template used for the Block basename.
+
+    The format string is interpolated with ``{id}``, ``{namespace}`` and
+    ``{name}`` placeholders. ``{id}`` is required so that lifecycle lookups
+    using ``name__contains=<csi_id>`` (DeleteVolume, CreateSnapshot,
+    ControllerExpandVolume, ControllerUnpublishVolume) keep working for
+    volumes provisioned with a custom name template.
+    """
+    if not fmt:
+        return
+    try:
+        fields = {
+            field_name
+            for _, field_name, _, _ in string.Formatter().parse(fmt)
+            if field_name is not None
+        }
+    except ValueError as exc:
+        raise Abort(INVALID_ARGUMENT, f"Invalid volume_name_fmt template: {exc}")
+    unknown = fields - _ALLOWED_VOLUME_NAME_FMT_FIELDS
+    if unknown:
+        raise Abort(
+            INVALID_ARGUMENT,
+            f"volume_name_fmt contains unsupported placeholders: {sorted(unknown)}. "
+            f"Allowed placeholders: {sorted(_ALLOWED_VOLUME_NAME_FMT_FIELDS)}.",
+        )
+    if "id" not in fields:
+        raise Abort(
+            INVALID_ARGUMENT,
+            "volume_name_fmt must contain the {id} placeholder so that the CSI "
+            "volume id can be located in the resulting VAST volume name.",
+        )
 
 
 __all__ = [
@@ -31,6 +70,7 @@ class BlockProvisionBase(BaseVolumeBuilder):
     # Optional parameters
     tenant_name: Optional[str] = None
     volume_group: Optional[str] = None
+    volume_name_fmt: Optional[str] = None
     transport_type: Optional[str] = None
     cluster_name: Optional[str] = None
     vip_pool_name: Optional[str] = None
@@ -63,6 +103,8 @@ class BlockProvisionBase(BaseVolumeBuilder):
         vip_pool_name = parameters.get("vip_pool_name")
         vip_pool_fqdn_random_prefix = cls._get_bool_param(parameters, "vip_pool_fqdn_random_prefix")
         volume_group = parameters.get("volume_group", "")
+        volume_name_fmt = parameters.get("volume_name_fmt", "")
+        _validate_volume_name_fmt(volume_name_fmt)
         host_encryption = cls._parse_host_encryption(parameters)
         transport_type = parameters.get("transport_type", "TCP").upper()
         metadata = cls._parse_metadata_from_params(parameters)
@@ -85,6 +127,7 @@ class BlockProvisionBase(BaseVolumeBuilder):
             tenant_name=tenant_name,
             transport_type=transport_type,
             volume_group=volume_group,
+            volume_name_fmt=volume_name_fmt,
             vip_pool_name=vip_pool_name,
             vip_pool_fqdn=vip_pool_fqdn,
             host_encryption=host_encryption,
@@ -98,27 +141,43 @@ class BlockProvisionBase(BaseVolumeBuilder):
         )
 
     def build_volume_name(self) -> str:
-        """
-        Build the volume name based on the provided volume_group template.
-        The volume group is constructed using a template that can include placeholders for
-        the PVC namespace, PVC name, and volume ID. The placeholders are specified using
-        the syntax `{namespace}`, `{name}`, and `{id}` in the template.
-        The volume group name can represent nested folders. It is the user's responsibility
-        to provide a multi-folder template (e.g., `/folder1/folder2/block-{namespace}-{id}`)
-        if nested folder structures are desired.
+        """Build the VAST volume name from ``volume_group`` and ``volume_name_fmt``.
 
-        Example:
-            If the `pvc_name = "my-pvc"`, `pvc_namespace = "default"`, and `volume_group = "/vol/{namespace}/{name}/{id}"`,
-            and the `name = "volume123"`, the result would be:
-                "/vol/default/my-pvc/volume123"
+        - ``volume_group`` is an optional path prefix supporting ``{namespace}``
+          and ``{name}`` placeholders. It can represent nested folders.
+        - ``volume_name_fmt`` is an optional template for the basename
+          (final path segment) supporting ``{id}``, ``{namespace}`` and
+          ``{name}`` placeholders. When empty, the basename defaults to
+          ``self.name`` (today's behavior), which is the CSI-generated volume id.
+
+        The final VAST volume name is ``<volume_group>/<basename>``. Lifecycle
+        lookups locate the volume via ``name__contains=<csi_id>``, which
+        requires ``{id}`` to appear in ``volume_name_fmt`` when it is set
+        (enforced at parse time by ``_validate_volume_name_fmt``).
+
+        Examples:
+            volume_group="vol/{namespace}/{name}", volume_name_fmt=""
+                -> "vol/default/my-pvc/<csi_id>"
+            volume_group="",                      volume_name_fmt="csi-{namespace}-{name}-{id}"
+                -> "csi-default-my-pvc-<csi_id>"
+            volume_group="vol/{namespace}",       volume_name_fmt="csi-{name}-{id}"
+                -> "vol/default/csi-my-pvc-<csi_id>"
         """
-        volume_group = self.volume_group
-        if self.pvc_name and self.pvc_namespace:
-            volume_group = volume_group.format(
-                namespace=self.pvc_namespace, name=self.pvc_name
+        csi_id = self.name
+        if self.volume_name_fmt and self.pvc_name and self.pvc_namespace:
+            basename = self.volume_name_fmt.format(
+                namespace=self.pvc_namespace, name=self.pvc_name, id=csi_id,
             )
-        # make sure the volume group is a valid absolute path
-        return os.path.join("/", volume_group, self.name).lstrip("/")
+        else:
+            basename = csi_id
+
+        volume_group = self.volume_group or ""
+        if volume_group and self.pvc_name and self.pvc_namespace:
+            volume_group = volume_group.format(
+                namespace=self.pvc_namespace, name=self.pvc_name,
+            )
+        # make sure the volume name is a valid relative path
+        return os.path.join("/", volume_group, basename).lstrip("/")
 
 
     @property
@@ -188,7 +247,7 @@ class BlockVolumeFromVolumeBuilder(BlockProvisionBase):
         source_volume_id = self.volume_content_source.volume.volume_id
         # Source volume id without metadata
         orig_source_volume_id, _ = parse_volume_id(source_volume_id)
-        if not (source_volume := self.vms_session.volumes.one(name__endswith=orig_source_volume_id)):
+        if not (source_volume := self.vms_session.volumes.one(name__contains=orig_source_volume_id)):
             raise SourceNotFound(f"Unknown volume: {orig_source_volume_id}")
         if not (source_view := self.vms_session.views.get_subsystem_by_id(_id=source_volume.view_id)):
             raise SourceNotFound(f"Unknown subsystem: {source_volume.view_id}")
@@ -212,7 +271,7 @@ class BlockVolumeFromVolumeBuilder(BlockProvisionBase):
             # No need to perform additional VMS call if source and destination subsystems are the same
             destination_view = source_view
 
-        if not (destination_volume := self.vms_session.volumes.one(name__endswith=volume_name)):
+        if not (destination_volume := self.vms_session.volumes.one(name=volume_name)):
             # Create an intermediate snapshot with limited expiration time
             snapshot_name = f"snp-{self.name}"
             snapshot = self.vms_session.snapshots.ensure(
@@ -284,7 +343,7 @@ class BlockVolumeFromSnapshotBuilder(BlockProvisionBase):
             subsystem=self.subsystem,
             tenant_name=self.tenant_name,
         )
-        if not (destination_volume := self.vms_session.volumes.one(name__endswith=volume_name)):
+        if not (destination_volume := self.vms_session.volumes.one(name=volume_name)):
             destination_volume = self.vms_session.snapshots.clone_volume(
                 snapshot_id=snapshot.id,
                 target_subsystem_id=destination_view.id,
