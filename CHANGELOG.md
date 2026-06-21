@@ -133,4 +133,3 @@
     * all methods related to provisioning new volume/snapshot moved to `volume_builder.py` (VCSI-15)
     * Config class moved to `configuration.py` (VCSI-15)
     * created `migrate-pv.py` script to enhance PVCs provisioned by version 2.0 of the driver by adding necessary volume attributes (VCSI-44)
- 

@@ -19,26 +19,6 @@ Metrics status:
 {{- end }}
 {{- end }}
 
-{{- if include "vastcsi.addons-enabled" . }}
-
-CSI-Addons: ENABLED (NFS Replication)
-  Deployment: {{ .Release.Name }}-vast-addons-controller
-  Plugin: replication[nfs]
-{{- if gt (len .Values.volumeReplicationClasses) 0 }}
-  VolumeReplicationClasses:
-{{- range $name, $options := .Values.volumeReplicationClasses }}
-    - {{ $name }}
-{{- end }}
-{{- else }}
-  Note: No VolumeReplicationClasses defined in this chart (can be managed externally)
-{{- end }}
-  Check status: kubectl get deployment {{ .Release.Name }}-vast-addons-controller -n {{ .Release.Namespace }}
-{{- else }}
-
-Volume Replication: DISABLED
-  To enable: set enableReplication=true or define volumeReplicationClasses in values.yaml
-{{- end }}
-
 Examples on how to configure a storage class and start using the driver are here:
 {{ .Chart.Home }}
 

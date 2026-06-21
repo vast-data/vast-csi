@@ -143,3 +143,6 @@ class Config(TypedEnv):
 
     avoid_trash_api = Timer(now=-1, expiration=HOUR)
 
+
+# Must match server.ExtensionsSocketPath in the Go extensions-controller.
+EXTENSIONS_SOCKET = "/var/run/vast-extensions/extensions.sock"

@@ -3,6 +3,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 from easypy.bunch import Bunch
 from vast_csi.session import ResourceIterator, VastResource
+from vast_csi.session.resources import View
 
 
 class TestResourceIterator:
@@ -510,6 +511,85 @@ class TestVastResourceListMethod:
         assert len(all_results) == 4
         assert all_results[0].name == "view1"
         assert all_results[3].name == "view4"
+
+
+class TestIteratorForcesPaginationByDefault:
+    """Verify ResourceIterator injects DEFAULT_PAGE_SIZE so VMS does not silently
+    truncate large list responses (e.g. /views/ capped at 16K in VMS 5.5).
+
+    The default applies to every VastResource (views, quotas, snapshots, ...)
+    because the iterator already handles both paginated and non-paginated
+    response shapes; sending page_size to an endpoint that ignores it is a no-op.
+    """
+
+    @pytest.fixture
+    def mock_session(self):
+        session = MagicMock()
+        session.get = MagicMock()
+        session.request = MagicMock()
+        return session
+
+    def test_view_list_injects_default_page_size(self, mock_session):
+        from vast_csi.session.iterator import DEFAULT_PAGE_SIZE
+        # Single paginated page so .all() terminates immediately.
+        mock_session.get.return_value = Bunch(
+            results=[Bunch(id=1, path="/a")],
+            count=1,
+            next=None,
+            previous=None,
+        )
+        view = View(session=mock_session)
+
+        view.list(tenant_id=1)
+
+        params = mock_session.get.call_args.kwargs.get("params", {})
+        assert params.get("page_size") == DEFAULT_PAGE_SIZE
+        assert params.get("tenant_id") == 1
+
+    def test_explicit_zero_disables_pagination(self, mock_session):
+        # Caller passes page_size=0 -> opt out, no page_size sent to server.
+        mock_session.get.return_value = [Bunch(id=1, path="/a")]
+        view = View(session=mock_session)
+
+        view.iter(page_size=0).all()
+
+        params = mock_session.get.call_args.kwargs.get("params", {})
+        assert "page_size" not in params
+
+    def test_view_list_respects_caller_page_size(self, mock_session):
+        mock_session.get.return_value = Bunch(
+            results=[], count=0, next=None, previous=None,
+        )
+        view = View(session=mock_session)
+
+        view.list(path__contains="/x", page_size=10)
+
+        params = mock_session.get.call_args.kwargs.get("params", {})
+        assert params.get("page_size") == 10
+
+    def test_iter_walks_all_pages_with_default_page_size(self, mock_session):
+        from vast_csi.session.iterator import DEFAULT_PAGE_SIZE
+        page1 = Bunch(
+            results=[Bunch(id=i) for i in range(1, 3)],
+            count=4,
+            next="https://vms.example.com/api/v5/views/?page=2&page_size=1000",
+            previous=None,
+        )
+        page2 = Bunch(
+            results=[Bunch(id=i) for i in range(3, 5)],
+            count=4,
+            next=None,
+            previous="https://vms.example.com/api/v5/views/?page=1&page_size=1000",
+        )
+        mock_session.get.return_value = page1
+        mock_session.request.return_value = page2
+
+        view = View(session=mock_session)
+        all_views = view.list()
+
+        assert [v.id for v in all_views] == [1, 2, 3, 4]
+        first_params = mock_session.get.call_args.kwargs.get("params", {})
+        assert first_params.get("page_size") == DEFAULT_PAGE_SIZE
 
 
 class TestSessionRequestApiVersionDedup:

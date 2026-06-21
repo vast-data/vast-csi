@@ -1,3 +1,6 @@
+include:
+  - local: extensions-controller/.gitlab-ci.yml
+
 stages:
   - build_base
   - build
@@ -16,8 +19,10 @@ variables:
   DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
   IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:${CI_PIPELINE_ID}
   # source: packaging/base.Dockerfile
-  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2026-05-07
+  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2026-05-31
   ORION_BRANCH: comet/master
+  # Pin the Docker client API version
+  DOCKER_API_VERSION: "1.41"
 
 
 build_csi_base:
@@ -95,8 +100,21 @@ vulnerability_scan:
   image:
     name: ghcr.io/aquasecurity/trivy:latest
     entrypoint: [""]
+  variables:
+    TRIVY_CACHE_DIR: .trivycache
+  cache:
+    key: trivy-db
+    paths:
+      - .trivycache/
   script:
-    - trivy image --exit-code 1 --severity CRITICAL --format json --output trivy-report.json $IMAGE_NAME
+    - trivy image
+      --db-repository public.ecr.aws/aquasecurity/trivy-db:2,mirror.gcr.io/aquasec/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2
+      --cache-dir "$TRIVY_CACHE_DIR"
+      --exit-code 1
+      --severity CRITICAL
+      --format json
+      --output trivy-report.json
+      "$IMAGE_NAME"
   artifacts:
     when: always
     paths:
@@ -183,11 +201,30 @@ update_dockerhub [prod]: &update_dockerhub
     export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}
     export DOCKERFILE=Dockerfile
     make build_image
+    export IMAGE_TAG=${DOCKER_REGISTRY}/dev/vast-csi:${VERSION}
+    docker tag docker.io/vastdataorg/csi:${VERSION} ${IMAGE_TAG}
+    docker push ${IMAGE_TAG}
+    echo "pushed ${IMAGE_TAG}"
     
     # Publish CSI Operator image
     export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}-operator
     export DOCKERFILE=operator.Dockerfile
     make build_image
+    export IMAGE_TAG=${DOCKER_REGISTRY}/dev/vast-csi:${VERSION}-operator
+    docker tag docker.io/vastdataorg/csi:${VERSION}-operator ${IMAGE_TAG}
+    docker push ${IMAGE_TAG}
+    echo "pushed ${IMAGE_TAG}"
+
+    if [[ "$CI_ENVIRONMENT_NAME" == "prod" ]]; then
+      # Publish Extensions Controller image (prod releases only, multi-arch via PLATFORMS)
+      export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}-extensions
+      export DOCKERFILE=extensions-controller/Dockerfile
+      export BUILD_CONTEXT=extensions-controller
+      export GIT_TAG=${VERSION}
+      make build_image
+      docker buildx imagetools create -t ${DOCKER_REGISTRY}/dev/vast-csi:${VERSION}-extensions docker.io/vastdataorg/csi:${VERSION}-extensions
+      echo "pushed ${DOCKER_REGISTRY}/dev/vast-csi:${VERSION}-extensions"
+    fi
   after_script:
   - docker logout $DOCKER_HUB
   when: manual

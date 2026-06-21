@@ -1,0 +1,57 @@
+build_extension_controller:
+  stage: build
+  script: |
+    set -x
+    EXTENSIONS_IMAGE=${IMAGE_NAME}-extensions
+    cd extensions-controller
+    docker build -t ${EXTENSIONS_IMAGE} .
+    docker push ${EXTENSIONS_IMAGE}
+    echo "pushed ${EXTENSIONS_IMAGE}"
+  tags:
+    - vast-dev-builder
+
+build_vastcsi_cli:
+  stage: build
+  script: |
+    set -x
+    cd extensions-controller
+
+    go fmt ./cmd/... ./internal/... ./api/...
+    go vet ./cmd/... ./internal/... ./api/...
+
+    GIT_COMMIT=$(git rev-parse --short=8 HEAD)
+    GIT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "dev")
+    GO_PROJECT=github.com/vast-data/vast-csi/extensions-controller
+    LDFLAGS="-s -w \
+      -X ${GO_PROJECT}/internal/common/version.GitCommit=${GIT_COMMIT} \
+      -X ${GO_PROJECT}/internal/common/version.Version=${GIT_TAG}"
+
+    mkdir -p artifacts
+    PLATFORMS="linux/amd64 darwin/amd64 windows/amd64"
+
+    for PLATFORM in $PLATFORMS; do
+      OS=$(echo $PLATFORM | cut -d/ -f1)
+      ARCH=$(echo $PLATFORM | cut -d/ -f2)
+      EXT=""
+      if [ "$OS" = "windows" ]; then
+        EXT=".exe"
+      fi
+
+      OUT_DIR="artifacts/${OS}_${ARCH}"
+      BIN_NAME="vcsi${EXT}"
+
+      mkdir -p "$OUT_DIR"
+      echo "Building CLI for $OS/$ARCH"
+      CGO_ENABLED=0 GOOS=$OS GOARCH=$ARCH go build \
+        -ldflags "${LDFLAGS}" \
+        -a -o "${OUT_DIR}/${BIN_NAME}" cmd/main.go
+
+      tar -czf "artifacts/vcsi_${OS}_${ARCH}.tar.gz" -C "$OUT_DIR" "$BIN_NAME"
+    done
+  artifacts:
+    name: "vcsi-cli-$CI_PIPELINE_ID"
+    paths:
+      - extensions-controller/artifacts/
+    expire_in: 5 days
+  tags:
+    - vast-dev-builder

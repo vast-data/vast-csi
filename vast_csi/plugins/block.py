@@ -53,6 +53,8 @@ from vast_csi.block_utils import (
     connect_nvme_targets,
     get_connected_session,
     get_nvme_device_by_nguid,
+    list_nvme_devices,
+    list_nvme_sessions,
     try_nvme_probes,
     change_io_policy,
     disable_nvme_timeout,
@@ -63,6 +65,7 @@ from vast_csi.block_utils import (
     device_rw,
 )
 from vast_csi.utils import (
+    normalize_volume_id,
     stringify_dict,
     string_to_proto_timestamp,
     get_random_fqdn_prefix,
@@ -101,6 +104,40 @@ ServiceCapabilities = cap_lib.ServiceCapabilities(
 # Helpers
 #
 ################################################################
+
+def log_nvme_diagnostics() -> None:
+    """Log NVMe host state to aid debugging when a device lookup fails."""
+
+    try:
+        devices = list_nvme_devices()
+        if devices:
+            logger.info(f"NVMe devices present on host ({len(devices)}):")
+            for dev in devices:
+                logger.info(
+                    f"  {dev.DevicePath}  model={dev.get('ModelNumber', '?')}  "
+                    f"ns={dev.get('NameSpace', '?')}  size={dev.get('PhysicalSize', '?')}"
+                )
+    except Exception as exc:
+        logger.info(f"Failed to list NVMe devices: {exc}")
+
+    try:
+        sessions = list_nvme_sessions()
+        if sessions:
+            logger.info(f"NVMe subsystem sessions ({len(sessions)}):")
+            for session in sessions:
+                for subsys in getattr(session, "Subsystems", []):
+                    paths = getattr(subsys, "Paths", [])
+                    path_summary = ", ".join(
+                        f"{p.get('Address', '?')} [{p.get('State', '?')}]"
+                        for p in paths
+                    ) or "no paths"
+                    logger.info(
+                        f"  subsys={subsys.NQN}  name={subsys.Name}  paths=[{path_summary}]"
+                    )
+        else:
+            logger.info("NVMe subsystem sessions: none")
+    except Exception as exc:
+        logger.info(f"Failed to list NVMe sessions: {exc}")
 
 def nvme_connect(host_nqn, discovery_server, host_id, subsystem_nqn, metrics_registry=None):
     """Connect to NVMe targets with auto-instrumented metrics."""
@@ -273,9 +310,11 @@ class BlockController(ControllerBase, Instrumented):
         return types.CreateResp(volume=volume)
 
     def DeleteVolume(self, vms_session, volume_id):
+        volume_id = normalize_volume_id(volume_id)
         vms_session.globalsnapstreams.ensure_snapshot_stream_deleted(name__contains=volume_id)
-        if vms_session.snapshots.has_snapshots(volume_id):
-            raise Exception(f"Unable to delete {volume_id} as it holds snapshots")
+        if snaps := vms_session.snapshots.has_snapshots(volume_id):
+            snap_ids = ", ".join(str(s.id) for s in snaps)
+            raise Exception(f"Unable to delete {volume_id} as it holds snapshots: [{snap_ids}]")
         # Unmap is occurring implicitly due to the use of the force flag.
         vms_session.volumes.delete(name__endswith=volume_id)
         return types.DeleteResp()
@@ -315,7 +354,14 @@ class BlockController(ControllerBase, Instrumented):
 
         if CONF.block_hosts_auto_prune:
             # Ensure map host operations are atomic based on the composite key (node ID + tenant name).
-            exit_stack.enter_context(resource_locked(f"{node_id}:{tenant_name}", abort_on_error=True))
+            exit_stack.enter_context(resource_locked(
+                f"{node_id}:{tenant_name}",
+                abort_on_error=True,
+                message=(
+                    f"Node {node_id} (tenant: {tenant_name}) is currently locked"
+                    f" by volume {volume_id} — concurrent ControllerPublishVolume in progress"
+                ),
+            ))
         blockhost = vms_session.blockhosts.ensure(
             node_id=f"{CONF.block_hosts_prefix}{node_id}",
             transport_type=transport_type,
@@ -377,6 +423,7 @@ class BlockController(ControllerBase, Instrumented):
         Unpublishes a volume from a node and checks if the host has any remaining volumes.
         If no volumes remain and the host was created by the CSI driver, the host is removed to prevent NQN sprawl.
         """
+        volume_id = normalize_volume_id(volume_id)
         # Early return if volume not found
         if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
             logger.info(f"Volume not found with name: {volume_id}")
@@ -400,6 +447,7 @@ class BlockController(ControllerBase, Instrumented):
         return types.CtrlUnpublishResp()
 
     def ControllerExpandVolume(self, vms_session, volume_id, capacity_range):
+        volume_id = normalize_volume_id(volume_id)
         requested_capacity = capacity_range.required_bytes
         logger.debug(f"Requested capacity for volume {volume_id}: {requested_capacity} bytes")
         if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
@@ -422,7 +470,7 @@ class BlockController(ControllerBase, Instrumented):
     def CreateSnapshot(self, vms_session, source_volume_id, name, parameters=None):
         parameters = parameters or dict()
         cluster_name = parameters.get("cluster_name")
-        volume_id = source_volume_id
+        volume_id = normalize_volume_id(source_volume_id)
         if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
             raise Abort(NOT_FOUND, f"Unknown volume: {volume_id}")
         if not (view := vms_session.views.get_subsystem_by_id(_id=volume.view_id)):
@@ -550,6 +598,10 @@ class BlockNode(NodeBase, Instrumented):
 
         logger.info(f"Looking up NVMe device by NGUID {nguid}...")
         if not (device := get_nvme_device_by_nguid(nguid=nguid)):
+            logger.info(
+                "NVMe device lookup failed — dumping host NVMe state for diagnostics"
+            )
+            log_nvme_diagnostics()
             raise Abort(
                 NOT_FOUND,
                 f"NVMe device not found for subsystem {subsystem_nqn} and nguid {nguid}"

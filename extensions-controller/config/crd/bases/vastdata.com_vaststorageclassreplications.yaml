@@ -1,0 +1,269 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.18.0
+  name: vaststorageclassreplications.vastdata.com
+spec:
+  group: vastdata.com
+  names:
+    kind: VastStorageClassReplication
+    listKind: VastStorageClassReplicationList
+    plural: vaststorageclassreplications
+    shortNames:
+    - vscr
+    singular: vaststorageclassreplication
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.storageClassesPreview
+      name: Storage Classes
+      type: string
+    - jsonPath: .spec.primaryStorageClass
+      name: Primary SC
+      type: string
+    - jsonPath: .spec.failoverType
+      name: Failover Type
+      type: string
+    - jsonPath: .status.currentPrimaryStorageClass
+      name: Current Primary
+      type: string
+    - jsonPath: .status.syncStatus
+      name: Sync Status
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          VastStorageClassReplication declares a replication group across multiple
+          StorageClasses.  The operator creates one NATIVE_REPLICATION ProtectionPolicy
+          per directed link (using the pre-existing ReplicationPeer specified in each
+          link) and manages the VAST protected path and replication streams.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: VastStorageClassReplicationSpec defines the desired state
+              of VastStorageClassReplication.
+            properties:
+              destVolReclaimPolicy:
+                default: Retain
+                description: |-
+                  DestVolReclaimPolicy controls whether destination VAST objects (block
+                  volumes or file views/quotas) are deleted when the VSCR is deleted.
+                  Defaults to Retain.
+                enum:
+                - Retain
+                - Delete
+                type: string
+              failoverType:
+                default: ungracefulFailover
+                description: |-
+                  FailoverType is the type of failover to execute when the primary StorageClass
+                  changes.  Supported values: ungracefulFailover (default), gracefulFailover.
+                enum:
+                - ungracefulFailover
+                - gracefulFailover
+                type: string
+              primaryStorageClass:
+                description: |-
+                  PrimaryStorageClass is the StorageClass that is currently acting as the
+                  active (primary) replica.  The VolumeGroupReplication for this class gets
+                  replicationState=primary; all others get replicationState=secondary.
+                type: string
+              protectionPolicyTemplate:
+                description: |-
+                  ProtectionPolicyTemplate defines the schedule for operator-created
+                  NATIVE_REPLICATION protection policies.  The operator creates one policy
+                  per topology entry side and uses it as a replication stream on the ppath.
+                properties:
+                  params:
+                    description: Params defines the replication schedule frames.  At
+                      least one is required.
+                    items:
+                      description: |-
+                        ProtectionPolicyFrame defines one schedule frame for a VAST ProtectionPolicy.
+                        It maps directly to the VAST API "frames" array on a ProtectionPolicy object.
+                      properties:
+                        every:
+                          description: |-
+                            Every is the replication interval.
+                            Time units: s/S=seconds, m=minutes (lowercase only; M=months),
+                            h/H=hours, d/D=days, w/W=weeks, M=months(30d), y/Y=years.
+                            Examples: "30s", "15m", "1h", "1d", "1w", "1M", "1y".
+                          type: string
+                        keepLocal:
+                          description: |-
+                            KeepLocal is how long local snapshots are retained.
+                            Same time units as Every. E.g. "2d", "1w", "1M".
+                          type: string
+                        keepRemote:
+                          description: |-
+                            KeepRemote is how long remote snapshots are retained.
+                            Same time units as Every. E.g. "7d", "4w", "1M".
+                          type: string
+                        startAt:
+                          description: |-
+                            StartAt is an optional time at which the first snapshot is taken.
+                            Accepted formats: "YYYY-MM-DD HH:MM:SS", "HH:MM", or RFC-3339.
+                            Example: "2025-01-01 02:00:00".
+                          type: string
+                      required:
+                      - every
+                      type: object
+                    minItems: 1
+                    type: array
+                required:
+                - params
+                type: object
+              protectionTopology:
+                description: |-
+                  ProtectionTopology defines the undirected replication mesh.  Each entry
+                  connects two clusters bidirectionally via a shared PeerName.  The mesh
+                  must be complete: for n distinct clusters exactly n*(n-1)/2 entries are
+                  required (one per unordered cluster pair).
+                  Example for 2 clusters: 1 entry  (A–B).
+                  Example for 3 clusters: 3 entries (A–B, A–C, B–C).
+                  Example for 4 clusters: 6 entries (A–B, A–C, A–D, B–C, B–D, C–D).
+                  The full StorageClass list is derived automatically from these entries.
+                items:
+                  description: |-
+                    ReplicationTarget describes one undirected replication edge in the mesh.
+
+                    Source and Destination are the two StorageClasses (clusters) connected by
+                    this entry.  PeerName is the name of the VAST ReplicationPeer that must
+                    exist under the same name on both clusters (each pointing to the other).
+                    The operator creates one NATIVE_REPLICATION ProtectionPolicy on each side.
+
+                    PeerName is optional: if omitted the operator discovers it automatically by
+                    finding the single peer name shared by both clusters.  If multiple peers are
+                    shared between the clusters, PeerName must be set explicitly to disambiguate.
+                  properties:
+                    destination:
+                      description: Destination is the StorageClass of the other cluster
+                        in this pair.
+                      type: string
+                    peerName:
+                      description: |-
+                        PeerName is the name of the VAST ReplicationPeer that exists on both
+                        clusters and establishes bidirectional connectivity between them.
+                        Users must pre-create this peer on both VAST management servers.
+                        If omitted, the operator discovers it automatically; an error is returned
+                        if zero or more than one shared peer is found.
+                      type: string
+                    source:
+                      description: Source is the StorageClass of one cluster in this
+                        replication pair.
+                      type: string
+                  required:
+                  - destination
+                  - source
+                  type: object
+                minItems: 1
+                type: array
+              pvcRemap:
+                default: false
+                description: PVCRemap controls whether PVCs are remapped to the new
+                  primary on failover.
+                type: boolean
+              resync:
+                description: 'Resync is a one-shot trigger: set to true to request
+                  an immediate resync.'
+                type: boolean
+              syncIntervalSeconds:
+                description: |-
+                  SyncIntervalSeconds is the replication sync interval in seconds.
+                  When omitted or zero, the interval is derived from the "every" field of
+                  the first protectionPolicyTemplate entry.
+                format: int64
+                minimum: 0
+                type: integer
+              syncPVCPV:
+                default: true
+                description: |-
+                  SyncPVCPV controls whether the controller creates/deletes static
+                  PV+PVC pairs on each destination cluster.  Defaults to true.
+                type: boolean
+            required:
+            - destVolReclaimPolicy
+            - failoverType
+            - primaryStorageClass
+            - protectionPolicyTemplate
+            - protectionTopology
+            - pvcRemap
+            - syncPVCPV
+            type: object
+          status:
+            description: VastStorageClassReplicationStatus defines the observed state
+              of VastStorageClassReplication.
+            properties:
+              currentPrimaryStorageClass:
+                description: |-
+                  CurrentPrimaryStorageClass is the StorageClass that is currently primary
+                  (may differ from spec.primaryStorageClass while an action is in progress).
+                type: string
+              lastFailoverType:
+                description: LastFailoverType is the most recent failover type that
+                  was applied.
+                enum:
+                - ungracefulFailover
+                - gracefulFailover
+                type: string
+              ppathDirMapping:
+                additionalProperties:
+                  type: string
+                description: |-
+                  PpathDirMapping maps every StorageClass name in the constellation to its
+                  predicted ppath source directory.  For block StorageClasses the value is
+                  the subsystem path joined with volume_group; for file StorageClasses it
+                  is the root_export parameter value.  Populated once on the first
+                  reconcile and treated as immutable thereafter.
+                type: object
+              ppathName:
+                description: |-
+                  PpathName is the VAST protected-path name created by the controller on
+                  the primary site.  ONE ppath is created per VSCR; additional policies are
+                  added as ReplicationStream objects on that same ppath.  Populated only
+                  after the ppath has reached a stable role (SOURCE, DESTINATION, or
+                  STANDALONE).  Passed to the CSI plugin via the VRC/VGRC
+                  vastdata.com/ppath-name parameter so the plugin can look it up directly
+                  without creating a ppath of its own.  SOURCE ↔ DESTINATION switching is
+                  the CSI plugin's responsibility.
+                type: string
+              storageClassesPreview:
+                description: |-
+                  StorageClassesPreview is a human-readable summary of all StorageClasses
+                  (primary + all target SCs), formatted for the kubectl printcolumn.
+                type: string
+              syncStatus:
+                description: |-
+                  SyncStatus reflects whether replication for spec.primaryStorageClass has
+                  completed its desired state.  "Completed" means the VolumeGroupReplication
+                  for the primary StorageClass reports State=Primary; "InProgress" means
+                  the transition is still ongoing.
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
