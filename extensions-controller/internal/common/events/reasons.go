@@ -126,6 +126,12 @@ const (
 	// ReasonPVCDeleted is emitted when a destination PVC has been deleted.
 	ReasonPVCDeleted = "PVCDeleted"
 
+	// ReasonPVCDeleteSkipped is emitted as a Warning when a mirror PVC that is
+	// being deleted is still mounted by a running pod.  The Delete has been
+	// issued; Kubernetes will complete the deletion automatically once the pod
+	// releases the volume (via its own kubernetes.io/pvc-protection finalizer).
+	ReasonPVCDeleteSkipped = "PVCDeleteSkipped"
+
 	// ReasonPVDeleted is emitted when a destination PV has been deleted.
 	ReasonPVDeleted = "PVDeleted"
 

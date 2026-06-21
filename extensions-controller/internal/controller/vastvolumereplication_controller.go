@@ -40,6 +40,7 @@ import (
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/events"
 	k8sclient "github.com/vast-data/vast-csi/extensions-controller/internal/common/k8s_client"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/ppathdir"
+	"github.com/vast-data/vast-csi/extensions-controller/internal/common/utils"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/vmsrest"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/provisioner"
 	vbuilder "github.com/vast-data/vast-csi/extensions-controller/internal/provisioner/builder"
@@ -504,10 +505,14 @@ func (r *VastVolumeReplicationReconciler) ensureVolumeReplicationClass(
 		return "", fmt.Errorf("failed to get StorageClass %s: %w", scName, err)
 	}
 
-	className, err = provisioner.FormatReplicationClassName(ctx, k8s, provisioner.VVRReplicationClassFormat, sc)
+	// Include the VVR name in the class name so that two VVRs sharing the
+	// same StorageClass (but with different ppath names) each get their own
+	// immutable VolumeReplicationClass with the correct ppath-name parameter.
+	baseClassName, err := provisioner.FormatReplicationClassName(ctx, k8s, provisioner.VVRReplicationClassFormat, sc)
 	if err != nil {
 		return "", fmt.Errorf("failed to format replication class name for SC %s: %w", scName, err)
 	}
+	className = utils.SanitizeK8sName(vvr.Name + "-" + baseClassName)
 
 	csiParams := k8s.ExtractPrefixedParams(common.CSIParameterPrefix, sc.Parameters)
 	secretName := csiParams["provisioner-secret-name"]
@@ -655,7 +660,7 @@ func (r *VastVolumeReplicationReconciler) ensureVR(
 
 	vr, err := vbuilder.NewVolumeReplication(vrName, vvr.Namespace).
 		WithManagedByLabel().
-		WithLabelsMap(map[string]string{common.LabelStorageClass: scName}).
+		WithLabelsMap(map[string]string{common.LabelStorageClass: scName, common.LabelSourceVVR: vvr.Name}).
 		WithVolumeReplicationClass(className).
 		WithReplicationState(state).
 		WithDataSource(dataSourcePVC).

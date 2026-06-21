@@ -95,6 +95,7 @@ const (
 	// FinalizerVVR is placed on VastVolumeReplication objects to block
 	// deletion until all owned VolumeReplication objects have been removed.
 	FinalizerVVR = Domain + "/vvr-protection"
+
 )
 
 // csi-addons VolumeReplicationClass / VolumeGroupReplicationClass parameter keys.
