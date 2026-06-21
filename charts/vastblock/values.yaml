@@ -99,24 +99,13 @@ storageClassDefaults:
   subsystem: ""
   # Tenant name – required for additional filtering when multiple subsystems share the same name.
   tenantName: ""
-  # Optional template for constructing the volume group (path prefix).
-  # It supports placeholders for the PVC name and namespace, which can be
-  # used in the format {namespace} and {name}. The volume group can represent
-  # nested folder structures. For example:
-  #   - "folder1/folder2/block-{namespace}"
-  # When set, the final VAST volume name is "<volumeGroup>/<basename>" where the
-  # basename is controlled by volumeNameFormat below.
+  # Optional template for constructing the volume group name.
+  # It supports placeholders for the PVC name, namespace, and ID,
+  # which can be used in the format {namespace}, {name}, and {id}.
+  # If not provided, a default template will be used. The volume group
+  # can represent nested folder structures. For example:
+  #   - "folder1/folder2/block-{namespace}-{id}
   volumeGroup: ""
-  # Optional template for the basename (final path segment) of the VAST volume name.
-  # Supports placeholders {id}, {namespace} and {name}.
-  # {id} (the CSI-generated volume id) is REQUIRED so that lifecycle
-  # operations (DeleteVolume, CreateSnapshot, ControllerExpandVolume,
-  # ControllerUnpublishVolume) can locate the volume via name__contains=<id>.
-  # If empty, the basename defaults to the CSI id (preserves prior behavior).
-  # Examples:
-  #   - "csi-{namespace}-{name}-{id}"   -> "csi-default-my-pvc-pvc-abc123"
-  #   - "{id}-{name}"                   -> "pvc-abc123-my-pvc"
-  volumeNameFormat: ""
   # Enables encryption using LUKS on the device on the client side.
   # If set to true, the CSI driver will expect a passphrase to be provided
   # with the vast-mgmt secret.
