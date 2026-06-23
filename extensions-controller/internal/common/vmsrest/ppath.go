@@ -355,7 +355,7 @@ func EnsurePpath(
 //  1. A's ppath is created with A→B embedded; wait for ppath active.
 //  2. For each additional primary target (C, D, …):
 //     a. Add A→C (primary stream) to A's ppath.
-//     b. Wait for A→C to reach "Waiting for a standby stream".
+//     b. Wait for A→C to reach "Waiting for a standby stream" or "Active".
 //     c. On each non-primary cluster whose link targets C (e.g. B): wait for
 //     the ppath to be mirrored, then add B→C as a standby stream.
 //     d. Wait for A→C to reach "Active".
@@ -417,7 +417,7 @@ func EnsureConstellationPpath(
 		// adding any cross-replica streams that target the same remote.
 		if err := waitForStreamState(
 			primaryRest, ppathName, primaryStreamName,
-			[]string{streamStateWaitingForStandby},
+			[]string{streamStateWaitingForStandby, streamStateActive},
 			streamWaitingForStandbyTimeout, streamWaitingForStandbySleep,
 			log,
 		); err != nil {
