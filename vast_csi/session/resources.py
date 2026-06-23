@@ -655,7 +655,21 @@ class BlockHost(VastResource):
             connectivity_type=transport_type,
             nqn=f"{self.session.config.block_nqn_prefix}{tenant_name}:{node_id}",
         )
-        return self.create(**data)
+        try:
+            return self.create(**data)
+        except ApiError as exc:
+            if (
+                exc.response.status_code == 400
+                and "unique set" in exc.response.text
+                and (blockhost := self.one(name=node_id, tenant_name=tenant_name))
+            ):
+                logger.info(
+                    "Block host %r (tenant=%r) already exists; using existing entry",
+                    node_id,
+                    tenant_name,
+                )
+                return blockhost
+            raise
 
 
 @apiver.v5
