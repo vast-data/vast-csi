@@ -421,9 +421,6 @@ func (b *baseProvisioner) CleanVolumes(ctx context.Context) error {
 			return fmt.Errorf("failed to disable protected path %q: %w", ppath.Name, err)
 		}
 		b.emit.Normalf(events.ReasonPpathDisabled, "disabled protected path %q", ppath.Name)
-		b.logger.Info("waiting for VMS to discover in-flight snapshots before deletion",
-			zap.Duration("interval", common.VMS_SNAPSHOT_DISCOVERY_INTERVAL))
-		time.Sleep(common.VMS_SNAPSHOT_DISCOVERY_INTERVAL)
 	}
 	if err := b.deleteSnapshots(ctx, b.sourceRest, b.rp.Spec.ReplicationPath, b.rp.Spec.ProtectionPolicyNames); err != nil {
 		return err

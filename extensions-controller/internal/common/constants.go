@@ -88,6 +88,11 @@ const (
 	// has had a chance to process it.
 	AnnotationCleanupDone = Domain + "/cleanup-done"
 
+	// AnnotationSnapshotCleanupWaitDone is set after the one-time pre-cleanup
+	// delay that allows in-flight replication snapshots to arrive before listing
+	// and deleting them.
+	AnnotationSnapshotCleanupWaitDone = Domain + "/snapshot-cleanup-wait-done"
+
 	// FinalizerVSCR is placed on VastStorageClassReplication objects to block
 	// deletion until all owned VolumeGroupReplication objects have been removed.
 	FinalizerVSCR = Domain + "/vscr-protection"
