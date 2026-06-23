@@ -346,6 +346,7 @@ func (f *FileProvisioner) ensureView(
 	viewBody := &typed.ViewRequestBody{
 		Path:      targetPath,
 		PolicyId:  viewPolicy.Id,
+		TenantId:  viewPolicy.TenantId,
 		Protocols: &protocols,
 		CreateDir: false,
 	}
