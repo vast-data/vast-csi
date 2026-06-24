@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"go.uber.org/zap"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -111,15 +110,6 @@ func (r *VastReplicationContentReconciler) Reconcile(ctx context.Context, req ct
 			}
 
 			log.Info("VastReplicationContent is being deleted, cleaning up resources")
-			if vrc.Annotations[common.AnnotationSnapshotCleanupWaitDone] != "true" {
-				log.Info("waiting for in-flight replication snapshots before cleanup",
-					zap.Duration("delay", common.VMS_SNAPSHOT_DISCOVERY_INTERVAL))
-				time.Sleep(common.VMS_SNAPSHOT_DISCOVERY_INTERVAL)
-				if err := k8s.SetAnnotationAndUpdate(ctx, vrc, common.AnnotationSnapshotCleanupWaitDone, "true"); err != nil {
-					return ctrl.Result{}, err
-				}
-				return ctrl.Result{Requeue: true}, nil
-			}
 			if err := r.cleanResources(ctx, vrc, emit); err != nil {
 				emit.Warningf(events.ReasonCleanupFailed, "cleanup failed: %v", err)
 				return ctrl.Result{}, fmt.Errorf("failed to clean resources: %w", err)

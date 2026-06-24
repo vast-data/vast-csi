@@ -88,7 +88,7 @@ const (
 	// has had a chance to process it.
 	AnnotationCleanupDone = Domain + "/cleanup-done"
 
-	// AnnotationSnapshotCleanupWaitDone is set after the one-time pre-cleanup
+	// AnnotationSnapshotCleanupWaitDone is set after the one-time post-disable
 	// delay that allows in-flight replication snapshots to arrive before listing
 	// and deleting them.
 	AnnotationSnapshotCleanupWaitDone = Domain + "/snapshot-cleanup-wait-done"
@@ -100,7 +100,6 @@ const (
 	// FinalizerVVR is placed on VastVolumeReplication objects to block
 	// deletion until all owned VolumeReplication objects have been removed.
 	FinalizerVVR = Domain + "/vvr-protection"
-
 )
 
 // csi-addons VolumeReplicationClass / VolumeGroupReplicationClass parameter keys.
@@ -148,8 +147,8 @@ const (
 	ReplicationParamPpathName = Domain + "/ppath-name"
 )
 
-// VMS_SNAPSHOT_DISCOVERY_INTERVAL is the time to wait for VMS to discover in-flight snapshots
-// after disabling a protected path. VMS discovers snapshots from EStore via polling every ~15 seconds.
+// VMS_SNAPSHOT_DISCOVERY_INTERVAL is the one-time delay after protected path
+// disable (by operator or CSI) before listing/deleting replication snapshots.
 const VMS_SNAPSHOT_DISCOVERY_INTERVAL = 15 * time.Second
 
 // InvalidLabelCharsRegex is the regex pattern for invalid Kubernetes label characters
