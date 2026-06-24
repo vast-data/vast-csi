@@ -658,11 +658,15 @@ class BlockHost(VastResource):
         try:
             return self.create(**data)
         except ApiError as exc:
-            if (
+            text = exc.response.text
+            is_duplicate = (
                 exc.response.status_code == 400
-                and "unique set" in exc.response.text
-                and (blockhost := self.one(name=node_id, tenant_name=tenant_name))
-            ):
+                and (
+                    "unique set" in text
+                    or "unique_block_host_name_per_tenant" in text
+                )
+            )
+            if is_duplicate and (blockhost := self.one(name=node_id, tenant_name=tenant_name)):
                 logger.info(
                     "Block host %r (tenant=%r) already exists; using existing entry",
                     node_id,
