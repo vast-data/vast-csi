@@ -20,8 +20,8 @@ import (
 
 	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/k8s_client"
-	storagev1 "k8s.io/api/storage/v1"
 	"go.uber.org/zap"
+	storagev1 "k8s.io/api/storage/v1"
 )
 
 // minimalFileProvisioner builds a FileProvisioner with only the fields that
@@ -139,11 +139,11 @@ func TestBlockSyncBlockObjects_SyncPVCPV_True_SkipsToDelete(t *testing.T) {
 	toDelete := vastv1alpha1.PVCList{"pvc-1", "pvc-2"}
 	err := bp.syncBlockObjects(
 		context.Background(),
-		nil,             /*sibRest – intentionally nil: must not be dereferenced*/
+		nil, /*sibRest – intentionally nil: must not be dereferenced*/
 		emptyStorageClass(),
-		vrc,             /*sibVRC with SyncPVCPV=true*/
-		nil,             /*ppath – not needed when toEnsure is empty*/
-		nil,             /*toEnsure – empty*/
+		vrc, /*sibVRC with SyncPVCPV=true*/
+		nil, /*ppath – not needed when toEnsure is empty*/
+		nil, /*toEnsure – empty*/
 		toDelete,
 	)
 	if err != nil {

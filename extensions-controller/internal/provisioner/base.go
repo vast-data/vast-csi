@@ -422,6 +422,9 @@ func (b *baseProvisioner) CleanVolumes(ctx context.Context) error {
 		}
 		b.emit.Normalf(events.ReasonPpathDisabled, "disabled protected path %q", ppath.Name)
 	}
+	if err := b.waitAfterPpathDisable(ctx); err != nil {
+		return err
+	}
 	if err := b.deleteSnapshots(ctx, b.sourceRest, b.rp.Spec.ReplicationPath, b.rp.Spec.ProtectionPolicyNames); err != nil {
 		return err
 	}
@@ -533,6 +536,22 @@ func (b *baseProvisioner) managedPVForPVC(ctx context.Context, pvc *corev1.Persi
 // ---------------------------------------------------------------------------
 // Delete helpers
 // ---------------------------------------------------------------------------
+
+// waitAfterPpathDisable sleeps once after the protected path is disabled (by
+// operator or CSI) so in-flight replication snapshots can land before deletion.
+// Progress is tracked via AnnotationSnapshotCleanupWaitDone on the VRC.
+func (b *baseProvisioner) waitAfterPpathDisable(ctx context.Context) error {
+	if b.rp.Annotations[common.AnnotationSnapshotCleanupWaitDone] == "true" {
+		return nil
+	}
+	b.logger.Info("waiting for in-flight replication snapshots after ppath disable",
+		zap.Duration("delay", common.VMS_SNAPSHOT_DISCOVERY_INTERVAL))
+	time.Sleep(common.VMS_SNAPSHOT_DISCOVERY_INTERVAL)
+	if err := b.k8sClient.SetAnnotationAndUpdate(ctx, b.rp, common.AnnotationSnapshotCleanupWaitDone, "true"); err != nil {
+		return fmt.Errorf("record snapshot cleanup wait: %w", err)
+	}
+	return nil
+}
 
 // deleteSnapshots deletes replication snapshots under snapshotPath for each protection policy.
 func (b *baseProvisioner) deleteSnapshots(_ context.Context, rest *vast_client.TypedVMSRest, snapshotPath string, policyNames []string) error {
