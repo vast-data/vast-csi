@@ -282,6 +282,9 @@ extensions:
 
   # Each StorageClass represents a different VAST cluster (identified by credentials).
   replication:
+    # CSI-Addons cluster operator (upstream manifests in replication.yaml).
+    maxGroupPvcs: 10000
+    csiAddonsImage: quay.io/csiaddons/k8s-controller:v0.14.0
     # Format string for destination PVC names. Available tokens:
     #   {pvc_name}            - full source PVC name
     #   {pvc_name_suf:<N>}    - last N characters of source PVC name

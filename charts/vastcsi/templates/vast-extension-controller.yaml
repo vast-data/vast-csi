@@ -142,8 +142,8 @@ spec:
           imagePullPolicy: {{ $csi_images.vastExtensionController.imagePullPolicy | default "IfNotPresent" }}
           args:
             - replication
-            - --pvc-name-format={{ $rc.webhook.pvcNameFormat }}
-            - --pv-name-format={{ $rc.webhook.pvNameFormat }}
+            - --pvc-name-format={{ $rc.replication.pvcNameFormat }}
+            - --pv-name-format={{ $rc.replication.pvNameFormat }}
             - --health-probe-bind-address=:8082
             - --metrics-bind-address=0
 {{- if $rc.devLogging }}
