@@ -44,7 +44,7 @@ useLocalIpForMount: ""
 # If a mount or umount command does not complete within this time, it will be terminated
 # and an error will be returned. This prevents the driver from getting stuck indefinitely
 # due to network issues or unresponsive NFS servers.
-mountUmountTimeout: 30
+mountUmountTimeout: 90
 # When true, a umount that times out is retried with lazy unmount (-l).
 forceLazyUmountOnTimeout: true
 # Enable symlink resolution when querying mount information.
