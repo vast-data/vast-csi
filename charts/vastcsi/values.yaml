@@ -302,14 +302,7 @@ extensions:
   podAntiAffinity: {}
   # Allows to specify which nodes your pod is eligible to be scheduled on based on labels on the node.
   nodeAffinity: {}
-  # Resources for the replication controller container
-  resources:
-    limits:
-      memory: 128Mi
-    requests:
-      cpu: 10m
-      memory: 64Mi
-  # priorityClassName for the replication controller pod
+  # priorityClassName for the extension controller pod
   priorityClassName: system-cluster-critical
 
 ####################
@@ -573,7 +566,8 @@ extensionController:
   # Allows to specify which nodes your pod is eligible to be scheduled on based on labels on the node
   # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
   nodeAffinity: {}
-  # Resources for the extension controller containers
+  # Resources for all extension / replication containers.
+  # Sized for extensions.replication.maxGroupPvcs (default 10k PVCs per VGR/VRC).
   resources:
     csiVastPlugin:
       limits:
@@ -583,10 +577,54 @@ extensionController:
         memory: 50Mi
     csiAddonsSidecar:
       limits:
-        memory: 200Mi
+        memory: 1Gi
       requests:
         cpu: 10m
-        memory: 20Mi
+        memory: 256Mi
+    extensionsWebhook:
+      limits:
+        memory: 1Gi
+      requests:
+        cpu: 10m
+        memory: 512Mi
+    extensionsManager:
+      limits:
+        memory: 1Gi
+      requests:
+        cpu: 10m
+        memory: 512Mi
+    csiAddonsClusterManager:
+      limits:
+        cpu: 1000m
+        memory: 1536Mi
+      requests:
+        cpu: 10m
+        memory: 256Mi
+  # Health probes for extension controller containers.
+  # Sized for extensions.replication.maxGroupPvcs (default 10k PVCs per VGR/VRC).
+  probes:
+    extensionsWebhook:
+      liveness:
+        initialDelaySeconds: 30
+        timeoutSeconds: 10
+        periodSeconds: 20
+        failureThreshold: 5
+      readiness:
+        initialDelaySeconds: 10
+        timeoutSeconds: 10
+        periodSeconds: 10
+        failureThreshold: 3
+    extensionsManager:
+      liveness:
+        initialDelaySeconds: 180
+        timeoutSeconds: 15
+        periodSeconds: 30
+        failureThreshold: 10
+      readiness:
+        initialDelaySeconds: 60
+        timeoutSeconds: 15
+        periodSeconds: 15
+        failureThreshold: 6
   # priorityClassName for the extension controller pod
   priorityClassName: system-cluster-critical
 
