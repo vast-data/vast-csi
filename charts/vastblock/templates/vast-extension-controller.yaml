@@ -1,6 +1,7 @@
 {{/* VAST Extension Controller Deployment */}}
 
 {{- $rc := .Values.extensions -}}
+{{- $ec := .Values.extensionController -}}
 {{- $csi_images := .Values.image -}}
 {{- $driver_name := include "vastcsi.csiDriver" . -}}
 {{- $sock_suffix := $driver_name | lower | replace "." "-" | replace "_" "-" | trimSuffix "-" | trimPrefix "-" -}}
@@ -123,17 +124,17 @@ spec:
             httpGet:
               path: /healthz
               port: 8081
-            initialDelaySeconds: 5
+{{- toYaml $ec.probes.extensionsWebhook.liveness | nindent 12 }}
           readinessProbe:
             httpGet:
               path: /readyz
               port: 8081
-            initialDelaySeconds: 5
+{{- toYaml $ec.probes.extensionsWebhook.readiness | nindent 12 }}
           volumeMounts:
             - name: webhook-tls
               mountPath: /tmp/k8s-webhook-server/serving-certs
               readOnly: true
-          resources: {{- toYaml $rc.resources | nindent 12 }}
+          resources: {{- toYaml .Values.extensionController.resources.extensionsWebhook | nindent 12 }}
         - name: extensions-manager
           image: {{ include "vastcsi.vastExtensionControllerImage" . }}
           imagePullPolicy: {{ $csi_images.vastExtensionController.imagePullPolicy | default "IfNotPresent" }}
@@ -154,16 +155,16 @@ spec:
             httpGet:
               path: /healthz
               port: 8082
-            initialDelaySeconds: 5
+{{- toYaml $ec.probes.extensionsManager.liveness | nindent 12 }}
           readinessProbe:
             httpGet:
               path: /readyz
               port: 8082
-            initialDelaySeconds: 5
+{{- toYaml $ec.probes.extensionsManager.readiness | nindent 12 }}
           volumeMounts:
             - name: extensions-dir
               mountPath: /var/run/vast-extensions
-          resources: {{- toYaml $rc.resources | nindent 12 }}
+          resources: {{- toYaml .Values.extensionController.resources.extensionsManager | nindent 12 }}
         - name: replication-vast-plugin
           image: {{ printf "%s:%s" $csi_images.csiVastPlugin.repository (toString $csi_images.csiVastPlugin.tag) }}
           args:
