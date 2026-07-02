@@ -45,7 +45,7 @@ hostNamePrefix: ""
 # If a mount or umount command does not complete within this time, it will be terminated
 # and an error will be returned. This prevents the driver from getting stuck indefinitely
 # due to network issues or unresponsive storage.
-mountUmountTimeout: 30
+mountUmountTimeout: 90
 # Enable symlink resolution when querying mount information.
 # When enabled, mount paths containing symlinks (e.g., /dev/disk/by-uuid/*) will be
 # resolved to their canonical paths before comparison.

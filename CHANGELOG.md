@@ -8,6 +8,7 @@
 * Added mTLS support for NFS mounts via a new `mtls_manager` component, enabling mutual TLS credential handling for secure NFS transport
 * Added async volume replication support via the extensions operator. Introduces `VolumeReplication` and `VolumeGroupReplication` CRDs, an addons controller, and supporting Helm configuration for both NFS and block drivers
 * Fixed an issue causing too many quotaS in response (VCSI-380)
+* Increased default mount/umount timeout from 30s to 90s (`mountUmountTimeout` / `X_CSI_MOUNT_UMOUNT_TIMEOUT`) to reduce premature lazy unmounts under slow storage. Increased `xfs_db` superblock read timeout from 10s to 30s for XFS integrity checks during block volume staging
 
 ## Version 2.6.5
 * Additional logging and timeout for mount/unmount operations (VCSI-343)

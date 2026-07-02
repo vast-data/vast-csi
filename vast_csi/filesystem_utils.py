@@ -19,6 +19,7 @@ from vast_csi.utils import run_with_timeout
 
 
 PROC_MOUNT_INFO = "/proc/self/mountinfo"
+XFS_DB_TIMEOUT = 30
 # Regex for matching block device names typically used for CSI volumes.
 # Supports:
 # - NVMe devices (e.g., /nvme0n1 or nvme1n2)
@@ -486,7 +487,7 @@ def _get_xfs_superblock_inprogress(device: str):
     """Return XFS superblock inprogress field as a string, or None if unavailable."""
     retcode, stdout, stderr = cmd.xfs_db[
         "-r", "-c", "sb 0", "-c", "p", device
-    ].run(retcode=None, timeout=10)
+    ].run(retcode=None, timeout=XFS_DB_TIMEOUT)
     if retcode != 0:
         logger.warning(
             f"Could not read XFS superblock on {device} (xfs_db exit {retcode}): {stderr}"
