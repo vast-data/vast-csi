@@ -88,7 +88,7 @@ cosiDriverName: csi.vastdata.com
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: 2.6.5-hf6  # the version of the Vast COSI driver
+    tag: 2.6.5-hf7  # the version of the Vast COSI driver
     imagePullPolicy: IfNotPresent
   objectstorageProvisioner:
     repository: gcr.io/k8s-staging-sig-storage/objectstorage-sidecar/objectstorage-sidecar
