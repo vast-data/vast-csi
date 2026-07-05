@@ -59,6 +59,7 @@ Endpoints:
 """
 
 import json
+import os
 import re
 import time
 import queue
@@ -94,6 +95,7 @@ from vast_csi.csi_types import (
     UNKNOWN,
 )
 from vast_csi.filesystem_utils import MountInfo, hostcmd
+from vast_csi.block_utils import get_hostnqn_from_sysfs, list_nvme_sessions, NVME_CLASS_PATH
 
 # ================================================================
 # Constants
@@ -186,7 +188,7 @@ class MetricFactory:
         return Counter(
             "csi_plugin_operations_total",
             "Total number of CSI operations by method and status",
-            ["driver_name", "method_name", "grpc_status_code", "hostname", "volume_id"],
+            ["driver_name", "method_name", "grpc_status_code", "hostname"],
         )
 
     @cached_property
@@ -195,7 +197,7 @@ class MetricFactory:
         return Histogram(
             "csi_plugin_operations_seconds",
             "Duration of CSI operations in seconds",
-            ["driver_name", "method_name", "grpc_status_code", "hostname", "volume_id"],
+            ["driver_name", "method_name", "grpc_status_code", "hostname"],
             buckets=DEFAULT_CSI_BUCKETS,
         )
 
@@ -381,6 +383,17 @@ class MetricFactory:
             "csi_node_nfs_xprt_mounts",
             "Number of NFS mounts using this transport",
             ["destination"],
+        )
+
+    @cached_property
+    def nvme_controller_info(self):
+        """Get or create NVMe controller info gauge (node service only)."""
+        if not self.is_node_service:
+            raise RuntimeError("NVMe controller metrics are only available for node services")
+        return Gauge(
+            "csi_node_nvme_controller_info",
+            "NVMe controller information (1=present, 0=removed)",
+            ["controller", "subsysnqn", "hostnqn", "transport", "address", "state", "model", "serial"]
         )
 
 
@@ -766,6 +779,47 @@ def _read_xprt_state_and_flags(xprt_dir):
     return state_raw, _parse_state_flags(state_raw)
 
 
+# Tracks whether the one-shot warning about an unpatched sunrpc sysfs kernel has
+# already been emitted, so we don't spam logs once per scrape.
+_sunrpc_srcaddr_warning_emitted = False
+_kernel_srcaddr_safe_cache = None
+
+
+def _kernel_has_sunrpc_srcaddr_fix():
+    """Return True if running kernel is believed to include the fix for
+    CVE-2022-48816 ("SUNRPC: lock against ->sock changing during sysfs read").
+
+    Reading /sys/kernel/sunrpc/xprt-switches/*/xprt-*/srcaddr on unpatched
+    kernels can race with xprt->sock being NULL'd, triggering a NULL deref in
+    rpc_sysfs_xprt_srcaddr_show() -> kernel_getsockname(). On nodes with
+    panic_on_oops=1 this becomes a kernel panic and reboot.
+
+    The upstream fix landed in mainline 5.17 (commit 1a44d846a9d7). Distros
+    backported it to various stable trees at unknown point releases, so we
+    cannot reliably tell from uname alone which 5.15.y or 5.16.y kernels are
+    patched. To stay safe we treat anything below 5.17 as potentially affected
+    (false-positive: patched 5.15/5.16 kernels lose the srcaddr-derived
+    label, but never panic). If the version cannot be parsed we also fail
+    closed and skip the read.
+    """
+    global _kernel_srcaddr_safe_cache
+    if _kernel_srcaddr_safe_cache is not None:
+        return _kernel_srcaddr_safe_cache
+
+    safe = False
+    try:
+        release = os.uname().release  # e.g. "5.15.0-122-generic", "6.8.0-40-generic"
+        m = re.match(r"(\d+)\.(\d+)", release)
+        if m:
+            major, minor = int(m.group(1)), int(m.group(2))
+            safe = (major, minor) >= (5, 17)
+    except (OSError, ValueError, AttributeError):
+        safe = False
+
+    _kernel_srcaddr_safe_cache = safe
+    return safe
+
+
 def _read_xprt_info(xprt_dir):
     """Read info file and return dict (srcaddr, dstaddr, etc.).
     
@@ -775,6 +829,11 @@ def _read_xprt_info(xprt_dir):
     
     Note: On older kernels, pending/backlog are in xprt_info as
     'pending_q_len' and 'backlog_q_len' instead of separate files.
+
+    Note (CVE-2022-48816): On kernels older than 5.17 (mainline) we skip the
+    'srcaddr' read because rpc_sysfs_xprt_srcaddr_show() can NULL-deref when
+    the xprt socket is torn down concurrently. See
+    _kernel_has_sunrpc_srcaddr_fix() for the rationale.
     """
     # Try newer kernel naming: single 'info' file with key=value pairs
     info_raw = _read_file_safe(xprt_dir / "info")
@@ -789,10 +848,24 @@ def _read_xprt_info(xprt_dir):
     if dstaddr:
         info["dstaddr"] = dstaddr.strip()
 
-    # Read source address
-    srcaddr = _read_file_safe(xprt_dir / "srcaddr")
-    if srcaddr:
-        info["srcaddr"] = srcaddr.strip()
+    # Read source address only on kernels with the CVE-2022-48816 fix; on
+    # unpatched kernels this read can crash the node.
+    if _kernel_has_sunrpc_srcaddr_fix():
+        srcaddr = _read_file_safe(xprt_dir / "srcaddr")
+        if srcaddr:
+            info["srcaddr"] = srcaddr.strip()
+    else:
+        global _sunrpc_srcaddr_warning_emitted
+        if not _sunrpc_srcaddr_warning_emitted:
+            _sunrpc_srcaddr_warning_emitted = True
+            logger.warning(
+                "Skipping NFS xprt 'srcaddr' metric reads: running kernel "
+                "may be affected by CVE-2022-48816 (SUNRPC sysfs NULL deref "
+                "in rpc_sysfs_xprt_srcaddr_show). The 'local_addr' label on "
+                "csi_node_nfs_xprt_* metrics will be reported as 'unknown'. "
+                "To restore the label, upgrade to a kernel >= 5.17 or a "
+                "distro kernel containing the backport."
+            )
 
     # Read xprt_info file (contains key=value pairs including pending_q_len, backlog_q_len)
     xprt_info_raw = _read_file_safe(xprt_dir / "xprt_info")
@@ -993,6 +1066,83 @@ def _count_nfs_mounts_per_destination():
     return dict(counts)
 
 
+def _parse_nvme_traddr(full_address):
+    """Extract traddr (target address) from NVMe address string.
+    e.g. 'traddr=10.95.40.74,trsvcid=4420,src_addr=...' -> '10.95.40.74'
+    """
+    if not full_address or not isinstance(full_address, str):
+        return "unknown"
+    for part in full_address.split(","):
+        part = part.strip()
+        if part.startswith("traddr="):
+            return part.split("=", 1)[1].strip()
+    return full_address
+
+
+def collect_nvme_controller_stats():
+    """
+    Collect NVMe controller information from nvme-cli and sysfs.
+    
+    Only reports VAST controllers (model="VASTData"). Physical NVMe devices
+    and other non-VAST controllers are filtered out.
+    
+    Returns:
+        list[dict]: Controller info with keys:
+            - controller: controller name (e.g., "nvme0")
+            - subsysnqn: subsystem NQN
+            - hostnqn: host NQN
+            - transport: tcp/rdma
+            - address: traddr only (target address IP/hostname)
+            - state: controller state from sysfs
+            - model: device model
+            - serial: serial number
+    """
+    
+    controllers = []
+    
+    try:
+        for session in list_nvme_sessions():
+            # HostNQN is optional (nvme-cli 1.x doesn't include it); fall back to sysfs (see block_utils.get_hostnqn_from_sysfs)
+            hostnqn = session.get("HostNQN") or "unknown"
+            
+            for subsys in session.Subsystems:
+                if hostnqn == "unknown":
+                    hostnqn = get_hostnqn_from_sysfs(subsys) or "unknown"
+                subsysnqn = subsys.NQN
+                
+                for path in subsys.Paths:
+                    controller_name = path.Name
+                    transport = path.Transport
+                    full_address = path.Address
+                    # Metric address label: traddr only (target address)
+                    address = _parse_nvme_traddr(full_address) if full_address else "unknown"
+                    
+                    # Read additional info from sysfs
+                    ctrl_path = NVME_CLASS_PATH / controller_name
+                    state = _read_file_safe(ctrl_path / "state") or "unknown"
+                    model = _read_file_safe(ctrl_path / "model") or "unknown"
+                    serial = _read_file_safe(ctrl_path / "serial") or "unknown"
+                    
+                    # Only report VAST controllers (CSI driver scope)
+                    if model.strip() != "VASTData":
+                        continue
+                    
+                    controllers.append({
+                        "controller": controller_name,
+                        "subsysnqn": subsysnqn,
+                        "hostnqn": hostnqn,
+                        "transport": transport,
+                        "address": address,
+                        "state": state,
+                        "model": model,
+                        "serial": serial,
+                    })
+    except Exception as e:
+        logger.warning(f"Failed to collect NVMe controller stats: {e}")
+    
+    return controllers
+
+
 def update_xprt_metrics():
     """Update Prometheus xprt metrics from current sysfs state."""
     global _xprt_previous_destinations
@@ -1096,6 +1246,50 @@ def update_xprt_metrics():
         logger.warning(f"Failed to update xprt metrics: {e}")
 
 
+# Global tracking for NVMe controller cleanup
+_nvme_previous_controllers = set()
+
+
+def update_nvme_controller_metrics():
+    """Update Prometheus NVMe controller metrics from nvme-cli and sysfs."""
+    global _nvme_previous_controllers
+    
+    try:
+        controllers = collect_nvme_controller_stats()
+        
+        # Track current controllers by name
+        current_controllers = set()
+        
+        for ctrl in controllers:
+            ctrl_name = ctrl["controller"]
+            current_controllers.add(ctrl_name)
+            
+            # Set gauge to 1 for each present controller
+            METRIC_FACTORY.nvme_controller_info.labels(
+                controller=ctrl_name,
+                subsysnqn=ctrl["subsysnqn"],
+                hostnqn=ctrl["hostnqn"],
+                transport=ctrl["transport"],
+                address=ctrl["address"],
+                state=ctrl["state"],
+                model=ctrl["model"],
+                serial=ctrl["serial"]
+            ).set(1)
+        
+        # Remove metrics for controllers that disappeared
+        removed_controllers = _nvme_previous_controllers - current_controllers
+        for ctrl_name in removed_controllers:
+            logger.debug(f"NVMe controller removed: {ctrl_name}")
+            # Note: Full label cleanup would require storing all label combinations
+            # For now, the metric will naturally stop being updated
+        
+        # Update tracking set
+        _nvme_previous_controllers = current_controllers
+        
+    except Exception as e:
+        logger.warning(f"Failed to update NVMe controller metrics: {e}")
+
+
 # ================================================================
 # HTTP Server with Custom Endpoints
 # ================================================================
@@ -1106,6 +1300,9 @@ class MetricsHTTPHandler(BaseHTTPRequestHandler):
 
     # Class variable to store whether this is a node service
     collect_xprt_metrics = False
+    
+    # Class variable to control NVMe controller metrics collection
+    collect_nvme_controller_metrics = False
 
     def log_message(self, format, *args):
         """Use our logger instead of stderr."""
@@ -1127,6 +1324,10 @@ class MetricsHTTPHandler(BaseHTTPRequestHandler):
             # Update xprt metrics only on CSI node (not controller-only)
             if self.collect_xprt_metrics:
                 update_xprt_metrics()
+            
+            # Update NVMe controller metrics only on block node
+            if self.collect_nvme_controller_metrics:
+                update_nvme_controller_metrics()
 
             # Generate Prometheus format
             metrics = generate_latest()
@@ -1148,7 +1349,7 @@ class MetricsHTTPHandler(BaseHTTPRequestHandler):
         self.wfile.write(response.encode("utf-8"))
 
 
-def start_metrics_server(port=9090, addr="0.0.0.0", is_node_service=False, collect_nfs_xprt=True):
+def start_metrics_server(port=9090, addr="0.0.0.0", is_node_service=False, collect_nfs_xprt=True, collect_nvme_controller=False):
     """
     Start the metrics HTTP server with Prometheus endpoints.
 
@@ -1163,12 +1364,14 @@ def start_metrics_server(port=9090, addr="0.0.0.0", is_node_service=False, colle
         collect_nfs_xprt (bool): True to collect NFS transport metrics, False to disable
                                  (default: True for NFS driver, set False for block driver)
                                 Determines which metrics are registered and whether xprt stats are collected
+        collect_nvme_controller (bool): True to collect NVMe controller metrics, False to disable
+                                        (default: False for NFS driver, set True for block driver)
 
     Raises:
         OSError: If the server cannot bind (e.g. port in use).
 
     Endpoints:
-        /metrics - Prometheus metrics (mount/unmount + NFS transport stats)
+        /metrics - Prometheus metrics (mount/unmount + NFS transport stats + NVMe controller info)
         /health  - Health check (Kubernetes liveness/readiness)
     """
 
@@ -1178,6 +1381,9 @@ def start_metrics_server(port=9090, addr="0.0.0.0", is_node_service=False, colle
     # Configure xprt metrics collection (only for node services with NFS)
     # Block driver should set collect_nfs_xprt=False since it doesn't use NFS
     MetricsHTTPHandler.collect_xprt_metrics = is_node_service and collect_nfs_xprt
+    
+    # Configure NVMe controller metrics collection (only for node services with block driver)
+    MetricsHTTPHandler.collect_nvme_controller_metrics = is_node_service and collect_nvme_controller
 
     server = HTTPServer((addr, port), MetricsHTTPHandler)
     server_thread = threading.Thread(

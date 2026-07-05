@@ -32,9 +32,9 @@ allowVolumeExpansion: true
 # If true, sets Vast CSI as the cluster-wide storage class default
 setDefaultStorageClass: false
 # String template for CSI-provisioned volume names, within VAST
-volumeNameFormat: "csi:{namespace}:{name}:{id}"
+volumeNameFormat: "csi:{id}:{namespace}:{name}"
 # String template for CSI-provisioned ephemeral volumes, within VAST
-ephemeralVolumeNameFormat: "csi:{namespace}:{name}:{id}"
+ephemeralVolumeNameFormat: "csi:{id}:{namespace}:{name}"
 # Add any extra NFS options desired here
 mountOptions: []
 # Reclaim policy to use with the storage class.
@@ -134,6 +134,6 @@ snapshotClass:
   # If true, sets SnapshotClass as the cluster-wide snapshot class default
   setDefaultSnapshotClass: false
   # String template for CSI-provisioned snapshot names, within VAST
-  snapshotNameFormat: "csi:{namespace}:{name}:{id}"
+  snapshotNameFormat: "csi:{id}:{namespace}:{name}"
   # On snapshot delete behavior. By default, Vast Cluster snapshot will be removed as well.
   deletionPolicy: "Delete"

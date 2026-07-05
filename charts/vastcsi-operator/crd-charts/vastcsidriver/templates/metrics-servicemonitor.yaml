@@ -1,0 +1,75 @@
+{{- if and .Values.node.metrics.enabled .Values.node.metrics.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name | replace "." "-" }}-vast-node-metrics
+  namespace: {{ include "vastcsi.namespace" . }}
+  labels:
+{{- include "vastcsi.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/csi-role: "node"
+{{- range .Values.node.metrics.serviceMonitor.labels }}
+    {{ .name }}: {{ .value | quote }}
+{{- end }}
+spec:
+  selector:
+    matchLabels:
+{{- include "vastcsi.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: metrics
+      app.kubernetes.io/csi-role: "node"
+  namespaceSelector:
+    matchNames:
+      - {{ include "vastcsi.namespace" . }}
+  endpoints:
+    - port: metrics
+      interval: {{ .Values.node.metrics.serviceMonitor.interval }}
+      path: /metrics
+      scheme: http
+{{- if .Values.node.metrics.serviceMonitor.relabelings }}
+      relabelings:
+{{- toYaml .Values.node.metrics.serviceMonitor.relabelings | nindent 8 }}
+{{- end }}
+{{- if .Values.node.metrics.serviceMonitor.metricRelabelings }}
+      metricRelabelings:
+{{- toYaml .Values.node.metrics.serviceMonitor.metricRelabelings | nindent 8 }}
+{{- end }}
+{{- end }}
+
+---
+
+{{- if and .Values.controller.metrics.enabled .Values.controller.metrics.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name | replace "." "-" }}-vast-controller-metrics
+  namespace: {{ include "vastcsi.namespace" . }}
+  labels:
+{{- include "vastcsi.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/csi-role: "controller"
+{{- range .Values.controller.metrics.serviceMonitor.labels }}
+    {{ .name }}: {{ .value | quote }}
+{{- end }}
+spec:
+  selector:
+    matchLabels:
+{{- include "vastcsi.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: metrics
+      app.kubernetes.io/csi-role: "controller"
+  namespaceSelector:
+    matchNames:
+      - {{ include "vastcsi.namespace" . }}
+  endpoints:
+    - port: metrics
+      interval: {{ .Values.controller.metrics.serviceMonitor.interval }}
+      path: /metrics
+      scheme: http
+{{- if .Values.controller.metrics.serviceMonitor.relabelings }}
+      relabelings:
+{{- toYaml .Values.controller.metrics.serviceMonitor.relabelings | nindent 8 }}
+{{- end }}
+{{- if .Values.controller.metrics.serviceMonitor.metricRelabelings }}
+      metricRelabelings:
+{{- toYaml .Values.controller.metrics.serviceMonitor.metricRelabelings | nindent 8 }}
+{{- end }}
+{{- end }}

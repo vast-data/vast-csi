@@ -20,6 +20,8 @@
 {{- end -}}
 
 {{- define "vastcsi.commonEnv" }}
+{{- $ := .root | default . }}
+{{- $timeout := .timeout | default $.Values.operationTimeout }}
 - name: X_CSI_PLUGIN_NAME
   value: {{ include "vastcsi.csiDriver" $ | quote }}
 - name: X_CSI_VMS_HOST
@@ -38,6 +40,8 @@
   value: {{ $.Values.useLocalIpForMount | quote }}
 - name: X_CSI_MOUNT_UMOUNT_TIMEOUT
   value: {{ $.Values.mountUmountTimeout | quote }}
+- name: X_CSI_FORCE_LAZY_UMOUNT_ON_TIMEOUT
+  value: {{ $.Values.forceLazyUmountOnTimeout | quote }}
 {{ if $.Values.resolveMountSymlinks -}}
 - name: X_CSI_RESOLVE_MOUNT_SYMLINKS
   value: {{ $.Values.resolveMountSymlinks | quote }}
@@ -45,7 +49,7 @@
 - name: X_CSI_ATTACH_REQUIRED
   value: {{ $.Values.attachRequired | quote }}
 - name: X_CSI_VMS_TIMEOUT
-  value: {{ $.Values.operationTimeout | quote }}
+  value: {{ $timeout | quote }}
 - name: X_CSI_CACHE_MAX_AGE
   value: {{ $.Values.cacheMaxAgeSeconds | default 0 | quote }}
 - name: X_CSI_DISABLE_USAGE_STATS
@@ -53,6 +57,12 @@
 {{ if $.Values.truncateVolumeName -}}
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}
+{{- end }}
+{{- if .extraEnv }}
+{{- range $key, $value := .extraEnv }}
+- name: {{ $key }}
+  value: {{ $value | quote }}
+{{- end }}
 {{- end }}
 {{- end }}
 
@@ -122,3 +132,48 @@ Result: key: "true"
   {{- end }}
 {{- end }}
 {{- end }}
+
+
+{{/*
+Serializes a dict/map or array/list to a JSON string parameter.
+Usage: include "vastcsi.dictToJsonStringParam" (list $value "param_name")
+*/}}
+{{- define "vastcsi.dictToJsonStringParam" -}}
+{{- $value := index . 0 -}}
+{{- $key := index . 1 -}}
+{{- if or (kindIs "map" $value) (kindIs "slice" $value) }}
+{{ $key }}: {{ $value | toJson | quote }}
+{{- else }}
+  {{- $errorMsg := printf "Invalid format. Expected a map or array for JSON serialization but got:\n%s" (toYaml $value) }}
+  {{- fail $errorMsg }}
+{{- end }}
+{{- end }}
+
+
+{{/*
+Return true if any CSI-Addons are enabled (replication or volume group replication)
+Usage:
+{{- include "vastcsi.addons-enabled" . -}}
+*/}}
+{{- define "vastcsi.addons-enabled" -}}
+{{- if or .Values.enableReplication (gt (len .Values.volumeReplicationClasses) 0) -}}
+{{- true -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Build the comma-separated list of addons to enable.
+VolumeGroupReplicationClass is always created alongside VolumeReplicationClass.
+Usage:
+{{- include "vastcsi.addons-list" (dict "root" . "type" "nfs") -}}
+*/}}
+{{- define "vastcsi.addons-list" -}}
+{{- $type := .type -}}
+{{- $root := .root -}}
+{{- $addons := list -}}
+{{- if or $root.Values.enableReplication (gt (len $root.Values.volumeReplicationClasses) 0) -}}
+{{- $addons = append $addons (printf "replication[%s]" $type) -}}
+{{- $addons = append $addons (printf "volumegroup[%s]" $type) -}}
+{{- end -}}
+{{- join "," $addons -}}
+{{- end -}}

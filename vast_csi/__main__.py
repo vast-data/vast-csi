@@ -14,9 +14,18 @@ def main():
     serve_parse = subparsers.add_parser("serve", help='Start the CSI Plugin Server (not for humans)')
     serve_parse.add_argument(
         "--plugin", "-p",
-        default="csi",
-        choices=["csi", "cosi", "block"],
-        help="Specify the plugin type (default: csi)"
+        default="nfs",
+        choices=["nfs", "cosi", "block"],
+        help="Specify the core plugin type. Mutually exclusive with --addons."
+    )
+    serve_parse.add_argument(
+        "--addons", "-a",
+        default="",
+        help=(
+            "Comma-separated list of CSI-Addons to enable. "
+            "Valid addons: replication[nfs], replication[block], volumegroup[nfs], volumegroup[block]. "
+            "Example: --addons=replication[block],volumegroup[block]"
+        )
     )
     serve_parse.set_defaults(func=_serve)
 
@@ -63,7 +72,7 @@ def _test(args):
 
 def _serve(args):
     from . server import serve
-    return serve(args.plugin)
+    return serve(args.plugin, args.addons)
 
 
 if __name__ == '__main__':
