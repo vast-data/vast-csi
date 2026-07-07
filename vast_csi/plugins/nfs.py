@@ -667,6 +667,14 @@ class CsiNode(NodeBase, Instrumented):
                 f"Failed to load mTLS credentials: {e}"
             )
         
+        if CONF.nfs_services_wait:
+            from vast_csi.nfs_services import wait_registered
+            if not wait_registered(CONF.nfs_services_wait):
+                logger.warning(
+                    f"{volume_id}: NFS services {CONF.nfs_services_wait} not registered "
+                    "before mount; proceeding (kubelet will retry on failure)"
+                )
+
         try:
             mount(
                 mount_spec,

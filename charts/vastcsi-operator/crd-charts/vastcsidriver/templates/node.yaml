@@ -40,6 +40,34 @@ spec:
         nodeAffinity:
           {{- toYaml .Values.node.nodeAffinity | nindent 10 }}
       containers:
+      {{- if and $is_nfs_driver .Values.node.nfsServices.enabled }}
+        - name: csi-nfs-services
+          image: {{ $csi_images.csiVastPlugin.repository | default $csi_images.csiVastPlugin.defaultRepository }}
+          imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default "IfNotPresent" }}
+          args:
+            - run-nfs-services
+            - --services={{ join "," .Values.node.nfsServices.services }}
+          securityContext:
+            privileged: true
+            allowPrivilegeEscalation: true
+{{- if or (has "idmapd" .Values.node.nfsServices.services) (has "tlshd" .Values.node.nfsServices.services) }}
+          volumeMounts:
+{{- if has "idmapd" .Values.node.nfsServices.services }}
+            - name: nfs-state
+              mountPath: /var/lib/nfs
+              mountPropagation: HostToContainer
+            - name: idmapd-conf
+              mountPath: /etc/idmapd.conf
+              readOnly: true
+{{- end }}
+{{- if has "tlshd" .Values.node.nfsServices.services }}
+            - name: tlshd-conf
+              mountPath: /etc/tlshd.conf
+              readOnly: true
+{{- end }}
+{{- end }}
+          resources: {{- toYaml .Values.node.resources.nfsServices | nindent 12 }}
+      {{- end }}
         - name: csi-node-driver-registrar
           image: {{ $csi_images.csiNodeDriverRegistrar.repository | default $csi_images.csiNodeDriverRegistrar.defaultRepository }}
           args:
@@ -87,6 +115,10 @@ spec:
               value: "{{ .Values.node.metrics.enabled }}"
             - name: X_CSI_METRICS_PORT
               value: "{{ .Values.node.metrics.port }}"
+{{- if and $is_nfs_driver .Values.node.nfsServices.enabled }}
+            - name: X_CSI_NFS_SERVICES_WAIT
+              value: "{{ join "," .Values.node.nfsServices.services }}"
+{{- end }}
 {{- if .Values.node.metrics.enabled }}
           ports:
             - name: metrics
@@ -148,6 +180,22 @@ spec:
         - name: device-dir
           hostPath:
             path: /dev
+        {{- if and $is_nfs_driver (has "idmapd" .Values.node.nfsServices.services) }}
+        - name: nfs-state
+          hostPath:
+            path: /var/lib/nfs
+            type: DirectoryOrCreate
+        - name: idmapd-conf
+          hostPath:
+            path: /etc/idmapd.conf
+            type: File
+        {{- end }}
+        {{- if and $is_nfs_driver (has "tlshd" .Values.node.nfsServices.services) }}
+        - name: tlshd-conf
+          hostPath:
+            path: /etc/tlshd.conf
+            type: File
+        {{- end }}
         {{- if not $is_nfs_driver }}
         - name: sys-dir
           hostPath:
