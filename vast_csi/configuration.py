@@ -58,6 +58,9 @@ class Config(TypedEnv):
     _mode = TypedEnv.Str("X_CSI_MODE", default="controller_and_node")
     _endpoint = TypedEnv.Str("CSI_ENDPOINT", default="unix:///var/run/csi.sock")
     _mount_options = TypedEnv.Str("X_CSI_MOUNT_OPTIONS", default="")  # For example: "port=2049,nolock,vers=3"
+    # Comma-separated NFS client daemons the node plugin waits for before mounting
+    # (set when the csi-nfs-services sidecar is enabled). Empty disables the gate.
+    _nfs_services_wait = TypedEnv.Str("X_CSI_NFS_SERVICES_WAIT", default="")
     _vms_host = TypedEnv.Str("X_CSI_VMS_HOST", default="")
     name_fmt = "csi:{id}:{namespace}:{name}"
     block_nqn_prefix = "nqn.2014-08.com.vastcsiblock:"
@@ -120,6 +123,10 @@ class Config(TypedEnv):
     def mount_options(self):
         s = self._mount_options.strip()
         return list({p for p in s.split(',') if p})
+
+    @property
+    def nfs_services_wait(self):
+        return [p.strip() for p in self._nfs_services_wait.split(',') if p.strip()]
 
     unmount_attempts = TypedEnv.Int("X_CSI_UNMOUNT_ATTEMPTS", default=10)
 

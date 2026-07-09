@@ -27,7 +27,7 @@ RUN microdnf upgrade -y \
     && echo "baseurl=https://mirror.stream.centos.org/9-stream/BaseOS/\$basearch/os/" >> /etc/yum.repos.d/centos-stream.repo \
     && echo "enabled=1" >> /etc/yum.repos.d/centos-stream.repo \
     && echo "gpgcheck=0" >> /etc/yum.repos.d/centos-stream.repo \
-    && microdnf install -y nfs-utils e2fsprogs xfsprogs \
+    && microdnf install -y nfs-utils rpcbind ktls-utils e2fsprogs xfsprogs \
     && microdnf update -y ${SECURITY_RPMS} \
     && microdnf clean all
 
