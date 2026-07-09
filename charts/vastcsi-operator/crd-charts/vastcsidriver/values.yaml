@@ -270,8 +270,27 @@ node:
       requests:
         cpu: 200m
         memory: 300Mi
+    # Lightweight NFS client daemons (rpcbind/statd/idmapd/...) sidecar
+    nfsServices:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 64Mi
   # See controller.priorityClassName section for details
   priorityClassName: system-node-critical
+  # Runs NFS client daemons in-container for NFS locking/idmap on node OSes
+  # that lack them (e.g. VKS, NKP). Safe to enable anywhere: each daemon is
+  # started only if the host does not already provide it.
+  nfsServices:
+    enabled: false
+    # Daemons to run (order-independent). Valid: statd, rpcbind, idmapd,
+    # mountd, tlshd. Default covers NFSv3 remote locking. mountd is server-side;
+    # idmapd (NFSv4 id-map) and tlshd (NFS-over-TLS) only if those are used.
+    services:
+      - statd
+      - rpcbind
   # Metrics configuration for CSI node
   metrics:
     # Enable Prometheus metrics endpoint (disabled by default)

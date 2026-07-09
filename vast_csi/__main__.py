@@ -39,6 +39,9 @@ def main():
     test_parse = subparsers.add_parser("test", help='Start unit tests')
     test_parse.set_defaults(func=_test)
 
+    from vast_csi.nfs_services import register_cli
+    register_cli(subparsers)
+
     args = parser.parse_args(namespace=Bunch())
     args.pop("func")(args)
 
