@@ -133,6 +133,14 @@ class Capabilities:
         return not self.ro_mode
 
     @cached_property
+    def is_readonly(self):
+        """
+        True when any capability requires kernel-level read-only enforcement via
+        blockdev --setro (covers both raw block and filesystem volumes).
+        """
+        return any(c.is_readonly for c in self)
+
+    @cached_property
     def is_block(self):
         """
         Cached property that checks if any of the capabilities are block-based.
@@ -216,8 +224,9 @@ class Capability:
     MULTI_NODE_READER_ONLY = access_modes.MULTI_NODE_READER_ONLY
     MULTI_NODE_SINGLE_WRITER = access_modes.MULTI_NODE_SINGLE_WRITER
     MULTI_NODE_MULTI_WRITER = access_modes.MULTI_NODE_MULTI_WRITER
+    SINGLE_NODE_SINGLE_WRITER = access_modes.SINGLE_NODE_SINGLE_WRITER
 
-    SINGLE_ACCESS_MODES = (SINGLE_NODE_WRITER, SINGLE_NODE_READER_ONLY)
+    SINGLE_ACCESS_MODES = (SINGLE_NODE_WRITER, SINGLE_NODE_READER_ONLY, SINGLE_NODE_SINGLE_WRITER)
     MULTI_ACCESS_MODES = (
         MULTI_NODE_READER_ONLY,
         MULTI_NODE_SINGLE_WRITER,
@@ -253,6 +262,16 @@ class Capability:
             self.fs_type = capability.mount.fs_type or DEFAULT_FS_TYPE
         self.ro_mode = self.access_mode in self.RO_ACCESS_MODES
         self.multi_mode = self.access_mode not in self.SINGLE_ACCESS_MODES
+
+    @property
+    def is_readonly(self):
+        """True when this capability requires read-only enforcement via blockdev --setro.
+
+        Covers both raw block and filesystem volumes: any volume whose access mode or
+        mount flags indicate read-only access should have the kernel-level block device
+        flag set, regardless of volume mode.
+        """
+        return self.ro_mode or "ro" in self.mount_flags
 
     def __eq__(self, other):
         """Compares two Capability objects for equality."""

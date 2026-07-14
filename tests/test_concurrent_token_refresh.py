@@ -8,7 +8,7 @@ attempt to refresh tokens simultaneously.
 import threading
 import time
 from unittest.mock import patch, MagicMock
-from vast_csi.vms_session import get_vms_session, VmsSession
+from vast_csi.session import get_vms_session, VmsSession
 from vast_csi.configuration import Config
 from vast_csi.exceptions import ApiError
 
@@ -121,7 +121,6 @@ class TestConcurrentTokenRefresh:
             t.join()
         
         # Assert: Exactly 2 API calls (1 failed, 1 succeeded)
-        # First worker fails, sets _authorizing=False. Next waiting worker retries.
         assert mock_request.call_count == 2, f"Expected 2 API calls, got {mock_request.call_count}"
         
         # Assert: At least some workers succeeded with the retry
@@ -226,8 +225,7 @@ class TestConcurrentTokenRefresh:
         except (ApiError, ConnectionError):
             pass
         
-        # Assert: Token should be cleared (empty string) after failed refresh
-        # This prevents waiting workers from using stale/expired tokens
+        # Assert: Token should be cleared (empty string, not old token)
         assert session.headers.get('authorization') == ''
 
     @patch("requests.Session.request")
@@ -281,7 +279,6 @@ class TestConcurrentTokenRefresh:
             t.join()
         
         # Assert: Exactly 3 attempts (2 failed, 1 succeeded)
-        # Waiting workers retry when they see empty token after previous worker fails
         assert mock_request.call_count == 3
         
         # Assert: At least one worker succeeded
@@ -426,30 +423,30 @@ class TestConcurrentTokenRefresh:
         """
         monkeypatch.setattr(Config, "vms_credentials_store", mock_credentials)
         session = get_vms_session()
-        
+
         # Track how many times the actual token refresh HTTP call is made
         token_call_count = [0]
         token_call_lock = threading.Lock()
-        
+
         def mock_token_and_api_request(*args, **kwargs):
             """Mock both token refresh and actual API calls"""
             url = args[1] if len(args) > 1 else kwargs.get('url', '')
-            
+
             # Check if this is a token refresh call
             if '/v1/token/' in url:
                 with token_call_lock:
                     token_call_count[0] += 1
                     call_number = token_call_count[0]
-                
+
                 # Simulate network latency to increase contention
                 time.sleep(0.1)
-                
+
                 mock_response = MagicMock()
                 mock_response.json.return_value = {"access": f"token-{call_number}"}
                 mock_response.raise_for_status = MagicMock()
                 mock_response.status_code = 200
                 return mock_response
-            
+
             # Otherwise it's an actual API call (like GET /views)
             mock_response = MagicMock()
             mock_response.status_code = 200
@@ -458,14 +455,14 @@ class TestConcurrentTokenRefresh:
                 {"id": 1, "name": "test-view", "path": "/test", "tenant_id": 1}
             ]
             return mock_response
-        
+
         mock_request.side_effect = mock_token_and_api_request
-        
+
         num_threads = 500
         threads = []
         results = {"success": 0, "failed": 0}
         results_lock = threading.Lock()
-        
+
         def worker():
             """Each worker makes an API request which will trigger token refresh"""
             try:
@@ -478,23 +475,23 @@ class TestConcurrentTokenRefresh:
                 with results_lock:
                     results["failed"] += 1
                 print(f"Worker failed: {e}")
-        
+
         # Start all threads at roughly the same time
         for i in range(num_threads):
             t = threading.Thread(target=worker, name=f"worker-{i}")
             threads.append(t)
             t.start()
-        
+
         # Wait for all threads to complete
         for t in threads:
             t.join(timeout=10)  # 10 second timeout per thread
-        
+
         # Critical assertion: Only ONE token refresh should have occurred
         assert token_call_count[0] == 1, f"Expected exactly 1 token refresh call, got {token_call_count[0]}"
-        
+
         # All workers should have succeeded
         assert results["success"] == num_threads, f"Expected {num_threads} successes, got {results['success']}"
         assert results["failed"] == 0, f"Expected 0 failures, got {results['failed']}"
-        
+
         # Verify the session has a valid token
         assert session.headers.get('authorization') == "Bearer token-1"

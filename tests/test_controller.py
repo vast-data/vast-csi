@@ -3,7 +3,7 @@ import pytest
 import contextlib
 from contextlib import ExitStack
 from unittest.mock import MagicMock
-from vast_csi.plugins.csi import CsiController
+from vast_csi.plugins.nfs import CsiController
 from vast_csi.plugins.block import BlockController
 from vast_csi.exceptions import Abort, MissingParameter
 
@@ -256,11 +256,11 @@ class TestBlockControllerCleanup:
         calls = []
 
         @contextlib.contextmanager
-        def _fake_volume_locked(key):
+        def _fake_volume_locked(key, **kwargs):
             calls.append(key)
             yield
 
-        monkeypatch.setattr("vast_csi.plugins.block.volume_locked", _fake_volume_locked)
+        monkeypatch.setattr("vast_csi.plugins.block.resource_locked", _fake_volume_locked)
         return calls
 
     @pytest.fixture()

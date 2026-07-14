@@ -3,9 +3,12 @@ LRU Cache configuration for dogpile.cache with size limits.
 
 This module provides:
 - LRUMemoryBackend: A dogpile.cache backend with LRU eviction using cachetools.LRUCache
+- VolumeGroupValidationCache: LRU cache for volume group validation
 - cache_on_arguments: Wrapper for caching methods with **kwargs support
 """
 
+import inspect
+import threading
 from typing import Callable
 
 from dogpile.cache import make_region
@@ -13,6 +16,45 @@ from dogpile.cache.util import kwarg_function_key_generator
 from dogpile.cache.backends.memory import MemoryBackend
 from dogpile.cache.backends.memory import NO_VALUE
 from cachetools import LRUCache
+from vast_csi.logging import logger
+
+
+def _session_scoped_key_generator(namespace, fn, to_str=str):
+    """
+    Key generator for VastResource instance methods that scopes the cache by VMS session.
+
+    Without this, two VmsSession objects pointing to different clusters but calling
+    the same method with the same kwargs (e.g. vippool.one(name='vippool-1')) would
+    share a cache entry, causing the wrong cluster's data to be returned.
+
+    Uses ``hash(self.session)`` which delegates to ``VmsSession.__hash__`` — a stable,
+    credential-based hash (sha256 of credentials + endpoint) that uniquely identifies
+    each cluster connection regardless of object identity.
+    """
+    sig = inspect.signature(fn)
+    params = list(sig.parameters.values())
+    if params and params[0].name in ("self", "cls"):
+        params = params[1:]
+
+    def _args_only_stub(*args, **kwargs):
+        pass
+
+    _args_only_stub.__signature__ = inspect.Signature(params)
+    _args_only_stub.__name__ = fn.__name__
+    _args_only_stub.__qualname__ = fn.__qualname__
+
+    base_gen = kwarg_function_key_generator(namespace, _args_only_stub, to_str=to_str)
+
+    def generate_key(*args, **kw):
+        if args:
+            self_obj = args[0]
+            session = getattr(self_obj, "session", None)
+            session_key = hash(session) if session is not None else id(self_obj)
+            base_key = base_gen(*args[1:], **kw)
+            return f"{session_key}:{base_key}"
+        return base_gen(*args, **kw)
+
+    return generate_key
 
 
 class LRUMemoryBackend(MemoryBackend):
@@ -51,12 +93,14 @@ _cache_region.backend = LRUMemoryBackend({"max_size": 200})
 
 def cache_on_arguments(expiration_time: int):
     """
-    Wrapper for cache_region.cache_on_arguments that uses kwarg_function_key_generator by default.
-    This allows caching methods with **kwargs without specifying the key generator each time.
-    
+    Wrapper for cache_region.cache_on_arguments that uses a session-scoped key generator.
+    This allows caching VastResource methods with **kwargs while correctly scoping
+    the cache by VMS endpoint so that two sessions to different clusters never share
+    a cache entry for the same resource name.
+
     Uses fn.__qualname__ as the cache namespace to prevent key collisions between
     different classes with the same method name (e.g. ViewPolicy.one vs VipPool.one).
-    
+
     IMPORTANT: This decorator must be the INNERMOST (closest to the function definition)
     when used with other decorators like @requisite, @apiver, etc. Otherwise the key
     generator cannot properly inspect the function signature.
@@ -86,7 +130,83 @@ def cache_on_arguments(expiration_time: int):
         return _cache_region.cache_on_arguments(
             namespace=namespace,
             expiration_time=expiration_time,
-            function_key_generator=kwarg_function_key_generator
+            function_key_generator=_session_scoped_key_generator
         )(fn)
 
     return wrapper
+
+
+class VolumeGroupValidationCache:
+    """
+    Thread-safe LRU cache for validated volume IDs per volume group.
+
+    Prevents redundant validation API calls when volume groups are modified repeatedly.
+    Each volume group ID maps to a set of validated volume IDs.
+    Uses cachetools.LRUCache for proper LRU eviction.
+    """
+
+    def __init__(self, maxsize=100):
+        """
+        Initialize the cache.
+
+        Args:
+            maxsize: Maximum number of volume groups to cache (default: 100)
+        """
+        self._cache = LRUCache(maxsize=maxsize)
+        self._lock = threading.Lock()
+
+    def are_all_validated(self, volume_group_id, volume_ids):
+        """
+        Check if all volume IDs have been validated for this volume group.
+
+        Args:
+            volume_group_id: Volume group ID
+            volume_ids: List of volume IDs to check
+
+        Returns:
+            bool: True if all volume IDs are in the cache, False otherwise
+        """
+        with self._lock:
+            validated_ids = self._cache.get(volume_group_id)
+            if validated_ids is None:
+                logger.debug(f"Cache miss: {volume_group_id} not in cache")
+                return False
+
+            missing = [vol_id for vol_id in volume_ids if vol_id not in validated_ids]
+            if missing:
+                logger.debug(
+                    f"Cache partial hit: {volume_group_id} has {len(validated_ids)} cached volumes, "
+                    f"but {len(missing)} new volume(s): {missing[:5]}"
+                )
+                return False
+
+            return True
+
+    def add_validated(self, volume_group_id, volume_ids):
+        """
+        Add validated volume IDs to the cache for this volume group.
+
+        Args:
+            volume_group_id: Volume group ID
+            volume_ids: List of volume IDs that have been validated
+        """
+        with self._lock:
+            validated_ids = self._cache.get(volume_group_id)
+            if validated_ids is None:
+                validated_ids = set()
+
+            validated_ids.update(volume_ids)
+            self._cache[volume_group_id] = validated_ids
+
+    def clear(self, volume_group_id=None):
+        """
+        Clear cache entries.
+
+        Args:
+            volume_group_id: Optional volume group ID to clear. If None, clears all.
+        """
+        with self._lock:
+            if volume_group_id:
+                self._cache.pop(volume_group_id, None)
+            else:
+                self._cache.clear()

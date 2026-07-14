@@ -39,6 +39,18 @@ verifySsl: false
 # When disabled (false), hosts remain in VAST even if unused and must be cleaned
 # up manually.
 blockHostsAutoPrune: false
+# Prefix used when naming CSI block hosts (e.g. csi-<node-id>)
+hostNamePrefix: ""
+# Timeout in seconds for mount/umount operations.
+# If a mount or umount command does not complete within this time, it will be terminated
+# and an error will be returned. This prevents the driver from getting stuck indefinitely
+# due to network issues or unresponsive storage.
+mountUmountTimeout: 90
+# Enable symlink resolution when querying mount information.
+# When enabled, mount paths containing symlinks (e.g., /dev/disk/by-uuid/*) will be
+# resolved to their canonical paths before comparison.
+# Default: false (skip symlink resolution for maximum performance)
+resolveMountSymlinks: false
 
 ####################
 # DELETE VOLUMES
@@ -65,6 +77,15 @@ useLocalIpForMount: ""
 numWorkers: 10
 # Timeout of all calls to CSI driver.
 operationTimeout: 15
+# Disable sending usage statistics to VAST cluster.
+# When set to true, the CSI driver will not report plugin usage metrics to VMS.
+disableUsageStats: false
+# Cache-Control max-age header value in seconds for VMS API requests.
+# When set to a value greater than 0, the CSI driver will add a Cache-Control header
+# to VMS API requests, allowing intermediate caches (like Nginx) to cache responses.
+# This is useful for handling burst traffic patterns and reducing load on the VMS.
+# Set to 0 to disable caching (default).
+cacheMaxAgeSeconds: 0
 # Each time a failure occurs, sidecar containers initiate retries
 # but only after waiting for 'operationRetryIntervalStart' seconds
 # which then doubles with each subsequent failure  until it reaches `operationRetryIntervalMax`
@@ -200,6 +221,24 @@ controller:
   # priorityClassName is the name of priority class to be used for the pod.
   # priorityClassName is the name of priority class to be used for the pod.
   priorityClassName: system-cluster-critical
+  # Metrics configuration for CSI controller
+  metrics:
+    # Enable Prometheus metrics endpoint (disabled by default)
+    enabled: false
+    # Port for metrics HTTP server
+    port: 9091
+    # ServiceMonitor configuration (Prometheus Operator CRD)
+    serviceMonitor:
+      # Enable ServiceMonitor creation (requires Prometheus Operator installed in cluster)
+      enabled: false
+      # Scrape interval
+      interval: 30s
+      # Additional labels for ServiceMonitor
+      labels: []
+      # Relabelings to apply to samples before ingestion
+      relabelings: []
+      # MetricRelabelings to apply to samples before ingestion
+      metricRelabelings: []
 
 node:
   # See controller.dnsPolicy section for details
@@ -231,8 +270,45 @@ node:
       requests:
         cpu: 200m
         memory: 300Mi
+    # Lightweight NFS client daemons (rpcbind/statd/idmapd/...) sidecar
+    nfsServices:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 64Mi
   # See controller.priorityClassName section for details
-  priorityClassName: system-cluster-critical
+  priorityClassName: system-node-critical
+  # Runs NFS client daemons in-container for NFS locking/idmap on node OSes
+  # that lack them (e.g. VKS, NKP). Safe to enable anywhere: each daemon is
+  # started only if the host does not already provide it.
+  nfsServices:
+    enabled: false
+    # Daemons to run (order-independent). Valid: statd, rpcbind, idmapd,
+    # mountd, tlshd. Default covers NFSv3 remote locking. mountd is server-side;
+    # idmapd (NFSv4 id-map) and tlshd (NFS-over-TLS) only if those are used.
+    services:
+      - statd
+      - rpcbind
+  # Metrics configuration for CSI node
+  metrics:
+    # Enable Prometheus metrics endpoint (disabled by default)
+    enabled: false
+    # Port for metrics HTTP server
+    port: 9090
+    # ServiceMonitor configuration (Prometheus Operator CRD)
+    serviceMonitor:
+      # Enable ServiceMonitor creation (requires Prometheus Operator installed in cluster)
+      enabled: false
+      # Scrape interval
+      interval: 30s
+      # Additional labels for ServiceMonitor
+      labels: []
+      # Relabelings to apply to samples before ingestion
+      relabelings: []
+      # MetricRelabelings to apply to samples before ingestion
+      metricRelabelings: []
 
 # The path to the kubelet root dir. must be provided when Kubernetes is not installed in its default directory.
 kubeletPath: "/var/lib/kubelet"

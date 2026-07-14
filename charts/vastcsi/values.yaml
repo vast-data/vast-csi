@@ -44,7 +44,9 @@ useLocalIpForMount: ""
 # If a mount or umount command does not complete within this time, it will be terminated
 # and an error will be returned. This prevents the driver from getting stuck indefinitely
 # due to network issues or unresponsive NFS servers.
-mountUmountTimeout: 30
+mountUmountTimeout: 90
+# When true, a umount that times out is retried with lazy unmount (-l).
+forceLazyUmountOnTimeout: true
 # Enable symlink resolution when querying mount information.
 # When enabled, mount paths containing symlinks (e.g., /dev/disk/by-uuid/*) will be
 # resolved to their canonical paths before comparison.
@@ -106,9 +108,9 @@ storageClassDefaults:
   # If true, sets Vast CSI as the cluster-wide storage class default
   setDefaultStorageClass: false
   # String template for CSI-provisioned volume names, within VAST
-  volumeNameFormat: "csi:{namespace}:{name}:{id}"
+  volumeNameFormat: "csi:{id}:{namespace}:{name}"
   # String template for CSI-provisioned ephemeral volumes, within VAST
-  ephemeralVolumeNameFormat: "csi:{namespace}:{name}:{id}"
+  ephemeralVolumeNameFormat: "csi:{id}:{namespace}:{name}"
   # Add any extra mount NFS options here
   mountOptions: []
   # Name of QoS policy associates with the view.
@@ -147,6 +149,137 @@ storageClasses: {}
 #    ....  other options
 
 ####################
+# VAST CSI VOLUME REPLICATION CLASS OPTIONS
+####################
+
+# Enable volume replication support.
+# Set to true to enable the replication service even if no volumeReplicationClasses are defined in this Helm chart.
+# This is useful when VolumeReplicationClass resources are managed outside of Helm (e.g., via GitOps, operators, or separate manifests).
+# When false (default), replication is automatically enabled only if one or more VolumeReplicationClass is defined.
+enableReplication: false
+
+# volumeReplicationClassDefaults is set of options that will be using by default if option is not provided
+# for particular volumeReplicationClass in 'volumeReplicationClasses' section
+volumeReplicationClassDefaults:
+  # Any of the following options can be specified within the volumeReplicationClasses section on a per-class basis,
+  # or can be set here as default values for all volume replication classes.
+
+  # Optional protected path suffix for the replication.
+  # If provided, the protected path name will be: {volume_id}-{ppath_suffix}
+  # If not provided, the protected path name will be: {volume_id}
+  ppathSuffix: ""
+  # Secret name for replication credentials - required
+  # The secret should contain VAST cluster authentication credentials:
+  #   - username: VMS username for source cluster
+  #   - password: VMS password for source cluster
+  #   - endpoint: VMS endpoint URL
+  #
+  # For cross-cluster replication, include destination cluster credentials with "secondary_" prefix:
+  #   - secondary_username: VMS username for destination cluster
+  #   - secondary_password: VMS password for destination cluster
+  #   - secondary_endpoint: VMS endpoint URL for destination cluster
+  #
+  # Example:
+  #   kubectl create secret generic vast-mgmt-repl
+  #     --from-literal=username='admin' \
+  #     --from-literal=password='password123' \
+  #     --from-literal=endpoint='https://vms1.example.com' \
+  #     --from-literal=secondary_username='admin' \
+  #     --from-literal=secondary_password='password456' \
+  #     --from-literal=secondary_endpoint='https://vms2.example.com'
+  secretName: ""
+  # Secret namespace
+  # If not specified, the secret will be searched in the same namespace as the VolumeReplicationClass
+  # Default: Same namespace as VolumeReplicationClass
+  secretNamespace: ""
+  # Name of pre-existing protection policy - required.
+  # This must be an existing protection policy configured on the source VAST cluster
+  # that defines the replication snapshot schedule and retention.
+  #
+  # The protection policy should be created beforehand on the source cluster using
+  # the VAST GUI or API and must include:
+  #   - Clone type: NATIVE_REPLICATION
+  #   - Target replication peer reference
+  #   - Frames (snapshot schedules): when snapshots are taken and retention periods
+  #
+  # Example: "hourly-replication-policy"
+  protectionPolicy: ""
+  # Destination view policy - required if createView=true.
+  # The view policy to use when creating views on the destination cluster
+  # This policy controls access permissions and protocols for the replicated data
+  # If not provided, use secondaryTenantName instead
+  secondaryViewPolicy: ""
+  # Destination tenant name - alternative to secondaryViewPolicy.
+  # When createView=false, you can specify the tenant directly instead of inferring it from secondaryViewPolicy
+  # Either secondaryViewPolicy or secondaryTenantName must be provided
+  secondaryTenantName: ""
+  # Destination QoS policy
+  # Name of QoS policy to associate with the destination view
+  secondaryQosPolicy: ""
+  # Create view on destination cluster
+  # When true, automatically creates a view on the destination cluster during replication setup
+  # When false, assumes the view already exists on the destination (manual management)
+  createView: true
+  # Create quota on destination cluster
+  # When true, automatically creates a quota on the destination cluster matching the source quota
+  # When false, no quota will be created on the destination (useful for manual quota management)
+  createQuota: true
+  # Destination storage path.
+  # Base prefix for replicated data on the destination cluster
+  #
+  # If empty (default): Replicates to the same path as source
+  # If provided: Replicates to <secondaryStoragePath>/<volume_id>
+  #
+  # Example 1: Empty secondaryStoragePath (same path replication)
+  #            Source: "/app/data"
+  #            Result: "/app/data" (same path on destination)
+  #
+  # Example 2: With secondaryStoragePath="/replica"
+  #            Source volume_id: "pvc-12345"
+  #            Result: "/replica/pvc-12345"
+  #
+  # Example 3: Static volume (volume_id starts with "/")
+  #            volume_id: "/production/databases"
+  #            Result: "/production/databases" (secondaryStoragePath ignored)
+  #
+  # Note: The path will be created on the destination cluster if it doesn't exist
+  secondaryStoragePath: ""
+  # Sync interval in seconds.
+  # Controls how frequently data is synchronized between clusters
+  # This maps to the "sync_interval" parameter in VAST Protected Path configuration
+  #
+  # Default: 900 seconds (15 minutes)
+  #
+  # Lower values provide more frequent replication but increase network and storage overhead
+  # Higher values reduce overhead but increase potential data loss in disaster scenarios
+  syncIntervalSeconds: 900
+  # Delete destination snapshots when disabling replication.
+  # When true, the CSI driver will delete replication snapshots
+  # on both source and destination clusters during DisableVolumeReplication.
+  # When false, snapshots are preserved (honoring VMS default behavior).
+  deleteDestinationSnapshots: true
+  # Delete destination volumes when disabling replication.
+  # When true, the CSI driver will delete replicated views and quotas
+  # on the destination cluster during DisableVolumeReplication.
+  # When false (default), destination resources are preserved for manual management or failback.
+  deleteDestinationVolumes: false
+
+
+# Volume replication classes to create.
+# User can define multiple replication classes with different replication parameters.
+# Each class represents a different replication policy (e.g., production vs. development, different RPOs)
+volumeReplicationClasses: {}
+  # Example:
+  # vast-replication-production:
+  #   secretName: "vast-replication-secret"
+  #   secretNamespace: "kube-system"
+  #   protectionPolicy: "hourly-replication"
+  #   secondaryViewPolicy: "default"  # Required if createView=true
+  #   # secondaryTenantName: "default"    # Alternative to secondaryViewPolicy when createView=false
+  #   secondaryStoragePath: "/dr-site/production"
+  #   syncIntervalSeconds: 900
+
+####################
 # VAST PROVISIONER RUNTIME PARAMETERS
 ####################
 
@@ -154,6 +287,8 @@ storageClasses: {}
 numWorkers: 10
 # Timeout of all calls to CSI driver.
 operationTimeout: 15
+# Timeout for CSI-Addons operations (in seconds). This applies to replication and other CSI-Addons services.
+addonsOperationTimeout: 120
 # Disable sending usage statistics to VAST cluster.
 # When set to true, the CSI driver will not report plugin usage metrics to VMS.
 disableUsageStats: false
@@ -213,7 +348,7 @@ snapshotClassDefaults:
   # If true, sets SnapshotClass as the cluster-wide snapshot class default
   setDefaultSnapshotClass: true
   # String template for CSI-provisioned snapshot names, within VAST
-  snapshotNameFormat: "csi:{namespace}:{name}:{id}"
+  snapshotNameFormat: "csi:{id}:{namespace}:{name}"
   # On snapshot delete behavior. By default, Vast Cluster snapshot will be removed as well.
   deletionPolicy: "Delete"
 
@@ -232,7 +367,7 @@ snapshotClasses: {}
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.6.5  # the version of the Vast CSI driver
+    tag: 2.6.5-hf8  # the version of the Vast CSI driver
     imagePullPolicy: IfNotPresent
   csiAttacher:
     repository: registry.k8s.io/sig-storage/csi-attacher
@@ -244,7 +379,7 @@ image:
     imagePullPolicy: IfNotPresent
   csiProvisioner:
     repository: registry.k8s.io/sig-storage/csi-provisioner
-    tag: v4.0.0
+    tag: v5.0.1
     imagePullPolicy: IfNotPresent
   csiResizer:
     repository: registry.k8s.io/sig-storage/csi-resizer
@@ -252,7 +387,11 @@ image:
     imagePullPolicy: IfNotPresent
   csiSnapshotter:
     repository: registry.k8s.io/sig-storage/csi-snapshotter
-    tag: v7.0.1
+    tag: v8.6.0
+    imagePullPolicy: IfNotPresent
+  csiAddonsSidecar:
+    repository: quay.io/csiaddons/k8s-sidecar
+    tag: v0.14.0
     imagePullPolicy: IfNotPresent
 
 ####################
@@ -320,6 +459,12 @@ controller:
       requests:
         cpu: 100m
         memory: 50Mi
+    csiAddonsSidecar:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
   extraArgs:
     # For further options, check
     # https://github.com/kubernetes-csi/external-provisioner#command-line-options
@@ -365,6 +510,48 @@ controller:
       # MetricRelabelings to apply to samples before ingestion
       metricRelabelings: []
 
+####################
+# CSI-ADDONS CONTROLLER OPTIONS
+####################
+# The CSI-Addons controller runs as a separate pod when CSI-Addons features are enabled.
+# It provides CSI-Addons services including replication for both NFS and Block volumes.
+addonsController:
+  # runOnMaster flag indicated if CSI-Addons Controller should be run on master.
+  runOnMaster: false
+  # runOnControlPlane flag indicated if CSI-Addons Controller should be run on control plane node.
+  runOnControlPlane: false
+  # determine how DNS (Domain Name System) resolution should be handled within Pod.
+  dnsPolicy: Default
+  # nodeSelector for the CSI-Addons controller pod
+  nodeSelector: {}
+  # tolerations for the CSI-Addons controller pod
+  tolerations: []
+  # Allows to specify which nodes your pod is eligible to be scheduled based on labels on pods that are already running on the node.
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  podAffinity: {}
+  # Allows to specify conditions for preventing pods from being scheduled on nodes where certain labels are already present on other pods.
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  podAntiAffinity: {}
+  # Allows to specify which nodes your pod is eligible to be scheduled on based on labels on the node
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  nodeAffinity: {}
+  # Resources for the CSI-Addons controller containers
+  resources:
+    csiVastPlugin:
+      limits:
+        memory: 500Mi
+      requests:
+        cpu: 100m
+        memory: 50Mi
+    csiAddonsSidecar:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+  # priorityClassName for the replication controller pod
+  priorityClassName: system-cluster-critical
+
 node:
   # See controller.dnsPolicy section for details
   dnsPolicy: Default
@@ -395,8 +582,27 @@ node:
       requests:
         cpu: 200m
         memory: 300Mi
+    # Lightweight NFS client daemons (rpcbind/statd/idmapd/...) sidecar
+    nfsServices:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 64Mi
   # See controller.priorityClassName section for details
-  priorityClassName: system-cluster-critical
+  priorityClassName: system-node-critical
+  # Runs NFS client daemons in-container for NFS locking/idmap on node OSes
+  # that lack them (e.g. VKS, NKP). Safe to enable anywhere: each daemon is
+  # started only if the host does not already provide it.
+  nfsServices:
+    enabled: false
+    # Daemons to run (order-independent). Valid: statd, rpcbind, idmapd,
+    # mountd, tlshd. Default covers NFSv3 remote locking. mountd is server-side;
+    # idmapd (NFSv4 id-map) and tlshd (NFS-over-TLS) only if those are used.
+    services:
+      - statd
+      - rpcbind
   # Metrics configuration for CSI node
   # Usage: see docs/METRICS_GUIDE.md (Prometheus Operator vs manual Prometheus)
   metrics:

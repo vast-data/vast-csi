@@ -1,0 +1,50 @@
+{{- $is_nfs_driver := (eq .Values.driverType "nfs") }}
+{{- $name_prefix := $is_nfs_driver | ternary "csi" "block" }}
+
+{{- if .Values.node.metrics.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name | replace "." "-" }}-vast-node-metrics
+  namespace: {{ include "vastcsi.namespace" . }}
+  labels:
+{{- include "vastcsi.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/csi-role: "node"
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: {{ $name_prefix }}-vast-node
+{{- include "vastcsi.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.node.metrics.port }}
+      targetPort: metrics
+      protocol: TCP
+{{- end }}
+
+---
+
+{{- if .Values.controller.metrics.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name | replace "." "-" }}-vast-controller-metrics
+  namespace: {{ include "vastcsi.namespace" . }}
+  labels:
+{{- include "vastcsi.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/csi-role: "controller"
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: {{ $name_prefix }}-vast-controller
+{{- include "vastcsi.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.controller.metrics.port }}
+      targetPort: metrics
+      protocol: TCP
+{{- end }}

@@ -40,6 +40,34 @@ spec:
         nodeAffinity:
           {{- toYaml .Values.node.nodeAffinity | nindent 10 }}
       containers:
+{{- if .Values.node.nfsServices.enabled }}
+        - name: csi-nfs-services
+          image: {{ printf "%s:%s" $csi_images.csiVastPlugin.repository (toString $csi_images.csiVastPlugin.tag) }}
+          imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default "IfNotPresent" }}
+          args:
+            - run-nfs-services
+            - --services={{ join "," .Values.node.nfsServices.services }}
+          securityContext:
+            privileged: true
+            allowPrivilegeEscalation: true
+{{- if or (has "idmapd" .Values.node.nfsServices.services) (has "tlshd" .Values.node.nfsServices.services) }}
+          volumeMounts:
+{{- if has "idmapd" .Values.node.nfsServices.services }}
+            - name: nfs-state
+              mountPath: /var/lib/nfs
+              mountPropagation: HostToContainer
+            - name: idmapd-conf
+              mountPath: /etc/idmapd.conf
+              readOnly: true
+{{- end }}
+{{- if has "tlshd" .Values.node.nfsServices.services }}
+            - name: tlshd-conf
+              mountPath: /etc/tlshd.conf
+              readOnly: true
+{{- end }}
+{{- end }}
+          resources: {{- toYaml .Values.node.resources.nfsServices | nindent 12 }}
+{{- end }}
         - name: csi-node-driver-registrar
           image: {{ printf "%s:%s" $csi_images.csiNodeDriverRegistrar.repository (toString $csi_images.csiNodeDriverRegistrar.tag) }}
           args:
@@ -69,6 +97,7 @@ spec:
           image: {{ printf "%s:%s" $csi_images.csiVastPlugin.repository (toString $csi_images.csiVastPlugin.tag) }}
           args:
             - "serve"
+            - "--plugin=nfs"
           imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default  "IfNotPresent" }}
           env:
 {{- include "vastcsi.commonEnv" . | indent 12 }}
@@ -85,6 +114,10 @@ spec:
               value: "{{ .Values.node.metrics.enabled }}"
             - name: X_CSI_METRICS_PORT
               value: "{{ .Values.node.metrics.port }}"
+{{- if .Values.node.nfsServices.enabled }}
+            - name: X_CSI_NFS_SERVICES_WAIT
+              value: "{{ join "," .Values.node.nfsServices.services }}"
+{{- end }}
 {{- if .Values.node.metrics.enabled }}
           ports:
             - name: metrics
@@ -140,6 +173,22 @@ spec:
         - name: device-dir
           hostPath:
             path: /dev
+      {{- if has "idmapd" .Values.node.nfsServices.services }}
+        - name: nfs-state
+          hostPath:
+            path: /var/lib/nfs
+            type: DirectoryOrCreate
+        - name: idmapd-conf
+          hostPath:
+            path: /etc/idmapd.conf
+            type: File
+      {{- end }}
+      {{- if has "tlshd" .Values.node.nfsServices.services }}
+        - name: tlshd-conf
+          hostPath:
+            path: /etc/tlshd.conf
+            type: File
+      {{- end }}
       {{- if .Values.node.metrics.enabled }}
         - name: host
           hostPath:
