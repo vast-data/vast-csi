@@ -50,6 +50,7 @@ from vast_csi.exceptions import (
     MountFailed,
 )
 from vast_csi.block_utils import (
+    compute_block_host_nqn,
     connect_nvme_targets,
     get_connected_session,
     get_nvme_device_by_nguid,
@@ -333,8 +334,10 @@ class BlockController(ControllerBase, Instrumented):
             volume_capability,
             exit_stack,
             volume_context=None,
+            secrets=None,
     ):
         volume_context = volume_context or dict()
+        secrets = secrets or {}
         volume_capabilities = _validate_capabilities(volume_capability, volume_context)
         if "volume_id" not in volume_context:
             # Assumed consuming existing volume where user specified full path to view in volumeHandle attribute.
@@ -368,11 +371,27 @@ class BlockController(ControllerBase, Instrumented):
                     f" by volume {volume_id} — concurrent ControllerPublishVolume in progress"
                 ),
             ))
+        block_host_name = f"{CONF.block_hosts_prefix}{node_id}"
+        host_nqn_obfuscation = volume_context.get("host_nqn_obfuscation") == "true"
+        seed = secrets.get("host_nqn_seed") if host_nqn_obfuscation else None
+        if host_nqn_obfuscation and not seed:
+            raise Abort(
+                INVALID_ARGUMENT,
+                "host_nqn_obfuscation is enabled but host_nqn_seed is missing "
+                "from the controller-publish secret",
+            )
+        nqn = compute_block_host_nqn(
+            prefix=CONF.block_nqn_prefix,
+            tenant_name=tenant_name,
+            block_host_name=block_host_name,
+            seed=seed,
+        )
         blockhost = vms_session.blockhosts.ensure(
-            node_id=f"{CONF.block_hosts_prefix}{node_id}",
+            node_id=block_host_name,
             transport_type=transport_type,
             tenant_name=tenant_name,
             subsystem=subsystem,
+            nqn=nqn,
         )
         if volume_capabilities.multi_mode:
             vms_session.blockhostmappings.ensure_map(
@@ -540,7 +559,8 @@ class BlockNode(NodeBase, Instrumented):
             vms_session=None,
             publish_context=None,
             volume_context=None,
-            metrics_registry=None
+            metrics_registry=None,
+            secrets=None,
     ):
         exit_stack.enter_context(resource_locked(volume_id, abort_on_error=True))
         volume_context = volume_context or dict()
@@ -564,6 +584,7 @@ class BlockNode(NodeBase, Instrumented):
                 volume_capability=volume_capability,
                 volume_context=volume_context,
                 exit_stack=exit_stack,
+                secrets=secrets,
             )
         subsystem_nqn = publish_context["subsystem_nqn"]
         host_nqn = publish_context["host_nqn"]
@@ -725,7 +746,8 @@ class BlockNode(NodeBase, Instrumented):
             readonly=False,
             vms_session=None,
             volume_context=None,
-            metrics_registry=None
+            metrics_registry=None,
+            secrets=None,
     ):
         volume_context = volume_context or dict()
         target_path = local.path(target_path)
@@ -778,6 +800,7 @@ class BlockNode(NodeBase, Instrumented):
                 vms_session=vms_session,
                 volume_capability=volume_capability,
                 exit_stack=exit_stack,
+                secrets=secrets,
             )
             self.NodeStageVolume.__wrapped__(
                 self,
@@ -790,6 +813,7 @@ class BlockNode(NodeBase, Instrumented):
                 publish_context=publish_context,
                 volume_context=volume_context,
                 metrics_registry=metrics_registry,
+                secrets=secrets,
             )
         assert staging_target_path
         device_bind_path = get_device_bind_path(staging_target_path)

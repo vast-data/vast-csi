@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import re
 import json
 from contextlib import contextmanager
@@ -70,6 +72,18 @@ def is_native_multipath_enabled():
             return f.read().strip() == "Y"
     except Exception:
         return False
+
+
+def compute_block_host_nqn(*, prefix, tenant_name, block_host_name, seed=None):
+    """Build block host NQN; obfuscate node identity with HMAC-SHA256 when seed is set."""
+    if not seed:
+        return f"{prefix}{tenant_name}:{block_host_name}"
+    digest = hmac.new(
+        seed.encode(),
+        f"{tenant_name}:{block_host_name}".encode(),
+        hashlib.sha256,
+    ).hexdigest()[:32]
+    return f"{prefix}{tenant_name}:{digest}"
 
 
 def get_hostnqn_from_sysfs(subsystem):

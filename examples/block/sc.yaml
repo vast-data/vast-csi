@@ -7,9 +7,18 @@ parameters:
   csi.storage.k8s.io/controller-expand-secret-namespace: default
   csi.storage.k8s.io/controller-publish-secret-name: vast-mgmt
   csi.storage.k8s.io/controller-publish-secret-namespace: default
+  csi.storage.k8s.io/node-publish-secret-name: vast-mgmt
+  csi.storage.k8s.io/node-publish-secret-namespace: default
+  csi.storage.k8s.io/node-stage-secret-name: vast-mgmt
+  csi.storage.k8s.io/node-stage-secret-namespace: default
   csi.storage.k8s.io/provisioner-secret-name: vast-mgmt
   csi.storage.k8s.io/provisioner-secret-namespace: default
+  host_nqn_obfuscation: "true"
   subsystem: myblock
   vip_pool_name: vippool-1
   transport_type: TCP
 provisioner: block.csi.vastdata.com
+# vast-mgmt secret must include host_nqn_seed when host_nqn_obfuscation is enabled, e.g.:
+# kubectl create secret generic vast-mgmt \
+#   --from-literal=username='...' --from-literal=password='...' --from-literal=endpoint='...' \
+#   --from-literal=host_nqn_seed='$(openssl rand -hex 32)'

@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## Version 2.6.7
+* Block: added opt-in NVMe host NQN obfuscation (`host_nqn_obfuscation` StorageClass parameter + `host_nqn_seed` in the controller-publish secret). Legacy deployments are unchanged when the flag is disabled. Enabling obfuscation on clusters with existing block hosts requires a planned migration: unpublish volumes, delete or auto-prune VMS block hosts, then republish so new HMAC-based NQNs take effect (VCSI-433)
+
 ## Version 2.6.6-hf2
 * CSI inline ephemeral volume (EV) credentials are now stored on a tmpfs overlay. New publishes always use tmpfs and JSON metadata; set `credSerializationSecret` to encrypt with AES-GCM
 * Added `fallbackToDeser` (`X_CSI_FALLBACK_TO_DESER`) to unpublish EV volumes that still use the old on-disk pickle serializer. Defaults to `false`; set `true` only while old-format EVs remain mounted, then set `false` again after they unpublish

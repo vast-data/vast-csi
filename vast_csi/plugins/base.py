@@ -145,6 +145,9 @@ class Instrumented:
                     cluster_name=secrets.get("cluster_name", None),
                 )
 
+            if "secrets" in parameters:
+                params["secrets"] = secrets
+
             exit_stack = ExitStack()
 
             if CONF.metrics_enabled:
@@ -456,7 +459,8 @@ class NodeBase(csi_grpc.NodeServicer):
             )
 
     def _get_publish_context_for_ev_volumes(
-            self, volume_context, volume_id, volume_capability, vms_session, exit_stack, **create_vol_kwargs
+            self, volume_context, volume_id, volume_capability, vms_session, exit_stack,
+            secrets=None, **create_vol_kwargs
     ):
         """
         This method implements the logic of a mixin that creates the publish context for ephemeral (EV) volumes.
@@ -496,12 +500,14 @@ class NodeBase(csi_grpc.NodeServicer):
             volume_capability=ev_capability,
             volume_context=volume_context,
             exit_stack=exit_stack,
+            secrets=secrets,
         )
         return resp.publish_context
 
 
     def _get_publish_context_for_non_attach_required(
-            self, vms_session, node_id, volume_id, volume_capability, volume_context, exit_stack
+            self, vms_session, node_id, volume_id, volume_capability, volume_context, exit_stack,
+            secrets=None,
     ):
         """
         This method implements the logic of a mixin that creates
@@ -519,6 +525,7 @@ class NodeBase(csi_grpc.NodeServicer):
             volume_capability=volume_capability,
             exit_stack=exit_stack,
             volume_context=volume_context,
+            secrets=secrets,
         )
         return resp.publish_context
 
