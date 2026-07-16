@@ -29,6 +29,7 @@ import (
 
 	vast_client "github.com/vast-data/go-vast-client"
 	"github.com/vast-data/go-vast-client/resources/typed"
+	"github.com/vast-data/go-vast-client/resources/typed/expr"
 	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common"
 	k8sclient "github.com/vast-data/vast-csi/extensions-controller/internal/common/k8s_client"
@@ -501,28 +502,28 @@ func (v *replicationCRDValidator) validateSubsystemPresence(
 			return admission.Errored(http.StatusInternalServerError,
 				fmt.Errorf("StorageClass %q: failed to build REST client: %w", scName, err))
 		}
-		params := vast_client.Params{"name": subsystemName}
+		viewSearch := typed.ViewSearchParams{Name: expr.S(subsystemName)}
 		if tn := sc.Parameters["tenant_name"]; tn != "" {
-			params["tenant_name"] = tn
+			viewSearch.RawData = vast_client.Params{"tenant_name": tn}
 		}
-		exists, err := rest.Views.ExistsWithContext(ctx, &typed.ViewSearchParams{RawData: params})
+		exists, err := rest.Views.ExistsWithContext(ctx, &viewSearch)
 		if err != nil {
 			return admission.Errored(http.StatusInternalServerError,
-				fmt.Errorf("StorageClass %q: failed to check subsystem %q on cluster: %w", scName, subsystemName, err))
+				fmt.Errorf("StorageClass %q: failed to check subsystem %q on VMS %s: %w", scName, subsystemName, rest, err))
 		}
 		if mustExist && !exists {
 			return admission.Denied(fmt.Sprintf(
-				"StorageClass %q: subsystem %q does not exist on cluster; "+
+				"StorageClass %q: subsystem %q does not exist on VMS %s; "+
 					"for block replication the subsystem must be pre-created on all clusters",
-				scName, subsystemName,
+				scName, subsystemName, rest,
 			))
 		}
 		if !mustExist && exists {
 			return admission.Denied(fmt.Sprintf(
 				"subsystem-level block replication requires that subsystem %q does not pre-exist "+
-					"on secondary cluster (StorageClass %q): VAST creates it via replication; "+
-					"delete the subsystem from the secondary cluster and retry",
-				subsystemName, scName,
+					"on VMS %s (StorageClass %q): VAST creates it via replication; "+
+					"delete the subsystem from that cluster and retry",
+				subsystemName, rest, scName,
 			))
 		}
 	}

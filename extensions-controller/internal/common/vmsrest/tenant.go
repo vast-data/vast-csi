@@ -5,6 +5,7 @@ import (
 
 	vast_client "github.com/vast-data/go-vast-client"
 	"github.com/vast-data/go-vast-client/resources/typed"
+	"github.com/vast-data/go-vast-client/resources/typed/expr"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/k8s_client"
 	storagev1 "k8s.io/api/storage/v1"
@@ -38,14 +39,14 @@ func resolveBlockTenant(
 	}
 
 	if tenantName := sc.Parameters["tenant_name"]; tenantName != "" {
-		tenant, err := rest.Tenants.Get(&typed.TenantSearchParams{Name: tenantName})
+		tenant, err := rest.Tenants.Get(&typed.TenantSearchParams{Name: expr.S(tenantName)})
 		if err != nil {
 			return nil, fmt.Errorf("failed to get tenant %q: %w", tenantName, err)
 		}
 		return tenant, nil
 	}
 
-	view, err := rest.Views.Get(&typed.ViewSearchParams{Name: subsystem})
+	view, err := rest.Views.Get(&typed.ViewSearchParams{Name: expr.S(subsystem)})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get view (subsystem) %q: %w", subsystem, err)
 	}

@@ -3,12 +3,12 @@ package vmsrest
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	vast_client "github.com/vast-data/go-vast-client"
 	"github.com/vast-data/go-vast-client/core"
 	"github.com/vast-data/go-vast-client/resources/typed"
+	"github.com/vast-data/go-vast-client/resources/typed/expr"
 	"go.uber.org/zap"
 	storagev1 "k8s.io/api/storage/v1"
 
@@ -134,12 +134,9 @@ func buildNativeReplicaTargetsBySC(
 ) (map[string]map[string]*typed.ReplicationPeersDetailsModel, error) {
 	result := make(map[string]map[string]*typed.ReplicationPeersDetailsModel, len(restByStorageClass))
 	for scName, rest := range restByStorageClass {
-		params := vast_client.Params{
-			"fields":   "id,name,peer_name,status",
-			"name__in": strings.Join(wantPeerNames, ","),
-		}
 		peers, err := rest.ReplicationPeers.List(&typed.ReplicationPeersSearchParams{
-			RawData: params,
+			Name:    expr.Str.In(wantPeerNames...),
+			RawData: vast_client.Params{"fields": "id,name,peer_name,status"},
 		})
 		if err != nil {
 			return nil, fmt.Errorf("SC %s: failed to list replication peers: %w", scName, err)
@@ -275,7 +272,7 @@ func ensurePolicy(
 	policyName := tmpl.OwnerName + "-" + edge.PeerName
 
 	// Fast path: return the existing policy without touching the peer API.
-	if existing, err := rest.ProtectionPolicies.Get(&typed.ProtectionPolicySearchParams{Name: policyName}); err == nil {
+	if existing, err := rest.ProtectionPolicies.Get(&typed.ProtectionPolicySearchParams{Name: expr.S(policyName)}); err == nil {
 		return newReplicationLink(existing.Name, existing.Id, rest, scA, restB, scB, peerA, peerB, edge)
 	}
 
@@ -371,7 +368,7 @@ func DeleteProtectionPolicies(
 			continue
 		}
 		for _, name := range policyNames {
-			policy, err := rest.ProtectionPolicies.Get(&typed.ProtectionPolicySearchParams{Name: name})
+			policy, err := rest.ProtectionPolicies.Get(&typed.ProtectionPolicySearchParams{Name: expr.S(name)})
 			if err != nil {
 				if vast_client.IsNotFoundErr(err) {
 					continue

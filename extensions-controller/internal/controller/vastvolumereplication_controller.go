@@ -26,6 +26,7 @@ import (
 	vast_client "github.com/vast-data/go-vast-client"
 	"github.com/vast-data/go-vast-client/core"
 	"github.com/vast-data/go-vast-client/resources/typed"
+	"github.com/vast-data/go-vast-client/resources/typed/expr"
 	"go.uber.org/zap"
 	storagev1 "k8s.io/api/storage/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -340,7 +341,7 @@ func (r *VastVolumeReplicationReconciler) validateOnce(
 		// state — active, partially deleted, etc.) the user must remove it manually
 		// before creating this VVR.
 		if primaryRest, ok := restByStorageClass[vvr.Spec.PrimaryStorageClass]; ok {
-			exists, err := primaryRest.ProtectedPaths.Exists(&typed.ProtectedPathSearchParams{Name: vvr.Name})
+			exists, err := primaryRest.ProtectedPaths.Exists(&typed.ProtectedPathSearchParams{Name: expr.S(vvr.Name)})
 			if err != nil {
 				return fmt.Errorf("failed to check if protected path %q exists on primary cluster: %w", vvr.Name, err)
 			}
@@ -363,19 +364,20 @@ func (r *VastVolumeReplicationReconciler) validateOnce(
 		if subsystemName == "" {
 			return cerrors.NewValidationError("StorageClass %q is missing required parameter %q", scName, common.StorageClassParameterSubsystem)
 		}
-		params := vast_client.Params{"name": subsystemName}
+		viewSearch := typed.ViewSearchParams{Name: expr.S(subsystemName)}
 		if tn := sc.Parameters["tenant_name"]; tn != "" {
-			params["tenant_name"] = tn
+			viewSearch.RawData = vast_client.Params{"tenant_name": tn}
 		}
-		exists, err := restByStorageClass[scName].Views.Exists(&typed.ViewSearchParams{RawData: params})
+		rest := restByStorageClass[scName]
+		exists, err := rest.Views.Exists(&viewSearch)
 		if err != nil {
-			return fmt.Errorf("StorageClass %q: failed to check subsystem %q on cluster: %w", scName, subsystemName, err)
+			return fmt.Errorf("StorageClass %q: failed to check subsystem %q on VMS %s: %w", scName, subsystemName, rest, err)
 		}
 		if !exists {
 			return cerrors.NewValidationError(
-				"StorageClass %q: subsystem %q does not exist on cluster; "+
+				"StorageClass %q: subsystem %q does not exist on VMS %s; "+
 					"for VVR block replication the subsystem must be pre-created on all clusters",
-				scName, subsystemName,
+				scName, subsystemName, rest,
 			)
 		}
 	}
@@ -437,10 +439,8 @@ func (r *VastVolumeReplicationReconciler) handleDeletion(
 	if vvr.Spec.PrimaryStorageClass != "" && vvr.Status.PpathName != "" {
 		if rest, _, err := vmsrest.NewFromStorageClassName(ctx, k8s, vvr.Spec.PrimaryStorageClass, r.Config.SSLVerify, log); err == nil {
 			ppath, _ := rest.ProtectedPaths.Get(&typed.ProtectedPathSearchParams{
-				RawData: vast_client.Params{
-					"name":   vvr.Status.PpathName,
-					"fields": "id,name,enabled",
-				},
+				Name:    expr.S(vvr.Status.PpathName),
+				RawData: vast_client.Params{"fields": "id,name,enabled"},
 			})
 			if ppath != nil {
 				if ppath.Enabled {
