@@ -216,6 +216,19 @@ func (s *VastVolumeReplicationSpec) Validate() error {
 	return nil
 }
 
+// TenantInfo is the resolved VAST tenant identity for one StorageClass in a
+// replication constellation.  Populated once into status.tenantMapping and
+// reused for subsequent policy/ppath/stream operations so ResolveTenant API
+// calls are not repeated.
+type TenantInfo struct {
+	// Name is the VAST tenant name.
+	Name string `json:"name"`
+	// Guid is the VAST tenant GUID (passed as remote_tenant_guid).
+	Guid string `json:"guid"`
+	// Id is the VAST tenant numeric ID (passed as tenant_id on local creates).
+	Id int64 `json:"id"`
+}
+
 // VastVolumeReplicationStatus defines the observed state of VastVolumeReplication.
 type VastVolumeReplicationStatus struct {
 	// LastFailoverType is the most recent failover type that was applied.
@@ -238,6 +251,15 @@ type VastVolumeReplicationStatus struct {
 	// first reconcile and treated as immutable thereafter.
 	// +optional
 	PpathDirMapping map[string]string `json:"ppathDirMapping,omitempty"`
+
+	// TenantMapping maps every StorageClass name in the constellation to its
+	// resolved VAST tenant (from SC tenant_name, subsystem view, or
+	// view_policy).  Populated once on the first reconcile and treated as
+	// immutable thereafter.  Reused for policy/ppath/stream creates so
+	// ResolveTenant is not called again; also surfaces local/remote tenants
+	// in kubectl describe / vastrep status.
+	// +optional
+	TenantMapping map[string]TenantInfo `json:"tenantMapping,omitempty"`
 
 	// PpathName is the VAST protected-path name created by the controller on
 	// the primary site.  ONE ppath is created per VVR; additional policies are

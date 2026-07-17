@@ -240,6 +240,15 @@ type VastStorageClassReplicationStatus struct {
 	// +optional
 	PpathDirMapping map[string]string `json:"ppathDirMapping,omitempty"`
 
+	// TenantMapping maps every StorageClass name in the constellation to its
+	// resolved VAST tenant (from SC tenant_name, subsystem view, or
+	// view_policy).  Populated once on the first reconcile and treated as
+	// immutable thereafter.  Reused for policy/ppath/stream creates so
+	// ResolveTenant is not called again; also surfaces local/remote tenants
+	// in kubectl describe / vastrep status.
+	// +optional
+	TenantMapping map[string]TenantInfo `json:"tenantMapping,omitempty"`
+
 	// PpathName is the VAST protected-path name created by the controller on
 	// the primary site.  ONE ppath is created per VSCR; additional policies are
 	// added as ReplicationStream objects on that same ppath.  Populated only

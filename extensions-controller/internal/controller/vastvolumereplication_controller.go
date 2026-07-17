@@ -160,6 +160,23 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 		}
 	}
 
+	// TenantMapping is immutable once populated: resolve tenants only on the first reconcile
+	// (or when status was never filled, e.g. CRs created before this field existed).
+	if len(vvr.Status.TenantMapping) == 0 {
+		mapping := make(map[string]vastv1alpha1.TenantInfo, len(vvr.Spec.AllStorageClasses()))
+		for _, scName := range vvr.Spec.AllStorageClasses() {
+			tenant, err := vmsrest.ResolveTenant(restByStorageClass[scName], scByStorageClass[scName])
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to resolve tenant for StorageClass %s: %w", scName, err)
+			}
+			mapping[scName] = vastv1alpha1.TenantInfo{Name: tenant.Name, Guid: tenant.Guid, Id: tenant.Id}
+		}
+		vvr.Status.TenantMapping = mapping
+		if err := k8s.UpdateVastVolumeReplicationStatus(ctx, vvr); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	// Resolve any empty PeerName fields via live peer discovery.
 	// Build the peer index once so each cluster is queried at most once,
 	// regardless of how many topology entries reference it.
@@ -213,7 +230,7 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 		// ppath not yet created (or was reset) — discover policies and build full topology.
 		edges := vmsrest.NewReplicationEdgesList(vvr.Spec.ProtectionTopology, vvr.Spec.PrimaryStorageClass)
 		tmpl := vmsrest.SpecTemplateToParams(vvr.Name, vvr.Spec.ProtectionPolicyTemplate)
-		policyPairs, err := vmsrest.DiscoverLinkPolicies(restByStorageClass, scByStorageClass, edges, tmpl, log)
+		policyPairs, err := vmsrest.DiscoverLinkPolicies(restByStorageClass, vvr.Status.TenantMapping, edges, tmpl, log)
 		if err != nil {
 			emit.Warning(events.ReasonReconcileFailed, err.Error())
 			return ctrl.Result{}, fmt.Errorf("failed to ensure protection policies: %w", err)

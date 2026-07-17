@@ -209,6 +209,23 @@ func (r *VastStorageClassReplicationReconciler) Reconcile(ctx context.Context, r
 		}
 	}
 
+	// TenantMapping is immutable once populated: resolve tenants only on the first reconcile
+	// (or when status was never filled, e.g. CRs created before this field existed).
+	if len(vscr.Status.TenantMapping) == 0 {
+		mapping := make(map[string]vastv1alpha1.TenantInfo, len(vscr.Spec.AllStorageClasses()))
+		for _, scName := range vscr.Spec.AllStorageClasses() {
+			tenant, err := vmsrest.ResolveTenant(restByStorageClass[scName], scByStorageClass[scName])
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to resolve tenant for StorageClass %s: %w", scName, err)
+			}
+			mapping[scName] = vastv1alpha1.TenantInfo{Name: tenant.Name, Guid: tenant.Guid, Id: tenant.Id}
+		}
+		vscr.Status.TenantMapping = mapping
+		if err := k8s.UpdateVastStorageClassReplicationStatus(ctx, vscr); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	ppathName := vscr.Status.PpathName
 	if ppathName != "" {
 		// ppath is already established — just verify it is still active.
@@ -232,7 +249,7 @@ func (r *VastStorageClassReplicationReconciler) Reconcile(ctx context.Context, r
 		//  ppath not yet created — discover policies and build full topology.
 		edges := vmsrest.NewReplicationEdgesList(vscr.Spec.ProtectionTopology, vscr.Spec.PrimaryStorageClass)
 		tmpl := vmsrest.SpecTemplateToParams(vscr.Name, vscr.Spec.ProtectionPolicyTemplate)
-		policyPairs, err := vmsrest.DiscoverLinkPolicies(restByStorageClass, scByStorageClass, edges, tmpl, log)
+		policyPairs, err := vmsrest.DiscoverLinkPolicies(restByStorageClass, vscr.Status.TenantMapping, edges, tmpl, log)
 		if err != nil {
 			emit.Warning(events.ReasonReconcileFailed, err.Error())
 			return ctrl.Result{}, fmt.Errorf("failed to ensure protection policies: %w", err)
