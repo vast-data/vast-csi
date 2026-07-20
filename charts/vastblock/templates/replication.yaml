@@ -3213,6 +3213,16 @@ spec:
                       description: Source is the StorageClass of one cluster in this
                         replication pair.
                       type: string
+                    targetExportedDir:
+                      description: |-
+                        TargetExportedDir is an optional absolute path on the Destination
+                        StorageClass for subsystem-level block VSCR only.  Use when the dest
+                        subsystem root differs from the source; ignored for all other
+                        replication types.
+                      type: string
+                      x-kubernetes-validations:
+                      - message: targetExportedDir is immutable
+                        rule: self == oldSelf
                   required:
                   - destination
                   - source
@@ -3274,7 +3284,9 @@ spec:
                   PpathDirMapping maps every StorageClass name in the constellation to its
                   predicted ppath source directory.  For block StorageClasses the value is
                   the subsystem path joined with volume_group; for file StorageClasses it
-                  is the root_export parameter value.  Populated once on the first
+                  is the root_export parameter value.  For subsystem-level block VSCR,
+                  secondaries default to the primary path unless overridden by
+                  protectionTopology[].targetExportedDir.  Populated once on the first
                   reconcile and treated as immutable thereafter.
                 type: object
               ppathName:
@@ -3518,6 +3530,16 @@ spec:
                       description: Source is the StorageClass of one cluster in this
                         replication pair.
                       type: string
+                    targetExportedDir:
+                      description: |-
+                        TargetExportedDir is an optional absolute path on the Destination
+                        StorageClass for subsystem-level block VSCR only.  Use when the dest
+                        subsystem root differs from the source; ignored for all other
+                        replication types.
+                      type: string
+                      x-kubernetes-validations:
+                      - message: targetExportedDir is immutable
+                        rule: self == oldSelf
                   required:
                   - destination
                   - source

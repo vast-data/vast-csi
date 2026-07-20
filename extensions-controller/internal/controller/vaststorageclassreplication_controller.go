@@ -179,15 +179,26 @@ func (r *VastStorageClassReplicationReconciler) Reconcile(ctx context.Context, r
 
 		if ppathdir.IsSubsystemLevel(k8s, primarySC) {
 			// Subsystem-level block replication: secondary clusters don't have a
-			// subsystem yet — VAST creates it via replication and preserves the
-			// source path.  Predict only from the primary and share the result
-			// across all StorageClasses in the constellation.
+			// subsystem yet — VAST creates it via replication.  Default every SC
+			// to the primary path; optional protectionTopology.targetExportedDir
+			// overrides the Destination SC when the dest subsystem path differs.
 			primaryDir, err := ppathdir.Predict(ctx, k8s, primarySC, r.Config.SSLVerify, log, "", "")
 			if err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to compute PpathDir for primary StorageClass %s: %w", vscr.Spec.PrimaryStorageClass, err)
 			}
 			for _, scName := range vscr.Spec.AllStorageClasses() {
 				mapping[scName] = primaryDir
+			}
+			for i, t := range vscr.Spec.ProtectionTopology {
+				if t.TargetExportedDir == "" {
+					continue
+				}
+				if existing, ok := mapping[t.Destination]; ok && existing != primaryDir && existing != t.TargetExportedDir {
+					return ctrl.Result{}, fmt.Errorf(
+						"protectionTopology[%d]: conflicting targetExportedDir for StorageClass %q: %q vs %q",
+						i, t.Destination, existing, t.TargetExportedDir)
+				}
+				mapping[t.Destination] = t.TargetExportedDir
 			}
 		} else {
 			for _, scName := range vscr.Spec.AllStorageClasses() {

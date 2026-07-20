@@ -135,7 +135,11 @@ func (s *VastVolumeReplicationSpec) TargetsFor(scName string) []ReplicationTarge
 		case t.Source:
 			out = append(out, t)
 		case t.Destination:
-			out = append(out, ReplicationTarget{Source: t.Destination, Destination: t.Source, PeerName: t.PeerName})
+			out = append(out, ReplicationTarget{
+				Source:      t.Destination,
+				Destination: t.Source,
+				PeerName:    t.PeerName,
+			})
 		}
 	}
 	return out

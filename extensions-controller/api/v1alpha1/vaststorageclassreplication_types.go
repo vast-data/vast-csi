@@ -210,7 +210,11 @@ func (s *VastStorageClassReplicationSpec) TargetsFor(scName string) []Replicatio
 		case t.Source:
 			out = append(out, t)
 		case t.Destination:
-			out = append(out, ReplicationTarget{Source: t.Destination, Destination: t.Source, PeerName: t.PeerName})
+			out = append(out, ReplicationTarget{
+				Source:      t.Destination,
+				Destination: t.Source,
+				PeerName:    t.PeerName,
+			})
 		}
 	}
 	return out
@@ -235,7 +239,9 @@ type VastStorageClassReplicationStatus struct {
 	// PpathDirMapping maps every StorageClass name in the constellation to its
 	// predicted ppath source directory.  For block StorageClasses the value is
 	// the subsystem path joined with volume_group; for file StorageClasses it
-	// is the root_export parameter value.  Populated once on the first
+	// is the root_export parameter value.  For subsystem-level block VSCR,
+	// secondaries default to the primary path unless overridden by
+	// protectionTopology[].targetExportedDir.  Populated once on the first
 	// reconcile and treated as immutable thereafter.
 	// +optional
 	PpathDirMapping map[string]string `json:"ppathDirMapping,omitempty"`
