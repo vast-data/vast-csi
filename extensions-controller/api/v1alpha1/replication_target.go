@@ -53,7 +53,6 @@ type ReplicationTarget struct {
 	// subsystem root differs from the source; ignored for all other
 	// replication types.
 	// +optional
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="targetExportedDir is immutable"
 	TargetExportedDir string `json:"targetExportedDir,omitempty"`
 }
 

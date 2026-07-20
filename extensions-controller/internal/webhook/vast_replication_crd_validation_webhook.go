@@ -318,9 +318,9 @@ func applyTopologyDefaults(originalRaw []byte, topology []vastv1alpha1.Replicati
 }
 
 // validateTopologyImmutable denies any UPDATE that changes the structural shape
-// of the replication topology.  Source and Destination are immutable once set;
-// PeerName is allowed to change (the controller and webhook may fill it in after
-// initial creation via auto-discovery).
+// of the replication topology.  Source, Destination, and TargetExportedDir are
+// immutable once set; PeerName is allowed to change (the controller and webhook
+// may fill it in after initial creation via auto-discovery).
 func validateTopologyImmutable(oldTopology, newTopology []vastv1alpha1.ReplicationTarget) admission.Response {
 	if len(oldTopology) != len(newTopology) {
 		return admission.Denied(
@@ -333,6 +333,12 @@ func validateTopologyImmutable(oldTopology, newTopology []vastv1alpha1.Replicati
 				"protectionTopology[%d] is immutable: source/destination cannot change after creation "+
 					"(was %q→%q, got %q→%q)",
 				i, o.Source, o.Destination, n.Source, n.Destination))
+		}
+		if o.TargetExportedDir != n.TargetExportedDir {
+			return admission.Denied(fmt.Sprintf(
+				"protectionTopology[%d] is immutable: targetExportedDir cannot change after creation "+
+					"(was %q, got %q)",
+				i, o.TargetExportedDir, n.TargetExportedDir))
 		}
 	}
 	return admission.Allowed("")

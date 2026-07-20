@@ -181,9 +181,6 @@ spec:
                         subsystem root differs from the source; ignored for all other
                         replication types.
                       type: string
-                      x-kubernetes-validations:
-                      - message: targetExportedDir is immutable
-                        rule: self == oldSelf
                   required:
                   - destination
                   - source
