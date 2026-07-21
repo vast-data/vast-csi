@@ -105,6 +105,23 @@ image:
     repository: gcr.io/k8s-staging-sig-storage/objectstorage-sidecar/objectstorage-sidecar
     tag: v20230130-v0.1.0-24-gc0cf995
     imagePullPolicy: IfNotPresent
+  # Extensions-controller image (COSI secret flattener and other K8s-native addons).
+  vastExtensionController:
+    repository: '{{ .Values.image.csiVastPlugin.repository }}'
+    tag: '{{ .Values.image.csiVastPlugin.tag }}-extensions'
+    imagePullPolicy: IfNotPresent
+
+####################
+# CREDS FLATTENER (optional)
+# Creates sibling Secret/ConfigMap *-flat from annotated BucketAccess.
+# Annotation: cosi.vastdata.com/flatten-credentials: "true"
+####################
+credsFlattener:
+  enabled: false
+  # Match COSI provisioner scheduling priority when unset in template (fallback).
+  priorityClassName: system-node-critical
+  # Metrics bind inside pod only (not cluster-exposed). Use "0" to disable.
+  metricsBindAddress: "127.0.0.1:8080"
 
 ####################
 # VAST COSI PLUGIN BEHAVIOR

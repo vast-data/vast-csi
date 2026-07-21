@@ -1,0 +1,70 @@
+{{- if .Values.credsFlattener.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cosi-secret-flatten
+  namespace: {{ include "vastcosinamespace" . }}
+  labels:
+    app.kubernetes.io/component: cosi-secret-flatten
+    {{- include "vastcosilabels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cosi-secret-flatten
+      {{- include "vastcosiselectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: cosi-secret-flatten
+        {{- include "vastcosilabels" . | nindent 8 }}
+    spec:
+{{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
+{{- end }}
+      serviceAccountName: {{ .Release.Name }}-creds-flattener-sa
+      priorityClassName: {{ .Values.credsFlattener.priorityClassName | default .Values.cosiplugin.priorityClassName }}
+      # Match extensions-controller restricted PSS defaults (image also runs as UID 65532).
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: cosi-secret-flatten
+        image: {{ include "vastcosi.vastExtensionControllerImage" . }}
+        imagePullPolicy: {{ .Values.image.vastExtensionController.imagePullPolicy | default "IfNotPresent" }}
+        args:
+        - cosi-secret-flatten
+        # Localhost only — no metrics Service; use "0" to disable entirely.
+        - --metrics-bind-address={{ .Values.credsFlattener.metricsBindAddress | default "127.0.0.1:8080" }}
+        - --health-probe-bind-address=:8081
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        ports:
+        - name: health
+          containerPort: 8081
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: health
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            memory: 256Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
+{{- end }}

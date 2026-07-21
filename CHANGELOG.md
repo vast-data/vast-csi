@@ -5,6 +5,8 @@
 * COSI: optional BucketClass `lifecycleRules` (Helm values list) creates VMS S3 lifecycle rules on bucket create and deletes them on bucket delete (VCSI-327)
 * COSI: optional BucketClass parameter `max_size` (Helm `maxSize`) creates a VAST path quota with `hard_limit` on the bucket view path (VCSI-261). The quota applies to all protocols on that view (S3, NFS, SMB), not S3 object count alone. Changing `max_size` on a BucketClass does not resize buckets already provisioned from it.
 
+* Added optional COSI credentials flattener (`cosi-secret-flatten` extensions-controller subcommand). Annotated `BucketAccess` resources get sibling `*-flat` Secret and ConfigMap with Rook-style `AWS_*` and `BUCKET_*` env keys. Deployed from the vastcosi chart via the extensions-controller image (`{csi-tag}-extensions`); enable with `credsFlattener.enabled` (VCSI-447)
+
 ## Version 2.6.6-hf2
 * CSI inline ephemeral volume (EV) credentials are now stored on a tmpfs overlay. New publishes always use tmpfs and JSON metadata; set `credSerializationSecret` to encrypt with AES-GCM
 * Added `fallbackToDeser` (`X_CSI_FALLBACK_TO_DESER`) to unpublish EV volumes that still use the old on-disk pickle serializer. Defaults to `false`; set `true` only while old-format EVs remain mounted, then set `false` again after they unpublish

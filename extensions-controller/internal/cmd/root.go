@@ -7,6 +7,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/cli/actions"
+	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/cosisecretflatten"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/manager"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/replication"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/webhook"
@@ -80,7 +81,7 @@ func newOperatorCommand(name string) *cobra.Command {
 		Short: "VAST CSI addons operator",
 		Long: `VAST addons operator provides additional management capabilities alongside
 the VAST CSI driver.  Features include PVC label injection webhook, destination
-PVC controller, and volume replication controller.
+PVC controller, volume replication controller, and COSI credentials flattening.
 
 Run individual subcommands to enable specific features.`,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
@@ -105,6 +106,7 @@ Run individual subcommands to enable specific features.`,
 	c.AddCommand(
 		replication.NewCommand(sharedMgr, cfg),
 		webhook.NewCommand(sharedMgr, cfg),
+		cosisecretflatten.NewCommand(sharedMgr, cfg),
 	)
 
 	c.PersistentPostRunE = func(cmd *cobra.Command, args []string) error {
