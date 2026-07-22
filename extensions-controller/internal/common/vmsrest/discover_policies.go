@@ -3,14 +3,13 @@ package vmsrest
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	vast_client "github.com/vast-data/go-vast-client"
 	"github.com/vast-data/go-vast-client/core"
 	"github.com/vast-data/go-vast-client/resources/typed"
+	"github.com/vast-data/go-vast-client/resources/typed/expr"
 	"go.uber.org/zap"
-	storagev1 "k8s.io/api/storage/v1"
 
 	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
 	k8s_client "github.com/vast-data/vast-csi/extensions-controller/internal/common/k8s_client"
@@ -23,15 +22,13 @@ const (
 	policyMirrorSleep   = 5 * time.Second
 )
 
-// ReplicationLinkEdge extends ReplicationEdge with live REST clients and
-// StorageClass objects for both sides of the link.  These are used to resolve
-// tenant information on-demand via ResolveTenant.
+// ReplicationLinkEdge extends ReplicationEdge with resolved tenant identity for
+// both sides of the link.  Tenants are taken from status.tenantMapping (populated
+// once via ResolveTenant) so policy/ppath/stream creates do not re-query VMS.
 type ReplicationLinkEdge struct {
-	ReplicationEdge                           // embedded: SideA, SideB, PeerName
-	RestA           *vast_client.TypedVMSRest // local (SideA) REST client
-	SCA             *storagev1.StorageClass   // local (SideA) StorageClass
-	RestB           *vast_client.TypedVMSRest // remote (SideB) REST client
-	SCB             *storagev1.StorageClass   // remote (SideB) StorageClass
+	ReplicationEdge // embedded: SideA, SideB, PeerName
+	LocalTenant     vastv1alpha1.TenantInfo
+	RemoteTenant    vastv1alpha1.TenantInfo
 }
 
 // ReplicationLink carries all fields needed to create or attach a replication
@@ -134,12 +131,9 @@ func buildNativeReplicaTargetsBySC(
 ) (map[string]map[string]*typed.ReplicationPeersDetailsModel, error) {
 	result := make(map[string]map[string]*typed.ReplicationPeersDetailsModel, len(restByStorageClass))
 	for scName, rest := range restByStorageClass {
-		params := vast_client.Params{
-			"fields":   "id,name,peer_name,status",
-			"name__in": strings.Join(wantPeerNames, ","),
-		}
 		peers, err := rest.ReplicationPeers.List(&typed.ReplicationPeersSearchParams{
-			RawData: params,
+			Name:    expr.Str.In(wantPeerNames...),
+			RawData: vast_client.Params{"fields": "id,name,peer_name,status"},
 		})
 		if err != nil {
 			return nil, fmt.Errorf("SC %s: failed to list replication peers: %w", scName, err)
@@ -163,11 +157,14 @@ func buildNativeReplicaTargetsBySC(
 //  3. Otherwise creates the policy with all fields including the schedule frames
 //     and a snapshot prefix of "{sideA.PeerName}-{sideB.PeerName}".
 //
+// tenantByStorageClass must already contain an entry for every StorageClass in
+// the mesh (typically status.tenantMapping).  Tenants are not re-resolved here.
+//
 // Returns a map from StorageClass name → outbound ReplicationLinks that
 // should be attached as replication streams to that cluster's ppath.
 func DiscoverLinkPolicies(
 	restByStorageClass map[string]*vast_client.TypedVMSRest,
-	scByStorageClass map[string]*storagev1.StorageClass,
+	tenantByStorageClass map[string]vastv1alpha1.TenantInfo,
 	edges ReplicationEdgesList,
 	tmpl PolicyTemplateParams,
 	log *zap.Logger,
@@ -197,13 +194,13 @@ func DiscoverLinkPolicies(
 			return nil, fmt.Errorf("no REST client for StorageClass %q (SideB of link from %q via peer %q)",
 				edge.SideB, edge.SideA, edge.PeerName)
 		}
-		scA, ok := scByStorageClass[edge.SideA]
-		if !ok {
-			return nil, fmt.Errorf("no StorageClass object for %q (SideA)", edge.SideA)
+		localTenant, err := TenantFromMapping(tenantByStorageClass, edge.SideA)
+		if err != nil {
+			return nil, err
 		}
-		scB, ok := scByStorageClass[edge.SideB]
-		if !ok {
-			return nil, fmt.Errorf("no StorageClass object for %q (SideB)", edge.SideB)
+		remoteTenant, err := TenantFromMapping(tenantByStorageClass, edge.SideB)
+		if err != nil {
+			return nil, err
 		}
 
 		peerA, ok := nativeTargets[edge.SideA][edge.PeerName]
@@ -226,7 +223,7 @@ func DiscoverLinkPolicies(
 		}
 		prefix := tmpl.OwnerName + "-" + peerA.PeerName + "-" + peerB.PeerName
 
-		pair, err := ensurePolicy(restA, scA, restB, scB, edge, tmpl, peerA, peerB, prefix, log)
+		pair, err := ensurePolicy(restA, edge, localTenant, remoteTenant, tmpl, peerA, peerB, prefix, log)
 		if err != nil {
 			return nil, err
 		}
@@ -262,10 +259,8 @@ func DiscoverLinkPolicies(
 // remote peer identifier, joined by "-".
 func ensurePolicy(
 	rest *vast_client.TypedVMSRest,
-	scA *storagev1.StorageClass,
-	restB *vast_client.TypedVMSRest,
-	scB *storagev1.StorageClass,
 	edge ReplicationEdge,
+	localTenant, remoteTenant vastv1alpha1.TenantInfo,
 	tmpl PolicyTemplateParams,
 	peerA *typed.ReplicationPeersDetailsModel,
 	peerB *typed.ReplicationPeersDetailsModel,
@@ -275,19 +270,8 @@ func ensurePolicy(
 	policyName := tmpl.OwnerName + "-" + edge.PeerName
 
 	// Fast path: return the existing policy without touching the peer API.
-	if existing, err := rest.ProtectionPolicies.Get(&typed.ProtectionPolicySearchParams{Name: policyName}); err == nil {
-		return newReplicationLink(existing.Name, existing.Id, rest, scA, restB, scB, peerA, peerB, edge)
-	}
-
-	// Resolve both the local (source) and remote (destination) tenants so the
-	// policy is created with explicit tenant scoping on both sides.
-	localTenant, err := ResolveTenant(rest, scA)
-	if err != nil {
-		return ReplicationLink{}, fmt.Errorf("SC %s: failed to resolve local tenant: %w", edge.SideA, err)
-	}
-	remoteTenant, err := ResolveTenant(restB, scB)
-	if err != nil {
-		return ReplicationLink{}, fmt.Errorf("SC %s: failed to resolve remote tenant: %w", edge.SideB, err)
+	if existing, err := rest.ProtectionPolicies.Get(&typed.ProtectionPolicySearchParams{Name: expr.S(policyName)}); err == nil {
+		return newReplicationLink(existing.Name, existing.Id, peerA, peerB, edge, localTenant, remoteTenant), nil
 	}
 
 	log.Info("creating protection policy",
@@ -323,7 +307,7 @@ func ensurePolicy(
 			edge.SideA, policyName, err)
 	}
 
-	return newReplicationLink(policy.Name, policy.Id, rest, scA, restB, scB, peerA, peerB, edge)
+	return newReplicationLink(policy.Name, policy.Id, peerA, peerB, edge, localTenant, remoteTenant), nil
 }
 
 // ProtectionPolicyNamesByStorageClass returns operator-created protection policy
@@ -371,7 +355,7 @@ func DeleteProtectionPolicies(
 			continue
 		}
 		for _, name := range policyNames {
-			policy, err := rest.ProtectionPolicies.Get(&typed.ProtectionPolicySearchParams{Name: name})
+			policy, err := rest.ProtectionPolicies.Get(&typed.ProtectionPolicySearchParams{Name: expr.S(name)})
 			if err != nil {
 				if vast_client.IsNotFoundErr(err) {
 					continue
@@ -391,20 +375,15 @@ func DeleteProtectionPolicies(
 }
 
 // newReplicationLink constructs a ReplicationLink from policy identity, peer
-// models, and live REST clients + StorageClass objects for both sides.
-// The Edge.RestB and Edge.SCB fields are used later by AddReplicationStream to
-// resolve the remote tenant GUID on-demand via ResolveTenant.
+// models, and resolved tenants for both sides of the edge.
 func newReplicationLink(
 	policyName string,
 	policyId int64,
-	restA *vast_client.TypedVMSRest,
-	scA *storagev1.StorageClass,
-	restB *vast_client.TypedVMSRest,
-	scB *storagev1.StorageClass,
 	peerA *typed.ReplicationPeersDetailsModel,
 	peerB *typed.ReplicationPeersDetailsModel,
 	edge ReplicationEdge,
-) (ReplicationLink, error) {
+	localTenant, remoteTenant vastv1alpha1.TenantInfo,
+) ReplicationLink {
 	return ReplicationLink{
 		PolicyName:           policyName,
 		PolicyId:             policyId,
@@ -414,10 +393,8 @@ func newReplicationLink(
 		RemotePeerName:       peerB.PeerName,
 		Edge: ReplicationLinkEdge{
 			ReplicationEdge: edge,
-			RestA:           restA,
-			SCA:             scA,
-			RestB:           restB,
-			SCB:             scB,
+			LocalTenant:     localTenant,
+			RemoteTenant:    remoteTenant,
 		},
-	}, nil
+	}
 }

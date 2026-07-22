@@ -16,7 +16,10 @@ limitations under the License.
 
 package v1alpha1
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // ReplicationTarget describes one undirected replication edge in the mesh.
 //
@@ -44,6 +47,13 @@ type ReplicationTarget struct {
 	// if zero or more than one shared peer is found.
 	// +optional
 	PeerName string `json:"peerName,omitempty"`
+
+	// TargetExportedDir is an optional absolute path on the Destination
+	// StorageClass for subsystem-level block VSCR only.  Use when the dest
+	// subsystem root differs from the source; ignored for all other
+	// replication types.
+	// +optional
+	TargetExportedDir string `json:"targetExportedDir,omitempty"`
 }
 
 // Validate checks structural consistency of t.
@@ -58,6 +68,9 @@ func (t *ReplicationTarget) Validate() error {
 	}
 	if t.Source == t.Destination {
 		return fmt.Errorf("source and destination must be different (both are %q)", t.Source)
+	}
+	if t.TargetExportedDir != "" && !strings.HasPrefix(t.TargetExportedDir, "/") {
+		return fmt.Errorf("targetExportedDir must be an absolute path (got %q)", t.TargetExportedDir)
 	}
 	return nil
 }

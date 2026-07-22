@@ -26,6 +26,7 @@ import (
 	vast_client "github.com/vast-data/go-vast-client"
 	"github.com/vast-data/go-vast-client/core"
 	"github.com/vast-data/go-vast-client/resources/typed"
+	"github.com/vast-data/go-vast-client/resources/typed/expr"
 	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/backoff"
@@ -178,15 +179,26 @@ func (r *VastStorageClassReplicationReconciler) Reconcile(ctx context.Context, r
 
 		if ppathdir.IsSubsystemLevel(k8s, primarySC) {
 			// Subsystem-level block replication: secondary clusters don't have a
-			// subsystem yet — VAST creates it via replication and preserves the
-			// source path.  Predict only from the primary and share the result
-			// across all StorageClasses in the constellation.
+			// subsystem yet — VAST creates it via replication.  Default every SC
+			// to the primary path; optional protectionTopology.targetExportedDir
+			// overrides the Destination SC when the dest subsystem path differs.
 			primaryDir, err := ppathdir.Predict(ctx, k8s, primarySC, r.Config.SSLVerify, log, "", "")
 			if err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to compute PpathDir for primary StorageClass %s: %w", vscr.Spec.PrimaryStorageClass, err)
 			}
 			for _, scName := range vscr.Spec.AllStorageClasses() {
 				mapping[scName] = primaryDir
+			}
+			for i, t := range vscr.Spec.ProtectionTopology {
+				if t.TargetExportedDir == "" {
+					continue
+				}
+				if existing, ok := mapping[t.Destination]; ok && existing != primaryDir && existing != t.TargetExportedDir {
+					return ctrl.Result{}, fmt.Errorf(
+						"protectionTopology[%d]: conflicting targetExportedDir for StorageClass %q: %q vs %q",
+						i, t.Destination, existing, t.TargetExportedDir)
+				}
+				mapping[t.Destination] = t.TargetExportedDir
 			}
 		} else {
 			for _, scName := range vscr.Spec.AllStorageClasses() {
@@ -203,6 +215,23 @@ func (r *VastStorageClassReplicationReconciler) Reconcile(ctx context.Context, r
 		}
 
 		vscr.Status.PpathDirMapping = mapping
+		if err := k8s.UpdateVastStorageClassReplicationStatus(ctx, vscr); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	// TenantMapping is immutable once populated: resolve tenants only on the first reconcile
+	// (or when status was never filled, e.g. CRs created before this field existed).
+	if len(vscr.Status.TenantMapping) == 0 {
+		mapping := make(map[string]vastv1alpha1.TenantInfo, len(vscr.Spec.AllStorageClasses()))
+		for _, scName := range vscr.Spec.AllStorageClasses() {
+			tenant, err := vmsrest.ResolveTenant(restByStorageClass[scName], scByStorageClass[scName])
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to resolve tenant for StorageClass %s: %w", scName, err)
+			}
+			mapping[scName] = vastv1alpha1.TenantInfo{Name: tenant.Name, Guid: tenant.Guid, Id: tenant.Id}
+		}
+		vscr.Status.TenantMapping = mapping
 		if err := k8s.UpdateVastStorageClassReplicationStatus(ctx, vscr); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -231,7 +260,7 @@ func (r *VastStorageClassReplicationReconciler) Reconcile(ctx context.Context, r
 		//  ppath not yet created — discover policies and build full topology.
 		edges := vmsrest.NewReplicationEdgesList(vscr.Spec.ProtectionTopology, vscr.Spec.PrimaryStorageClass)
 		tmpl := vmsrest.SpecTemplateToParams(vscr.Name, vscr.Spec.ProtectionPolicyTemplate)
-		policyPairs, err := vmsrest.DiscoverLinkPolicies(restByStorageClass, scByStorageClass, edges, tmpl, log)
+		policyPairs, err := vmsrest.DiscoverLinkPolicies(restByStorageClass, vscr.Status.TenantMapping, edges, tmpl, log)
 		if err != nil {
 			emit.Warning(events.ReasonReconcileFailed, err.Error())
 			return ctrl.Result{}, fmt.Errorf("failed to ensure protection policies: %w", err)
@@ -378,20 +407,18 @@ func (r *VastStorageClassReplicationReconciler) validateOnce(
 
 			rest := restByStorageClass[scName]
 			exists, err := rest.Views.Exists(&typed.ViewSearchParams{
-				RawData: vast_client.Params{
-					"name":        scSubsystem,
-					"tenant_name": sc.Parameters["tenant_name"],
-				},
+				Name:    expr.S(scSubsystem),
+				RawData: vast_client.Params{"tenant_name": sc.Parameters["tenant_name"]},
 			})
 			if err != nil {
-				return fmt.Errorf("StorageClass %s: failed to check subsystem %q on secondary cluster: %w", scName, scSubsystem, err)
+				return fmt.Errorf("StorageClass %s: failed to check subsystem %q on VMS %s: %w", scName, scSubsystem, rest, err)
 			}
 			if exists {
 				return cerrors.NewValidationError(
 					"subsystem-level block replication requires that the subsystem %q does not pre-exist "+
-						"on secondary cluster (StorageClass %q): VAST creates it via replication; "+
-						"delete the subsystem from the secondary cluster and retry",
-					scSubsystem, scName,
+						"on VMS %s (StorageClass %q): VAST creates it via replication; "+
+						"delete the subsystem from that cluster and retry",
+					scSubsystem, rest, scName,
 				)
 			}
 		}
@@ -408,19 +435,20 @@ func (r *VastStorageClassReplicationReconciler) validateOnce(
 			if subsystemName == "" {
 				return cerrors.NewValidationError("StorageClass %q is missing required parameter %q", scName, common.StorageClassParameterSubsystem)
 			}
-			params := vast_client.Params{"name": subsystemName}
+			viewSearch := typed.ViewSearchParams{Name: expr.S(subsystemName)}
 			if tn := sc.Parameters["tenant_name"]; tn != "" {
-				params["tenant_name"] = tn
+				viewSearch.RawData = vast_client.Params{"tenant_name": tn}
 			}
-			exists, err := restByStorageClass[scName].Views.Exists(&typed.ViewSearchParams{RawData: params})
+			rest := restByStorageClass[scName]
+			exists, err := rest.Views.Exists(&viewSearch)
 			if err != nil {
-				return fmt.Errorf("StorageClass %q: failed to check subsystem %q on cluster: %w", scName, subsystemName, err)
+				return fmt.Errorf("StorageClass %q: failed to check subsystem %q on VMS %s: %w", scName, subsystemName, rest, err)
 			}
 			if !exists {
 				return cerrors.NewValidationError(
-					"StorageClass %q: subsystem %q does not exist on cluster; "+
+					"StorageClass %q: subsystem %q does not exist on VMS %s; "+
 						"for block replication the subsystem must be pre-created on all clusters",
-					scName, subsystemName,
+					scName, subsystemName, rest,
 				)
 			}
 		}
@@ -433,7 +461,7 @@ func (r *VastStorageClassReplicationReconciler) validateOnce(
 		// state — active, partially deleted, etc.) the user must remove it manually
 		// before creating this VSCR.
 		if primaryRest, ok := restByStorageClass[vscr.Spec.PrimaryStorageClass]; ok {
-			exists, err := primaryRest.ProtectedPaths.Exists(&typed.ProtectedPathSearchParams{Name: vscr.Name})
+			exists, err := primaryRest.ProtectedPaths.Exists(&typed.ProtectedPathSearchParams{Name: expr.S(vscr.Name)})
 			if err != nil {
 				return fmt.Errorf("failed to check if protected path %q exists on primary cluster: %w", vscr.Name, err)
 			}
@@ -505,10 +533,8 @@ func (r *VastStorageClassReplicationReconciler) handleDeletion(
 	if vscr.Spec.PrimaryStorageClass != "" && vscr.Status.PpathName != "" {
 		if rest, _, err := vmsrest.NewFromStorageClassName(ctx, k8s, vscr.Spec.PrimaryStorageClass, r.Config.SSLVerify, log); err == nil {
 			ppath, _ := rest.ProtectedPaths.Get(&typed.ProtectedPathSearchParams{
-				RawData: vast_client.Params{
-					"name":   vscr.Status.PpathName,
-					"fields": "id,name,enabled",
-				},
+				Name:    expr.S(vscr.Status.PpathName),
+				RawData: vast_client.Params{"fields": "id,name,enabled"},
 			})
 			if ppath != nil {
 				if ppath.Enabled {

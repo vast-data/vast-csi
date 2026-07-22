@@ -74,6 +74,15 @@ func (s *Service) GetReplicationTenant(
 
 	log := s.rainbow.For("storageClass", req.StorageClass)
 
+	if guid, ok := s.tenantGUIDFromReplicationStatus(ctx, req.StorageClass); ok {
+		log.Info("resolved tenant GUID from replication status mapping",
+			zap.String("tenantGUID", guid))
+		return &extensionsv1.GetReplicationTenantResponse{
+			StorageClass: req.StorageClass,
+			TenantGuid:   guid,
+		}, nil
+	}
+
 	rest, sc, err := vmsrest.NewFromStorageClassName(ctx, s.k8sClient, req.StorageClass, s.sslVerify, log)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal,
@@ -94,6 +103,29 @@ func (s *Service) GetReplicationTenant(
 		StorageClass: req.StorageClass,
 		TenantGuid:   tenantGUID,
 	}, nil
+}
+
+// tenantGUIDFromReplicationStatus looks up the cached tenant GUID for scName
+// from any VSCR/VVR status.tenantMapping (cluster-wide).
+func (s *Service) tenantGUIDFromReplicationStatus(ctx context.Context, scName string) (string, bool) {
+	vscrList, err := s.k8sClient.ListVastStorageClassReplications(ctx, "")
+	if err == nil {
+		for _, vscr := range vscrList {
+			if t, ok := vscr.Status.TenantMapping[scName]; ok && t.Guid != "" {
+				return t.Guid, true
+			}
+		}
+	}
+
+	vvrList, err := s.k8sClient.ListVastVolumeReplications(ctx, "")
+	if err == nil {
+		for _, vvr := range vvrList {
+			if t, ok := vvr.Status.TenantMapping[scName]; ok && t.Guid != "" {
+				return t.Guid, true
+			}
+		}
+	}
+	return "", false
 }
 
 // GetReplicationInfo finds the VastStorageClassReplication or

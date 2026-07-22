@@ -21,6 +21,7 @@ metadata:
   namespace: {{ include "vastcsi.namespace" . }}
   labels:
 {{- include "vastcsi.labels" . | nindent 4 }}
+    app: vast-extension-controller
     app.kubernetes.io/component: "extension-controller"
 spec:
   replicas: 1

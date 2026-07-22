@@ -25,6 +25,7 @@ import (
 
 	vast_client "github.com/vast-data/go-vast-client"
 	"github.com/vast-data/go-vast-client/resources/typed"
+	"github.com/vast-data/go-vast-client/resources/typed/expr"
 	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/config"
@@ -69,22 +70,11 @@ func (b *BlockProvisioner) VolumeMapping(ctx context.Context, sc *storagev1.Stor
 		volumeGroup := strings.TrimPrefix(srcParams[common.StorageClassParameterVolumeGroup], "/")
 
 		fields := "id,name"
-		var volumeSearch typed.VolumeSearchParams
-		if volumeGroup == "" {
-			volumeSearch = typed.VolumeSearchParams{
-				RawData: vast_client.Params{
-					"subsystem_name": subsystemName,
-					"fields":         fields,
-				},
-			}
-		} else {
-			volumeSearch = typed.VolumeSearchParams{
-				RawData: vast_client.Params{
-					"subsystem_name": subsystemName,
-					"name__contains": volumeGroup,
-					"fields":         fields,
-				},
-			}
+		volumeSearch := typed.VolumeSearchParams{
+			RawData: vast_client.Params{"subsystem_name": subsystemName, "fields": fields},
+		}
+		if volumeGroup != "" {
+			volumeSearch.Name = expr.Str.Contains(volumeGroup)
 		}
 		result, err := rest.Volumes.List(&volumeSearch)
 		if err != nil {
@@ -197,11 +187,9 @@ func (b *BlockProvisioner) syncBlockObjects(
 	if len(toEnsure) > 0 {
 		// Fetch the subsystem once for all PVCs in this group.
 		subsystem, err := sibRest.Views.Get(&typed.ViewSearchParams{
-			RawData: vast_client.Params{
-				"name":      subsystemName,
-				"tenant_id": ppath.TenantId,
-				"fields":    "id,name,path,tenant_id",
-			},
+			Name:     expr.S(subsystemName),
+			TenantId: expr.I(ppath.TenantId),
+			RawData:  vast_client.Params{"fields": "id,name,path,tenant_id"},
 		})
 		if err != nil {
 			return fmt.Errorf("get subsystem %s on %s: %w", subsystemName, sibVRC.Name, err)
@@ -298,7 +286,7 @@ func (b *BlockProvisioner) deleteVastVolumeByName(ctx context.Context, rest *vas
 		b.logger.Info(fmt.Sprintf("Volume %s is already deleted", volumeName))
 		return nil
 	}
-	if err := vast_client.IgnoreStatusCodes(rest.Volumes.DeleteById(vol.Id, true), 404); err != nil {
+	if err := vast_client.IgnoreStatusCodes(rest.Volumes.DeleteById(vol.Id, true, false), 404); err != nil {
 		return fmt.Errorf("delete VAST volume %s: %w", volumeName, err)
 	}
 	return nil
