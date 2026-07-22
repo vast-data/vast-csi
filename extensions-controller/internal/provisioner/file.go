@@ -27,6 +27,7 @@ import (
 
 	vast_client "github.com/vast-data/go-vast-client"
 	"github.com/vast-data/go-vast-client/resources/typed"
+	"github.com/vast-data/go-vast-client/resources/typed/expr"
 	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/config"
@@ -79,10 +80,8 @@ func (f *FileProvisioner) VolumeMapping(ctx context.Context, sc *storagev1.Stora
 		rootExport := srcParams[common.StorageClassParameterRootExport]
 
 		views, err := rest.Views.List(&typed.ViewSearchParams{
-			RawData: vast_client.Params{
-				"path__startswith": rootExport,
-				"fields":           "id,path,tenant_id",
-			},
+			Path:    expr.Str.StartsWith(rootExport),
+			RawData: vast_client.Params{"fields": "id,path,tenant_id"},
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to list views under %s: %w", rootExport, err)
@@ -116,10 +115,8 @@ func (f *FileProvisioner) getQuota(rest *vast_client.TypedVMSRest, sc *storagev1
 		srcParams := f.k8sClient.ExtractNonPrefixedParams(common.CSIParameterPrefix, f.sourceSc.Parameters)
 		rootExport := srcParams[common.StorageClassParameterRootExport]
 		quotas, err := rest.Quotas.List(&typed.QuotaSearchParams{
-			RawData: vast_client.Params{
-				"path__startswith": rootExport,
-				"fields":           "id,path",
-			},
+			Path:    expr.Str.StartsWith(rootExport),
+			RawData: vast_client.Params{"fields": "id,path"},
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to list quotas under %s: %w", rootExport, err)

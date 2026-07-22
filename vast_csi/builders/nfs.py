@@ -86,7 +86,7 @@ class FileSystemProvisionBase(BaseVolumeBuilder):
         view_policy = cls._get_required_param(parameters, "view_policy")
         vip_pool_fqdn = parameters.get("vip_pool_fqdn")
         vip_pool_name = parameters.get("vip_pool_name")
-        vip_pool_fqdn_random_prefix = cls._get_bool_param(parameters, "vip_pool_fqdn_random_prefix")
+        vip_pool_fqdn_random_prefix = cls._get_bool_param(parameters, "vip_pool_fqdn_random_prefix", default_value="true")
         cls._validate_mount_src(vip_pool_name, vip_pool_fqdn, conf.use_local_ip_for_mount)
 
         volume_name_fmt = parameters.get("volume_name_fmt", conf.name_fmt)
@@ -342,7 +342,7 @@ class StaticVolumeBuilder(BaseVolumeBuilder):
             raise MissingParameter(param="view_policy")
         vip_pool_fqdn = parameters.get("vip_pool_fqdn")
         vip_pool_name = parameters.get("vip_pool_name")
-        vip_pool_fqdn_random_prefix = cls._get_bool_param(parameters, "vip_pool_fqdn_random_prefix")
+        vip_pool_fqdn_random_prefix = cls._get_bool_param(parameters, "vip_pool_fqdn_random_prefix", default_value="true")
         cls._validate_mount_src(vip_pool_name, vip_pool_fqdn, conf.use_local_ip_for_mount)
         volume_name_fmt = parameters.get("volume_name_fmt", conf.name_fmt)
         qos_policy = parameters.get("qos_policy")

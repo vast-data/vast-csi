@@ -100,6 +100,12 @@ func printVSCRStatus(obj *vastv1alpha1.VastStorageClassReplication) {
 			fmt.Printf("    %-26s %s\n", sc+":", dir)
 		}
 	}
+	if len(obj.Status.TenantMapping) > 0 {
+		fmt.Printf("  %-28s\n", "Tenant Mapping:")
+		for sc, tenant := range obj.Status.TenantMapping {
+			fmt.Printf("    %-26s %s\n", sc+":", tenant.Name)
+		}
+	}
 	printAction("Last Failover Type", string(obj.Status.LastFailoverType))
 	printSyncStatus(obj.Status.SyncStatus)
 }
@@ -136,6 +142,12 @@ func printVVRStatus(obj *vastv1alpha1.VastVolumeReplication) {
 		fmt.Printf("  %-28s\n", "Ppath Dir Mapping:")
 		for sc, dir := range obj.Status.PpathDirMapping {
 			fmt.Printf("    %-26s %s\n", sc+":", dir)
+		}
+	}
+	if len(obj.Status.TenantMapping) > 0 {
+		fmt.Printf("  %-28s\n", "Tenant Mapping:")
+		for sc, tenant := range obj.Status.TenantMapping {
+			fmt.Printf("    %-26s %s\n", sc+":", tenant.Name)
 		}
 	}
 	printAction("Last Failover Type", string(obj.Status.LastFailoverType))

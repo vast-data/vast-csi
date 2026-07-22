@@ -26,6 +26,7 @@ import (
 	replicationv1alpha1 "github.com/csi-addons/kubernetes-csi-addons/api/replication.storage/v1alpha1"
 	vast_client "github.com/vast-data/go-vast-client"
 	"github.com/vast-data/go-vast-client/resources/typed"
+	"github.com/vast-data/go-vast-client/resources/typed/expr"
 	"go.uber.org/zap"
 	storagev1 "k8s.io/api/storage/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -415,10 +416,8 @@ func resolveSourcePPath(
 		return nil, fmt.Errorf("failed to build VAST REST client from StorageClass %s: %w", sourceSC.Name, err)
 	}
 	ppath, err := rest.ProtectedPaths.Get(&typed.ProtectedPathSearchParams{
-		RawData: vast_client.Params{
-			"name":   ppathName,
-			"fields": "id,name,enabled,state,failure_reason,role,tenant_id,source_dir,protection_policy_name",
-		},
+		Name:    expr.S(ppathName),
+		RawData: vast_client.Params{"fields": "id,name,enabled,state,failure_reason,role,tenant_id,source_dir,protection_policy_name"},
 	})
 	if err != nil {
 		if vast_client.IsNotFoundErr(err) {

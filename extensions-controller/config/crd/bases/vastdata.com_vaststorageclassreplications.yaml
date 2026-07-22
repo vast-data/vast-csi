@@ -174,6 +174,13 @@ spec:
                       description: Source is the StorageClass of one cluster in this
                         replication pair.
                       type: string
+                    targetExportedDir:
+                      description: |-
+                        TargetExportedDir is an optional absolute path on the Destination
+                        StorageClass for subsystem-level block VSCR only.  Use when the dest
+                        subsystem root differs from the source; ignored for all other
+                        replication types.
+                      type: string
                   required:
                   - destination
                   - source
@@ -235,7 +242,9 @@ spec:
                   PpathDirMapping maps every StorageClass name in the constellation to its
                   predicted ppath source directory.  For block StorageClasses the value is
                   the subsystem path joined with volume_group; for file StorageClasses it
-                  is the root_export parameter value.  Populated once on the first
+                  is the root_export parameter value.  For subsystem-level block VSCR,
+                  secondaries default to the primary path unless overridden by
+                  protectionTopology[].targetExportedDir.  Populated once on the first
                   reconcile and treated as immutable thereafter.
                 type: object
               ppathName:
@@ -261,6 +270,38 @@ spec:
                   for the primary StorageClass reports State=Primary; "InProgress" means
                   the transition is still ongoing.
                 type: string
+              tenantMapping:
+                additionalProperties:
+                  description: |-
+                    TenantInfo is the resolved VAST tenant identity for one StorageClass in a
+                    replication constellation.  Populated once into status.tenantMapping and
+                    reused for subsequent policy/ppath/stream operations so ResolveTenant API
+                    calls are not repeated.
+                  properties:
+                    guid:
+                      description: Guid is the VAST tenant GUID (passed as remote_tenant_guid).
+                      type: string
+                    id:
+                      description: Id is the VAST tenant numeric ID (passed as tenant_id
+                        on local creates).
+                      format: int64
+                      type: integer
+                    name:
+                      description: Name is the VAST tenant name.
+                      type: string
+                  required:
+                  - guid
+                  - id
+                  - name
+                  type: object
+                description: |-
+                  TenantMapping maps every StorageClass name in the constellation to its
+                  resolved VAST tenant (from SC tenant_name, subsystem view, or
+                  view_policy).  Populated once on the first reconcile and treated as
+                  immutable thereafter.  Reused for policy/ppath/stream creates so
+                  ResolveTenant is not called again; also surfaces local/remote tenants
+                  in kubectl describe / vastrep status.
+                type: object
             type: object
         type: object
     served: true

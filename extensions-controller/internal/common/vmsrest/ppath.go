@@ -247,15 +247,11 @@ func AddReplicationStream(
 	pair ReplicationLink,
 	isStandby bool,
 ) error {
-	remoteTenant, err := ResolveTenant(pair.Edge.RestB, pair.Edge.SCB)
-	if err != nil {
-		return fmt.Errorf("SC %s: failed to resolve remote tenant: %w", pair.Edge.SideB, err)
-	}
 	params := core.Params{
 		"name":                 streamName,
 		"target_exported_dir":  sourceDir,
 		"protection_policy_id": pair.PolicyId,
-		"remote_tenant_guid":   remoteTenant.Guid,
+		"remote_tenant_guid":   pair.Edge.RemoteTenant.Guid,
 		"capabilities":         ppathCapabilities,
 	}
 	if isStandby {
@@ -290,14 +286,8 @@ func EnsurePpath(
 	}
 
 	if vast_client.IsNotFoundErr(err) {
-		localTenant, err := ResolveTenant(first.Edge.RestA, first.Edge.SCA)
-		if err != nil {
-			return "", 0, fmt.Errorf("SC %s: failed to resolve local tenant: %w", first.Edge.SideA, err)
-		}
-		remoteTenant, err := ResolveTenant(first.Edge.RestB, first.Edge.SCB)
-		if err != nil {
-			return "", 0, fmt.Errorf("SC %s: failed to resolve remote tenant: %w", first.Edge.SideB, err)
-		}
+		localTenant := first.Edge.LocalTenant
+		remoteTenant := first.Edge.RemoteTenant
 		if localTenant.Guid == remoteTenant.Guid {
 			return "", 0, fmt.Errorf(
 				"StorageClass %q and %q resolve to the same VAST cluster (tenant GUID %s); "+

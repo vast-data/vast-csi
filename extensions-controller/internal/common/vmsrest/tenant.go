@@ -5,6 +5,8 @@ import (
 
 	vast_client "github.com/vast-data/go-vast-client"
 	"github.com/vast-data/go-vast-client/resources/typed"
+	"github.com/vast-data/go-vast-client/resources/typed/expr"
+	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/k8s_client"
 	storagev1 "k8s.io/api/storage/v1"
@@ -28,6 +30,23 @@ func ResolveTenant(
 	return resolveFileTenant(rest, sc)
 }
 
+// TenantFromMapping returns the cached tenant for scName from status.tenantMapping.
+// Callers that already have a populated mapping should use this instead of
+// ResolveTenant to avoid extra VMS API round-trips.
+func TenantFromMapping(m map[string]vastv1alpha1.TenantInfo, scName string) (vastv1alpha1.TenantInfo, error) {
+	t, ok := m[scName]
+	if !ok {
+		return vastv1alpha1.TenantInfo{}, fmt.Errorf("StorageClass %q missing from tenant mapping", scName)
+	}
+	if t.Guid == "" {
+		return vastv1alpha1.TenantInfo{}, fmt.Errorf("StorageClass %q tenant mapping has empty guid", scName)
+	}
+	if t.Id == 0 {
+		return vastv1alpha1.TenantInfo{}, fmt.Errorf("StorageClass %q tenant mapping has empty id", scName)
+	}
+	return t, nil
+}
+
 func resolveBlockTenant(
 	rest *vast_client.TypedVMSRest,
 	sc *storagev1.StorageClass,
@@ -38,14 +57,14 @@ func resolveBlockTenant(
 	}
 
 	if tenantName := sc.Parameters["tenant_name"]; tenantName != "" {
-		tenant, err := rest.Tenants.Get(&typed.TenantSearchParams{Name: tenantName})
+		tenant, err := rest.Tenants.Get(&typed.TenantSearchParams{Name: expr.S(tenantName)})
 		if err != nil {
 			return nil, fmt.Errorf("failed to get tenant %q: %w", tenantName, err)
 		}
 		return tenant, nil
 	}
 
-	view, err := rest.Views.Get(&typed.ViewSearchParams{Name: subsystem})
+	view, err := rest.Views.Get(&typed.ViewSearchParams{Name: expr.S(subsystem)})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get view (subsystem) %q: %w", subsystem, err)
 	}

@@ -23,6 +23,7 @@ import (
 
 	vast_client "github.com/vast-data/go-vast-client"
 	"github.com/vast-data/go-vast-client/resources/typed"
+	"github.com/vast-data/go-vast-client/resources/typed/expr"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common"
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
@@ -240,17 +241,14 @@ func backfillBlockMapping(rest *vast_client.TypedVMSRest, params map[string]stri
 	subsystem := params[common.StorageClassParameterSubsystem]
 	volumeGroup := strings.TrimPrefix(params[common.StorageClassParameterVolumeGroup], "/")
 
-	searchParams := vast_client.Params{
-		"subsystem_name": subsystem,
-		"fields":         "name",
+	volumeSearch := typed.VolumeSearchParams{
+		RawData: vast_client.Params{"subsystem_name": subsystem, "fields": "name"},
 	}
 	if volumeGroup != "" {
-		searchParams["name__contains"] = volumeGroup
+		volumeSearch.Name = expr.Str.Contains(volumeGroup)
 	}
 
-	vols, err := rest.Volumes.List(&typed.VolumeSearchParams{
-		RawData: searchParams,
-	})
+	vols, err := rest.Volumes.List(&volumeSearch)
 	if err != nil {
 		return nil, fmt.Errorf("list volumes (subsystem=%s): %w", subsystem, err)
 	}
@@ -266,10 +264,8 @@ func backfillFileMapping(rest *vast_client.TypedVMSRest, params map[string]strin
 	rootExport := params[common.StorageClassParameterRootExport]
 
 	views, err := rest.Views.List(&typed.ViewSearchParams{
-		RawData: vast_client.Params{
-			"path__startswith": rootExport,
-			"fields":           "path",
-		},
+		Path:    expr.Str.StartsWith(rootExport),
+		RawData: vast_client.Params{"fields": "path"},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list views (root_export=%s): %w", rootExport, err)

@@ -27,6 +27,7 @@ import (
 
 	vast_client "github.com/vast-data/go-vast-client"
 	"github.com/vast-data/go-vast-client/resources/typed"
+	"github.com/vast-data/go-vast-client/resources/typed/expr"
 	"go.uber.org/zap"
 	storagev1 "k8s.io/api/storage/v1"
 
@@ -117,10 +118,8 @@ func predictSCR(
 	}
 
 	subsystem, err := rest.Views.Get(&typed.ViewSearchParams{
-		RawData: vast_client.Params{
-			"name":   subsystemName,
-			"fields": "id,path,tenant_id",
-		},
+		Name:    expr.S(subsystemName),
+		RawData: vast_client.Params{"fields": "id,path,tenant_id"},
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to get subsystem view %q from StorageClass %s: %w", subsystemName, sc.Name, err)
@@ -214,10 +213,8 @@ func predictBlockVVR(
 	volumeGroup := strings.TrimPrefix(nonPrefixedParams[common.StorageClassParameterVolumeGroup], "/")
 
 	subsystem, err := rest.Views.Get(&typed.ViewSearchParams{
-		RawData: vast_client.Params{
-			"name":   subsystemName,
-			"fields": "id,path",
-		},
+		Name:    expr.S(subsystemName),
+		RawData: vast_client.Params{"fields": "id,path"},
 	})
 	if err != nil {
 		return "", fmt.Errorf("StorageClass %s: failed to get subsystem view %q: %w", sc.Name, subsystemName, err)

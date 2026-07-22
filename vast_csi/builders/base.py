@@ -160,7 +160,9 @@ class BaseVolumeBuilder(CommonPropsMixin, VolumeBuilderI):
     @classmethod
     def _get_bool_param(cls, parameters, param_name, default_value="false"):
         """Get boolean parameter from parameters or return default value."""
-        return yesno_to_bool(str(parameters.get(param_name) or default_value))
+        if param_name not in parameters:
+            return yesno_to_bool(str(default_value))
+        return yesno_to_bool(str(parameters[param_name]))
 
     @classmethod
     def _validate_mount_src(cls, vip_pool_name, vip_pool_fqdn, local_ip_for_mount):

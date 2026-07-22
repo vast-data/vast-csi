@@ -27,6 +27,7 @@ import (
 	vast_client "github.com/vast-data/go-vast-client"
 	"github.com/vast-data/go-vast-client/core"
 	"github.com/vast-data/go-vast-client/resources/typed"
+	"github.com/vast-data/go-vast-client/resources/typed/expr"
 	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/config"
@@ -494,10 +495,8 @@ func (b *baseProvisioner) getPPath(ctx context.Context, sc *storagev1.StorageCla
 	}
 	ppathName := b.rp.Spec.ProtectedPathName
 	ppath, err := rest.ProtectedPaths.Get(&typed.ProtectedPathSearchParams{
-		RawData: vast_client.Params{
-			"name":   ppathName,
-			"fields": "id,name,enabled,state,failure_reason,role,tenant_id,source_dir,protection_policy_name",
-		},
+		Name:    expr.S(ppathName),
+		RawData: vast_client.Params{"fields": "id,name,enabled,state,failure_reason,role,tenant_id,source_dir,protection_policy_name"},
 	})
 	if err != nil {
 		return nil, err
@@ -558,10 +557,8 @@ func (b *baseProvisioner) deleteSnapshots(_ context.Context, rest *vast_client.T
 	snapshotPath = strings.TrimRight(snapshotPath, "/") + "/"
 	for _, policyName := range policyNames {
 		snapshotSearch := &typed.SnapshotSearchParams{
-			RawData: vast_client.Params{
-				"path":                    snapshotPath,
-				"protection_policy__name": policyName,
-			},
+			Path:    expr.S(snapshotPath),
+			RawData: vast_client.Params{"protection_policy__name": policyName},
 		}
 		snapshots, err := rest.Snapshots.List(snapshotSearch)
 		if err != nil {
