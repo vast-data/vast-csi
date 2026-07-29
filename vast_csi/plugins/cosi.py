@@ -30,6 +30,7 @@ from vast_csi.exceptions import Abort
 from vast_csi.extensions_client import resolve_cosi_bucket_auth, resolve_secret
 from vast_csi.plugins.base import Instrumented
 from vast_csi.configuration import Config
+from vast_csi.cosi_credentials import grant_bucket_access
 
 
 CONF = None
@@ -125,22 +126,14 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented):
         vms_session.users.delete(name=parsed.name)
         return types.DriverDeleteBucketResp()
 
-    def DriverGrantBucketAccess(self, vms_session, bucket_id, name):
+    def DriverGrantBucketAccess(self, vms_session, bucket_id, name, parameters=None):
         parsed = BucketId.parse(bucket_id)
-        user = vms_session.users.one(name=parsed.name)
-        creds = vms_session.users.generate_access_key(user.id)
-        credentials = dict(
-            s3=types.CredentialDetails(
-                secrets={
-                    "accessKeyID": creds.access_key,
-                    "accessSecretKey": creds.secret_key,
-                    "endpoint": parsed.endpoint,
-                }
-            )
-        )
-        return types.DriverGrantBucketAccessResp(
-            account_id=creds.access_key,
-            credentials=credentials
+        return grant_bucket_access(
+            vms_session,
+            bucket_name=parsed.name,
+            tenant_id=parsed.tenant_id,
+            endpoint=parsed.endpoint,
+            parameters=dict(parameters or {}),
         )
 
     def DriverRevokeBucketAccess(self, vms_session, bucket_id, account_id):

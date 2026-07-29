@@ -632,8 +632,27 @@ class GlobalSnapshotStream(VastResource):
 class User(VastResource):
     resource_name = "users"
 
-    def generate_access_key(self, _id):
-        return self.session.post(f"{self.resource_name}/{_id}/access_keys/", data={}, log_result=False)
+    def generate_access_key(self, _id, *, access_key=None, secret_key=None, tenant_id=None):
+        data = {}
+        if tenant_id is not None:
+            data["tenant_id"] = tenant_id
+        if (access_key is None) ^ (secret_key is None):
+            raise ValueError("access_key and secret_key must both be set or both omitted")
+        if access_key is not None and secret_key is not None:
+            data["access_key"] = access_key
+            data["secret_key"] = secret_key
+        return self.session.post(
+            f"{self.resource_name}/{_id}/access_keys/", data=data, log_result=False
+        )
+
+    def list_access_keys(self, user_id):
+        """Return access-key ID strings from GET /users/{id} (session default api v1).
+
+        Assumes each ``user.access_keys`` entry is a sequence whose first
+        element is the access-key string (Orion api v1 representation).
+        """
+        user = self.get(user_id)
+        return [item[0] for item in user.access_keys or []]
 
     def delete_access_key(self, _id, access_key):
         data = dict(access_key=access_key)

@@ -14,6 +14,7 @@
 * COSI: `ResolveCOSIBucketAuth` gRPC resolves per-BucketClass VMS credentials from persisted `Bucket.spec.parameters` for delete, grant, and revoke when the sidecar sends no secret params; buckets without secret refs fall back to chart-mounted `/opt/vms-auth` (VCSI-310)
 * COSI: `vipPoolFQDN` and `vipPoolFQDNRandomPrefix` BucketClass parameters for DNS-based bucket endpoints (VCSI-310)
 * COSI: optional global `secretName` Helm value for legacy single-tenant installs (create and lifecycle fallback when Bucket has no secret refs)
+* COSI: BucketAccessClass `credentialsSecretName` / `credentialsSecretNamespace` installs externally managed S3 keys from a Kubernetes input Secret on the bucket VAST local user (VCSI-326). Requires VAST ≥ 5.4. To rotate keys, update the input Secret and delete/recreate the BucketAccess
 
 ## Version 2.6.6-hf2
 * CSI inline ephemeral volume (EV) credentials are now stored on a tmpfs overlay. New publishes always use tmpfs and JSON metadata; set `credSerializationSecret` to encrypt with AES-GCM
