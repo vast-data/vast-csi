@@ -505,7 +505,9 @@ class CsiController(ControllerBase, Instrumented):
         if CONF.mock_vast:
             CONF.fake_snapshot_store[snapshot_id].delete()
         else:
-            snapshot = vms_session.snapshots.get(snapshot_id)
+            snapshot = vms_session.snapshots.get(snapshot_id, fail_if_missing=False)
+            if not snapshot:
+                return types.DeleteSnapResp()
             if vms_session.snapshots.has_not_finished_streams(snapshot.id):
                 raise Exception(f"Unable to delete snapshot {snapshot.id!r} with active streams")
 

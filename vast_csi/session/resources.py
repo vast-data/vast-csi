@@ -145,9 +145,19 @@ class VastResource(ABC):
             entry = self.create(name=name, api_ver=api_ver, **params)
         return entry
 
-    def get(self, _id, api_ver=None, **params):
-        """Get single entry by id"""
-        return self.session.get(f"{self.resource_name}/{_id}", api_ver=api_ver, **params)
+    def get(self, _id, fail_if_missing=True, api_ver=None, **params):
+        """
+        Get single entry by id.
+
+        By default (``fail_if_missing=True``), a missing entry raises the original
+        ``HTTPError`` from VMS. When ``fail_if_missing`` is False, returns None.
+        """
+        try:
+            return self.session.get(f"{self.resource_name}/{_id}", api_ver=api_ver, **params)
+        except HTTPError as exc:
+            if exc.response.status_code == 404 and not fail_if_missing:
+                return
+            raise
 
     def wait(
         self,
@@ -299,8 +309,8 @@ class ViewPolicy(VastResource):
         return super().one(**params)
 
     @cache_on_arguments(expiration_time=5 * MINUTE)
-    def get(self, _id, api_ver=None, **params):
-        return super().get(_id, api_ver=api_ver, **params)
+    def get(self, _id, fail_if_missing=True, api_ver=None, **params):
+        return super().get(_id, fail_if_missing=fail_if_missing, api_ver=api_ver, **params)
 
 
 class QosPolicy(VastResource):
@@ -311,8 +321,8 @@ class QosPolicy(VastResource):
         return super().one(**params)
 
     @cache_on_arguments(expiration_time=5 * MINUTE)
-    def get(self, _id, api_ver=None, **params):
-        return super().get(_id, api_ver=api_ver, **params)
+    def get(self, _id, fail_if_missing=True, api_ver=None, **params):
+        return super().get(_id, fail_if_missing=fail_if_missing, api_ver=api_ver, **params)
 
 
 class Tenant(VastResource):
@@ -323,8 +333,8 @@ class Tenant(VastResource):
         return super().one(**params)
 
     @cache_on_arguments(expiration_time=5 * MINUTE)
-    def get(self, _id, api_ver=None, **params):
-        return super().get(_id, api_ver=api_ver, **params)
+    def get(self, _id, fail_if_missing=True, api_ver=None, **params):
+        return super().get(_id, fail_if_missing=fail_if_missing, api_ver=api_ver, **params)
 
 
 class View(VastResource):
@@ -433,8 +443,8 @@ class VipPool(VastResource):
         return super().one(**params)
 
     @cache_on_arguments(expiration_time=5 * MINUTE)
-    def get(self, _id, api_ver=None, **params):
-        return super().get(_id, api_ver=api_ver, **params)
+    def get(self, _id, fail_if_missing=True, api_ver=None, **params):
+        return super().get(_id, fail_if_missing=fail_if_missing, api_ver=api_ver, **params)
 
     # Vip pools
     def get_vip(self, vip_pool_name: str, tenant_id: int = None):
@@ -729,8 +739,8 @@ class ProtectionPolicy(VastResource):
         return super().one(**params)
 
     @cache_on_arguments(expiration_time=5 * MINUTE)
-    def get(self, _id, api_ver=None, **params):
-        return super().get(_id, api_ver=api_ver, **params)
+    def get(self, _id, fail_if_missing=True, api_ver=None, **params):
+        return super().get(_id, fail_if_missing=fail_if_missing, api_ver=api_ver, **params)
 
 @apiver.v5
 class ProtectedPath(VastResource):
