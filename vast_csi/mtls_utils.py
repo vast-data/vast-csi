@@ -562,29 +562,28 @@ class MtlsManager(SerializationMixin):
             volume_id: Volume ID (used for keyring operations)
 
         Returns:
-            list: Mount flags for TLS/mTLS or empty list if not enabled
+            list: Extra mount flags for TLS/mTLS, or [] when xprtsec is unset
         """
         if not self.xprtsec:
             return []
 
+        # NFSv3 mount protocol must be TCP when xprtsec is set (UDP incompatible with TLS/mTLS).
+        flags = ["mountproto=tcp"]
+
         if self.xprtsec == "tls":
-            # TLS-only: server authentication, no client cert
-            # xprtsec=tls is already in mountOptions from StorageClass, nothing extra needed
+            # xprtsec=tls is already in mountOptions from StorageClass
             logger.info("TLS mount for volume %s: Server authentication only (no client certificate)", volume_id)
-            return []
+            return flags
 
         if self.xprtsec == "mtls":
             if not self.has_credentials():
-                # No credentials - rely on tlshd.conf for client certs
                 # xprtsec=mtls is already in mountOptions from StorageClass
                 logger.info(
                     "mTLS mount for volume %s: No credentials in secret, "
                     "using tlshd.conf for client authentication", volume_id
                 )
-                return []
-            
-            # Credentials provided - load to .nfs: keyring
-            # xprtsec=mtls is already in mountOptions, we only add cert/privkey serials
+                return flags
+
             logger.info(
                 "mTLS mount for volume %s: Loading client certificate and private key "
                 "from secret to .nfs: kernel keyring", volume_id
@@ -598,10 +597,11 @@ class MtlsManager(SerializationMixin):
                 "mTLS mount for volume %s: Adding mount options cert_serial=0x%x, privkey_serial=0x%x",
                 volume_id, cert_serial, privkey_serial
             )
-            return [
+            flags += [
                 f"cert_serial=0x{cert_serial:x}",
                 f"privkey_serial=0x{privkey_serial:x}",
             ]
+            return flags
 
         return []
 
