@@ -1,0 +1,18 @@
+# Block CSI driver with extension controller and CSI-Addons replication stack.
+# Required before creating VastStorage CRs for replicated block volumes.
+apiVersion: storage.vastdata.com/v1
+kind: VastCSIDriver
+metadata:
+  name: block.csi.vastdata.com
+  namespace: vast-csi
+spec:
+  driverType: block
+  extensions:
+    enabled: true
+  image:
+    csiVastPlugin:
+      repository: 110450271409.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:2623068
+    vastExtensionController:
+      repository: 110450271409.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:2623068-extensions
+  imagePullSecrets:
+    - name: regcred

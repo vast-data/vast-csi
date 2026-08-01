@@ -214,17 +214,6 @@ update_dockerhub [prod]: &update_dockerhub
     docker tag docker.io/vastdataorg/csi:${VERSION}-operator ${IMAGE_TAG}
     docker push ${IMAGE_TAG}
     echo "pushed ${IMAGE_TAG}"
-
-    if [[ "$CI_ENVIRONMENT_NAME" == "prod" ]]; then
-      # Publish Extensions Controller image (prod releases only, multi-arch via PLATFORMS)
-      export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}-extensions
-      export DOCKERFILE=extensions-controller/Dockerfile
-      export BUILD_CONTEXT=extensions-controller
-      export GIT_TAG=${VERSION}
-      make build_image
-      docker buildx imagetools create -t ${DOCKER_REGISTRY}/dev/vast-csi:${VERSION}-extensions docker.io/vastdataorg/csi:${VERSION}-extensions
-      echo "pushed ${DOCKER_REGISTRY}/dev/vast-csi:${VERSION}-extensions"
-    fi
   after_script:
   - docker logout $DOCKER_HUB
   when: manual
@@ -237,6 +226,36 @@ update_dockerhub [beta]:
   environment: beta
 
 
+update_dockerhub_extensions [prod]:
+  stage: deploy
+  environment: prod
+  only:
+    - /v[\d]\.[\d]+/
+  needs:
+    - job: "update_dockerhub [prod]"
+  script: |
+    set -x
+    VERSION=$(cat version.txt)
+    echo "Publishing Extensions Controller image: ${VERSION}-extensions"
+
+    docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} $DOCKER_HUB
+    export PUSH_ON_SUCCESS=true
+
+    export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}-extensions
+    export DOCKERFILE=extensions-controller/Dockerfile
+    export BUILD_CONTEXT=extensions-controller
+    export GIT_TAG=${VERSION}
+    make build_image
+    docker buildx imagetools create -t ${DOCKER_REGISTRY}/dev/vast-csi:${VERSION}-extensions docker.io/vastdataorg/csi:${VERSION}-extensions
+    echo "pushed docker.io/vastdataorg/csi:${VERSION}-extensions"
+    echo "pushed ${DOCKER_REGISTRY}/dev/vast-csi:${VERSION}-extensions"
+  after_script:
+  - docker logout $DOCKER_HUB
+  when: manual
+  tags:
+    - vast-dev-builder
+
+
 update_dockerhub [hotfix]:
   stage: deploy
   environment: prod
@@ -245,7 +264,8 @@ update_dockerhub [hotfix]:
   script: |
     set -x
     # Extract version from branch name (e.g., 2.6.4-hf1 or v2.6.4-hf1)
-    VERSION=${CI_COMMIT_REF_NAME#v}  # Remove 'v' prefix if present
+    VERSION=${CI_COMMIT_REF_NAME}
+    [[ "$VERSION" != v* ]] && VERSION="v${VERSION}"
     echo "Building hotfix version: ${VERSION}"
     
     docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} $DOCKER_HUB
@@ -355,7 +375,8 @@ update_github [hotfix]:
   script: |
     set -x
     # Extract version from branch name (e.g., 2.6.4-hf1 or v2.6.4-hf1)
-    VERSION=${CI_COMMIT_REF_NAME#v}  # Remove 'v' prefix if present
+    VERSION=${CI_COMMIT_REF_NAME}
+    [[ "$VERSION" != v* ]] && VERSION="v${VERSION}"
     TARGET_BRANCH=$CI_COMMIT_REF_NAME
     echo "Publishing hotfix version: ${VERSION} to branch: ${TARGET_BRANCH}"
     

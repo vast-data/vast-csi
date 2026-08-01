@@ -117,7 +117,7 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 .PHONY: sync-chart-crds
-sync-chart-crds: manifests ## Sync generated CRDs into vastblock and vastcsi Helm chart templates.
+sync-chart-crds: manifests ## Sync generated CRDs into vastcsi, vastblock, and vastcsi-operator Helm chart templates.
 	hack/sync-chart-crds.sh
 
 .PHONY: generate

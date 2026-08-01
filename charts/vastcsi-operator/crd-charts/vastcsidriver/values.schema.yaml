@@ -1571,6 +1571,32 @@ spec:
                   <<: *limits
                 requests:
                   <<: *requests
+            nfsServices:
+              type: object
+              properties:
+                limits:
+                  <<: *limits
+                requests:
+                  <<: *requests
+        nfsServices:
+          type: object
+          description: Runs NFS client daemons in-container for NFS locking/idmap on node OSes that lack them.
+          properties:
+            enabled:
+              type: boolean
+              default: {{ .Values.node.nfsServices.enabled }}
+            services:
+              type: array
+              default: {{ .Values.node.nfsServices.services | toJson }}
+              description: NFS client daemons to run (one list entry per daemon).
+              items:
+                type: string
+                enum:
+                  - statd
+                  - rpcbind
+                  - idmapd
+                  - mountd
+                  - tlshd
         metrics:
           type: object
           description: Metrics configuration for CSI node
@@ -1813,6 +1839,32 @@ spec:
             repository:
               default: {{ .GlobalValues.overrides.csiVastPlugin.repository }}
               type: string
+        csiAddonsSidecar:
+          type: object
+          properties:
+            imagePullPolicy:
+              default: {{ .Values.image.csiAddonsSidecar.imagePullPolicy }}
+              type: string
+              enum:
+                - Always
+                - IfNotPresent
+                - Never
+            repository:
+              default: {{ .GlobalValues.overrides.csiAddonsSidecar.repository }}
+              type: string
+        vastExtensionController:
+          type: object
+          properties:
+            imagePullPolicy:
+              default: {{ .Values.image.vastExtensionController.imagePullPolicy }}
+              type: string
+              enum:
+                - Always
+                - IfNotPresent
+                - Never
+            repository:
+              default: {{ .GlobalValues.overrides.vastExtensionController.repository }}
+              type: string
     # -- images -- end ->
     deletionViewPolicy:
       default: {{ .Values.deletionViewPolicy }}
@@ -1833,6 +1885,245 @@ spec:
         Indicates whether this CSI driver requires an attach operation, implementing ControllerPublishVolume.
         If set to false, the driver will perform ControllerPublishVolume as part of NodePublishVolume operation,
         potentially speeding up volume attachment where HTTP/HTTPS ports are not open.
+    extensions:
+      type: object
+      description: Extension controller configuration (webhooks, replication, CSI-Addons).
+      properties:
+        enabled:
+          type: boolean
+          default: {{ .Values.extensions.enabled }}
+          description: Master flag to enable/disable all extension features at once (webhooks, replication, etc.).
+        devLogging:
+          type: boolean
+          default: {{ .Values.extensions.devLogging }}
+          description: Enables human-readable console logging (colored levels, caller, ISO-8601 timestamps).
+        maxConcurrentReconciles:
+          type: integer
+          format: int32
+          default: {{ .Values.extensions.maxConcurrentReconciles }}
+          description: Worker count per controller-runtime controller.
+        webhook:
+          type: object
+          description: Admission webhooks served by the extension controller.
+          properties:
+            enabled:
+              type: boolean
+              default: {{ .Values.extensions.webhook.enabled }}
+              description: >-
+                Enable webhook server configuration (port, TLS, filters, failure policy).
+                PVC label injection is controlled separately by disablePvcLabelsWebhook.
+            port:
+              type: integer
+              format: int32
+              default: {{ .Values.extensions.webhook.port }}
+              description: Port for the webhook HTTPS server.
+            disablePvcLabelsWebhook:
+              type: boolean
+              default: {{ .Values.extensions.webhook.disablePvcLabelsWebhook }}
+              description: >-
+                When true, disables PVC label injection webhook. Replication CRD validation
+                webhooks (VSCR/VVR) remain active whenever extensions.replication.enabled is true.
+            failurePolicy:
+              type: string
+              default: {{ .Values.extensions.webhook.failurePolicy }}
+              enum:
+                - Fail
+                - Ignore
+              description: Failure policy applied to all webhook handlers.
+            timeoutSeconds:
+              type: integer
+              format: int32
+              default: {{ .Values.extensions.webhook.timeoutSeconds }}
+              description: Admission deadline (seconds) passed to the API server for all webhooks.
+            certManager:
+              type: object
+              description: TLS certificate configuration for webhook HTTPS server.
+              properties:
+                enabled:
+                  type: boolean
+                  default: {{ .Values.extensions.webhook.certManager.enabled }}
+                  description: >-
+                    When true, cert-manager issues and rotates the webhook TLS certificate.
+                    When false, a self-signed CA+cert is generated by Helm.
+              x-kubernetes-preserve-unknown-fields: true
+            filterConfig:
+              type: object
+              description: PVC filtering for the label injection webhook.
+              properties:
+                storageClassName:
+                  type: string
+                  default: {{ .Values.extensions.webhook.filterConfig.storageClassName | quote }}
+                  description: Only PVCs using this exact StorageClass name get labels injected.
+                storageClassNameRegex:
+                  type: string
+                  default: {{ .Values.extensions.webhook.filterConfig.storageClassNameRegex | quote }}
+                  description: Only PVCs whose StorageClass name matches this regex get labels.
+                pvcNameRegex:
+                  type: string
+                  default: {{ .Values.extensions.webhook.filterConfig.pvcNameRegex | quote }}
+                  description: Only PVCs whose name matches this regex get labels.
+                csiDriverName:
+                  type: string
+                  default: {{ .Values.extensions.webhook.filterConfig.csiDriverName | quote }}
+                  description: >-
+                    Only inject labels into PVCs whose StorageClass provisioner matches this
+                    CSI driver name. Set to empty to process PVCs from any provisioner.
+        replication:
+          type: object
+          description: Replication and CSI-Addons configuration.
+          properties:
+            enabled:
+              type: boolean
+              default: {{ .Values.extensions.replication.enabled }}
+              description: Enable replication stack (CSI-Addons operator, CRDs, replication controllers).
+            maxGroupPvcs:
+              type: integer
+              format: int32
+              default: {{ .Values.extensions.replication.maxGroupPvcs }}
+              description: Maximum PVCs per replication group (VGR/VRC).
+            csiAddonsImage:
+              type: string
+              default: {{ .Values.extensions.replication.csiAddonsImage | quote }}
+              description: CSI-Addons cluster operator image.
+            pvcNameFormat:
+              type: string
+              default: {{ .Values.extensions.replication.pvcNameFormat | quote }}
+              description: Format string for destination PVC names.
+            pvNameFormat:
+              type: string
+              default: {{ .Values.extensions.replication.pvNameFormat | quote }}
+              description: Format string for destination PV names.
+            applyExistingPvcs:
+              type: boolean
+              default: {{ .Values.extensions.replication.applyExistingPvcs }}
+              description: >-
+                Inject storageClass (and subsystem for block) labels onto existing PVCs whose
+                backing VAST object is found in the VolumeMapping. Runs on every PrimaryStorageClass change.
+        runOnMaster:
+          type: boolean
+          default: {{ .Values.extensions.runOnMaster }}
+          description: Schedule extension controller on master nodes.
+        runOnControlPlane:
+          type: boolean
+          default: {{ .Values.extensions.runOnControlPlane }}
+          description: Schedule extension controller on control-plane nodes.
+        dnsPolicy:
+          type: string
+          default: {{ .Values.extensions.dnsPolicy }}
+          description: DNS policy for the extension controller pod.
+          enum:
+            - Default
+            - ClusterFirstWithHostNet
+            - ClusterFirst
+        nodeSelector:
+          additionalProperties:
+            type: string
+          type: object
+          description: Node selector for the extension controller pod.
+        tolerations:
+          type: array
+          default: {{ .Values.extensions.tolerations }}
+          description: Tolerations for the extension controller pod.
+          items:
+            type: object
+            properties:
+              effect:
+                type: string
+                description: Effect indicates the taint effect to match.
+              key:
+                type: string
+                description: Key is the taint key that the toleration applies to.
+              operator:
+                type: string
+                description: Operator represents a key's relationship to the value.
+              value:
+                type: string
+                description: Value is the taint value the toleration matches to.
+              tolerationSeconds:
+                type: integer
+                description: Period of time the toleration tolerates the taint.
+        podAffinity:
+          type: object
+          description: Pod affinity rules for the extension controller pod.
+          x-kubernetes-preserve-unknown-fields: true
+        podAntiAffinity:
+          type: object
+          description: Pod anti-affinity rules for the extension controller pod.
+          x-kubernetes-preserve-unknown-fields: true
+        nodeAffinity:
+          type: object
+          description: Node affinity rules for the extension controller pod.
+          x-kubernetes-preserve-unknown-fields: true
+        priorityClassName:
+          type: string
+          default: {{ .Values.extensions.priorityClassName }}
+          description: Priority class for the extension controller pod.
+    extensionController:
+      type: object
+      description: Resource and probe configuration for the extension controller deployment. Scheduling is under extensions.
+      properties:
+        resources:
+          type: object
+          description: Resource limits and requests for extension controller containers.
+          properties:
+            csiVastPlugin:
+              type: object
+              properties:
+                limits:
+                  <<: *limits
+                requests:
+                  <<: *requests
+            csiAddonsSidecar:
+              type: object
+              properties:
+                limits:
+                  <<: *limits
+                requests:
+                  <<: *requests
+            extensionsWebhook:
+              type: object
+              properties:
+                limits:
+                  <<: *limits
+                requests:
+                  <<: *requests
+            extensionsManager:
+              type: object
+              properties:
+                limits:
+                  <<: *limits
+                requests:
+                  <<: *requests
+            csiAddonsClusterManager:
+              type: object
+              properties:
+                limits:
+                  <<: *limits
+                requests:
+                  <<: *requests
+        probes:
+          type: object
+          description: Health probes for extension controller containers.
+          properties:
+            extensionsWebhook:
+              type: object
+              properties:
+                liveness:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                readiness:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+            extensionsManager:
+              type: object
+              properties:
+                liveness:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                readiness:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+          x-kubernetes-preserve-unknown-fields: true
     useLocalIpForMount:
       description:  Use this local IP address for mounting, when the StorageClass does not define a vipPool. This is useful for DPU-based deployments.
       type: string
@@ -1877,6 +2168,11 @@ spec:
       type: integer
       format: int32
       default: {{ .Values.operationTimeout }}
+    addonsOperationTimeout:
+      description: Timeout for CSI-Addons operations (in seconds). This applies to replication and other CSI-Addons services.
+      type: integer
+      format: int32
+      default: {{ .Values.addonsOperationTimeout }}
     operationRetryIntervalStart:
       description: |-
         Each time a failure occurs, sidecar containers initiate retries
@@ -1921,6 +2217,10 @@ spec:
       type: integer
       format: int32
       default: {{ .Values.mountUmountTimeout }}
+    forceLazyUmountOnTimeout:
+      description: When true, a umount that times out is retried with lazy unmount (-l).
+      type: boolean
+      default: {{ .Values.forceLazyUmountOnTimeout }}
     resolveMountSymlinks:
       description: >-
         Enable symlink resolution when querying mount information.
@@ -2437,6 +2737,334 @@ specDescriptors:
     path: node.metrics.serviceMonitor.metricRelabelings
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:node.metrics.serviceMonitor.enabled:true'
+  - description: Enable in-container NFS client daemons for NFS locking/idmap on node OSes that lack them.
+    displayName: NFS Services Enabled
+    path: node.nfsServices.enabled
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - *nfs-driver-dep
+  - description: NFS client daemons to run in the node pod. Add each daemon as a separate list entry (statd, rpcbind, idmapd, mountd, tlshd).
+    displayName: NFS Services
+    path: node.nfsServices.services
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:node.nfsServices.enabled:true'
+      - *nfs-driver-dep
+  - description: When true, a umount that times out is retried with lazy unmount (-l).
+    displayName: Force Lazy Umount On Timeout
+    path: forceLazyUmountOnTimeout
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Timeout for CSI-Addons operations (replication and other CSI-Addons services).
+    displayName: Addons Operation Timeout
+    path: addonsOperationTimeout
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:number'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: CSI-Addons sidecar container image to use.
+    displayName: CSI-Addons Sidecar Image
+    path: image.csiAddonsSidecar.repository
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Image pull policy for CSI-Addons sidecar container image.
+    displayName: CSI-Addons Sidecar Image Pull Policy
+    path: image.csiAddonsSidecar.imagePullPolicy
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:imagePullPolicy'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: VAST Extension Controller container image to use.
+    displayName: VAST Extension Controller Image
+    path: image.vastExtensionController.repository
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+  - description: Image pull policy for VAST Extension Controller container image.
+    displayName: VAST Extension Controller Image Pull Policy
+    path: image.vastExtensionController.imagePullPolicy
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:imagePullPolicy'
+  # Extensions
+  - description: Extension controller configuration (webhooks, replication, CSI-Addons).
+    displayName: Extensions
+    path: extensions
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Master flag to enable/disable all extension features at once (webhooks, replication, etc.).
+    displayName: Extensions Enabled
+    path: extensions.enabled
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+  - description: Enables human-readable console logging (colored levels, caller, ISO-8601 timestamps).
+    displayName: Extensions Dev Logging
+    path: extensions.devLogging
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: Worker count per controller-runtime controller.
+    displayName: Extensions Max Concurrent Reconciles
+    path: extensions.maxConcurrentReconciles
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:number'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: Admission webhooks served by the extension controller.
+    displayName: Webhook
+    path: extensions.webhook
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: Enable webhook server configuration (port, TLS, filters, failure policy). PVC label injection is controlled by disablePvcLabelsWebhook.
+    displayName: Webhook Enabled
+    path: extensions.webhook.enabled
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: TLS certificate configuration for webhook HTTPS server.
+    displayName: Webhook Cert Manager
+    path: extensions.webhook.certManager
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.webhook.enabled:true'
+  - description: PVC filtering for the label injection webhook.
+    displayName: Webhook Filter Config
+    path: extensions.webhook.filterConfig
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.webhook.enabled:true'
+  - description: Replication and CSI-Addons configuration.
+    displayName: Replication
+    path: extensions.replication
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: Enable replication stack (CSI-Addons operator, CRDs, replication controllers).
+    displayName: Replication Enabled
+    path: extensions.replication.enabled
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: Port for the webhook HTTPS server.
+    displayName: Webhook Port
+    path: extensions.webhook.port
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:number'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.webhook.enabled:true'
+  - description: When true, disables PVC label injection webhook.
+    displayName: Disable PVC Labels Webhook
+    path: extensions.webhook.disablePvcLabelsWebhook
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: Failure policy applied to all webhook handlers (Fail or Ignore).
+    displayName: Webhook Failure Policy
+    path: extensions.webhook.failurePolicy
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:select:Fail'
+      - 'urn:alm:descriptor:com.tectonic.ui:select:Ignore'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.webhook.enabled:true'
+  - description: Admission deadline in seconds passed to the API server for all webhooks.
+    displayName: Webhook Timeout Seconds
+    path: extensions.webhook.timeoutSeconds
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:number'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.webhook.enabled:true'
+  - description: Use cert-manager for webhook TLS certificate issuance and rotation.
+    displayName: Webhook Cert Manager Enabled
+    path: extensions.webhook.certManager.enabled
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.webhook.enabled:true'
+  - description: Only PVCs using this exact StorageClass name get labels injected.
+    displayName: Webhook Filter StorageClass Name
+    path: extensions.webhook.filterConfig.storageClassName
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.webhook.enabled:true'
+  - description: Only PVCs whose StorageClass name matches this regex get labels.
+    displayName: Webhook Filter StorageClass Name Regex
+    path: extensions.webhook.filterConfig.storageClassNameRegex
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.webhook.enabled:true'
+  - description: Only PVCs whose name matches this regex get labels.
+    displayName: Webhook Filter PVC Name Regex
+    path: extensions.webhook.filterConfig.pvcNameRegex
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.webhook.enabled:true'
+  - description: CSI driver name for PVC filtering. Empty processes PVCs from any provisioner.
+    displayName: Webhook Filter CSI Driver Name
+    path: extensions.webhook.filterConfig.csiDriverName
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.webhook.enabled:true'
+  - description: Maximum PVCs per replication group (VGR/VRC).
+    displayName: Replication Max Group PVCs
+    path: extensions.replication.maxGroupPvcs
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:number'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.replication.enabled:true'
+  - description: CSI-Addons cluster operator image.
+    displayName: Replication CSI-Addons Image
+    path: extensions.replication.csiAddonsImage
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.replication.enabled:true'
+  - description: Format string for destination PVC names.
+    displayName: Replication PVC Name Format
+    path: extensions.replication.pvcNameFormat
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.replication.enabled:true'
+  - description: Format string for destination PV names.
+    displayName: Replication PV Name Format
+    path: extensions.replication.pvNameFormat
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.replication.enabled:true'
+  - description: Inject labels onto existing PVCs on PrimaryStorageClass reconciliation.
+    displayName: Apply Existing PVCs
+    path: extensions.replication.applyExistingPvcs
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.replication.enabled:true'
+  - description: Schedule extension controller on master nodes.
+    displayName: Extensions Run On Master
+    path: extensions.runOnMaster
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: Schedule extension controller on control-plane nodes.
+    displayName: Extensions Run On Control Plane
+    path: extensions.runOnControlPlane
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: DNS policy for the extension controller pod.
+    displayName: Extensions DNS Policy
+    path: extensions.dnsPolicy
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:select:Default'
+      - 'urn:alm:descriptor:com.tectonic.ui:select:ClusterFirstWithHostNet'
+      - 'urn:alm:descriptor:com.tectonic.ui:select:ClusterFirst'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: Node selector for the extension controller pod.
+    displayName: Extensions Node Selector
+    path: extensions.nodeSelector
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: Tolerations for the extension controller pod.
+    displayName: Extensions Tolerations
+    path: extensions.tolerations
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: Pod affinity rules for the extension controller pod.
+    displayName: Extensions Pod Affinity
+    path: extensions.podAffinity
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:podAffinity'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: Pod anti-affinity rules for the extension controller pod.
+    displayName: Extensions Pod Anti Affinity
+    path: extensions.podAntiAffinity
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:podAntiAffinity'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: Node affinity rules for the extension controller pod.
+    displayName: Extensions Node Affinity
+    path: extensions.nodeAffinity
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:nodeAffinity'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: Priority class for the extension controller pod.
+    displayName: Extensions Priority Class Name
+    path: extensions.priorityClassName
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensions'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  # Extension Controller
+  - description: Resource and probe configuration for the extension controller deployment. Scheduling is configured under Extensions.
+    displayName: Extension Controller
+    path: extensionController
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensionController'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: Resource limits and requests for extension controller containers.
+    displayName: Extension Controller Resources
+    path: extensionController.resources
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensionController'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: Health probes for extension controller containers.
+    displayName: Extension Controller Probes
+    path: extensionController.probes
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensionController'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: Resource limits and requests for the CSI VAST plugin container in the extension controller.
+    displayName: Extension Controller CSI VAST Plugin Resources
+    path: extensionController.resources.csiVastPlugin
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:resourceRequirements'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensionController'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: Resource limits and requests for the CSI-Addons sidecar container.
+    displayName: Extension Controller CSI-Addons Sidecar Resources
+    path: extensionController.resources.csiAddonsSidecar
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:resourceRequirements'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensionController'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: Resource limits and requests for the extensions webhook container.
+    displayName: Extension Controller Webhook Resources
+    path: extensionController.resources.extensionsWebhook
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:resourceRequirements'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensionController'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: Resource limits and requests for the extensions manager container.
+    displayName: Extension Controller Manager Resources
+    path: extensionController.resources.extensionsManager
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:resourceRequirements'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensionController'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
+  - description: Resource limits and requests for the CSI-Addons cluster manager container.
+    displayName: Extension Controller CSI-Addons Cluster Manager Resources
+    path: extensionController.resources.csiAddonsClusterManager
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:resourceRequirements'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:extensionController'
+      - 'urn:alm:descriptor:com.tectonic.ui:fieldDependency:extensions.enabled:true'
 
 
 example:
@@ -2520,6 +3148,15 @@ example:
           requests:
             cpu: {{ .Values.node.resources.nodeDriverRegistrar.requests.cpu }}
             memory: {{ .Values.node.resources.nodeDriverRegistrar.requests.memory }}
+        nfsServices:
+          limits:
+            memory: {{ .Values.node.resources.nfsServices.limits.memory }}
+          requests:
+            cpu: {{ .Values.node.resources.nfsServices.requests.cpu }}
+            memory: {{ .Values.node.resources.nfsServices.requests.memory }}
+      nfsServices:
+        enabled: {{ .Values.node.nfsServices.enabled }}
+        services: {{ .Values.node.nfsServices.services | toJson }}
       metrics:
         enabled: {{ .Values.node.metrics.enabled }}
         port: {{ .Values.node.metrics.port }}
@@ -2548,6 +3185,12 @@ example:
       csiVastPlugin:
         imagePullPolicy: {{ .Values.image.csiVastPlugin.imagePullPolicy }}
         repository: {{ .GlobalValues.overrides.csiVastPlugin.repository }}
+      csiAddonsSidecar:
+        imagePullPolicy: {{ .Values.image.csiAddonsSidecar.imagePullPolicy }}
+        repository: {{ .GlobalValues.overrides.csiAddonsSidecar.repository }}
+      vastExtensionController:
+        imagePullPolicy: {{ .Values.image.vastExtensionController.imagePullPolicy }}
+        repository: {{ .GlobalValues.overrides.vastExtensionController.repository }}
     deletionViewPolicy: {{ .Values.deletionViewPolicy }}
     deletionVipPool: {{ .Values.deletionVipPool }}
     dontUseTrashApi: {{ .Values.dontUseTrashApi }}
@@ -2558,10 +3201,12 @@ example:
     operationRetryIntervalMax: {{ .Values.operationRetryIntervalMax }}
     operationRetryIntervalStart: {{ .Values.operationRetryIntervalStart }}
     operationTimeout: {{ .Values.operationTimeout }}
+    addonsOperationTimeout: {{ .Values.addonsOperationTimeout }}
     truncateVolumeName: {{ .Values.truncateVolumeName }}
     blockHostsAutoPrune: {{ .Values.blockHostsAutoPrune }}
     hostNamePrefix: {{ .Values.hostNamePrefix | quote }}
     mountUmountTimeout: {{ .Values.mountUmountTimeout }}
+    forceLazyUmountOnTimeout: {{ .Values.forceLazyUmountOnTimeout }}
     resolveMountSymlinks: {{ .Values.resolveMountSymlinks }}
     disableUsageStats: {{ .Values.disableUsageStats }}
     cacheMaxAgeSeconds: {{ .Values.cacheMaxAgeSeconds }}
@@ -2572,4 +3217,93 @@ example:
     endpoint: {{ .Values.endpoint }}
     sslCertsSecretName: {{ .Values.sslCertsSecretName }}
     attachRequired: {{ .Values.attachRequired }}
+    extensions:
+      enabled: {{ .Values.extensions.enabled }}
+      devLogging: {{ .Values.extensions.devLogging }}
+      maxConcurrentReconciles: {{ .Values.extensions.maxConcurrentReconciles }}
+      webhook:
+        enabled: {{ .Values.extensions.webhook.enabled }}
+        port: {{ .Values.extensions.webhook.port }}
+        disablePvcLabelsWebhook: {{ .Values.extensions.webhook.disablePvcLabelsWebhook }}
+        failurePolicy: {{ .Values.extensions.webhook.failurePolicy }}
+        timeoutSeconds: {{ .Values.extensions.webhook.timeoutSeconds }}
+        certManager:
+          enabled: {{ .Values.extensions.webhook.certManager.enabled }}
+        filterConfig:
+          storageClassName: {{ .Values.extensions.webhook.filterConfig.storageClassName | quote }}
+          storageClassNameRegex: {{ .Values.extensions.webhook.filterConfig.storageClassNameRegex | quote }}
+          pvcNameRegex: {{ .Values.extensions.webhook.filterConfig.pvcNameRegex | quote }}
+          csiDriverName: {{ .Values.extensions.webhook.filterConfig.csiDriverName | quote }}
+      replication:
+        enabled: {{ .Values.extensions.replication.enabled }}
+        maxGroupPvcs: {{ .Values.extensions.replication.maxGroupPvcs }}
+        csiAddonsImage: {{ .Values.extensions.replication.csiAddonsImage | quote }}
+        pvcNameFormat: {{ .Values.extensions.replication.pvcNameFormat | quote }}
+        pvNameFormat: {{ .Values.extensions.replication.pvNameFormat | quote }}
+        applyExistingPvcs: {{ .Values.extensions.replication.applyExistingPvcs }}
+      runOnMaster: {{ .Values.extensions.runOnMaster }}
+      runOnControlPlane: {{ .Values.extensions.runOnControlPlane }}
+      dnsPolicy: {{ .Values.extensions.dnsPolicy }}
+      nodeSelector: {}
+      tolerations: {{ .Values.extensions.tolerations }}
+      podAffinity: {}
+      podAntiAffinity: {}
+      nodeAffinity: {}
+      priorityClassName: {{ .Values.extensions.priorityClassName }}
+    extensionController:
+      resources:
+        csiVastPlugin:
+          limits:
+            memory: {{ .Values.extensionController.resources.csiVastPlugin.limits.memory }}
+          requests:
+            cpu: {{ .Values.extensionController.resources.csiVastPlugin.requests.cpu }}
+            memory: {{ .Values.extensionController.resources.csiVastPlugin.requests.memory }}
+        csiAddonsSidecar:
+          limits:
+            memory: {{ .Values.extensionController.resources.csiAddonsSidecar.limits.memory }}
+          requests:
+            cpu: {{ .Values.extensionController.resources.csiAddonsSidecar.requests.cpu }}
+            memory: {{ .Values.extensionController.resources.csiAddonsSidecar.requests.memory }}
+        extensionsWebhook:
+          limits:
+            memory: {{ .Values.extensionController.resources.extensionsWebhook.limits.memory }}
+          requests:
+            cpu: {{ .Values.extensionController.resources.extensionsWebhook.requests.cpu }}
+            memory: {{ .Values.extensionController.resources.extensionsWebhook.requests.memory }}
+        extensionsManager:
+          limits:
+            memory: {{ .Values.extensionController.resources.extensionsManager.limits.memory }}
+          requests:
+            cpu: {{ .Values.extensionController.resources.extensionsManager.requests.cpu }}
+            memory: {{ .Values.extensionController.resources.extensionsManager.requests.memory }}
+        csiAddonsClusterManager:
+          limits:
+            cpu: {{ .Values.extensionController.resources.csiAddonsClusterManager.limits.cpu }}
+            memory: {{ .Values.extensionController.resources.csiAddonsClusterManager.limits.memory }}
+          requests:
+            cpu: {{ .Values.extensionController.resources.csiAddonsClusterManager.requests.cpu }}
+            memory: {{ .Values.extensionController.resources.csiAddonsClusterManager.requests.memory }}
+      probes:
+        extensionsWebhook:
+          liveness:
+            initialDelaySeconds: {{ .Values.extensionController.probes.extensionsWebhook.liveness.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.extensionController.probes.extensionsWebhook.liveness.timeoutSeconds }}
+            periodSeconds: {{ .Values.extensionController.probes.extensionsWebhook.liveness.periodSeconds }}
+            failureThreshold: {{ .Values.extensionController.probes.extensionsWebhook.liveness.failureThreshold }}
+          readiness:
+            initialDelaySeconds: {{ .Values.extensionController.probes.extensionsWebhook.readiness.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.extensionController.probes.extensionsWebhook.readiness.timeoutSeconds }}
+            periodSeconds: {{ .Values.extensionController.probes.extensionsWebhook.readiness.periodSeconds }}
+            failureThreshold: {{ .Values.extensionController.probes.extensionsWebhook.readiness.failureThreshold }}
+        extensionsManager:
+          liveness:
+            initialDelaySeconds: {{ .Values.extensionController.probes.extensionsManager.liveness.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.extensionController.probes.extensionsManager.liveness.timeoutSeconds }}
+            periodSeconds: {{ .Values.extensionController.probes.extensionsManager.liveness.periodSeconds }}
+            failureThreshold: {{ .Values.extensionController.probes.extensionsManager.liveness.failureThreshold }}
+          readiness:
+            initialDelaySeconds: {{ .Values.extensionController.probes.extensionsManager.readiness.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.extensionController.probes.extensionsManager.readiness.timeoutSeconds }}
+            periodSeconds: {{ .Values.extensionController.probes.extensionsManager.readiness.periodSeconds }}
+            failureThreshold: {{ .Values.extensionController.probes.extensionsManager.readiness.failureThreshold }}
     applySecurityContextConstraints: {{ .Values.applySecurityContextConstraints }}
