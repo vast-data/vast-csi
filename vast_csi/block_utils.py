@@ -1,34 +1,65 @@
 import re
 import json
 from contextlib import contextmanager
-from plumbum import local, cmd
+from plumbum import local, cmd, ProcessExecutionError
+from plumbum.commands.processes import ProcessTimedOut
 from easypy.bunch import Bunch, bunchify
 from easypy.collections import listify
-from vast_csi.filesystem_utils import hostcmd
+from vast_csi.filesystem_utils import host_commands, hostnvme
 from vast_csi.logging import logger
 
 
 DEVICE_NAME_RGX = re.compile(r"nvme\d+n\d+")
 BLOCK_DEVICE_INFO_PATH = local.path("/sys/block")
 NVME_CLASS_PATH = local.path("/sys/class/nvme")
+NVME_TCP_MODULE = local.path("/sys/module/nvme_tcp")
+
+
+def _ensure_nvme_tcp() -> bool:
+    """Ensure nvme-tcp is loaded; return True when block NVMe can operate."""
+    if NVME_TCP_MODULE.exists():
+        logger.debug("nvme-tcp already loaded")
+        return True
+
+    try:
+        host_commands.modprobe.get_executable("nvme-tcp") & logger.pipe_info("nvme: ")
+    except (ProcessExecutionError, OSError):
+        pass
+
+    if NVME_TCP_MODULE.exists():
+        logger.info("nvme-tcp loaded after modprobe")
+        return True
+
+    logger.error(
+        "nvme-tcp module not available. Block volumes will not work on this node."
+    )
+    return False
 
 
 def try_nvme_probes():
     """
     Load and verify NVMe kernel modules and log NVMe version.
-    This function attempts to load the `nvme` and `nvme-tcp` kernel modules
-    using the `modprobe` utility and logs the results. It then retrieves the
-    NVMe version using the `nvme` command-line tool and logs the version.
+    Checks nvme-tcp via sysfs first (Talos/minimal OS may lack host modprobe).
+    Runs host nvme-cli via chroot to a resolved path under /host.
     If the nvme-tcp module is not available (e.g. on control-plane nodes with
     minimal kernels), logs an error and returns without raising.
     """
+    if not _ensure_nvme_tcp():
+        return
+
     try:
-        hostcmd.modprobe.get_executable("nvme-tcp") & logger.pipe_info("nvme: ")
-        nvme_version = "; ".join(hostcmd.nvme('version').splitlines())
+        host_commands.search_dirs()
+    except ValueError as e:
+        logger.error("Invalid X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS: %s", e)
+        return
+
+    try:
+        nvme_version = "; ".join(hostnvme("version").splitlines())
         logger.info(f"nvme version: {nvme_version}")
-    except Exception as e:
+    except (ProcessExecutionError, ProcessTimedOut, OSError) as e:
         logger.error(
-            "nvme-tcp module not available: %s. Block volumes will not work on this node.",
+            "Could not read host nvme-cli version: %s. Block volume RPCs will fail until "
+            "nvme-cli is installed on the node (Talos: nvme-cli system extension).",
             e,
         )
 
@@ -39,6 +70,7 @@ def is_native_multipath_enabled():
             return f.read().strip() == "Y"
     except Exception:
         return False
+
 
 def get_hostnqn_from_sysfs(subsystem):
     """
@@ -80,7 +112,7 @@ def list_nvme_sessions():
         "IOPolicy":"numa",
         .....
     """
-    stdout = hostcmd.nvme("list-subsys", "-o", "json")
+    stdout = hostnvme("list-subsys", "-o", "json")
     if result := bunchify(json.loads(stdout)):
         # `nvme-cli` version 1.x returns a dictionary, while version 2.x returns a list.
         # To ensure compatibility with both versions, `listify` is used to standardize the output.
@@ -175,7 +207,7 @@ def list_nvme_devices():
       "SectorSize":512
     }
     """
-    stdout = hostcmd.nvme("list", "-o", "json")
+    stdout = hostnvme("list", "-o", "json")
     if result := bunchify(json.loads(stdout)):
         return result.Devices
     return []
@@ -188,9 +220,10 @@ def get_nvme_device_by_nguid(nguid):
         nguid_path = path["nguid"]
         if re.match(DEVICE_NAME_RGX, dev_name) and nguid_path.exists():
             if nguid_path.read().replace("-", "").strip() == nguid:
+                device_path = f"/dev/{dev_name}"
                 return Bunch(
                     Name=dev_name,
-                    DevicePath=f"/dev/{dev_name}",
+                    DevicePath=device_path,
                 )
 
 
@@ -216,7 +249,7 @@ def get_nvme_device_info(device_path):
       ]
     }
     """
-    stdout = hostcmd.nvme("id-ns", device_path, "-o", "json")
+    stdout = hostnvme("id-ns", device_path, "-o", "json")
     return Bunch.from_json(stdout)
 
 
@@ -247,7 +280,7 @@ def get_controller_info(device_path):
       "subnqn":"nqn.2024-08.com.vastdata:default:myblock",
         ................
     """
-    stdout = hostcmd.nvme("id-ctrl", device_path, "-o", "json")
+    stdout = hostnvme("id-ctrl", device_path, "-o", "json")
     return Bunch.from_json(stdout)
 
 
@@ -271,7 +304,7 @@ def connect_nvme_targets(discovery_server, host_nqn, host_id, subsystem_nqn):
         "-q", host_nqn,
         "-I", host_id,
     ]
-    hostcmd.nvme.get_executable(*args) & logger.pipe_info("nvme")
+    hostnvme(*args, pipe=True)
 
     # Return the connected session
     return get_connected_session(host_nqn=host_nqn, subsystem_nqn=subsystem_nqn)

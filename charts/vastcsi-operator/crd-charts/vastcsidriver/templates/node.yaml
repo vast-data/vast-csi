@@ -115,6 +115,10 @@ spec:
               value: "{{ .Values.node.metrics.enabled }}"
             - name: X_CSI_METRICS_PORT
               value: "{{ .Values.node.metrics.port }}"
+{{- if not $is_nfs_driver }}
+            - name: X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS
+              value: "{{ .Values.node.hostBinarySearchDirs }}"
+{{- end }}
 {{- if and $is_nfs_driver .Values.node.nfsServices.enabled }}
             - name: X_CSI_NFS_SERVICES_WAIT
               value: "{{ join "," .Values.node.nfsServices.services }}"
