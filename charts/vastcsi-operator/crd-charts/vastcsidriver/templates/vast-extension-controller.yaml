@@ -212,10 +212,8 @@ spec:
 {{- end }}
       priorityClassName: {{ $rc.priorityClassName }}
       serviceAccountName: {{ .Release.Name }}-vast-extension-controller-sa
-{{- if $rc.tolerations }}
       tolerations:
-{{- toYaml $rc.tolerations | indent 8 }}
-{{- end }}
+{{ toYaml $rc.tolerations | indent 8 }}
       volumes:
         - name: webhook-tls
           secret:
