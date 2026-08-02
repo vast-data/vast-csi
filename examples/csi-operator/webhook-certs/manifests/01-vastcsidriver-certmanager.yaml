@@ -1,0 +1,28 @@
+# NFS driver with extensions; webhook TLS from cert-manager (Certificate installed separately).
+apiVersion: storage.vastdata.com/v1
+kind: VastCSIDriver
+metadata:
+  name: csi.vastdata.com
+  namespace: vast-csi
+spec:
+  driverType: nfs
+  extensions:
+    enabled: true
+    devLogging: true
+    replication:
+      enabled: false
+    webhook:
+      enabled: true
+      disablePvcLabelsWebhook: false
+      certManager:
+        enabled: true
+        certificateRef:
+          name: csi-vastdata-com-vast-extension-controller-webhook-cert
+          namespace: vast-csi
+  image:
+    csiVastPlugin:
+      repository: docker.io/vastdataorg/csi:v2.6.6
+    vastExtensionController:
+      repository: docker.io/vastdataorg/csi:v2.6.6-extensions
+  # imagePullSecrets:
+  #   - name: regcred

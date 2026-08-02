@@ -75,6 +75,9 @@ kubectl apply -f ../csidriver-block.yaml
 kubectl apply -f ../replication/prerequisites/01-secrets.yaml
 kubectl apply -f ../replication/01-vastcsidriver-block.yaml
 # ... follow ../replication/README.md
+
+# Webhook TLS certificate validation (no VAST backend required) — see ../webhook-certs/README.md
+cd ../webhook-certs && ./scripts/setup.sh && ./scripts/verify-webhook-certs.sh --functional
 ```
 
 Check the installation:

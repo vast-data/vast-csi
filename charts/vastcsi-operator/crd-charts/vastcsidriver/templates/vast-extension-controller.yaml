@@ -15,46 +15,47 @@
 {{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
 {{- $filterConfig := $rc.webhook.filterConfig -}}
 {{- $csiDriverName := tpl ($filterConfig.csiDriverName | default (include "vastcsi.csiDriver" .)) . -}}
+{{- $extension_name := include "vastcsi.extensionControllerName" . -}}
 
 {{- if $rc.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-vast-extension-controller
+  name: {{ $extension_name }}
   namespace: {{ include "vastcsi.namespace" . }}
   labels:
 {{- include "vastcsi.labels" . | nindent 4 }}
-    app: vast-extension-controller
+    app: {{ $extension_name }}
     app.kubernetes.io/component: "extension-controller"
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: vast-extension-controller
+      app: {{ $extension_name }}
 {{- include "vastcsi.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        app: vast-extension-controller
+        app: {{ $extension_name }}
 {{- include "vastcsi.labels" . | nindent 8 }}
     spec:
 {{- if .Values.imagePullSecrets }}
       imagePullSecrets:
 {{ toYaml .Values.imagePullSecrets | indent 8 }}
 {{- end }}
-{{- if or $rc.podAffinity $rc.podAntiAffinity $rc.nodeAffinity }}
+{{- if or $ec.podAffinity $ec.podAntiAffinity $ec.nodeAffinity }}
       affinity:
-{{- if $rc.podAffinity }}
+{{- if $ec.podAffinity }}
         podAffinity:
-          {{- toYaml $rc.podAffinity | nindent 10 }}
+          {{- toYaml $ec.podAffinity | nindent 10 }}
 {{- end }}
-{{- if $rc.podAntiAffinity }}
+{{- if $ec.podAntiAffinity }}
         podAntiAffinity:
-          {{- toYaml $rc.podAntiAffinity | nindent 10 }}
+          {{- toYaml $ec.podAntiAffinity | nindent 10 }}
 {{- end }}
-{{- if $rc.nodeAffinity }}
+{{- if $ec.nodeAffinity }}
         nodeAffinity:
-          {{- toYaml $rc.nodeAffinity | nindent 10 }}
+          {{- toYaml $ec.nodeAffinity | nindent 10 }}
 {{- end }}
 {{- end }}
       containers:
@@ -197,27 +198,27 @@ spec:
 {{- include "vastcsi.vmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 12 }}
           resources: {{- toYaml .Values.extensionController.resources.csiVastPlugin | nindent 12 }}
 {{- end }}
-      dnsPolicy: {{ $rc.dnsPolicy }}
-{{- if or $rc.runOnMaster $rc.runOnControlPlane $rc.nodeSelector }}
+      dnsPolicy: {{ $ec.dnsPolicy }}
+{{- if or $ec.runOnMaster $ec.runOnControlPlane $ec.nodeSelector }}
       nodeSelector:
-{{- if $rc.runOnMaster }}
+{{- if $ec.runOnMaster }}
         node-role.kubernetes.io/master: ""
 {{- end }}
-{{- if $rc.runOnControlPlane }}
+{{- if $ec.runOnControlPlane }}
         node-role.kubernetes.io/control-plane: ""
 {{- end }}
-{{- if $rc.nodeSelector }}
-{{- toYaml $rc.nodeSelector | nindent 8 }}
+{{- if $ec.nodeSelector }}
+{{- toYaml $ec.nodeSelector | nindent 8 }}
 {{- end }}
 {{- end }}
-      priorityClassName: {{ $rc.priorityClassName }}
+      priorityClassName: {{ $ec.priorityClassName }}
       serviceAccountName: {{ .Release.Name }}-vast-extension-controller-sa
       tolerations:
-{{ toYaml $rc.tolerations | indent 8 }}
+{{ toYaml $ec.tolerations | indent 8 }}
       volumes:
         - name: webhook-tls
           secret:
-            secretName: {{ include "vastcsi.dnsSafeReleaseName" . }}-vast-extension-controller-webhook-tls
+            secretName: {{ include "vastcsi.webhookTLSSecretName" . }}
         - name: socket-dir
           emptyDir: {}
         - name: extensions-dir

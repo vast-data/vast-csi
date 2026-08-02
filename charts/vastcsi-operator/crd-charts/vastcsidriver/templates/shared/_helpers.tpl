@@ -25,6 +25,32 @@
 {{- .Release.Name | replace "." "-" | trunc 63 | trimSuffix "-" -}}
 {{- end }}
 
+{{- define "vastcsi.workloadNamePrefix" -}}
+{{- ternary "csi" "block" (eq .Values.driverType "nfs") -}}
+{{- end }}
+
+{{- define "vastcsi.extensionControllerName" -}}
+{{- printf "%s-vast-extension-controller" (include "vastcsi.workloadNamePrefix" .) -}}
+{{- end }}
+
+{{- define "vastcsi.webhookServiceName" -}}
+{{- printf "%s-vast-extension-controller-webhook" (include "vastcsi.dnsSafeReleaseName" .) -}}
+{{- end }}
+
+{{- define "vastcsi.webhookTLSSecretName" -}}
+{{- printf "%s-tls" (include "vastcsi.webhookServiceName" .) -}}
+{{- end }}
+
+{{- define "vastcsi.webhookCertificateName" -}}
+{{- $default := printf "%s-cert" (include "vastcsi.webhookServiceName" .) -}}
+{{- default $default .Values.extensions.webhook.certManager.certificateRef.name -}}
+{{- end }}
+
+{{- define "vastcsi.webhookInjectCAFrom" -}}
+{{- $ns := default (include "vastcsi.namespace" . | trimAll "\"") .Values.extensions.webhook.certManager.certificateRef.namespace -}}
+{{- printf "%s/%s" $ns (include "vastcsi.webhookCertificateName" .) -}}
+{{- end }}
+
 {{/*
 Normalize node.nfsServices.services for Helm and OLM UI.
 The console may store a single array element like "statd rpcbind" instead of ["statd", "rpcbind"].
