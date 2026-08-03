@@ -1,0 +1,130 @@
+{{- $rc := .Values.extensions -}}
+{{- $wh := $rc.webhook -}}
+{{- $filterConfig := $wh.filterConfig -}}
+{{- $csiDriverName := tpl ($filterConfig.csiDriverName | default "") . -}}
+{{- /* Cert + MutatingWebhookConfiguration are created whenever extensions.enabled is true.
+       disablePvcLabelsWebhook only controls whether the pvc-label-injector webhook entry
+       is included — it is also forwarded as --enable-pvc-label-webhook to the process.
+
+       TLS modes:
+       - certManager.enabled=false: Helm generates self-signed CA+cert Secret and embeds caBundle.
+       - certManager.enabled=true:  Certificate/Issuer are installed separately (not by Helm).
+         cert-manager populates the TLS Secret; cainjector fills MWC caBundle via annotation. */}}
+{{- $pvcWebhookEnabled := and $rc.enabled (not $wh.disablePvcLabelsWebhook) -}}
+{{- $replicationWebhooksEnabled := include "vastcsi.replication-enabled" . -}}
+{{- if $rc.enabled }}
+{{- $ns := include "vastcsi.namespace" . | trimAll "\"" }}
+{{- $svcName := include "vastcsi.webhookServiceName" . }}
+{{- $secretName := include "vastcsi.webhookTLSSecretName" . }}
+{{- $cn := printf "%s.%s.svc" $svcName $ns }}
+{{- $altNames := list $cn (printf "%s.%s.svc.cluster.local" $svcName $ns) }}
+{{- $caCrt := "" }}
+{{- if not $wh.certManager.enabled }}
+{{- /*
+  Reuse existing TLS certs when upgrading so that the caBundle in the
+  MutatingWebhookConfiguration stays in sync with the cert the pod is serving.
+  Only generate a new CA+cert on the first install (when the Secret is absent).
+*/}}
+{{- $existingSecret := lookup "v1" "Secret" $ns $secretName }}
+{{- $tlsCrt := "" }}
+{{- $tlsKey := "" }}
+{{- if $existingSecret }}
+  {{- $tlsCrt = index $existingSecret.data "tls.crt" }}
+  {{- $tlsKey = index $existingSecret.data "tls.key" }}
+  {{- $caCrt  = index $existingSecret.data "ca.crt"  }}
+{{- else }}
+  {{- $ca   := genCA "vast-csi-webhook-ca" 3650 }}
+  {{- $cert := genSignedCert $cn nil $altNames 3650 $ca }}
+  {{- $tlsCrt = $cert.Cert | b64enc }}
+  {{- $tlsKey = $cert.Key  | b64enc }}
+  {{- $caCrt  = $ca.Cert   | b64enc }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secretName }}
+  namespace: {{ include "vastcsi.namespace" . }}
+  labels:
+  {{- include "vastcsi.labels" . | nindent 4 }}
+type: kubernetes.io/tls
+data:
+  tls.crt: {{ $tlsCrt }}
+  tls.key: {{ $tlsKey }}
+  ca.crt:  {{ $caCrt }}
+---
+{{- end }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ $svcName }}
+  labels:
+  {{- include "vastcsi.labels" . | nindent 4 }}
+{{- if $wh.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ include "vastcsi.webhookInjectCAFrom" . }}
+{{- end }}
+webhooks:
+{{- if $pvcWebhookEnabled }}
+  - name: pvc-label-injector.vastdata.com
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ $wh.failurePolicy | default "Fail" }}
+    timeoutSeconds: {{ $wh.timeoutSeconds | default 30 }}
+    clientConfig:
+      service:
+        name: {{ $svcName }}
+        namespace: {{ $ns }}
+        path: /mutate-pvc
+{{- if not $wh.certManager.enabled }}
+      caBundle: {{ $caCrt }}
+{{- end }}
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["persistentvolumeclaims"]
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values: ["kube-system", "kube-public"]
+{{- end }}
+{{- if $replicationWebhooksEnabled }}
+  - name: vaststorageclassreplication.vastdata.com
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ $wh.failurePolicy | default "Fail" }}
+    timeoutSeconds: {{ $wh.timeoutSeconds | default 30 }}
+    clientConfig:
+      service:
+        name: {{ $svcName }}
+        namespace: {{ $ns }}
+        path: /validate-vastdata-com-v1alpha1-vaststorageclassreplication
+{{- if not $wh.certManager.enabled }}
+      caBundle: {{ $caCrt }}
+{{- end }}
+    rules:
+      - apiGroups: ["vastdata.com"]
+        apiVersions: ["v1alpha1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["vaststorageclassreplications"]
+  - name: vastvolumereplication.vastdata.com
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ $wh.failurePolicy | default "Fail" }}
+    timeoutSeconds: {{ $wh.timeoutSeconds | default 30 }}
+    clientConfig:
+      service:
+        name: {{ $svcName }}
+        namespace: {{ $ns }}
+        path: /validate-vastdata-com-v1alpha1-vastvolumereplication
+{{- if not $wh.certManager.enabled }}
+      caBundle: {{ $caCrt }}
+{{- end }}
+    rules:
+      - apiGroups: ["vastdata.com"]
+        apiVersions: ["v1alpha1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["vastvolumereplications"]
+{{- end }}
+{{- end }}

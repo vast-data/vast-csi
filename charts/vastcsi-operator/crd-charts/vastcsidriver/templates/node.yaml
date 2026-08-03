@@ -7,6 +7,7 @@
 {{- $csi_sock := printf "%s.sock" ($driver_name | lower | replace "." "-" | replace "_" "-" | trimSuffix "-" | trimPrefix "-") -}}
 {{- $is_nfs_driver := (eq .Values.driverType "nfs") }}
 {{- $name_prefix := $is_nfs_driver | ternary "csi" "block" }}
+{{- $nfsServices := compact (splitList " " (join " " (default list .Values.node.nfsServices.services))) -}}
 
 apiVersion: apps/v1
 kind: DaemonSet
@@ -46,13 +47,13 @@ spec:
           imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default "IfNotPresent" }}
           args:
             - run-nfs-services
-            - --services={{ join "," .Values.node.nfsServices.services }}
+            - --services={{ include "vastcsi.nfsServicesArg" . }}
           securityContext:
             privileged: true
             allowPrivilegeEscalation: true
-{{- if or (has "idmapd" .Values.node.nfsServices.services) (has "tlshd" .Values.node.nfsServices.services) }}
+{{- if or (has "idmapd" $nfsServices) (has "tlshd" $nfsServices) }}
           volumeMounts:
-{{- if has "idmapd" .Values.node.nfsServices.services }}
+{{- if has "idmapd" $nfsServices }}
             - name: nfs-state
               mountPath: /var/lib/nfs
               mountPropagation: HostToContainer
@@ -60,7 +61,7 @@ spec:
               mountPath: /etc/idmapd.conf
               readOnly: true
 {{- end }}
-{{- if has "tlshd" .Values.node.nfsServices.services }}
+{{- if has "tlshd" $nfsServices }}
             - name: tlshd-conf
               mountPath: /etc/tlshd.conf
               readOnly: true
@@ -117,7 +118,7 @@ spec:
               value: "{{ .Values.node.metrics.port }}"
 {{- if and $is_nfs_driver .Values.node.nfsServices.enabled }}
             - name: X_CSI_NFS_SERVICES_WAIT
-              value: "{{ join "," .Values.node.nfsServices.services }}"
+              value: "{{ include "vastcsi.nfsServicesArg" . }}"
 {{- end }}
 {{- if .Values.node.metrics.enabled }}
           ports:
@@ -180,7 +181,7 @@ spec:
         - name: device-dir
           hostPath:
             path: /dev
-        {{- if and $is_nfs_driver (has "idmapd" .Values.node.nfsServices.services) }}
+        {{- if and $is_nfs_driver (has "idmapd" $nfsServices) }}
         - name: nfs-state
           hostPath:
             path: /var/lib/nfs
@@ -190,7 +191,7 @@ spec:
             path: /etc/idmapd.conf
             type: File
         {{- end }}
-        {{- if and $is_nfs_driver (has "tlshd" .Values.node.nfsServices.services) }}
+        {{- if and $is_nfs_driver (has "tlshd" $nfsServices) }}
         - name: tlshd-conf
           hostPath:
             path: /etc/tlshd.conf

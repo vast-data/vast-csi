@@ -65,10 +65,19 @@ If you prefer to manually update the bundle image in the manifests:
 
 ## Testing the Installation
 
-After installation, test the operator by creating a VastCSIDriver:
+After installation, test the operator:
 
 ```bash
-kubectl apply -f ../../csi-operator/csidriver-block.yaml
+# Basic block driver
+kubectl apply -f ../csidriver-block.yaml
+
+# Block replication (two VAST clusters) — see ../replication/README.md
+kubectl apply -f ../replication/prerequisites/01-secrets.yaml
+kubectl apply -f ../replication/01-vastcsidriver-block.yaml
+# ... follow ../replication/README.md
+
+# Webhook TLS certificate validation (no VAST backend required) — see ../webhook-certs/README.md
+cd ../webhook-certs && ./scripts/setup.sh && ./scripts/verify-webhook-certs.sh --functional
 ```
 
 Check the installation:

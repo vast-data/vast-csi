@@ -154,6 +154,10 @@ spec:
       name: csi-provisioner
     - image: {{ .Values.overrides.csiNodeDriverRegistrar.repository }}
       name: csi-node-driver-registrar
+    - image: {{ .Values.overrides.csiAddonsSidecar.repository }}
+      name: csi-addons-sidecar
+    - image: {{ .Values.overrides.vastExtensionController.repository }}
+      name: vast-extension-controller
     - image: {{ .Values.managerImage | required "Operator image is required." }}
       name: csi-vast-operator
     - image: {{ .Values.proxyImage }}

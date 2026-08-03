@@ -22,7 +22,13 @@ Create chart name and version as used by the chart label.
   resources:
     - namespaces
   verbs:
-    - get
+    - '*'
+- apiGroups:
+    - ""
+  resources:
+    - configmaps
+  verbs:
+    - '*'
 - apiGroups:
     - ""
   resources:
@@ -200,6 +206,13 @@ Create chart name and version as used by the chart label.
     - create
     - update
     - delete
+- apiGroups:
+    - admissionregistration.k8s.io
+  resources:
+    - mutatingwebhookconfigurations
+    - validatingwebhookconfigurations
+  verbs:
+    - '*'
 {{- end }}
 
 {{- define "csi-operator.rbac.leader-election" -}}
@@ -309,6 +322,10 @@ template:
             value: {{ .Values.overrides.csiResizer.repository }}
           - name: RELATED_IMAGE_CSI_SNAPSHOTTER
             value: {{ .Values.overrides.csiSnapshotter.repository }}
+          - name: RELATED_IMAGE_CSI_ADDONS_SIDECAR
+            value: {{ .Values.overrides.csiAddonsSidecar.repository }}
+          - name: RELATED_IMAGE_VAST_EXTENSION_CONTROLLER
+            value: {{ .Values.overrides.vastExtensionController.repository }}
     {{- if .Values.imagePullSecret }}
     imagePullSecrets:
       - name: {{ .Values.imagePullSecret }}
