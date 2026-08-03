@@ -16,7 +16,6 @@ import os
 import json
 import random
 import threading
-from collections.abc import Mapping
 from functools import wraps
 from pprint import pformat
 import inspect
@@ -35,12 +34,10 @@ from vast_csi.proto import addons_identity_pb2, addons_identity_pb2_grpc
 from vast_csi import csi_types as types
 from vast_csi.csi_types import (
     FAILED_PRECONDITION,
-    GRPC_TO_CSI,
     INTERNAL,
     INVALID_ARGUMENT,
     UNKNOWN,
 )
-from vast_csi.extensions_client import resolve_secret
 from vast_csi.utils import stringify_dict
 from vast_csi.filesystem_utils import umount_tmpfs
 from vast_csi.builders import  parse_volume_id
@@ -54,36 +51,6 @@ from vast_csi.logging import logger
 
 CONF = None
 META_FILE_NAME = ".vast-csi-meta"
-
-# When set in a request map field, credentials are fetched from the
-# extensions-controller instead of sidecar-injected request secrets.
-SECRET_NAME_PARAM = "vastdata.com/secret-name"
-SECRET_NAMESPACE_PARAM = "vastdata.com/secret-namespace"
-
-
-def _load_secrets(params):
-    """Load secrets from sidecar injection or extensions-controller via request maps."""
-    if "secrets" in params:
-        return params.pop("secrets")
-
-    for container in params.values():
-        if not isinstance(container, Mapping):
-            continue
-        secret_name = container.get(SECRET_NAME_PARAM)
-        secret_namespace = container.get(SECRET_NAMESPACE_PARAM)
-        if not secret_name and not secret_namespace:
-            continue
-        if not secret_name or not secret_namespace:
-            raise Abort(
-                INVALID_ARGUMENT,
-                f"{SECRET_NAME_PARAM} and {SECRET_NAMESPACE_PARAM} must both be set",
-            )
-        try:
-            return resolve_secret(secret_name, secret_namespace)
-        except grpc.RpcError as exc:
-            code = GRPC_TO_CSI.get(exc.code(), INTERNAL)
-            raise Abort(code, exc.details() or str(exc)) from exc
-    return {}
 
 
 # Request ID counter for unique request tracking
@@ -103,6 +70,10 @@ def _get_next_uid():
 class Instrumented:
 
     SILENCED = ["Probe", "NodeGetCapabilities"]
+
+    def resolve_secrets(self, params):
+        """Load VMS credentials for this RPC. Default: CSI sidecar-injected secrets map."""
+        return params.pop("secrets", {})
 
     @classmethod
     def logged(cls, func):
@@ -124,7 +95,7 @@ class Instrumented:
             peer = context.peer()
             params = {fld.name: value for fld, value in request.ListFields()}
             # secrets are not logged and not the part of function signature.
-            secrets = _load_secrets(params)
+            secrets = self.resolve_secrets(params)
             missing_params = required_params - {"request", "context", "vms_session", "exit_stack", "luks_manager", "metrics_registry", "mtls_manager"} - set(params)
 
             # Get cluster_name from volume_id, snapshot_id or source_volume_id in case of id identifier with metadata

@@ -39,8 +39,17 @@ sslCertsSecretName: ""
 bucketClassDefaults:
   # Where buckets will be located on VAST - must be provided by user
   storagePath: ""
-  # Name of VAST VIP pool to use - must be provided by user
+  # Name of VAST VIP pool to use. Must specify either vipPool or vipPoolFQDN.
   vipPool: ""
+  # The FQDN of the VIP pool to use. Must specify either vipPool or vipPoolFQDN.
+  vipPoolFQDN: ""
+  # When true, prepend a random prefix to vipPoolFQDN for per-bucket VIP distribution.
+  vipPoolFQDNRandomPrefix: true
+  # Per-BucketClass VMS auth secret (may be tenant-admin or cluster-admin).
+  # Differs from chart-level secretName only in that this one is scoped per BucketClass.
+  # secretNamespace defaults to the Helm release namespace when secretName is set.
+  secretName: ""
+  secretNamespace: ""
   # Name of S3 policy to create bucket - must be provided by user
   viewPolicy: ""
   # On bucket delete behavior. By default, Vast Cluster bucket will be removed.
@@ -56,7 +65,9 @@ bucketClasses: {}
 #   36-char BucketClaim UID; S3/VAST bucket names are limited to 63 characters).
 #   vastdata-bucket:
 #     vipPool: vippool-1
-#     viewPolicy: s3_policy
+#     vipPoolFQDN: s3.example.com
+#     secretName: team-a-vast-auth
+#     secretNamespace: app-team
 #     # Optional: VMS S3 lifecycle rules applied at bucket create.
 #     # One rule per list element on the bucket's view; removed on bucket delete.
 #     # Rules apply at create only (BucketClass is immutable).
@@ -69,6 +80,8 @@ bucketClasses: {}
 #         expiration_days: 7
 #         prefix: tmp/
 #         abort_mpu_days_after_initiation: 1
+
+bucketAccessClasses: {}
 
 ####################
 # COSI PLUGIN RUNTIME PARAMETERS
@@ -115,6 +128,8 @@ image:
 # EXTENSIONS (always-on with the COSI driver)
 ####################
 extensions:
+  # Human-readable console logging (colored levels, caller, ISO-8601 timestamps).
+  devLogging: true
   # Bucket-params mutating webhook + TLS (merges cosi.vastdata.com/* claim annotations).
   # Helm generates a self-signed serving cert (no cert-manager path yet).
   webhook:

@@ -1,11 +1,16 @@
 import json
 import pytest
 import grpc
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from easypy.bunch import Bunch
 from vast_csi.exceptions import Abort, MissingParameter
-from vast_csi.builders.cosi import parse_lifecycle_rules
-from vast_csi.plugins.cosi import CosiProvisioner
+from vast_csi.builders.cosi import parse_create_bucket_params, parse_lifecycle_rules
+from vast_csi.plugins.cosi import (
+    SECRET_NAME_PARAM,
+    SECRET_NAMESPACE_PARAM,
+    BucketId,
+    CosiProvisioner,
+)
 
 THIRTY_GIB = 30 * 1024 ** 3
 
@@ -30,6 +35,113 @@ def _view_bunch(name, root_export="/buckets", tenant_id=1, view_id=42):
     root = root_export.strip("/")
     path = f"/{root}/{name}" if root else f"/{name}"
     return Bunch(tenant_id=tenant_id, path=path, id=view_id)
+
+
+class TestBucketId:
+    def test_parse_ok(self):
+        parsed = BucketId.parse("bkt@7@https://s3.example.com:443")
+        assert parsed.name == "bkt"
+        assert parsed.tenant_id == "7"
+        assert parsed.endpoint == "https://s3.example.com:443"
+
+    def test_parse_rejects_bad_format(self):
+        with pytest.raises(Abort) as ctx:
+            BucketId.parse("only-two@parts")
+        assert ctx.value.code == grpc.StatusCode.INVALID_ARGUMENT
+
+
+class TestCosiResolveSecrets:
+    def test_bucket_id_uses_cosi_bucket_auth(self):
+        provisioner = CosiProvisioner()
+        with patch(
+            "vast_csi.plugins.cosi.resolve_cosi_bucket_auth",
+            return_value={"endpoint": "vms", "token": "t"},
+        ) as mock_auth:
+            got = provisioner.resolve_secrets({"bucket_id": "bkt@1@http://x:80"})
+        assert got == {"endpoint": "vms", "token": "t"}
+        mock_auth.assert_called_once_with("bkt@1@http://x:80")
+
+    def test_parameters_secret_refs(self):
+        provisioner = CosiProvisioner()
+        with patch(
+            "vast_csi.plugins.cosi.resolve_secret",
+            return_value={"endpoint": "vms", "username": "u", "password": "p"},
+        ) as mock_secret:
+            got = provisioner.resolve_secrets({
+                "parameters": {
+                    SECRET_NAME_PARAM: "team-auth",
+                    SECRET_NAMESPACE_PARAM: "app-team",
+                },
+            })
+        assert got["username"] == "u"
+        mock_secret.assert_called_once_with("team-auth", "app-team")
+
+    def test_parameters_preferred_over_bucket_id(self):
+        provisioner = CosiProvisioner()
+        with patch(
+            "vast_csi.plugins.cosi.resolve_secret",
+            return_value={"token": "from-params"},
+        ) as mock_secret, patch(
+            "vast_csi.plugins.cosi.resolve_cosi_bucket_auth",
+        ) as mock_auth:
+            got = provisioner.resolve_secrets({
+                "bucket_id": "bkt@1@http://x:80",
+                "parameters": {
+                    SECRET_NAME_PARAM: "team-auth",
+                    SECRET_NAMESPACE_PARAM: "app-team",
+                },
+            })
+        assert got == {"token": "from-params"}
+        mock_secret.assert_called_once_with("team-auth", "app-team")
+        mock_auth.assert_not_called()
+
+    def test_bucket_id_when_parameters_have_no_secret_refs(self):
+        provisioner = CosiProvisioner()
+        with patch(
+            "vast_csi.plugins.cosi.resolve_cosi_bucket_auth",
+            return_value={"token": "from-bucket"},
+        ) as mock_auth:
+            got = provisioner.resolve_secrets({
+                "bucket_id": "bkt@1@http://x:80",
+                "parameters": {"view_policy": "default"},
+            })
+        assert got == {"token": "from-bucket"}
+        mock_auth.assert_called_once_with("bkt@1@http://x:80")
+
+    def test_ignores_secret_refs_outside_parameters(self):
+        provisioner = CosiProvisioner()
+        got = provisioner.resolve_secrets({
+            "delete_context": {
+                SECRET_NAME_PARAM: "nope",
+                SECRET_NAMESPACE_PARAM: "nope-ns",
+            },
+        })
+        assert got == {}
+
+    def test_partial_secret_ref_rejected(self):
+        provisioner = CosiProvisioner()
+        with pytest.raises(Abort) as ctx:
+            provisioner.resolve_secrets({
+                "parameters": {SECRET_NAME_PARAM: "only-name"},
+            })
+        assert ctx.value.code == grpc.StatusCode.INVALID_ARGUMENT
+
+    def test_empty_without_refs(self):
+        assert CosiProvisioner().resolve_secrets({"parameters": {}}) == {}
+
+
+class TestParseCreateBucketParamsNamespaced:
+    def test_strips_all_vastdata_com_params_from_remaining(self):
+        params = parse_create_bucket_params("bucket", {
+            **COMMON_PARAMS,
+            "vastdata.com/secret-name": "team-auth",
+            "vastdata.com/secret-namespace": "app-team",
+            "cosi.vastdata.com/maxSize": "10Gi",
+            "cosi.vastdata.com/unknown": "drop-me",
+        })
+        assert all("vastdata.com" not in k for k in params.remaining_parameters)
+        assert params.requested_capacity == 10 * 1024 ** 3
+        assert params.remaining_parameters["view_policy"] == "default"
 
 
 class TestParseLifecycleRules:
@@ -242,8 +354,16 @@ class TestCosiProvisionerSuite:
             "create_dir": True,
         }
 
-    @pytest.mark.parametrize("missing_param", ["root_export", "vip_pool_name"])
-    def test_create_bucket_missing_required_params(self, missing_param, vms_session_with_mocked_resources_factory):
+    @pytest.mark.parametrize(
+        "missing_param, expected_exc, message_part",
+        [
+            ("root_export", MissingParameter, "cannot be empty"),
+            ("vip_pool_name", Abort, "either vip_pool_name or vip_pool_fqdn"),
+        ],
+    )
+    def test_create_bucket_missing_required_params(
+        self, missing_param, expected_exc, message_part, vms_session_with_mocked_resources_factory
+    ):
         """Test missing required parameters"""
         # Preparation
         params = COMMON_PARAMS.copy()
@@ -251,14 +371,14 @@ class TestCosiProvisionerSuite:
         bucket_name = "test-bucket"
 
         # Execution
-        with pytest.raises(MissingParameter) as ex_context:
+        with pytest.raises(expected_exc) as ex_context:
             self._create_bucket(
                 name=bucket_name, parameters=params, vms_factory=vms_session_with_mocked_resources_factory
             )
 
         # Assertion
         err = ex_context.value
-        assert "cannot be empty" in err.message
+        assert message_part in err.message
         assert err.code == grpc.StatusCode.INVALID_ARGUMENT
 
     def test_create_bucket_rejects_name_longer_than_vast_max(

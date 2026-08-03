@@ -191,6 +191,15 @@ def resolve_secret(secret_name: str, secret_namespace: str) -> dict[str, str]:
     return dict(resp.secrets)
 
 
+def resolve_cosi_bucket_auth(bucket_id: str) -> dict[str, str]:
+    """Resolve VMS credentials for a COSI bucket_id via extensions-controller."""
+    resp = _rpc(
+        "ResolveCOSIBucketAuth",
+        vast_extensions_pb2.ResolveCOSIBucketAuthRequest(bucket_id=bucket_id),
+    )
+    return dict(resp.secrets)
+
+
 def get_tenant_guid_for_sibling(storage_class: str) -> str:
     """Return the VAST tenant GUID of the *other* StorageClass in the replication group.
 

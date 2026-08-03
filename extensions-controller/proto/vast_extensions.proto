@@ -26,6 +26,12 @@ service VastExtensions {
   // key/value map, matching CSI CreateVolumeRequest.secrets as populated by
   // the external-provisioner sidecar.
   rpc ResolveSecret(ResolveSecretRequest) returns (ResolveSecretResponse);
+
+  // ResolveCOSIBucketAuth resolves VMS credentials for a COSI bucket_id by
+  // looking up the Bucket CR and resolving vastdata.com/secret-* parameters.
+  // If those parameters are absent, returns an empty secrets map so the driver
+  // can fall back to chart-mounted /opt/vms-auth.
+  rpc ResolveCOSIBucketAuth(ResolveCOSIBucketAuthRequest) returns (ResolveSecretResponse);
 }
 
 // ---------------------------------------------------------------------------
@@ -106,4 +112,9 @@ message ResolveSecretResponse {
   // secrets contains the Secret data keys and string values, matching the
   // map passed in CSI RPC requests (e.g. CreateVolumeRequest.secrets).
   map<string, string> secrets = 1;
+}
+
+message ResolveCOSIBucketAuthRequest {
+  // bucket_id is the COSI driver bucket identifier (Bucket.status.bucketID).
+  string bucket_id = 1;
 }

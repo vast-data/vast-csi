@@ -10,10 +10,11 @@
 {{- if and .ca_bundle (not .Values.verifySsl) -}}
   {{- fail "When sslCert is provided `verifySsl` must be set to true." -}}
 {{- end }}
-
+{{- if .Values.secretName }}
 - name: vms-auth
   secret:
-    secretName: {{ required "secretName field must be specified" .Values.secretName | quote }}
+    secretName: {{ .Values.secretName | quote }}
+{{- end }}
 {{- if $.ca_bundle }}
 - name: vms-ca-bundle
   secret:
@@ -27,9 +28,11 @@
 
 {{/* Volume bindings for vms credentials and vms session certificates */}}
 {{ define "vastcosivmsAuthVolumeMount" }}
+{{- if .Values.secretName }}
 - name: vms-auth
   mountPath: /opt/vms-auth
   readOnly: true
+{{- end }}
 {{- if $.ca_bundle }}
 - name: vms-ca-bundle
   mountPath: /etc/ssl/certs

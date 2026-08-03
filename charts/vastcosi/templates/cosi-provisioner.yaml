@@ -1,6 +1,7 @@
 {{- $csi_images := .Values.image -}}
 {{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
 {{- $wh := .Values.extensions.webhook -}}
+{{- $ext := .Values.extensions -}}
 
 apiVersion: apps/v1
 kind: Deployment
@@ -37,10 +38,14 @@ spec:
 {{- include "vastcosicommonEnv" . | indent 10 }}
           - name: CSI_ENDPOINT
             value: unix:///var/lib/cosi/cosi.sock
+          - name: X_CSI_EXTENSIONS_GRPC_ADDRESS
+            value: unix:///var/run/vast-extensions/extensions.sock
         volumeMounts:
 {{- include "vastcosivmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 10 }}
           - mountPath: /var/lib/cosi
             name: socket-dir
+          - name: extensions-dir
+            mountPath: /var/run/vast-extensions
         resources: {{- toYaml .Values.cosiplugin.resources.cosiVastPlugin | nindent 10 }}
       - name: objectstorage-provisioner
         image: {{ printf "%s:%s" $csi_images.objectstorageProvisioner.repository $csi_images.objectstorageProvisioner.tag }}
@@ -56,7 +61,13 @@ spec:
         imagePullPolicy: {{ $csi_images.vastExtensionController.imagePullPolicy | default "IfNotPresent" }}
         args:
         - --health-probe-bind-address=:8081
-        - --metrics-bind-address={{ .Values.extensions.metricsBindAddress | default "0" }}
+        - --metrics-bind-address={{ $ext.metricsBindAddress | default "0" }}
+{{- if $ext.devLogging }}
+        # =true required: bare --dev-logging makes namespace argv splitter swallow the next token.
+        - --dev-logging=true
+{{- end }}
+        - server
+        - --extensions-grpc-bind-address=/var/run/vast-extensions/extensions.sock
         - webhook
         - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
         - --csi-driver-name={{ .Values.cosiDriverName }}
@@ -90,6 +101,8 @@ spec:
         - name: webhook-tls
           mountPath: /tmp/k8s-webhook-server/serving-certs
           readOnly: true
+        - name: extensions-dir
+          mountPath: /var/run/vast-extensions
         resources: {{- toYaml .Values.cosiplugin.resources.extensionsManager | nindent 10 }}
       dnsPolicy: {{ .Values.cosiplugin.dnsPolicy }}
       nodeSelector:
@@ -99,6 +112,8 @@ spec:
 {{ toYaml .Values.cosiplugin.tolerations | indent 8 }}
       volumes:
         - name: socket-dir
+          emptyDir: {}
+        - name: extensions-dir
           emptyDir: {}
         - name: webhook-tls
           secret:
