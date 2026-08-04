@@ -1,0 +1,34 @@
+# Two StorageClasses — one VAST cluster each.
+# Maps to storageClasses in demo/prerequisites/2-values.yaml:
+#   vastdata-block  (site 1 / primary)  → subsystem source
+#   vastdata-block2 (site 2 / replica)  → subsystem destination
+---
+apiVersion: storage.vastdata.com/v1
+kind: VastStorage
+metadata:
+  name: vastdata-block
+  namespace: vast-csi
+spec:
+  driverType: block
+  provisioner: block.csi.vastdata.com
+  secretName: vast-mgmt
+  secretNamespace: vast-csi
+  subsystem: source
+  vipPool: vippool-1
+  volumeGroup: /k8s
+  createSnapshotClass: false
+---
+apiVersion: storage.vastdata.com/v1
+kind: VastStorage
+metadata:
+  name: vastdata-block2
+  namespace: vast-csi
+spec:
+  driverType: block
+  provisioner: block.csi.vastdata.com
+  secretName: vast-mgmt2
+  secretNamespace: vast-csi
+  subsystem: destination
+  vipPool: vippool-1
+  volumeGroup: /k8s-repl
+  createSnapshotClass: false

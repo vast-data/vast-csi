@@ -52,7 +52,7 @@ If you prefer to manually update the bundle image in the manifests:
 1. Edit `03-catalogsource.yaml` and update the image:
    ```yaml
    spec:
-     image: quay.io/vastdata/vast-csi-operator-bundle:v2.6.5
+     image: quay.io/vastdata/vast-csi-operator-bundle:v2.6.6
    ```
 
 2. Apply the manifests:
@@ -65,10 +65,19 @@ If you prefer to manually update the bundle image in the manifests:
 
 ## Testing the Installation
 
-After installation, test the operator by creating a VastCSIDriver:
+After installation, test the operator:
 
 ```bash
-kubectl apply -f ../../csi-operator/csidriver-block.yaml
+# Basic block driver
+kubectl apply -f ../csidriver-block.yaml
+
+# Block replication (two VAST clusters) — see ../replication/README.md
+kubectl apply -f ../replication/prerequisites/01-secrets.yaml
+kubectl apply -f ../replication/01-vastcsidriver-block.yaml
+# ... follow ../replication/README.md
+
+# Webhook TLS certificate validation (no VAST backend required) — see ../webhook-certs/README.md
+cd ../webhook-certs && ./scripts/setup.sh && ./scripts/verify-webhook-certs.sh --functional
 ```
 
 Check the installation:
@@ -88,12 +97,12 @@ To remove the operator:
 
 ```bash
 # For local OLM installation
-kubectl delete csv vast-csi-operator.v2.6.5 -n vast-csi
+kubectl delete csv vast-csi-operator.v2.6.6 -n vast-csi
 kubectl delete operatorgroup vast-csi-operator-group -n vast-csi
 kubectl delete namespace vast-csi
 
 # For bundle installation
-kubectl delete csv vast-csi-operator.v2.6.5 -n vast-csi
+kubectl delete csv vast-csi-operator.v2.6.6 -n vast-csi
 kubectl delete operatorgroup vast-csi-operator-group -n vast-csi
 kubectl delete catalogsource vast-csi-operator-catalog -n olm
 kubectl delete subscription vast-csi-operator -n vast-csi

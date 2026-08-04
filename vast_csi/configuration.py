@@ -51,14 +51,18 @@ class Config(TypedEnv):
     use_local_ip_for_mount = TypedEnv.Str("X_CSI_USE_LOCALIP_FOR_MOUNT", default="")
     attach_required = TypedEnv.Bool("X_CSI_ATTACH_REQUIRED", default=True)
     block_hosts_auto_prune = TypedEnv.Bool("X_CSI_BLOCK_HOSTS_AUTO_PRUNE", default=False)
+    force_lazy_umount_on_timeout = TypedEnv.Bool("X_CSI_FORCE_LAZY_UMOUNT_ON_TIMEOUT", default=False)
     disable_usage_stats = TypedEnv.Bool("X_CSI_DISABLE_USAGE_STATS", default=False)
     block_hosts_prefix = TypedEnv.Str("X_CSI_BLOCK_HOSTS_PREFIX", default="")
 
     _mode = TypedEnv.Str("X_CSI_MODE", default="controller_and_node")
     _endpoint = TypedEnv.Str("CSI_ENDPOINT", default="unix:///var/run/csi.sock")
     _mount_options = TypedEnv.Str("X_CSI_MOUNT_OPTIONS", default="")  # For example: "port=2049,nolock,vers=3"
+    # Comma-separated NFS client daemons the node plugin waits for before mounting
+    # (set when the csi-nfs-services sidecar is enabled). Empty disables the gate.
+    _nfs_services_wait = TypedEnv.Str("X_CSI_NFS_SERVICES_WAIT", default="")
     _vms_host = TypedEnv.Str("X_CSI_VMS_HOST", default="")
-    name_fmt = "csi:{namespace}:{name}:{id}"
+    name_fmt = "csi:{id}:{namespace}:{name}"
     block_nqn_prefix = "nqn.2014-08.com.vastcsiblock:"
     max_cache_control_seconds = TypedEnv.Int("X_CSI_CACHE_MAX_AGE", default=0)
 
@@ -66,8 +70,9 @@ class Config(TypedEnv):
     fake_snapshot_store = local.path("/tmp/snapshots")
 
     timeout = TypedEnv.Int("X_CSI_VMS_TIMEOUT", default=30)
-    mount_umount_timeout = TypedEnv.Int("X_CSI_MOUNT_UMOUNT_TIMEOUT", default=30)
+    mount_umount_timeout = TypedEnv.Int("X_CSI_MOUNT_UMOUNT_TIMEOUT", default=90)
     resolve_mount_symlinks = TypedEnv.Bool("X_CSI_RESOLVE_MOUNT_SYMLINKS", default=False)
+    allow_ro_many_block_fs_mode = TypedEnv.Bool("X_CSI_ALLOW_RO_MANY_BLOCK_FS_MODE", default=False)
 
     @cached_property
     def vms_user(self):
@@ -119,6 +124,10 @@ class Config(TypedEnv):
         s = self._mount_options.strip()
         return list({p for p in s.split(',') if p})
 
+    @property
+    def nfs_services_wait(self):
+        return [p.strip() for p in self._nfs_services_wait.split(',') if p.strip()]
+
     unmount_attempts = TypedEnv.Int("X_CSI_UNMOUNT_ATTEMPTS", default=10)
 
     @property
@@ -141,3 +150,6 @@ class Config(TypedEnv):
 
     avoid_trash_api = Timer(now=-1, expiration=HOUR)
 
+
+# Must match server.ExtensionsSocketPath in the Go extensions-controller.
+EXTENSIONS_SOCKET = "/var/run/vast-extensions/extensions.sock"

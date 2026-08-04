@@ -1,0 +1,26 @@
+# Triggers the PVC label injection webhook (/mutate-pvc) without needing a real VAST backend.
+# Provisioner must match the VastCSIDriver metadata.name (csi.vastdata.com).
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: vast-webhook-cert-test-sc
+provisioner: csi.vastdata.com
+parameters:
+  subsystem: webhook-cert-test
+  volume_group: webhook-cert-test
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: webhook-cert-test-pvc
+  namespace: vast-webhook-cert-test
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: vast-webhook-cert-test-sc

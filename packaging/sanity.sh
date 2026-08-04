@@ -43,7 +43,7 @@ docker run \
     -e X_CSI_SANITY_TEST=yes \
     -e X_CSI_NFS_SERVER=nfs \
     -e X_CSI_NFS_EXPORT=/exports \
-    $VAST_CSI_IMAGE serve &
+    $VAST_CSI_IMAGE serve --plugin nfs &
 
 # -h \
 

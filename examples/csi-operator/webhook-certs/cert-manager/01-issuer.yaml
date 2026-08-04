@@ -1,0 +1,9 @@
+# Self-signed Issuer for webhook TLS testing.
+# Install cert-manager first: ./scripts/install-cert-manager.sh
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: vast-csi-webhook-selfsigned
+  namespace: vast-csi
+spec:
+  selfSigned: {}

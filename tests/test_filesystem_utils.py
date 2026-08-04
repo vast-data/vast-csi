@@ -1,16 +1,21 @@
 import os.path
 from threading import Thread, Event
-from unittest.mock import patch, mock_open
+from unittest.mock import MagicMock, patch, mock_open
 import pytest
 from pathlib import Path
 from vast_csi.filesystem_utils import (
     MountInfo,
     hostcmd,
-    volume_locked,
-    VolumeLockedError,
+    resource_locked,
+    ResourceLockedError,
     get_ext_size,
     get_xfs_size,
+    mount,
+    umount,
+    temporary_mount,
+    _normalize_mount_flags,
 )
+from vast_csi.exceptions import MountFailed, UmountTimedOut
 from plumbum import cmd
 
 PARENT = Path(__file__).parent.resolve()
@@ -20,7 +25,7 @@ PARENT = Path(__file__).parent.resolve()
 def test_volume_stats_for_fs_type(*_):
     volume_path = "/var/lib/kubelet/pods/f2f1afd1-4afb-4eae-b57d-64672ee2811d/volumes/kubernetes.io~csi/pvc-9f3d8700-89be-49b5-b388-dc92f4c9e473/mount"
     mock_file_content = PARENT.joinpath("data/procmounts2").read_text()
-    
+
     with patch("builtins.open", mock_open(read_data=mock_file_content)):
         target_mount = MountInfo.get_mount_by_destination(dest_path=volume_path)
         assert target_mount.has_blockdev_root is False
@@ -34,7 +39,7 @@ def test_volume_stats_for_fs_type(*_):
 def test_volume_stats_for_block_type(*_):
     volume_path = "/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/pvc-435b3f84-838e-4140-a4ec-f20bec791020/dev/9fbd20b4-90ee-43a7-ac5d-f3e3641e47d2"
     mock_file_content = PARENT.joinpath("data/procmounts2").read_text()
-    
+
     with patch("builtins.open", mock_open(read_data=mock_file_content)):
         target_mount = MountInfo.get_mount_by_destination(dest_path=volume_path)
         assert target_mount.has_blockdev_root is True
@@ -47,7 +52,7 @@ def test_volume_stats_for_block_type(*_):
 def test_udev_managed_device(*_):
     device_bind_path = "/data/kubelet/plugins/kubernetes.io/csi/block.csi.vastdata.com/2cbfbe7c253f51c170b9299d79a2a73879b40ae4b50d9ea8f8fa98b7f27bc5f0/globalmount/device"
     mock_file_content = PARENT.joinpath("data/procmounts2").read_text()
-    
+
     with patch("builtins.open", mock_open(read_data=mock_file_content)):
         staging_mount = MountInfo.get_mount_by_destination(dest_path=device_bind_path)
         assert staging_mount
@@ -110,7 +115,7 @@ def test_mount_info_fs_staging_path(*_):
 def test_mount_info_ephemeral_staging_path(*_):
     """Test mount info with ephemeral kubelet path (e.g., /mnt/ephemeral/kubelet)."""
     device_bind_path = "/mnt/ephemeral/kubelet/plugins/kubernetes.io/csi/block.csi.vastdata.com/752b2142192f4c948dd1132c4f66f69388e2a188a6cfc6c4927bc55f840d16e0/globalmount/device"
-    
+
     # Mock open() to return our test data (Ember-CSI approach: read /proc/self/mountinfo directly)
     mock_file_content = PARENT.joinpath("data/procmounts3").read_text()
 
@@ -134,14 +139,14 @@ def test_mount_info_ephemeral_staging_path(*_):
 def test_mount_info_multiple_csi_devices(*_):
     """Test finding multiple CSI block devices in a large mount table."""
     mock_file_content = PARENT.joinpath("data/procmounts3").read_text()
-    
+
     # Test multiple different CSI block device paths
     test_devices = [
         ("/mnt/ephemeral/kubelet/plugins/kubernetes.io/csi/block.csi.vastdata.com/5ac65567ffc4325f51d78ab2d444ef83bf0421342cc2c370f3c2d69c574a31da/globalmount/device", "/dev/nvme2n9"),
         ("/mnt/ephemeral/kubelet/plugins/kubernetes.io/csi/block.csi.vastdata.com/b49eccd2eda3adf7a40984545dda8a8387cd19e68053dff4d1c335d0b6f28773/globalmount/device", "/dev/nvme2n36"),
         ("/mnt/ephemeral/kubelet/plugins/kubernetes.io/csi/block.csi.vastdata.com/dbe7e33cb61cd7441c8b5b4fababc2be700aca0d8629c648dd1ee539d65d9ad9/globalmount/device", "/dev/nvme2n45"),
     ]
-    
+
     with patch("builtins.open", mock_open(read_data=mock_file_content)):
         for device_path, expected_device in test_devices:
             mount = MountInfo.get_mount_by_destination(dest_path=device_path)
@@ -155,18 +160,18 @@ def test_mount_info_multiple_csi_devices(*_):
 def test_mount_info_non_existent_path(*_):
     """Test querying for a non-existent mount path returns None."""
     mock_file_content = PARENT.joinpath("data/procmounts3").read_text()
-    
+
     non_existent_paths = [
         "/mnt/does/not/exist",
         "/var/lib/kubelet/plugins/kubernetes.io/csi/block.csi.vastdata.com/nonexistent/globalmount/device",
         "/mnt/ephemeral/kubelet/pods/fake-pod-id/volumes/kubernetes.io~csi/fake-volume/mount",
     ]
-    
+
     with patch("builtins.open", mock_open(read_data=mock_file_content)):
         for path in non_existent_paths:
             mount = MountInfo.get_mount_by_destination(dest_path=path)
             assert mount is None, f"Expected None for non-existent path {path}, got {mount}"
-            
+
             staging_mount, target_mounts = MountInfo.get_mounts_by_source(src=path)
             assert staging_mount is None
             assert len(target_mounts) == 0
@@ -176,14 +181,14 @@ def test_mount_info_non_existent_path(*_):
 def test_mount_info_tmpfs_volumes(*_):
     """Test finding tmpfs empty-dir volumes among CSI mounts."""
     mock_file_content = PARENT.joinpath("data/procmounts3").read_text()
-    
+
     # Test some tmpfs mounts used by Kubernetes empty-dir volumes
     tmpfs_mounts = [
         "/mnt/ephemeral/kubelet/pods/74f60506-233b-4a9a-a415-52e3ffc4a181/volumes/kubernetes.io~empty-dir/strimzi-tmp",
         "/mnt/ephemeral/kubelet/pods/9b4ef9d6-3f2e-47f1-bd3c-9c3a6591e179/volumes/kubernetes.io~empty-dir/strimzi-tmp",
         "/mnt/ephemeral/kubelet/pods/1c01af91-6dcb-4da6-b525-314f0a71c550/volumes/kubernetes.io~empty-dir/rack-volume",
     ]
-    
+
     with patch("builtins.open", mock_open(read_data=mock_file_content)):
         for tmpfs_path in tmpfs_mounts:
             mount = MountInfo.get_mount_by_destination(dest_path=tmpfs_path)
@@ -197,18 +202,18 @@ def test_mount_info_tmpfs_volumes(*_):
 def test_mount_info_large_mount_table_performance(*_):
     """Test that MountInfo can handle large mount tables efficiently (584 lines)."""
     mock_file_content = PARENT.joinpath("data/procmounts3").read_text()
-    
+
     with patch("builtins.open", mock_open(read_data=mock_file_content)):
         # Parse all mounts
         all_mounts = MountInfo.from_host()
-        
+
         # Verify we got all mounts
         assert len(all_mounts) > 500, "Expected 500+ mounts in procmounts3"
-        
+
         # Verify we can find CSI mounts efficiently
         csi_mounts = [m for m in all_mounts if "block.csi.vastdata.com" in m.mount_point]
         assert len(csi_mounts) > 30, "Expected 30+ CSI block mounts"
-        
+
         # Verify all CSI mounts have block devices
         for csi_mount in csi_mounts:
             assert csi_mount.has_blockdev_root
@@ -219,14 +224,14 @@ def test_mount_info_large_mount_table_performance(*_):
 def test_mount_info_various_nvme_devices(*_):
     """Test different NVMe device numbering (nvme2n1, nvme2n10, nvme2n87, etc.)."""
     mock_file_content = PARENT.joinpath("data/procmounts3").read_text()
-    
+
     # Test devices with different numbering patterns
     test_cases = [
         ("/mnt/ephemeral/kubelet/plugins/kubernetes.io/csi/block.csi.vastdata.com/3e63644867658c026a7d2a091ff0716e07be68761912a0ffc43af2d32c70dcc2/globalmount/device", "nvme2n1"),
         ("/mnt/ephemeral/kubelet/plugins/kubernetes.io/csi/block.csi.vastdata.com/89fdcf67d178ba5d38dcb849e037568400a3edc2857b1bd4ba8e54be9d60d5c8/globalmount/device", "nvme2n10"),
         ("/mnt/ephemeral/kubelet/plugins/kubernetes.io/csi/block.csi.vastdata.com/a854f1fcdcb4a389a1ae198850e1ef5afa73c53d599b3b70c5ea9220ac2c9e6b/globalmount/device", "nvme2n87"),
     ]
-    
+
     with patch("builtins.open", mock_open(read_data=mock_file_content)):
         for device_path, expected_nvme in test_cases:
             mount = MountInfo.get_mount_by_destination(dest_path=device_path)
@@ -239,7 +244,7 @@ def test_mount_info_various_nvme_devices(*_):
 def test_mount_info_system_mounts(*_):
     """Test finding standard system mounts in procmounts3."""
     mock_file_content = PARENT.joinpath("data/procmounts3").read_text()
-    
+
     # Test some standard system mounts
     system_mounts = {
         "/dev": "devtmpfs",
@@ -248,7 +253,7 @@ def test_mount_info_system_mounts(*_):
         "/tmp": "tmpfs",
         "/": "ext4",
     }
-    
+
     with patch("builtins.open", mock_open(read_data=mock_file_content)):
         for mount_point, expected_fstype in system_mounts.items():
             mount = MountInfo.get_mount_by_destination(dest_path=mount_point)
@@ -260,36 +265,36 @@ def test_mount_info_system_mounts(*_):
 def test_mount_info_edge_case_similar_paths(*_):
     """Test distinguishing between similar mount paths."""
     mock_file_content = PARENT.joinpath("data/procmounts3").read_text()
-    
+
     # These paths share prefixes but are different mounts
     similar_paths = [
         "/mnt/ephemeral/kubelet/pods/74f60506-233b-4a9a-a415-52e3ffc4a181/volumes/kubernetes.io~empty-dir/strimzi-tmp",
         "/mnt/ephemeral/kubelet/pods/74f60506-233b-4a9a-a415-52e3ffc4a181/volumes/kubernetes.io~empty-dir/rack-volume",
         "/mnt/ephemeral/kubelet/pods/74f60506-233b-4a9a-a415-52e3ffc4a181/volumes/kubernetes.io~empty-dir/ready-files",
     ]
-    
+
     with patch("builtins.open", mock_open(read_data=mock_file_content)):
         mounts = {}
         for path in similar_paths:
             mount = MountInfo.get_mount_by_destination(dest_path=path)
             assert mount is not None, f"Mount not found: {path}"
             mounts[path] = mount
-        
+
         # Verify each mount is distinct
         assert len(set(m.mount_id for m in mounts.values())) == len(similar_paths)
-        
+
         # Verify each has correct mount point
         for path, mount in mounts.items():
             assert mount.mount_point == path
 
 
-def test_volume_locked():
+def test_resource_locked():
     volume_id = "vol-1234"
     lock_acquired = Event()
     lock_released = Event()
 
     def lock_volume():
-        with volume_locked(volume_id):
+        with resource_locked(volume_id):
             lock_acquired.set()
             lock_released.wait()
 
@@ -298,14 +303,14 @@ def test_volume_locked():
     assert lock_acquired.wait(timeout=5), "Thread did not acquire the lock in time"
 
     # Try to acquire the lock in the main thread, which should raise an error
-    with pytest.raises(VolumeLockedError):
-        with volume_locked(volume_id):
+    with pytest.raises(ResourceLockedError):
+        with resource_locked(volume_id):
             pass
 
     lock_released.set()
     thread.join()
 
-    with volume_locked(volume_id):
+    with resource_locked(volume_id):
         pass
 
 
@@ -401,3 +406,173 @@ def test_parse_xfs_output(*_):
     # Assertions
     assert block_size == 4096
     assert fs_size == 10737418240
+
+
+def _mock_plumbum_cmd():
+    """Chainable mock for plumbum cmd.mount / cmd.umount."""
+    mock_cmd = MagicMock()
+    mock_cmd.__getitem__ = MagicMock(return_value=mock_cmd)
+    return mock_cmd
+
+
+class TestNormalizeMountFlags:
+    def test_none_and_empty(self):
+        assert _normalize_mount_flags(None) == []
+        assert _normalize_mount_flags([]) == []
+
+    def test_string_split(self):
+        assert _normalize_mount_flags("ro,noexec") == ["ro", "noexec"]
+
+    def test_list_passthrough(self):
+        assert _normalize_mount_flags(["nouuid", "ro"]) == ["nouuid", "ro"]
+
+
+class TestFilesystemUtilsMount:
+    @patch("vast_csi.filesystem_utils.run_with_timeout")
+    def test_mount_fs_type_uses_run_with_timeout(self, mock_run_with_timeout):
+        mock_run_with_timeout.side_effect = lambda func, _timeout: func()
+        mock_mount_cmd = _mock_plumbum_cmd()
+
+        with patch.object(cmd, "mount", mock_mount_cmd):
+            mount("/dev/nvme0n1", "/mnt/probe", fs_type="xfs", flags=["nouuid", "ro"], timeout=30)
+
+        mock_run_with_timeout.assert_called_once()
+        assert mock_run_with_timeout.call_args[0][1] == 30
+
+    @patch("vast_csi.filesystem_utils.run_with_timeout", side_effect=TimeoutError("timed out"))
+    def test_mount_timeout_raises_mount_failed(self, _mock_run_with_timeout):
+        with patch.object(cmd, "mount", _mock_plumbum_cmd()):
+            with pytest.raises(MountFailed) as exc_info:
+                mount("/dev/nvme0n1", "/mnt/probe", fs_type="xfs", timeout=5)
+
+        assert "timed out after 5s" in exc_info.value.detail
+
+    @patch("vast_csi.filesystem_utils.run_with_timeout")
+    def test_mount_execution_error_raises_mount_failed(self, mock_run_with_timeout):
+        from plumbum import ProcessExecutionError
+
+        mock_mount_cmd = _mock_plumbum_cmd()
+        mock_mount_cmd.__and__ = MagicMock(side_effect=ProcessExecutionError(
+            ["mount"], 1, "", "mount: bad superblock"
+        ))
+        mock_run_with_timeout.side_effect = lambda func, _timeout: func()
+
+        with patch.object(cmd, "mount", mock_mount_cmd):
+            with pytest.raises(MountFailed) as exc_info:
+                mount("/dev/nvme0n1", "/mnt/probe", fs_type="xfs", timeout=10)
+
+        assert "bad superblock" in exc_info.value.detail
+
+    @patch("vast_csi.filesystem_utils.run_with_timeout")
+    def test_mount_bind_enforce_ro_remounts(self, mock_run_with_timeout):
+        mock_run_with_timeout.side_effect = lambda func, _timeout: func()
+        mock_mount_cmd = _mock_plumbum_cmd()
+
+        with patch.object(cmd, "mount", mock_mount_cmd):
+            mount("/dev/nvme0n1", "/staging/device", bind=True, enforce_ro=True, timeout=15)
+
+        assert mock_mount_cmd.__and__.call_count == 2
+
+    @patch("vast_csi.filesystem_utils.run_with_timeout")
+    def test_mount_without_timeout_runs_directly(self, mock_run_with_timeout):
+        mock_mount_cmd = _mock_plumbum_cmd()
+
+        with patch.object(cmd, "mount", mock_mount_cmd):
+            mount("server:/export", "/mnt/nfs", flags="vers=3")
+
+        mock_run_with_timeout.assert_not_called()
+        assert mock_mount_cmd.__and__.called
+
+
+class TestFilesystemUtilsUmount:
+    @patch("vast_csi.filesystem_utils.run_with_timeout")
+    def test_umount_success(self, mock_run_with_timeout):
+        mock_run_with_timeout.side_effect = lambda func, _timeout: func()
+        mock_umount_cmd = _mock_plumbum_cmd()
+
+        with patch.object(cmd, "umount", mock_umount_cmd):
+            assert umount("/mnt/test", timeout=20) is True
+
+        mock_run_with_timeout.assert_called_once()
+        assert mock_run_with_timeout.call_args[0][1] == 20
+
+    @patch("vast_csi.filesystem_utils.run_with_timeout", side_effect=TimeoutError("timed out"))
+    def test_umount_timeout_raises(self, _mock_run_with_timeout):
+        with patch.object(cmd, "umount", _mock_plumbum_cmd()):
+            with pytest.raises(UmountTimedOut) as exc_info:
+                umount("/mnt/test", timeout=12)
+
+        assert "12s" in str(exc_info.value)
+
+    @patch("vast_csi.filesystem_utils.run_with_timeout")
+    def test_umount_not_mounted_ignored(self, mock_run_with_timeout):
+        from plumbum import ProcessExecutionError
+
+        mock_umount_cmd = _mock_plumbum_cmd()
+        mock_umount_cmd.run.side_effect = ProcessExecutionError(
+            ["umount"], 1, "", "umount: /mnt/test: not mounted"
+        )
+        mock_run_with_timeout.side_effect = lambda func, _timeout: func()
+
+        with patch.object(cmd, "umount", mock_umount_cmd):
+            assert umount("/mnt/test", ignore_not_mounted=True, timeout=10) is False
+
+    @patch("vast_csi.filesystem_utils.run_with_timeout")
+    def test_umount_lazy_flag(self, mock_run_with_timeout):
+        index_args = []
+        mock_umount_cmd = _mock_plumbum_cmd()
+        mock_umount_cmd.__getitem__.side_effect = lambda key: (
+            index_args.append(key) or mock_umount_cmd
+        )
+        mock_run_with_timeout.side_effect = lambda func, _timeout: func()
+
+        with patch.object(cmd, "umount", mock_umount_cmd):
+            umount("/mnt/test", lazy=True, timeout=10)
+
+        assert ["-v", "-l", "/mnt/test"] in index_args
+
+
+class TestTemporaryMount:
+    @patch("vast_csi.filesystem_utils.umount")
+    @patch("vast_csi.filesystem_utils.mount")
+    @patch("vast_csi.filesystem_utils.TemporaryDirectory")
+    def test_temporary_mount_xfs(self, mock_td, mock_mount, mock_umount):
+        mock_td.return_value.__enter__.return_value = "/tmp/vast-csi-temp"
+
+        with temporary_mount("/dev/nvme0n1", "/staging", "xfs", readonly=True, timeout=30):
+            pass
+
+        mock_mount.assert_called_once_with(
+            src="/dev/nvme0n1",
+            tgt="/tmp/vast-csi-temp",
+            bind=False,
+            fs_type="xfs",
+            flags=["nouuid", "ro"],
+            timeout=30,
+        )
+        mock_umount.assert_called_once_with(
+            "/tmp/vast-csi-temp",
+            ignore_not_mounted=True,
+            timeout=30,
+        )
+
+    @patch("vast_csi.filesystem_utils.umount")
+    @patch("vast_csi.filesystem_utils.mount")
+    @patch("vast_csi.filesystem_utils.TemporaryDirectory")
+    @patch("builtins.open", new_callable=mock_open)
+    def test_temporary_mount_ext4_bind(self, _mock_file_open, mock_td, mock_mount, mock_umount):
+        mock_td.return_value.__enter__.return_value = "/tmp/vast-csi-temp"
+
+        with temporary_mount("/dev/nvme0n1", "/staging", "ext4", timeout=15):
+            pass
+
+        mock_mount.assert_called_once()
+        kwargs = mock_mount.call_args[1]
+        assert kwargs["bind"] is True
+        assert kwargs["fs_type"] is None
+        assert kwargs["tgt"].endswith("/device")
+        mock_umount.assert_called_once_with(
+            kwargs["tgt"],
+            ignore_not_mounted=True,
+            timeout=15,
+        )

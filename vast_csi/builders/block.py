@@ -61,7 +61,7 @@ class BlockProvisionBase(BaseVolumeBuilder):
         tenant_name = parameters.get("tenant_name")
         vip_pool_fqdn = parameters.get("vip_pool_fqdn")
         vip_pool_name = parameters.get("vip_pool_name")
-        vip_pool_fqdn_random_prefix = cls._get_bool_param(parameters, "vip_pool_fqdn_random_prefix")
+        vip_pool_fqdn_random_prefix = cls._get_bool_param(parameters, "vip_pool_fqdn_random_prefix", default_value="true")
         volume_group = parameters.get("volume_group", "")
         host_encryption = cls._parse_host_encryption(parameters)
         transport_type = parameters.get("transport_type", "TCP").upper()
@@ -362,7 +362,7 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
         tenant_name = parameters.get("tenant_name")
         vip_pool_fqdn = parameters.get("vip_pool_fqdn")
         vip_pool_name = parameters.get("vip_pool_name")
-        vip_pool_fqdn_random_prefix = cls._get_bool_param(parameters, "vip_pool_fqdn_random_prefix")
+        vip_pool_fqdn_random_prefix = cls._get_bool_param(parameters, "vip_pool_fqdn_random_prefix", default_value="true")
         transport_type = parameters.get("transport_type", "TCP").upper()
         host_encryption = cls._parse_host_encryption(parameters)
         cls._validate_mount_src(vip_pool_name, vip_pool_fqdn, conf.use_local_ip_for_mount)
@@ -407,7 +407,7 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
             subsystem=self.subsystem,
             tenant_name=self.tenant_name,
         )
-        if not (volume := self.vms_session.volumes.one_cached(name=name)):
+        if not (volume := self.vms_session.volumes.one(name=name)):
             raise SourceNotFound(f"Volume {name} does not exist but claimed as existing.")
         volume_context.update(
             nguid=volume.nguid,

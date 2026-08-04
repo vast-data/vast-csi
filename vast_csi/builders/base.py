@@ -14,7 +14,11 @@ CreatedVolumeT = TypeVar("CreatedVolumeT")
 VOLUME_ID_SEPARATOR = "@"
 
 
-__all__ = ["BaseVolumeBuilder", "parse_volume_id", "to_volume_id_with_metadata"]
+__all__ = [
+    "BaseVolumeBuilder",
+    "parse_volume_id",
+    "to_volume_id_with_metadata",
+]
 
 
 def parse_volume_id(volume_id: str) -> Tuple[str, Optional[str]]:
@@ -124,7 +128,7 @@ class CommonPropsMixin:
         return self.capacity_range.required_bytes if self.capacity_range else 0
 
     def build_volume_name(self) -> str:
-        """Build volume name using format csi:{namespace}:{name}:{id}"""
+        """Build volume name using format csi:{id}:{namespace}:{name}"""
         volume_id = self.name
         if ephemeral_volume_name := getattr(self, "ephemeral_volume_name", None):
             return ephemeral_volume_name
@@ -156,7 +160,9 @@ class BaseVolumeBuilder(CommonPropsMixin, VolumeBuilderI):
     @classmethod
     def _get_bool_param(cls, parameters, param_name, default_value="false"):
         """Get boolean parameter from parameters or return default value."""
-        return yesno_to_bool(str(parameters.get(param_name) or default_value))
+        if param_name not in parameters:
+            return yesno_to_bool(str(default_value))
+        return yesno_to_bool(str(parameters[param_name]))
 
     @classmethod
     def _validate_mount_src(cls, vip_pool_name, vip_pool_fqdn, local_ip_for_mount):

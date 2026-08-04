@@ -34,7 +34,11 @@ overrides:
   csiResizer:
     repository: registry.k8s.io/sig-storage/csi-resizer@sha256:a541e6cc2d8b011bb21b1d4ffec6b090e85270cce6276ee302d86153eec0af43
   csiSnapshotter:
-    repository: registry.k8s.io/sig-storage/csi-snapshotter@sha256:2e04046334baf9be425bb0fa1d04c2d1720d770825eedbdbcdb10d430da4ad8c
+    repository: registry.k8s.io/sig-storage/csi-snapshotter@sha256:42af0929bcd60a43499825c078a60ff0534e08af8fbeb283aa391be40feb9f3e
+  csiAddonsSidecar:
+    repository: quay.io/csiaddons/k8s-sidecar@sha256:208b4d21b125f4ef9d0ea4082bdf5aeafc9771e0e233e7c60e50e8bf3f5cb3db
+  vastExtensionController:
+    repository: docker.io/vastdataorg/csi@sha256:4ee38a27ee19d033a6cca47cd442855159eeb4645c83fa659bee8d5d8286dbf2
 
 # Disable if you don't have intention to use snapshots (Enabled by default)
 installSnapshotCRDS: true
@@ -54,4 +58,4 @@ maturity: "stable"
 # This is required for OLM to understand the operator upgrade path.
 # Example: "2.6.3" will generate "replaces: vast-csi-operator.v2.6.3"
 # Leave empty for the first release or if no replacement is needed.
-replacesVersion: "2.6.3"
+replacesVersion: "2.6.5"

@@ -45,4 +45,38 @@ roleRef:
   name: {{ .Release.Name }}-external-resizer-runner
   apiGroup: rbac.authorization.k8s.io
 ---
+{{- if include "vastcsi.extension-enabled" . }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-csi-addons-binding
+  labels:
+    {{- include "vastcsi.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-vast-extension-controller-sa
+    namespace: {{ include "vastcsi.namespace" . }}
+roleRef:
+  kind: ClusterRole
+  name: {{ .Release.Name }}-csi-addons-role
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- end }}
+{{- if include "vastcsi.extension-enabled" . }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-vast-extension-controller-binding
+  labels:
+    {{- include "vastcsi.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-vast-extension-controller-sa
+    namespace: {{ include "vastcsi.namespace" . }}
+roleRef:
+  kind: ClusterRole
+  name: {{ .Release.Name }}-vast-extension-controller-role
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- end }}
 {{- end -}}

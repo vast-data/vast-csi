@@ -1,0 +1,227 @@
+{{/* VAST Extension Controller Deployment */}}
+{{/* Deployed when extensions.enabled is true.
+     All sub-flags (disablePvcLabelsWebhook, etc.) are forwarded as CLI args to the
+     container process and do NOT affect whether this Deployment is created.        */}}
+
+{{- $rc := .Values.extensions -}}
+{{- $ec := .Values.extensionController -}}
+{{- $csi_images := .Values.image -}}
+{{- $is_nfs_driver := (eq .Values.driverType "nfs") -}}
+{{- $driver_name := include "vastcsi.csiDriver" . -}}
+{{- $sock_suffix := $driver_name | lower | replace "." "-" | replace "_" "-" | trimSuffix "-" | trimPrefix "-" -}}
+{{- $replication_sock := ternary (printf "addons.%s.sock" $sock_suffix) (printf "%s.replication_sock" $sock_suffix) $is_nfs_driver -}}
+{{- $addons_type := ternary "nfs" "block" $is_nfs_driver -}}
+{{- $plugin_proxy_sock_path := "/var/lib/csi/sockets/pluginproxy/" -}}
+{{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
+{{- $filterConfig := $rc.webhook.filterConfig -}}
+{{- $csiDriverName := tpl ($filterConfig.csiDriverName | default (include "vastcsi.csiDriver" .)) . -}}
+{{- $extension_name := include "vastcsi.extensionControllerName" . -}}
+
+{{- if $rc.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $extension_name }}
+  namespace: {{ include "vastcsi.namespace" . }}
+  labels:
+{{- include "vastcsi.labels" . | nindent 4 }}
+    app: {{ $extension_name }}
+    app.kubernetes.io/component: "extension-controller"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $extension_name }}
+{{- include "vastcsi.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: {{ $extension_name }}
+{{- include "vastcsi.labels" . | nindent 8 }}
+    spec:
+{{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
+{{- end }}
+{{- if or $ec.podAffinity $ec.podAntiAffinity $ec.nodeAffinity }}
+      affinity:
+{{- if $ec.podAffinity }}
+        podAffinity:
+          {{- toYaml $ec.podAffinity | nindent 10 }}
+{{- end }}
+{{- if $ec.podAntiAffinity }}
+        podAntiAffinity:
+          {{- toYaml $ec.podAntiAffinity | nindent 10 }}
+{{- end }}
+{{- if $ec.nodeAffinity }}
+        nodeAffinity:
+          {{- toYaml $ec.nodeAffinity | nindent 10 }}
+{{- end }}
+{{- end }}
+      containers:
+{{- if $rc.replication.enabled }}
+        - name: csi-addons-manager
+          image: {{ $csi_images.csiAddonsSidecar.repository | default $csi_images.csiAddonsSidecar.defaultRepository }}
+          args:
+            - "--node-id=$(NODE_ID)"
+            - "--csi-addons-address={{ printf "/var/lib/csi/sockets/pluginproxy/%s" $replication_sock }}"
+            - "--controller-port=9070"
+            - "--pod=$(POD_NAME)"
+            - "--namespace=$(POD_NAMESPACE)"
+            - "--pod-uid=$(POD_UID)"
+            - "--stagingpath={{ .Values.kubeletPath }}/plugins/kubernetes.io/csi/"
+            - "--v={{ .Values.logLevel | default 5 }}"
+            - "--timeout={{ .Values.addonsOperationTimeout | default 120 }}s"
+          env:
+            - name: NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+          imagePullPolicy: {{ $csi_images.csiAddonsSidecar.imagePullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: 9070
+              name: csi-addons
+              protocol: TCP
+          volumeMounts:
+            - name: socket-dir
+              mountPath: {{ $plugin_proxy_sock_path }}
+          resources: {{- toYaml .Values.extensionController.resources.csiAddonsSidecar | nindent 12 }}
+{{- end }}
+        - name: extensions-webhook
+          image: {{ include "vastcsi.vastExtensionControllerImage" . }}
+          imagePullPolicy: {{ $csi_images.vastExtensionController.imagePullPolicy | default "IfNotPresent" }}
+          args:
+            - pvc-label-webhook
+{{- if not $rc.webhook.disablePvcLabelsWebhook }}
+            - --enable-pvc-label-webhook
+{{- end }}
+            - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
+            - --health-probe-bind-address=:8081
+            - --metrics-bind-address=0
+{{- if $rc.devLogging }}
+            - --dev-logging
+{{- end }}
+            - --max-concurrent-reconciles={{ $rc.maxConcurrentReconciles }}
+{{- if $filterConfig.storageClassName }}
+            - --storage-class-name={{ $filterConfig.storageClassName }}
+{{- end }}
+{{- if $filterConfig.storageClassNameRegex }}
+            - --storage-class-name-regex={{ $filterConfig.storageClassNameRegex }}
+{{- end }}
+{{- if $filterConfig.pvcNameRegex }}
+            - --pvc-name-regex={{ $filterConfig.pvcNameRegex }}
+{{- end }}
+{{- if $csiDriverName }}
+            - --csi-driver-name={{ $csiDriverName }}
+{{- end }}
+          ports:
+            - name: webhook-server
+              containerPort: {{ $rc.webhook.port | default 9443 }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+{{- toYaml $ec.probes.extensionsWebhook.liveness | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+{{- toYaml $ec.probes.extensionsWebhook.readiness | nindent 12 }}
+          volumeMounts:
+            - name: webhook-tls
+              mountPath: /tmp/k8s-webhook-server/serving-certs
+              readOnly: true
+          resources: {{- toYaml .Values.extensionController.resources.extensionsWebhook | nindent 12 }}
+{{- if $rc.replication.enabled }}
+        - name: extensions-manager
+          image: {{ include "vastcsi.vastExtensionControllerImage" . }}
+          imagePullPolicy: {{ $csi_images.vastExtensionController.imagePullPolicy | default "IfNotPresent" }}
+          args:
+            - replication
+            - --pvc-name-format={{ $rc.replication.pvcNameFormat }}
+            - --pv-name-format={{ $rc.replication.pvNameFormat }}
+            - --health-probe-bind-address=:8082
+            - --metrics-bind-address=0
+{{- if $rc.devLogging }}
+            - --dev-logging
+{{- end }}
+{{- if $rc.replication.applyExistingPvcs }}
+            - --apply-existing-pvcs
+{{- end }}
+            - --max-concurrent-reconciles={{ $rc.maxConcurrentReconciles }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8082
+{{- toYaml $ec.probes.extensionsManager.liveness | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8082
+{{- toYaml $ec.probes.extensionsManager.readiness | nindent 12 }}
+          volumeMounts:
+            - name: extensions-dir
+              mountPath: /var/run/vast-extensions
+          resources: {{- toYaml .Values.extensionController.resources.extensionsManager | nindent 12 }}
+        - name: replication-vast-plugin
+          image: {{ $csi_images.csiVastPlugin.repository | default $csi_images.csiVastPlugin.defaultRepository }}
+          args:
+            - "serve"
+            - "--addons={{ include "vastcsi.addons-list" (dict "root" . "type" $addons_type) }}"
+          env:
+{{- include "vastcsi.commonEnv" . | indent 12 }}
+            - name: X_CSI_VMS_TIMEOUT
+              value: {{ .Values.addonsOperationTimeout | default 120 | quote }}
+            - name: CSI_ENDPOINT
+              value: unix://{{ printf "/var/lib/csi/sockets/pluginproxy/%s" $replication_sock }}
+            - name: X_CSI_MODE
+              value: controller
+          imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default "IfNotPresent" }}
+          volumeMounts:
+            - name: socket-dir
+              mountPath: {{ $plugin_proxy_sock_path }}
+            - name: extensions-dir
+              mountPath: /var/run/vast-extensions
+{{- include "vastcsi.vmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 12 }}
+          resources: {{- toYaml .Values.extensionController.resources.csiVastPlugin | nindent 12 }}
+{{- end }}
+      dnsPolicy: {{ $ec.dnsPolicy }}
+{{- if or $ec.runOnMaster $ec.runOnControlPlane $ec.nodeSelector }}
+      nodeSelector:
+{{- if $ec.runOnMaster }}
+        node-role.kubernetes.io/master: ""
+{{- end }}
+{{- if $ec.runOnControlPlane }}
+        node-role.kubernetes.io/control-plane: ""
+{{- end }}
+{{- if $ec.nodeSelector }}
+{{- toYaml $ec.nodeSelector | nindent 8 }}
+{{- end }}
+{{- end }}
+      priorityClassName: {{ $ec.priorityClassName }}
+      serviceAccountName: {{ .Release.Name }}-vast-extension-controller-sa
+      tolerations:
+{{ toYaml $ec.tolerations | indent 8 }}
+      volumes:
+        - name: webhook-tls
+          secret:
+            secretName: {{ include "vastcsi.webhookTLSSecretName" . }}
+        - name: socket-dir
+          emptyDir: {}
+        - name: extensions-dir
+          emptyDir: {}
+{{- include "vastcsi.vmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}
+{{- end }}

@@ -42,12 +42,32 @@ class MissingParameter(Abort):
         )
 
 
+class XprtsecValidationError(Abort):
+    """Raised when xprtsec setting is incompatible with view policy or NFS version."""
+
+    def __init__(self, message: str):
+        self._message = message
+
+    @property
+    def code(self):
+        return grpc.StatusCode.INVALID_ARGUMENT
+
+    @property
+    def message(self):
+        return self._message
+
+
 class MountFailed(TException):
     template = "Mounting {src} failed"
 
 
 class UmountTimedOut(Exception):
     """Raised when umount command times out."""
+    pass
+
+
+class FilesystemIntegrityError(Exception):
+    """Raised when a filesystem fails its pre-staging integrity/mountability check."""
     pass
 
 
@@ -76,3 +96,19 @@ class TaskFailed(PredicateNotSatisfied, TException):
 
 class NVMEConnectionFailed(TException):
     template = "NVME connection to {host_nqn} failed"
+
+
+class NoRecordsFound(Exception):
+    ...
+
+
+class WaitResourceFailed(TException, PredicateNotSatisfied):
+    template = "resources '{resource}' failed to satisfy {condition} condition"
+
+
+class PpathConflict(TException):
+    template = "Cannot create protected path '{requested_name}': source directory '{source_dir}' is already protected by existing path '{existing_name}'"
+
+
+class VolumeGroupValidationError(TException):
+    template = "Volume group replication requires all volumes to share the same {resource_type}"

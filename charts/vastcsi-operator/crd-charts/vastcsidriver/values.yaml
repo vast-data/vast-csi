@@ -39,6 +39,20 @@ verifySsl: false
 # When disabled (false), hosts remain in VAST even if unused and must be cleaned
 # up manually.
 blockHostsAutoPrune: false
+# Prefix used when naming CSI block hosts (e.g. csi-<node-id>)
+hostNamePrefix: ""
+# Timeout in seconds for mount/umount operations.
+# If a mount or umount command does not complete within this time, it will be terminated
+# and an error will be returned. This prevents the driver from getting stuck indefinitely
+# due to network issues or unresponsive storage.
+mountUmountTimeout: 90
+# When true, a umount that times out is retried with lazy unmount (-l).
+forceLazyUmountOnTimeout: true
+# Enable symlink resolution when querying mount information.
+# When enabled, mount paths containing symlinks (e.g., /dev/disk/by-uuid/*) will be
+# resolved to their canonical paths before comparison.
+# Default: false (skip symlink resolution for maximum performance)
+resolveMountSymlinks: false
 
 ####################
 # DELETE VOLUMES
@@ -65,6 +79,17 @@ useLocalIpForMount: ""
 numWorkers: 10
 # Timeout of all calls to CSI driver.
 operationTimeout: 15
+# Timeout for CSI-Addons operations (in seconds). This applies to replication and other CSI-Addons services.
+addonsOperationTimeout: 120
+# Disable sending usage statistics to VAST cluster.
+# When set to true, the CSI driver will not report plugin usage metrics to VMS.
+disableUsageStats: false
+# Cache-Control max-age header value in seconds for VMS API requests.
+# When set to a value greater than 0, the CSI driver will add a Cache-Control header
+# to VMS API requests, allowing intermediate caches (like Nginx) to cache responses.
+# This is useful for handling burst traffic patterns and reducing load on the VMS.
+# Set to 0 to disable caching (default).
+cacheMaxAgeSeconds: 0
 # Each time a failure occurs, sidecar containers initiate retries
 # but only after waiting for 'operationRetryIntervalStart' seconds
 # which then doubles with each subsequent failure  until it reaches `operationRetryIntervalMax`
@@ -82,6 +107,210 @@ truncateVolumeName: 64
 # which might speed up the volume attach operation significantly but not appropriate for workload nodes where
 # http/https ports are not open.
 attachRequired: true
+
+####################
+# EXTENSION CONTROLLER
+####################
+# The extensions controller is a companion component to the CSI driver that provides
+# additional extended capabilities beyond the core CSI driver functionality.
+# It runs as a separate deployment alongside the CSI driver.
+#
+# Features (each can be independently enabled):
+# - PVC Label Injection Webhook: Automatically injects replication-related labels onto
+#   PVCs at creation time based on StorageClass parameters.
+# - Remote PVC Controller: Creates PVCs on destination cluster based on source PVCs
+# - VolumeReplication CRD Controller: Optionally creates VolumeReplication CRDs
+# - Pod Failover Controller: Terminates pods with source mounts, waits for replication
+#   switchover, and restarts pods with destination PVCs (not yet implemented).
+extensions:
+  # Master flag to enable/disable all extension features at once (webhooks, replication, etc.)
+  enabled: false
+  # devLogging enables human-readable console logging (colored levels, caller, ISO-8601 timestamps)
+  devLogging: true
+  # maxConcurrentReconciles is the worker count per controller-runtime controller.
+  maxConcurrentReconciles: 5
+
+  # PVC Label Injection Webhook
+  # Admission webhooks served by the extension controller.
+  # All webhook handlers share one HTTPS server (same port and TLS certificate).
+  webhook:
+    # Enable webhook server configuration (port, TLS, filters, failure policy).
+    # PVC label injection is controlled separately by disablePvcLabelsWebhook.
+    enabled: true
+    # Port for the webhook HTTPS server.
+    port: 9443
+
+    # Set to true to disable the PVC label injection webhook.
+    # When false (default), --enable-pvc-label-webhook is passed to the container
+    # and labels (storageClass, subsystem, volumeGroup) are automatically injected
+    # onto PVCs at creation time based on StorageClass parameters.
+    # When true, the flag is omitted; replication CRD validation webhooks (VSCR/VVR)
+    # remain active whenever extensions.replication.enabled is true.
+    # NOTE: this flag is forwarded to the process as a CLI argument and does NOT
+    # affect whether the extension controller Deployment is created.
+    disablePvcLabelsWebhook: false
+
+    # Failure policy applied to all webhook handlers.
+    # - Fail:   the operation is rejected when the webhook is unreachable or times out.
+    # - Ignore: the operation is allowed through (useful during cluster outages).
+    failurePolicy: Fail
+
+    # Admission deadline (seconds) passed to the API server for all webhooks.
+    timeoutSeconds: 30
+
+    # TLS certificate configuration.
+    # When certManager.enabled is false, Helm generates a self-signed CA+cert Secret.
+    # When certManager.enabled is true, install Issuer + Certificate separately
+    # (see examples/csi-operator/webhook-certs/cert-manager/). Helm only mounts the
+    # Secret that cert-manager creates and annotates MutatingWebhookConfiguration for
+    # cainjector; it does not create any cert-manager CRs.
+    certManager:
+      enabled: false
+      # cert-manager Certificate CR installed outside Helm. cainjector uses this to
+      # populate MutatingWebhookConfiguration caBundle. Defaults match naming convention.
+      certificateRef:
+        name: ""
+        namespace: ""
+
+    # PVC filtering for the label injection webhook.
+    # By default only PVCs whose StorageClass provisioner matches csiDriverName are
+    # processed (see csiDriverName below).
+    # Use the additional options below to further restrict scope.
+    filterConfig:
+      # storageClassName and storageClassNameRegex are mutually exclusive.
+      # If set, only PVCs using this exact StorageClass name get labels injected.
+      storageClassName: ""
+      # If set, only PVCs whose StorageClass name matches this regex get labels.
+      # Example: "^vastdata-.*"
+      storageClassNameRegex: ""
+      # If set, only PVCs whose name matches this regex get labels.
+      # Example: "^repl-.*"
+      pvcNameRegex: ""
+      # Only inject labels into PVCs whose StorageClass provisioner matches this
+      # CSI driver name.
+      # Set to "" to process PVCs from any provisioner.
+      csiDriverName: ""
+
+  # Each StorageClass represents a different VAST cluster (identified by credentials).
+  replication:
+    # Enable replication stack (CSI-Addons operator, CRDs, replication controllers).
+    enabled: true
+    # CSI-Addons cluster operator (upstream manifests in replication.yaml).
+    maxGroupPvcs: 10000
+    csiAddonsImage: quay.io/csiaddons/k8s-controller@sha256:318b6dd286db67bee59f2fc2ee0cc9a21302c9f90a43a8d2bda2fdaf78a1ae5b
+    # Format string for destination PVC names. Available tokens:
+    #   {pvc_name}            - full source PVC name
+    #   {pvc_name_suf:<N>}    - last N characters of source PVC name
+    #   {pvc_name_pref:<N>}   - first N characters of source PVC name
+    #   {endpoint}            - VAST endpoint (slugified)
+    #   {sc_name}             - destination StorageClass name
+    #   {sc_name_suf:<N>}     - last N characters of StorageClass name
+    #   {sc_name_pref:<N>}    - first N characters of StorageClass name
+    pvcNameFormat: "{pvc_name}-repl-{endpoint}"
+    # Format string for destination PV names. Available tokens:
+    #   {pv_name}             - full source PV name
+    #   {pv_name_suf:<N>}     - last N characters of source PV name
+    #   {pv_name_pref:<N>}    - first N characters of source PV name
+    #   {endpoint}            - VAST endpoint (slugified)
+    #   {sc_name}             - destination StorageClass name
+    #   {sc_name_suf:<N>}     - last N characters of StorageClass name
+    #   {sc_name_pref:<N>}    - first N characters of StorageClass name
+    pvNameFormat: "{pv_name}-repl-{endpoint}"
+    # applyExistingPvcs, when true, instructs the replication controller to
+    # inject the storageClass label (and the subsystem label for block
+    # StorageClasses) onto existing PVCs whose backing VAST object is found in
+    # the VolumeMapping for the reconciled StorageClass.  This mirrors what the
+    # PVC label webhook does for newly created PVCs, but targets PVCs that were
+    # created before the webhook was enabled.
+    # Runs on every PrimaryStorageClass change.
+    applyExistingPvcs: true
+
+####################
+# EXTENSION CONTROLLER OPTIONS
+####################
+# The extension controller runs as a separate pod when extensions.enabled is true
+# (webhook, manager, or CSI-Addons replication for NFS and Block volumes).
+extensionController:
+  # runOnMaster flag indicated if Extension Controller should be run on master.
+  runOnMaster: false
+  # runOnControlPlane flag indicated if Extension Controller should be run on control plane node.
+  runOnControlPlane: false
+  # determine how DNS (Domain Name System) resolution should be handled within Pod.
+  dnsPolicy: Default
+  # nodeSelector for the extension controller pod
+  nodeSelector: {}
+  # tolerations for the extension controller pod
+  tolerations: []
+  # Allows to specify which nodes your pod is eligible to be scheduled based on labels on pods that are already running on the node.
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  podAffinity: {}
+  # Allows to specify conditions for preventing pods from being scheduled on nodes where certain labels are already present on other pods.
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  podAntiAffinity: {}
+  # Allows to specify which nodes your pod is eligible to be scheduled on based on labels on the node
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  nodeAffinity: {}
+  # Resources for all extension / replication containers.
+  # Sized for extensions.replication.maxGroupPvcs (default 10k PVCs per VGR/VRC).
+  resources:
+    csiVastPlugin:
+      limits:
+        memory: 500Mi
+      requests:
+        cpu: 100m
+        memory: 50Mi
+    csiAddonsSidecar:
+      limits:
+        memory: 1Gi
+      requests:
+        cpu: 10m
+        memory: 256Mi
+    extensionsWebhook:
+      limits:
+        memory: 1Gi
+      requests:
+        cpu: 10m
+        memory: 512Mi
+    extensionsManager:
+      limits:
+        memory: 1Gi
+      requests:
+        cpu: 10m
+        memory: 512Mi
+    csiAddonsClusterManager:
+      limits:
+        cpu: 1000m
+        memory: 1536Mi
+      requests:
+        cpu: 10m
+        memory: 256Mi
+  # Health probes for extension controller containers.
+  # Sized for extensions.replication.maxGroupPvcs (default 10k PVCs per VGR/VRC).
+  probes:
+    extensionsWebhook:
+      liveness:
+        initialDelaySeconds: 30
+        timeoutSeconds: 10
+        periodSeconds: 20
+        failureThreshold: 5
+      readiness:
+        initialDelaySeconds: 10
+        timeoutSeconds: 10
+        periodSeconds: 10
+        failureThreshold: 3
+    extensionsManager:
+      liveness:
+        initialDelaySeconds: 180
+        timeoutSeconds: 15
+        periodSeconds: 30
+        failureThreshold: 10
+      readiness:
+        initialDelaySeconds: 60
+        timeoutSeconds: 15
+        periodSeconds: 15
+        failureThreshold: 6
+  # priorityClassName for the extension controller pod
+  priorityClassName: system-cluster-critical
 
 ####################
 # VAST CONTROLLER AND NODE IMAGE SPECIFICATION
@@ -111,6 +340,14 @@ image:
   csiSnapshotter:
     repository: null  # User-defined repository; if not provided, falls back to defaultRepository
     defaultRepository: null  # Overrides repository globally from charts/vastcsi-operator/values.yaml (overrides.csiSnapshotter.repository)
+    imagePullPolicy: IfNotPresent
+  csiAddonsSidecar:
+    repository: null
+    defaultRepository: null  # Overrides repository globally from charts/vastcsi-operator/values.yaml (overrides.csiAddonsSidecar.repository)
+    imagePullPolicy: IfNotPresent
+  vastExtensionController:
+    repository: null
+    defaultRepository: null  # Overrides repository globally from charts/vastcsi-operator/values.yaml (overrides.vastExtensionController.repository)
     imagePullPolicy: IfNotPresent
 
 ####################
@@ -200,6 +437,24 @@ controller:
   # priorityClassName is the name of priority class to be used for the pod.
   # priorityClassName is the name of priority class to be used for the pod.
   priorityClassName: system-cluster-critical
+  # Metrics configuration for CSI controller
+  metrics:
+    # Enable Prometheus metrics endpoint (disabled by default)
+    enabled: false
+    # Port for metrics HTTP server
+    port: 9091
+    # ServiceMonitor configuration (Prometheus Operator CRD)
+    serviceMonitor:
+      # Enable ServiceMonitor creation (requires Prometheus Operator installed in cluster)
+      enabled: false
+      # Scrape interval
+      interval: 30s
+      # Additional labels for ServiceMonitor
+      labels: []
+      # Relabelings to apply to samples before ingestion
+      relabelings: []
+      # MetricRelabelings to apply to samples before ingestion
+      metricRelabelings: []
 
 node:
   # See controller.dnsPolicy section for details
@@ -231,8 +486,45 @@ node:
       requests:
         cpu: 200m
         memory: 300Mi
+    # Lightweight NFS client daemons (rpcbind/statd/idmapd/...) sidecar
+    nfsServices:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 64Mi
   # See controller.priorityClassName section for details
-  priorityClassName: system-cluster-critical
+  priorityClassName: system-node-critical
+  # Runs NFS client daemons in-container for NFS locking/idmap on node OSes
+  # that lack them (e.g. VKS, NKP). Safe to enable anywhere: each daemon is
+  # started only if the host does not already provide it.
+  nfsServices:
+    enabled: false
+    # Daemons to run (order-independent). Valid: statd, rpcbind, idmapd,
+    # mountd, tlshd. Default covers NFSv3 remote locking. mountd is server-side;
+    # idmapd (NFSv4 id-map) and tlshd (NFS-over-TLS) only if those are used.
+    services:
+      - statd
+      - rpcbind
+  # Metrics configuration for CSI node
+  metrics:
+    # Enable Prometheus metrics endpoint (disabled by default)
+    enabled: false
+    # Port for metrics HTTP server
+    port: 9090
+    # ServiceMonitor configuration (Prometheus Operator CRD)
+    serviceMonitor:
+      # Enable ServiceMonitor creation (requires Prometheus Operator installed in cluster)
+      enabled: false
+      # Scrape interval
+      interval: 30s
+      # Additional labels for ServiceMonitor
+      labels: []
+      # Relabelings to apply to samples before ingestion
+      relabelings: []
+      # MetricRelabelings to apply to samples before ingestion
+      metricRelabelings: []
 
 # The path to the kubelet root dir. must be provided when Kubernetes is not installed in its default directory.
 kubeletPath: "/var/lib/kubelet"

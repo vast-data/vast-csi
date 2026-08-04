@@ -21,3 +21,4 @@ Metrics status:
 
 Examples on how to configure a storage class and start using the driver are here:
 {{ .Chart.Home }}
+

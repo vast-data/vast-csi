@@ -1,0 +1,20 @@
+{{- $rc := .Values.extensions -}}
+{{- $wh := $rc.webhook -}}
+{{- if $rc.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "vastcsi.webhookServiceName" . }}
+  namespace: {{ include "vastcsi.namespace" . }}
+  labels:
+  {{- include "vastcsi.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: 443
+      targetPort: {{ $wh.port | default 9443 }}
+      protocol: TCP
+      name: webhook
+  selector:
+    app: {{ include "vastcsi.extensionControllerName" . }}
+{{- include "vastcsi.selectorLabels" . | nindent 4 }}
+{{- end }}

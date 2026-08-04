@@ -14,10 +14,8 @@
 #    under the License.
 import os.path
 from contextlib import contextmanager, nullcontext
-from tempfile import TemporaryDirectory
 
 from plumbum import local, cmd, ProcessExecutionError
-from plumbum.commands.processes import ProcessTimedOut
 import grpc
 
 from easypy.timing import timing
@@ -32,6 +30,9 @@ from vast_csi.csi_types import (
     ALREADY_EXISTS,
     NOT_FOUND,
     FAILED_PRECONDITION,
+    ABORTED,
+    UNKNOWN,
+    INTERNAL,
 )
 from vast_csi.builders import (
     EmptyBlockVolumeBuilder,
@@ -44,20 +45,27 @@ from vast_csi.exceptions import (
     Abort,
     VolumeAlreadyExists,
     SourceNotFound,
-    MountFailed,
     NVMEConnectionFailed,
     UmountTimedOut,
+    MountFailed,
 )
 from vast_csi.block_utils import (
     connect_nvme_targets,
     get_connected_session,
     get_nvme_device_by_nguid,
+    list_nvme_devices,
+    list_nvme_sessions,
     try_nvme_probes,
     change_io_policy,
     disable_nvme_timeout,
+    enable_passthru_err_log,
     is_native_multipath_enabled,
+    set_block_device_readonly,
+    set_block_device_readwrite,
+    device_rw,
 )
 from vast_csi.utils import (
+    normalize_volume_id,
     stringify_dict,
     string_to_proto_timestamp,
     get_random_fqdn_prefix,
@@ -70,8 +78,10 @@ from vast_csi.filesystem_utils import (
     resize_device,
     get_device_size,
     check_fs_integrity,
-    volume_locked,
-    run_with_timeout,
+    resource_locked,
+    mount as _mount,
+    umount as _umount,
+    temporary_mount as _temporary_mount,
 )
 from vast_csi.configuration import Config
 import vast_csi.capabilities as cap_lib
@@ -95,6 +105,40 @@ ServiceCapabilities = cap_lib.ServiceCapabilities(
 #
 ################################################################
 
+def log_nvme_diagnostics() -> None:
+    """Log NVMe host state to aid debugging when a device lookup fails."""
+
+    try:
+        devices = list_nvme_devices()
+        if devices:
+            logger.info(f"NVMe devices present on host ({len(devices)}):")
+            for dev in devices:
+                logger.info(
+                    f"  {dev.DevicePath}  model={dev.get('ModelNumber', '?')}  "
+                    f"ns={dev.get('NameSpace', '?')}  size={dev.get('PhysicalSize', '?')}"
+                )
+    except Exception as exc:
+        logger.info(f"Failed to list NVMe devices: {exc}")
+
+    try:
+        sessions = list_nvme_sessions()
+        if sessions:
+            logger.info(f"NVMe subsystem sessions ({len(sessions)}):")
+            for session in sessions:
+                for subsys in getattr(session, "Subsystems", []):
+                    paths = getattr(subsys, "Paths", [])
+                    path_summary = ", ".join(
+                        f"{p.get('Address', '?')} [{p.get('State', '?')}]"
+                        for p in paths
+                    ) or "no paths"
+                    logger.info(
+                        f"  subsys={subsys.NQN}  name={subsys.Name}  paths=[{path_summary}]"
+                    )
+        else:
+            logger.info("NVMe subsystem sessions: none")
+    except Exception as exc:
+        logger.info(f"Failed to list NVMe sessions: {exc}")
+
 def nvme_connect(host_nqn, discovery_server, host_id, subsystem_nqn, metrics_registry=None):
     """Connect to NVMe targets with auto-instrumented metrics."""
 
@@ -115,130 +159,43 @@ def nvme_connect(host_nqn, discovery_server, host_id, subsystem_nqn, metrics_reg
         raise NVMEConnectionFailed(detail=exc.stderr, host_nqn=host_nqn, discovery_server=discovery_server)
 
 
-def mount(src, tgt, flags=None, bind=False, fs_type=None, metrics_registry=None):
-    """
-    Mount block device with auto-instrumented metrics.
-    
-    Args:
-        src (str): The source path to be mounted (e.g., a device or directory).
-        tgt (str): The target path where the source will be mounted.
-        flags (list, optional): Additional mount options (e.g., 'ro', 'noexec') to be passed with the -o flag.
-        bind (bool, optional): If True, the mount is performed as a bind mount using the --bind option.
-        fs_type (str, optional): The filesystem type to be used for the mount (e.g., 'ext4', 'xfs').
-        metrics_registry: Optional MetricsRegistry instance (injected by framework if metrics enabled)
-    """
-    if bind:
-        executable = cmd.mount["--bind"]
-    elif fs_type:
-        executable = cmd.mount["-t", fs_type]
-    else:
-        executable = cmd.mount
-    if flags:
-        executable = executable["-o", ",".join(flags)]
-    timeout = CONF.mount_umount_timeout
-    flags_str = ",".join(flags) if flags else "(none)"
-    mount_type = "bind" if bind else (f"fs_type={fs_type}" if fs_type else "default")
-    logger.info(f"Mounting {src!r} -> {tgt!r} ({mount_type}) with flags: {flags_str}")
-    
-    if metrics_registry:
-        metrics_manager = metrics_registry.mount("block_mount")
-    else:
-        metrics_manager = nullcontext()
-
-    try:
-        with (
-            metrics_manager,
-            timing() as timer,
-        ):
-            executable['-v', src, tgt].run(timeout=timeout)
-    except ProcessTimedOut:
-        raise MountFailed(detail=f"mount timed out after {timeout}s", src=src, tgt=tgt, mount_options=flags)
-    except ProcessExecutionError as exc:
-        raise MountFailed(detail=exc.stderr, src=src, tgt=tgt, mount_options=flags)
-    
-    logger.info(f"Mount succeeded in {timer.elapsed}: {src!r} -> {tgt!r}")
+def mount(src, tgt, flags=None, bind=False, fs_type=None, metrics_registry=None, enforce_ro=False):
+    return _mount(
+        src,
+        tgt,
+        flags=flags,
+        bind=bind,
+        fs_type=fs_type,
+        enforce_ro=enforce_ro,
+        metrics_registry=metrics_registry,
+        metrics_operation="block_mount",
+        timeout=CONF.mount_umount_timeout,
+    )
 
 
-def umount(path, ignore_not_mounted=False, metrics_registry=None):
-    """
-    Unmount block device with auto-instrumented metrics.
-
-    Args:
-        path: Path to unmount
-        ignore_not_mounted: If True, ignore "not mounted" errors
-        metrics_registry: Optional MetricsRegistry instance
-    
-    Returns:
-        True if unmounted, False if not mounted
-    """
-    timeout = CONF.mount_umount_timeout
-    logger.info(f"Unmounting {path!r} with timeout: {timeout}s")
-
-    def do_umount():
-        return cmd.umount['-v', path].run()
-
-    
-    if metrics_registry:
-        metrics_manager = metrics_registry.umount("block_mount")
-    else:
-        metrics_manager = nullcontext()
-
-    try:
-        with (
-            metrics_manager,
-            timing() as timer,
-        ):
-            if timeout:
-                run_with_timeout(do_umount, timeout)
-            else:
-                do_umount()
-    except (TimeoutError, ProcessTimedOut):
-        raise UmountTimedOut(f"umount timed out after {timeout}s for path: {path}")
-    except ProcessExecutionError as exc:
-        if "not mounted" in exc.stderr:
-            if ignore_not_mounted:
-                logger.info(f"Umount: {path!r} is not mounted (ignored)")
-                return False
-            logger.warning(f"Umount failed - {path!r} is not mounted (race?)")
-            return False
-        raise
-
-    logger.info(f"Umount succeeded in {timer.elapsed}: {path!r}")
-    return True
+def umount(path, ignore_not_mounted=False, lazy=False, metrics_registry=None):
+    return _umount(
+        path,
+        ignore_not_mounted=ignore_not_mounted,
+        lazy=lazy,
+        metrics_registry=metrics_registry,
+        metrics_operation="block_mount",
+        timeout=CONF.mount_umount_timeout,
+    )
 
 
 @contextmanager
-def temporary_mount(src, tgt_dir, fs_type):
-    """
-    Creates a temporary mount for the given source and target directory.
-    Primary usage of this context manager is to resize
-    the XFS filesystem because it requires the filesystem to be mounted.
-    Note: attempts to resize XFS fs on source device lead to error:
-     /dev/device is not a mounted XFS filesystem
-
-    Args:
-        src (str): The source path to be mounted (e.g., a device or directory).
-        tgt_dir (str): The target directory where the source will be temporarily mounted.
-        fs_type (str, optional): The filesystem type to be used for the mount (e.g., 'xfs').
-    """
-    # Create a temporary directory within the target directory
-    with TemporaryDirectory(dir=tgt_dir) as temp_mount_point:
-        bind = False if fs_type == "xfs" else True
-        if bind:
-            # Create tmp file for bind mount. It will be deleted on context exit.
-            temp_mount_point = os.path.join(temp_mount_point, "device")
-            open(temp_mount_point, "a").close()
-        # Perform the mount
-        mount(src=src, tgt=temp_mount_point, bind=bind, fs_type=fs_type)
-        try:
-            yield temp_mount_point
-        finally:
-            umount(temp_mount_point, ignore_not_mounted=True)
+def temporary_mount(src, tgt_dir, fs_type, readonly=False):
+    with _temporary_mount(
+        src,
+        tgt_dir,
+        fs_type,
+        readonly=readonly,
+        timeout=CONF.mount_umount_timeout,
+    ) as temp_mount_point:
+        yield temp_mount_point
 
 
-def umount_safe(path, metrics_registry=None):
-    """Unmounts a path if it is mounted (legacy wrapper for umount)."""
-    umount(path, ignore_not_mounted=True, metrics_registry=metrics_registry)
 
 def remove_path_if_not_mounted(path):
     path = local.path(path)
@@ -324,10 +281,10 @@ class BlockController(ControllerBase, Instrumented):
             volume_content_source=None,
     ):
         volume_capabilities = _validate_capabilities(volume_capabilities)
-        if volume_capabilities.is_filesystem and volume_capabilities.multi_mode:
+        if volume_capabilities.is_filesystem and volume_capabilities.multi_mode and not volume_capabilities.ro_mode:
             raise Abort(
                 INVALID_ARGUMENT,
-                "Filesystem volumes do not support multi-node attach."
+                "Filesystem volumes do not support multi-node read-write attach."
             )
         parameters = parameters or dict()
         if not volume_content_source:
@@ -353,9 +310,11 @@ class BlockController(ControllerBase, Instrumented):
         return types.CreateResp(volume=volume)
 
     def DeleteVolume(self, vms_session, volume_id):
+        volume_id = normalize_volume_id(volume_id)
         vms_session.globalsnapstreams.ensure_snapshot_stream_deleted(name__contains=volume_id)
-        if vms_session.snapshots.has_snapshots(volume_id):
-            raise Exception(f"Unable to delete {volume_id} as it holds snapshots")
+        if snaps := vms_session.snapshots.has_snapshots(volume_id):
+            snap_ids = ", ".join(str(s.id) for s in snaps)
+            raise Exception(f"Unable to delete {volume_id} as it holds snapshots: [{snap_ids}]")
         # Unmap is occurring implicitly due to the use of the force flag.
         vms_session.volumes.delete(name__endswith=volume_id)
         return types.DeleteResp()
@@ -395,17 +354,30 @@ class BlockController(ControllerBase, Instrumented):
 
         if CONF.block_hosts_auto_prune:
             # Ensure map host operations are atomic based on the composite key (node ID + tenant name).
-            exit_stack.enter_context(volume_locked(f"{node_id}:{tenant_name}"))
+            exit_stack.enter_context(resource_locked(
+                f"{node_id}:{tenant_name}",
+                abort_on_error=True,
+                message=(
+                    f"Node {node_id} (tenant: {tenant_name}) is currently locked"
+                    f" by volume {volume_id} — concurrent ControllerPublishVolume in progress"
+                ),
+            ))
         blockhost = vms_session.blockhosts.ensure(
             node_id=f"{CONF.block_hosts_prefix}{node_id}",
             transport_type=transport_type,
             tenant_name=tenant_name,
             subsystem=subsystem,
         )
-        vms_session.blockhostmappings.ensure_map(
-            volume_id=vol_id,
-            host_id=blockhost.id,
-        )
+        if volume_capabilities.multi_mode:
+            vms_session.blockhostmappings.ensure_map(
+                volume_id=vol_id,
+                host_id=blockhost.id,
+            )
+        else:
+            vms_session.blockhostmappings.ensure_map_exclusive(
+                volume_id=vol_id,
+                host_id=blockhost.id,
+            )
         vip_pool_name = volume_context.get("vip_pool_name")
         vip_pool_fqdn = volume_context.get("vip_pool_fqdn")
         if vip_pool_fqdn:
@@ -451,6 +423,7 @@ class BlockController(ControllerBase, Instrumented):
         Unpublishes a volume from a node and checks if the host has any remaining volumes.
         If no volumes remain and the host was created by the CSI driver, the host is removed to prevent NQN sprawl.
         """
+        volume_id = normalize_volume_id(volume_id)
         # Early return if volume not found
         if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
             logger.info(f"Volume not found with name: {volume_id}")
@@ -465,7 +438,7 @@ class BlockController(ControllerBase, Instrumented):
                 # A race condition may occur if ControllerUnpublishVolume unmaps the last volume from a host
                 # while ControllerPublishVolume simultaneously maps a new volume to the same host.
                 # In such cases, we must either delete and recreate the host, or wait for the new mapping and skip deletion.
-                exit_stack.enter_context(volume_locked(f"{node_id}:{volume.tenant_name}"))
+                exit_stack.enter_context(resource_locked(f"{node_id}:{volume.tenant_name}", abort_on_error=True))
                 if host := vms_session.blockhosts.one(name=block_host_name, tenant_name=volume.tenant_name):
                     if not host.mapped_volumes_preview and host.nqn.startswith(CONF.block_nqn_prefix):
                         logger.info(f"Host {block_host_name!r} has no remaining volumes, removing host")
@@ -474,6 +447,7 @@ class BlockController(ControllerBase, Instrumented):
         return types.CtrlUnpublishResp()
 
     def ControllerExpandVolume(self, vms_session, volume_id, capacity_range):
+        volume_id = normalize_volume_id(volume_id)
         requested_capacity = capacity_range.required_bytes
         logger.debug(f"Requested capacity for volume {volume_id}: {requested_capacity} bytes")
         if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
@@ -496,7 +470,7 @@ class BlockController(ControllerBase, Instrumented):
     def CreateSnapshot(self, vms_session, source_volume_id, name, parameters=None):
         parameters = parameters or dict()
         cluster_name = parameters.get("cluster_name")
-        volume_id = source_volume_id
+        volume_id = normalize_volume_id(source_volume_id)
         if not (volume := vms_session.volumes.one(name__endswith=volume_id)):
             raise Abort(NOT_FOUND, f"Unknown volume: {volume_id}")
         if not (view := vms_session.views.get_subsystem_by_id(_id=volume.view_id)):
@@ -525,7 +499,7 @@ class BlockController(ControllerBase, Instrumented):
         return types.CreateSnapResp(snapshot=snp)
 
     def DeleteSnapshot(self, vms_session, snapshot_id):
-        if vms_session.snapshots.get(snapshot_id):
+        if vms_session.snapshots.get(snapshot_id, fail_if_missing=False):
             if vms_session.snapshots.has_not_finished_streams(snapshot_id):
                 raise Exception(f"Unable to delete snapshot {snapshot_id!r} with active streams")
             vms_session.snapshots.delete_by_id(snapshot_id)
@@ -562,7 +536,7 @@ class BlockNode(NodeBase, Instrumented):
             volume_context=None,
             metrics_registry=None
     ):
-        exit_stack.enter_context(volume_locked(volume_id))
+        exit_stack.enter_context(resource_locked(volume_id, abort_on_error=True))
         volume_context = volume_context or dict()
         volume_capabilities = _validate_capabilities(volume_capability, volume_context, publish_context)
 
@@ -624,6 +598,10 @@ class BlockNode(NodeBase, Instrumented):
 
         logger.info(f"Looking up NVMe device by NGUID {nguid}...")
         if not (device := get_nvme_device_by_nguid(nguid=nguid)):
+            logger.info(
+                "NVMe device lookup failed — dumping host NVMe state for diagnostics"
+            )
+            log_nvme_diagnostics()
             raise Abort(
                 NOT_FOUND,
                 f"NVMe device not found for subsystem {subsystem_nqn} and nguid {nguid}"
@@ -639,9 +617,17 @@ class BlockNode(NodeBase, Instrumented):
         # Disable NVMe controller timeout to prevent removal on temporary network issues
         disable_nvme_timeout(nvme_session)
 
+        # Enable passthrough error logging for this device and its controllers.
+        enable_passthru_err_log(device_name=device.Name, subsystem=nvme_session)
+
         # Host encryption handling
         if luks_manager.requires_encryption():
             device_path = luks_manager.init_host_encryption(device_path=device_path)
+
+        # Ensure the device is writable before any format/fsck/resize operations.
+        # A previous staging cycle may have left blockdev --setro in place (unstage
+        # does not reset it), so we always clear it here unconditionally.
+        set_block_device_readwrite(device_path)
 
         if volume_capabilities.is_filesystem:
             fs_type = volume_capabilities.fs_type
@@ -650,12 +636,21 @@ class BlockNode(NodeBase, Instrumented):
                 formatted = format_device(requested_fs=fs_type, device=device_path)
             if formatted:
                 logger.info(f"Device {device_path} formatted successfully in {timer.elapsed:.2f}s")
-            # - check fs integrity only if:
-            #   - device is not formatted. Can be if pvc is cloned from snapshot/volume or re-attached.
-            #   - fs_type is not xfs. xfs does not require fsck.
-            elif not fs_type == "xfs":
-                check_fs_integrity(device=device_path)
-                logger.info(f"Filesystem integrity check completed for {device_path}")
+
+            try:
+                check_fs_integrity(
+                    device_path,
+                    fs_type,
+                    mount_timeout=CONF.mount_umount_timeout,
+                    run_repair=not formatted,
+                )
+            except Exception as exc:
+                raise Abort(
+                    FAILED_PRECONDITION,
+                    f"Filesystem integrity check failed for {device_path}: {exc}",
+                )
+            logger.info(f"Filesystem integrity check completed for {device_path}")
+
             # The source PVC may have a different size but was never attached and, therefore, never formatted.
             # In this case, the cloned PVC will be formatted as if it were a brand-new PVC,
             # eliminating the need for resizing.
@@ -668,6 +663,10 @@ class BlockNode(NodeBase, Instrumented):
                         luks_manager.luks_resize_device(device_path=device_path)
                     resize_device(device=device_path, target_mount=temp_mount, fs_type=fs_type)
                 logger.info(f"Filesystem resize completed for {device_path}")
+
+        # Apply blockdev --setro after all formatting/resize is done.
+        if volume_capabilities.is_readonly:
+            set_block_device_readonly(device_path)
 
         logger.info(f"Binding device at {device_path} to {device_bind_path}.")
         staging_target_path.mkdir()
@@ -693,10 +692,13 @@ class BlockNode(NodeBase, Instrumented):
             targets_mount_points = ", ".join(mount.mount_point for mount in target_mounts)
             logger.info(f"Staging path {device_bind_path} is being used by {targets_mount_points} targets.")
         if staging_mount:
-            umount_safe(
-                device_bind_path,
-                metrics_registry=None,  # Don't count unstaging as unmount operation
-            )
+            try:
+                umount(device_bind_path, ignore_not_mounted=True, metrics_registry=None)
+            except UmountTimedOut as exc:
+                if not CONF.force_lazy_umount_on_timeout:
+                    raise Abort(UNKNOWN, str(exc))
+                logger.warning(f"umount timed out for {device_bind_path}, retrying with lazy unmount (-l).")
+                umount(device_bind_path, lazy=True, ignore_not_mounted=True, metrics_registry=None)
         else:
             logger.info(f"Device not found at {device_bind_path}")
 
@@ -721,15 +723,21 @@ class BlockNode(NodeBase, Instrumented):
     ):
         volume_context = volume_context or dict()
         target_path = local.path(target_path)
+        volume_capabilities = _validate_capabilities(volume_capability, volume_context, publish_context)
+        is_rox_block = staging_target_path and volume_capabilities.is_readonly and not volume_capabilities.is_filesystem
 
         logger.info("Checking if volume is already published...")
         if MountInfo.get_mount_by_destination(
                 dest_path=target_path, resolve_symlink=CONF.resolve_mount_symlinks,
         ):
             logger.info(f"Volume already published at {target_path}")
+            if is_rox_block:
+                # Kubelet remounts the publish bind ro after losetup completes.
+                # On a subsequent NodePublishVolume retry the existing ro bind would
+                # cause losetup to fail.  Restore rw so the next losetup attempt works.
+                logger.info(f"ROX block: remounting existing publish bind {target_path} rw for losetup retry")
+                cmd.mount["-o", "remount,rw", target_path].run()
             return types.NodePublishResp()  # idempotent
-
-        volume_capabilities = _validate_capabilities(volume_capability, volume_context, publish_context)
         is_ephemeral = volume_context.get("csi.storage.k8s.io/ephemeral") == "true"
         logger.info(f"Volume type: {'Ephemeral' if is_ephemeral else 'Persistent'}")
         if is_ephemeral:
@@ -766,11 +774,11 @@ class BlockNode(NodeBase, Instrumented):
         device_bind_path = get_device_bind_path(staging_target_path)
         logger.info(f"Device bind path: {device_bind_path}")
         mount_flags = volume_capabilities.mount_flags
-        if readonly:
-            mount_flags.append("ro")
+        needs_ro = readonly or volume_capabilities.ro_mode
 
         is_file_system = volume_capabilities.is_filesystem
         fs_type = volume_capabilities.fs_type
+
         if is_file_system:
             logger.info(f"Verifying filesystem type {fs_type} on device...")
             if fs_type != get_filesystem_type(device_bind_path):
@@ -797,30 +805,55 @@ class BlockNode(NodeBase, Instrumented):
                 vms_session=vms_session,
                 luks_manager=luks_manager,
             )
-            try:
-                mount(
-                    src=device_bind_path,
-                    tgt=target_path,
-                    flags=mount_flags,
-                    fs_type=fs_type,
-                    metrics_registry=metrics_registry,
-                )
-            except Exception:
-                meta_file.delete()
+
+            if needs_ro:
+                logger.info("Publishing volume as read-only (readonly parameter or ROX access mode)")
+
+            # For ROX volumes, blockdev --setro already enforces read-only at the block layer.
+            enforce_ro = readonly and not volume_capabilities.ro_mode
+            with resource_locked(str(target_path), abort_on_error=True) as lock:
+                lock.set_message(f"Mount already in progress for {target_path!r} — retry later")
+                try:
+                    mount(
+                        src=device_bind_path,
+                        tgt=target_path,
+                        flags=mount_flags,
+                        fs_type=fs_type,
+                        enforce_ro=enforce_ro,
+                        metrics_registry=metrics_registry,
+                    )
+                except MountFailed as exc:
+                    meta_file.delete()
+                    err_msg = (
+                        f"An unexpected error occurred while attempting to mount"
+                        f" {device_bind_path} to {target_path}."
+                    )
+                    if is_file_system:
+                        err_msg += f" Check if mount options {mount_flags} are correct for chosen filesystem {fs_type}."
+                    if exc.detail:
+                        err_msg += f" Mount error: {exc.detail.strip()}"
+                    raise Abort(INTERNAL, err_msg)
+                except Exception:
+                    meta_file.delete()
+                    raise
         else:
             logger.info(
                 f"Block device mode detected. "
                 f"Creating a placeholder file at {target_path} for binding device."
             )
-            # Block devices are raw storage devices that are accessed as single files by the operating system.
             target_path.open("a").close()
-            mount(
-                src=device_bind_path,
-                tgt=target_path,
-                flags=mount_flags,
-                bind=True,
-                metrics_registry=metrics_registry,
-            )
+            if is_rox_block:
+                cmd.mount["-o", "remount,rw", device_bind_path].run()
+            with resource_locked(str(target_path), abort_on_error=True) as lock:
+                lock.set_message(f"Mount already in progress for {target_path!r} — retry later")
+                mount(
+                    src=device_bind_path,
+                    tgt=target_path,
+                    flags=mount_flags,
+                    bind=True,
+                    enforce_ro=False,
+                    metrics_registry=metrics_registry,
+                )
 
         logger.info("Verifying mount...")
         if not MountInfo.get_mount_by_destination(
@@ -832,7 +865,7 @@ class BlockNode(NodeBase, Instrumented):
             )
             if is_file_system:
                 err_msg += f" Check if mount options {mount_flags} are correct for chosen filesystem {fs_type}."
-            raise Abort(NOT_FOUND, err_msg)
+            raise Abort(INTERNAL, err_msg)
         return types.NodePublishResp()
 
     def NodeUnpublishVolume(self, volume_id, target_path, luks_manager, vms_session=None, metrics_registry=None):
@@ -841,10 +874,13 @@ class BlockNode(NodeBase, Instrumented):
         if MountInfo.get_mount_by_destination(
                 dest_path=target_path, resolve_symlink=CONF.resolve_mount_symlinks,
         ):
-            umount_safe(
-                target_path,
-                metrics_registry=metrics_registry,
-            )
+            try:
+                umount(target_path, ignore_not_mounted=True, metrics_registry=metrics_registry)
+            except UmountTimedOut as exc:
+                if not CONF.force_lazy_umount_on_timeout:
+                    raise Abort(UNKNOWN, str(exc))
+                logger.warning(f"umount timed out for {target_path}, retrying with lazy unmount (-l).")
+                umount(target_path, lazy=True, ignore_not_mounted=True, metrics_registry=metrics_registry)
         else:
             logger.info(f"Device not found at {target_path}")
         if meta_file.exists():
@@ -878,7 +914,7 @@ class BlockNode(NodeBase, Instrumented):
             exit_stack,
             luks_manager,
     ):
-        exit_stack.enter_context(volume_locked(volume_id))
+        exit_stack.enter_context(resource_locked(volume_id, abort_on_error=True))
         volume_capabilities = _validate_capabilities(volume_capability)
         device_bind_path = get_device_bind_path(staging_target_path)
         requested_capacity = capacity_range.required_bytes
@@ -912,6 +948,7 @@ class BlockNode(NodeBase, Instrumented):
 
         if volume_capabilities.is_filesystem:
             fs_type = get_filesystem_type(device_bind_path)
+            is_ro = volume_capabilities.is_readonly
             if not MountInfo.get_mount_by_destination(
                     dest_path=volume_path, resolve_symlink=CONF.resolve_mount_symlinks,
             ):
@@ -921,17 +958,16 @@ class BlockNode(NodeBase, Instrumented):
                 #    1. Volume is created
                 #    2. Volume is expanded
                 #    3. Volume is published
-                # for such scenario we need to create temporary mount to resize the filesystem.
-                with temporary_mount(
-                        src=device_path, tgt_dir=staging_target_path, fs_type=fs_type
-                ) as temp_mount:
-                    resize_device(device=device_path, target_mount=temp_mount, fs_type=fs_type)
+                with device_rw(device_path, mount_path=None, enabled=is_ro):
+                    with temporary_mount(
+                            src=device_path, tgt_dir=staging_target_path, fs_type=fs_type
+                    ) as temp_mount:
+                        resize_device(device=device_path, target_mount=temp_mount, fs_type=fs_type)
             else:
-                resize_device(
-                    device=device_path,
-                    target_mount=volume_path,
-                    fs_type=fs_type,
-                )
+                # Existing mount was created while the device was blockdev --setro, so Linux
+                # auto-applied MS_RDONLY.
+                with device_rw(device_path, mount_path=volume_path, enabled=is_ro):
+                    resize_device(device=device_path, target_mount=volume_path, fs_type=fs_type)
         else:
             existing_capacity = get_device_size(origin_device_path)
             if existing_capacity < requested_capacity:

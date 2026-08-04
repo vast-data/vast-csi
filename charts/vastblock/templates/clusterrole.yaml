@@ -84,4 +84,89 @@ rules:
     resources: ["events"]
     verbs: ["list", "watch", "create", "update", "patch"]
 ---
+{{- if include "vastcsi.extension-enabled" . }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-csi-addons-role
+  labels:
+    {{- include "vastcsi.labels" . | nindent 4 }}
+rules:
+  # CSIAddonsNode permissions for sidecar to register the driver
+  - apiGroups: ["csiaddons.openshift.io"]
+    resources: ["csiaddonsnodes"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  # VolumeReplication permissions
+  - apiGroups: ["replication.storage.openshift.io"]
+    resources: ["volumereplications", "volumereplicationclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["replication.storage.openshift.io"]
+    resources: ["volumereplications/status"]
+    verbs: ["update", "patch"]
+  # Lease permissions for leader election
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "patch", "delete"]
+  # Permissions for CSI-addons sidecar to identify itself
+  - apiGroups: ["apps"]
+    resources: ["replicasets", "deployments"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  # TokenReview permissions for CSI-addons v0.13.0+ authentication
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+---
+{{- end }}
+{{- if include "vastcsi.extension-enabled" . }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-vast-extension-controller-role
+  labels:
+    {{- include "vastcsi.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["replication.storage.openshift.io"]
+    resources: ["volumereplications", "volumegroupreplications"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["replication.storage.openshift.io"]
+    resources: ["volumereplicationclasses", "volumegroupreplicationclasses"]
+    verbs: ["get", "list", "watch", "create"]
+  - apiGroups: ["vastdata.com"]
+    resources: ["vastreplicationcontents", "vaststorageclassreplications", "vastvolumereplications"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["vastdata.com"]
+    resources: ["vastreplicationcontents/finalizers", "vaststorageclassreplications/finalizers", "vastvolumereplications/finalizers"]
+    verbs: ["update"]
+  - apiGroups: ["vastdata.com"]
+    resources: ["vastreplicationcontents/status", "vaststorageclassreplications/status", "vastvolumereplications/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "update", "patch"]
+---
+{{- end }}
 {{- end -}}

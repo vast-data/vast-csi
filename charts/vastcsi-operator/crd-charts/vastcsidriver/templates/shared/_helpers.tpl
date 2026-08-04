@@ -21,6 +21,44 @@
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
+{{- define "vastcsi.dnsSafeReleaseName" -}}
+{{- .Release.Name | replace "." "-" | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{- define "vastcsi.workloadNamePrefix" -}}
+{{- ternary "csi" "block" (eq .Values.driverType "nfs") -}}
+{{- end }}
+
+{{- define "vastcsi.extensionControllerName" -}}
+{{- printf "%s-vast-extension-controller" (include "vastcsi.workloadNamePrefix" .) -}}
+{{- end }}
+
+{{- define "vastcsi.webhookServiceName" -}}
+{{- printf "%s-vast-extension-controller-webhook" (include "vastcsi.dnsSafeReleaseName" .) -}}
+{{- end }}
+
+{{- define "vastcsi.webhookTLSSecretName" -}}
+{{- printf "%s-tls" (include "vastcsi.webhookServiceName" .) -}}
+{{- end }}
+
+{{- define "vastcsi.webhookCertificateName" -}}
+{{- $default := printf "%s-cert" (include "vastcsi.webhookServiceName" .) -}}
+{{- default $default .Values.extensions.webhook.certManager.certificateRef.name -}}
+{{- end }}
+
+{{- define "vastcsi.webhookInjectCAFrom" -}}
+{{- $ns := default (include "vastcsi.namespace" . | trimAll "\"") .Values.extensions.webhook.certManager.certificateRef.namespace -}}
+{{- printf "%s/%s" $ns (include "vastcsi.webhookCertificateName" .) -}}
+{{- end }}
+
+{{/*
+Normalize node.nfsServices.services for Helm and OLM UI.
+The console may store a single array element like "statd rpcbind" instead of ["statd", "rpcbind"].
+*/}}
+{{- define "vastcsi.nfsServicesArg" -}}
+{{- join "," (compact (splitList " " (join " " (default list .Values.node.nfsServices.services)))) -}}
+{{- end -}}
+
 {{/* Common labels */}}
 {{- define "vastcsi.labels" -}}
 helm.sh/chart: {{ include "vastcsi.chart" . }}
@@ -64,11 +102,68 @@ app.kubernetes.io/instance: {{ .Release.Name }}
   value: {{ $.Values.attachRequired | quote }}
 - name: X_CSI_DISABLE_USAGE_STATS
   value: {{ $.Values.disableUsageStats | default false | quote }}
+- name: X_CSI_CACHE_MAX_AGE
+  value: {{ $.Values.cacheMaxAgeSeconds | default 0 | quote }}
+- name: X_CSI_MOUNT_UMOUNT_TIMEOUT
+  value: {{ $.Values.mountUmountTimeout | quote }}
+- name: X_CSI_FORCE_LAZY_UMOUNT_ON_TIMEOUT
+  value: {{ $.Values.forceLazyUmountOnTimeout | quote }}
+{{- if $.Values.resolveMountSymlinks }}
+- name: X_CSI_RESOLVE_MOUNT_SYMLINKS
+  value: {{ $.Values.resolveMountSymlinks | quote }}
+{{- end }}
 {{- if $.Values.truncateVolumeName }}
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}
+{{- end }}
 - name: X_CSI_BLOCK_HOSTS_AUTO_PRUNE
   value: {{ $.Values.blockHostsAutoPrune | quote }}
+{{- if $.Values.hostNamePrefix }}
+- name: X_CSI_HOST_NAME_PREFIX
+  value: {{ $.Values.hostNamePrefix | quote }}
 {{- end }}
 
 {{- end }}
+
+
+{{/*
+Return true if the extension controller feature is enabled.
+The extension controller (and all associated resources — CRDs, RBAC, service account) is
+activated exclusively by extensions.enabled.  Sub-flags such as
+extensions.webhook.disablePvcLabelsWebhook are forwarded as CLI arguments to the running
+process and do NOT affect whether resources are created.
+Usage:
+{{- include "vastcsi.extension-enabled" . -}}
+*/}}
+{{- define "vastcsi.extension-enabled" -}}
+{{- if .Values.extensions.enabled -}}
+{{- true -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Return true when the replication stack is enabled.
+*/}}
+{{- define "vastcsi.replication-enabled" -}}
+{{- if and .Values.extensions.enabled .Values.extensions.replication.enabled -}}
+{{- true -}}
+{{- end -}}
+{{- end -}}
+
+
+{{- define "vastcsi.vastExtensionControllerImage" -}}
+{{- $images := .Values.image -}}
+{{- $images.vastExtensionController.repository | default $images.vastExtensionController.defaultRepository -}}
+{{- end -}}
+
+
+{{/*
+Build the comma-separated list of addons to enable.
+VolumeGroupReplicationClass is always created alongside VolumeReplicationClass.
+Usage:
+{{- include "vastcsi.addons-list" (dict "root" . "type" "nfs") -}}
+*/}}
+{{- define "vastcsi.addons-list" -}}
+{{- $type := .type -}}
+{{- join "," (list (printf "replication[%s]" $type) (printf "volumegroup[%s]" $type)) -}}
+{{- end -}}

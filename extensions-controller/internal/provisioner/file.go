@@ -1,0 +1,486 @@
+/*
+Copyright 2026.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package provisioner
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"path"
+	"strconv"
+	"strings"
+	"time"
+
+	vast_client "github.com/vast-data/go-vast-client"
+	"github.com/vast-data/go-vast-client/resources/typed"
+	"github.com/vast-data/go-vast-client/resources/typed/expr"
+	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
+	"github.com/vast-data/vast-csi/extensions-controller/internal/common"
+	"github.com/vast-data/vast-csi/extensions-controller/internal/common/config"
+	cerrors "github.com/vast-data/vast-csi/extensions-controller/internal/common/errors"
+	"github.com/vast-data/vast-csi/extensions-controller/internal/common/events"
+	"github.com/vast-data/vast-csi/extensions-controller/internal/common/k8s_client"
+	"github.com/vast-data/vast-csi/extensions-controller/internal/common/vmsrest"
+	"go.uber.org/zap"
+	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+)
+
+const (
+	// After a fresh resync-requested annotation, poll stat_path before deferring view creation.
+	resyncAnnotationMaxAge = time.Minute
+	resyncPathWaitTimeout  = 30 * time.Second
+	resyncPathWaitSleep    = 2 * time.Second
+)
+
+// FileProvisioner creates Views and Quotas on the VAST cluster.
+type FileProvisioner struct {
+	*baseProvisioner
+
+	viewCaches       lazyCacheMap[map[string]any]
+	quotaCaches      lazyCacheMap[map[string]any]
+	viewPolicyCaches lazyCacheMap[*typed.ViewPolicyDetailsModel]
+}
+
+// NewFileProvisioner creates a new FileProvisioner for the given ReplicationProvision.
+func NewFileProvisioner(ctx context.Context, rp *vastv1alpha1.VastReplicationContent, k8sClient *k8s_client.K8sClient, emit *events.BoundReporter, cfg *config.Config) (*FileProvisioner, error) {
+	base, err := newBase(ctx, rp, k8sClient, emit, cfg)
+	if err != nil {
+		return nil, err
+	}
+	p := &FileProvisioner{baseProvisioner: base}
+	base.setProvisioner(p)
+	return p, nil
+}
+
+// VolumeMapping implements VolumeMapper.  Returns a map of path →
+// *typed.ViewDetailsModel (stored as any) for all VAST NFS views under the
+// given StorageClass's root export.  Results are cached per StorageClass name.
+func (f *FileProvisioner) VolumeMapping(ctx context.Context, sc *storagev1.StorageClass) (map[string]any, error) {
+	return f.viewCaches.get(sc.Name, func() (map[string]any, error) {
+		rest, err := vmsrest.NewFromStorageClass(ctx, f.k8sClient, sc, f.config.SSLVerify, f.logger)
+		if err != nil {
+			return nil, err
+		}
+		srcParams := f.k8sClient.ExtractNonPrefixedParams(common.CSIParameterPrefix, f.sourceSc.Parameters)
+		rootExport := srcParams[common.StorageClassParameterRootExport]
+
+		views, err := rest.Views.List(&typed.ViewSearchParams{
+			Path:    expr.Str.StartsWith(rootExport),
+			RawData: vast_client.Params{"fields": "id,path,tenant_id"},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list views under %s: %w", rootExport, err)
+		}
+		m := make(map[string]any, len(views))
+		for _, v := range views {
+			m[strings.TrimRight(v.Path, "/")] = v
+		}
+		return m, nil
+	})
+}
+
+// getView returns the cached *typed.ViewDetailsModel for the full view path
+// targetPath (e.g. "/k8s/pvc-123"), or nil if absent.
+func (f *FileProvisioner) getView(ctx context.Context, sc *storagev1.StorageClass, targetPath string) (*typed.ViewDetailsModel, error) {
+	mapping, err := f.VolumeMapping(ctx, sc)
+	if err != nil {
+		return nil, err
+	}
+	v, ok := mapping[strings.TrimRight(targetPath, "/")]
+	if !ok {
+		return nil, nil
+	}
+	return v.(*typed.ViewDetailsModel), nil
+}
+
+// getQuota returns the cached *typed.QuotaDetailsModel for the full path
+// targetPath (e.g. "/k8s/pvc-123"), or nil if absent.
+func (f *FileProvisioner) getQuota(rest *vast_client.TypedVMSRest, sc *storagev1.StorageClass, targetPath string) (*typed.QuotaDetailsModel, error) {
+	m, err := f.quotaCaches.get(sc.Name, func() (map[string]any, error) {
+		srcParams := f.k8sClient.ExtractNonPrefixedParams(common.CSIParameterPrefix, f.sourceSc.Parameters)
+		rootExport := srcParams[common.StorageClassParameterRootExport]
+		quotas, err := rest.Quotas.List(&typed.QuotaSearchParams{
+			Path:    expr.Str.StartsWith(rootExport),
+			RawData: vast_client.Params{"fields": "id,path"},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list quotas under %s: %w", rootExport, err)
+		}
+		m := make(map[string]any, len(quotas))
+		for _, q := range quotas {
+			m[strings.TrimRight(q.Path, "/")] = q
+		}
+		return m, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	v, ok := m[strings.TrimRight(targetPath, "/")]
+	if !ok {
+		return nil, nil
+	}
+	return v.(*typed.QuotaDetailsModel), nil
+}
+
+// getViewPolicy returns the view policy for policyName. Cached per StorageClass
+// name on this provisioner (one VMS GET per SC per reconcile, not per PVC).
+func (f *FileProvisioner) getViewPolicy(rest *vast_client.TypedVMSRest, sc *storagev1.StorageClass, policyName string) (*typed.ViewPolicyDetailsModel, error) {
+	return f.viewPolicyCaches.get(sc.Name, func() (*typed.ViewPolicyDetailsModel, error) {
+		return vmsrest.GetViewPolicy(rest, policyName)
+	})
+}
+
+// BackendObjectKey implements VolumeMapper.  Returns the full view path used
+// as a key in VolumeMapping
+func (f *FileProvisioner) BackendObjectKey(volumeHandle string) string {
+	if strings.HasPrefix(volumeHandle, "/") {
+		return volumeHandle
+	}
+	srcParams := f.k8sClient.ExtractNonPrefixedParams(common.CSIParameterPrefix, f.sourceSc.Parameters)
+	rootExport := srcParams[common.StorageClassParameterRootExport]
+	return strings.TrimRight(path.Join(rootExport, path.Base(volumeHandle)), "/")
+}
+
+// ProvisionVolumeCb implements Interface.  Called by ProvisionVolumes for this VRC's own cluster.
+// Ensures VAST NFS views and quotas exist on this VRC's own cluster and removes
+// them for PVCs no longer in the source list.
+func (f *FileProvisioner) ProvisionVolumeCb(ctx context.Context, vrc *vastv1alpha1.VastReplicationContent, sibRest *vast_client.TypedVMSRest, sibSc *storagev1.StorageClass) error {
+	return f.syncFileObjects(ctx, sibRest, sibSc, vrc.Spec.SyncPVCPV, f.toEnsure, f.toDelete)
+}
+
+// CleanVolumeCb implements Interface.  Deletes VAST NFS views and quotas on
+// this VRC's own cluster.
+// View paths are derived from the source PVCs found in sibling constellation
+// VRCs: VAST replication preserves the relative volume path on the destination
+// cluster, so BackendObjectKey(sourceHandle) produces the correct view path there.
+func (f *FileProvisioner) CleanVolumeCb(ctx context.Context, vrc *vastv1alpha1.VastReplicationContent, sibRest *vast_client.TypedVMSRest, sibSc *storagev1.StorageClass) error {
+	// When SyncPVCPV=true, a mirror PVC+PV was created for each source PVC.
+	// The standard k8s PVC→PV→DeleteVolume lifecycle triggers the CSI driver's
+	// DeleteVolume, which handles VAST view+quota cleanup.  Deleting views here
+	// races with in-use NFS mounts and destroys active pods on sibling PVCs.
+	if vrc.Spec.SyncPVCPV {
+		return nil
+	}
+	retain, err := f.shouldRetainDestVolumes(ctx)
+	if err != nil {
+		return err
+	}
+	if retain {
+		return nil
+	}
+	sourcePairs, err := f.sourcePairsFromSiblingVRCs(ctx)
+	if err != nil {
+		return fmt.Errorf("list source PVCs from sibling VRCs: %w", err)
+	}
+	var errs cerrors.DeferredError
+	for _, pair := range sourcePairs {
+		viewPath := f.BackendObjectKey(pair.PV.Spec.CSI.VolumeHandle)
+		var pvcErrs cerrors.DeferredError
+		if err := f.deleteVastQuota(ctx, sibRest, sibSc, viewPath); err != nil {
+			pvcErrs.Add(fmt.Errorf("delete quota at %s: %w", viewPath, err))
+		}
+		if err := f.deleteVastView(ctx, sibRest, sibSc, viewPath); err != nil {
+			pvcErrs.Add(fmt.Errorf("delete view at %s: %w", viewPath, err))
+		}
+		if pvcErrs.IsEmpty() {
+			f.emit.Normalf(events.ReasonVASTVolumeDeleted, "deleted VAST view+quota at %s for source PVC %s", viewPath, pair.PVC.Name)
+		} else {
+			errs.Merge(&pvcErrs)
+		}
+	}
+	return errs.Err()
+}
+
+// syncFileObjects creates or deletes VAST NFS views and quotas on this VRC's
+// own cluster.
+func (f *FileProvisioner) syncFileObjects(
+	ctx context.Context,
+	sibRest *vast_client.TypedVMSRest,
+	sibSc *storagev1.StorageClass,
+	syncPVCPV bool,
+	toEnsure []VolumePair, toDelete vastv1alpha1.PVCList,
+) error {
+	sibParams := f.k8sClient.ExtractNonPrefixedParams(common.CSIParameterPrefix, sibSc.Parameters)
+	viewPolicyName := sibParams["view_policy"]
+	qosPolicy := sibParams["qos_policy"]
+	qosPolicyIdStr := sibParams[common.StorageClassParameterQosPolicyId]
+
+	var errs cerrors.DeferredError
+
+	for _, pair := range toEnsure {
+		if err := f.ensureFileVastObject(ctx, sibRest, sibSc, pair, viewPolicyName, qosPolicy, qosPolicyIdStr); err != nil {
+			errs.Add(fmt.Errorf("sync view+quota for %s: %w", pair.PVC.Name, err))
+		}
+	}
+
+	// When SyncPVCPV=true, each removed source PVC has a mirror PVC+PV whose
+	// deletion triggers CSI DeleteVolume, which cleans up the VAST view+quota.
+	// Deleting views here directly would race with active NFS mounts.
+	if !syncPVCPV {
+		for _, pvcName := range toDelete {
+			if err := f.deleteFileVastObject(ctx, sibRest, sibSc, pvcName); err != nil {
+				errs.Add(fmt.Errorf("delete view+quota for source %s: %w", pvcName, err))
+			}
+		}
+	}
+	return errs.Err()
+}
+
+// ensureFileVastObject creates or verifies the VAST View and Quota for a
+// single source PVC on this VRC's own cluster reached via rest.
+func (f *FileProvisioner) ensureFileVastObject(
+	ctx context.Context,
+	rest *vast_client.TypedVMSRest,
+	sc *storagev1.StorageClass,
+	pair VolumePair,
+	viewPolicyName, qosPolicy, qosPolicyIdStr string,
+) error {
+	sourcePVC := pair.PVC
+	sourcePV := pair.PV
+	rawVolumeName := path.Base(sourcePV.Spec.CSI.VolumeHandle)
+	targetPath := f.BackendObjectKey(sourcePV.Spec.CSI.VolumeHandle)
+
+	view, err := f.ensureView(ctx, rest, sc, targetPath, viewPolicyName, qosPolicy, qosPolicyIdStr)
+	if err != nil {
+		return fmt.Errorf("ensure view at %s: %w", targetPath, err)
+	}
+	if view == nil {
+		return nil // object absent — skip silently
+	}
+
+	if storageRequest, found := sourcePVC.Spec.Resources.Requests[corev1.ResourceStorage]; found {
+		if err := f.ensureQuota(rest, sc, targetPath, rawVolumeName, view.TenantId, storageRequest.Value()); err != nil {
+			return fmt.Errorf("ensure quota at %s: %w", targetPath, err)
+		}
+	}
+	return nil
+}
+
+// pathExists calls POST /folders/stat_path to check whether targetPath exists
+// on the cluster reached via rest.  Returns false (no error) when the cluster
+// responds with 503, which is the expected response for a path that has not
+// been replicated yet.  Any other error is returned to the caller.
+func (f *FileProvisioner) pathExists(ctx context.Context, rest *vast_client.TypedVMSRest, targetPath string, tenantId int64) (bool, error) {
+	_, err := rest.Folders.FolderStatPathWithContext_POST(ctx, targetPath, tenantId)
+	if err == nil {
+		return true, nil
+	}
+	if vast_client.ExpectStatusCodes(err, http.StatusServiceUnavailable) {
+		return false, nil
+	}
+	return false, err
+}
+
+// resyncRecentlyRequested reports whether AnnotationResyncRequestedAt was set
+// within resyncAnnotationMaxAge (RFC3339 timestamp).
+func (f *FileProvisioner) resyncRecentlyRequested() bool {
+	raw, ok := f.rp.Annotations[common.AnnotationResyncRequestedAt]
+	if !ok || raw == "" {
+		return false
+	}
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return false
+	}
+	return time.Since(t) < resyncAnnotationMaxAge
+}
+
+// waitForReplicatedPath polls stat_path until the path exists or timeout elapses.
+func (f *FileProvisioner) waitForReplicatedPath(
+	ctx context.Context,
+	rest *vast_client.TypedVMSRest,
+	targetPath string,
+	tenantId int64,
+) error {
+	return vmsrest.WaitResource(
+		resyncPathWaitTimeout,
+		resyncPathWaitSleep,
+		fmt.Sprintf("destination path %q to be replicated", targetPath),
+		func() (bool, error) {
+			return f.pathExists(ctx, rest, targetPath, tenantId)
+		},
+	)
+}
+
+// ensureView ensures a VAST View exists at targetPath on this VRC's own cluster.
+func (f *FileProvisioner) ensureView(
+	ctx context.Context,
+	rest *vast_client.TypedVMSRest,
+	sc *storagev1.StorageClass,
+	targetPath, viewPolicyName, qosPolicy, qosPolicyIdStr string,
+) (*typed.ViewUpsertModel, error) {
+	if cached, err := f.getView(ctx, sc, targetPath); err != nil {
+		return nil, err
+	} else if cached != nil {
+		return cached, nil
+	}
+
+	if viewPolicyName == "" {
+		return nil, fmt.Errorf("view_policy parameter not found in StorageClass %s", sc.Name)
+	}
+
+	viewPolicy, err := f.getViewPolicy(rest, sc, viewPolicyName)
+	if err != nil {
+		return nil, err
+	}
+
+	protocols := nfsProtocols(sc.MountOptions)
+	viewBody := &typed.ViewRequestBody{
+		Path:      targetPath,
+		PolicyId:  viewPolicy.Id,
+		TenantId:  viewPolicy.TenantId,
+		Protocols: &protocols,
+		CreateDir: false,
+	}
+	if qosPolicy != "" {
+		viewBody.QosPolicy = qosPolicy
+	}
+	if qosPolicyIdStr != "" {
+		id, err := strconv.ParseInt(qosPolicyIdStr, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid qos_policy_id %q: %w", qosPolicyIdStr, err)
+		}
+		viewBody.QosPolicyId = id
+	}
+	// POST /folders/stat_path returns 503 when the path is absent.
+	// We treat that as "not yet replicated" and defer view creation to the
+	// next reconcile, while still allowing mirror PVC creation to proceed.
+	// After a fresh resync-requested annotation, poll stat_path for up to
+	// resyncPathWaitTimeout before deferring.
+	exists, err := f.pathExists(ctx, rest, targetPath, viewPolicy.TenantId)
+	if err != nil {
+		return nil, fmt.Errorf("stat_path %s: %w", targetPath, err)
+	}
+	if !exists && f.resyncRecentlyRequested() {
+		f.logger.Info("resync requested recently, waiting for destination path",
+			zap.String("path", targetPath),
+			zap.Duration("timeout", resyncPathWaitTimeout),
+		)
+		if waitErr := f.waitForReplicatedPath(ctx, rest, targetPath, viewPolicy.TenantId); waitErr == nil {
+			exists = true
+		}
+	}
+	if !exists {
+		f.emit.Normalf(events.ReasonProvisionSkipped,
+			"destination path %s not yet replicated, view creation deferred (StorageClass %s)",
+			targetPath, sc.Name)
+		return nil, nil
+	}
+
+	view, err := rest.Views.Create(viewBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create view %s: %w", targetPath, err)
+	}
+	f.viewCaches.add(sc.Name, targetPath, view)
+	f.emit.Normalf(events.ReasonViewCreated, "created view %s on own cluster (StorageClass %s)", targetPath, sc.Name)
+	return view, nil
+}
+
+// ensureQuota ensures a VAST Quota exists at targetPath.
+func (f *FileProvisioner) ensureQuota(rest *vast_client.TypedVMSRest, sc *storagev1.StorageClass, targetPath, quotaName string, tenantId, hardLimit int64) error {
+	if cached, err := f.getQuota(rest, sc, targetPath); err != nil {
+		return err
+	} else if cached != nil {
+		return nil
+	}
+
+	created, err := rest.Quotas.Create(&typed.QuotaRequestBody{
+		Name:      quotaName,
+		Path:      targetPath,
+		TenantId:  tenantId,
+		HardLimit: hardLimit,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create quota for view %s: %w", targetPath, err)
+	}
+	f.quotaCaches.add(sc.Name, targetPath, created)
+	f.emit.Normalf(events.ReasonQuotaCreated, "created quota %s (hardLimit=%d) on own cluster", targetPath, hardLimit)
+	return nil
+}
+
+// deleteFileVastObject deletes the VAST view and quota that back the mirrored
+// destination PVC for sourcePVCName on this VRC's own cluster reached via rest.
+func (f *FileProvisioner) deleteFileVastObject(ctx context.Context, rest *vast_client.TypedVMSRest, sc *storagev1.StorageClass, sourcePVCName string) error {
+	pvcs, err := f.k8sClient.ListPVCsByLabelSelector(ctx, f.rp.Namespace, map[string]string{
+		common.LabelManagedBy:    common.LabelManagedByValue,
+		common.LabelSourcePVC:    sourcePVCName,
+		common.LabelStorageClass: sc.Name,
+	})
+	if err != nil {
+		return err
+	}
+	var errs cerrors.DeferredError
+	for i := range pvcs {
+		pv, pvErr := f.managedPVForPVC(ctx, &pvcs[i])
+		if pvErr != nil {
+			return pvErr
+		}
+		if pv == nil || pv.Spec.CSI == nil || pv.Spec.CSI.VolumeHandle == "" {
+			continue
+		}
+		viewPath := pv.Spec.CSI.VolumeHandle
+		if err := f.deleteVastQuota(ctx, rest, sc, viewPath); err != nil {
+			errs.Add(err)
+		}
+		if err := f.deleteVastView(ctx, rest, sc, viewPath); err != nil {
+			errs.Add(err)
+		}
+	}
+	if errs.IsEmpty() {
+		f.emit.Normalf(events.ReasonVASTVolumeDeleted, "deleted VAST view and quota for source PVC %s (StorageClass %s)", sourcePVCName, sc.Name)
+	}
+	return errs.Err()
+}
+
+// deleteVastQuota deletes the VAST Quota at viewPath on this VRC's own cluster.
+// Skips the REST call when the quota is not present in the cache (already absent).
+func (f *FileProvisioner) deleteVastQuota(_ context.Context, rest *vast_client.TypedVMSRest, sc *storagev1.StorageClass, viewPath string) error {
+	quota, err := f.getQuota(rest, sc, viewPath)
+	if err != nil {
+		return err
+	}
+	if quota == nil {
+		f.logger.Info(fmt.Sprintf("Volume %s is already deleted", viewPath))
+		return nil
+	}
+	if err := vast_client.IgnoreStatusCodes(
+		rest.Quotas.DeleteById(quota.Id), 404,
+	); err != nil {
+		return fmt.Errorf("delete VAST quota at %s: %w", viewPath, err)
+	}
+	return nil
+}
+
+// deleteVastView deletes the VAST NFS View at viewPath on this VRC's own cluster.
+// Skips the REST call when the view is not present in the cache (already absent).
+func (f *FileProvisioner) deleteVastView(ctx context.Context, rest *vast_client.TypedVMSRest, sc *storagev1.StorageClass, viewPath string) error {
+	view, err := f.getView(ctx, sc, viewPath)
+	if err != nil {
+		return err
+	}
+	if view == nil {
+		f.logger.Info(fmt.Sprintf("View %s is already deleted", viewPath))
+		return nil
+	}
+	if err := vast_client.IgnoreStatusCodes(
+		rest.Views.DeleteById(view.Id, false), 404,
+	); err != nil {
+		return fmt.Errorf("delete VAST view %s: %w", viewPath, err)
+	}
+	return nil
+}

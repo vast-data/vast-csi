@@ -1,0 +1,147 @@
+name: Release VCSI CLI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - extensions-controller/vcsi_version
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build and Release VCSI CLI
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Read version and check if release exists
+      id: meta
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        VERSION=$(tr -d '[:space:]' < extensions-controller/vcsi_version)
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
+
+        if [[ ! "$VERSION" =~ ^v[0-9]+(\.[0-9]+)*(-[a-z0-9]+(-[a-z0-9]+)*)?$ ]]; then
+          echo "::error::Invalid extensions-controller/vcsi_version '$VERSION' (expected vX.Y or vX.Y.Z with optional pre-release, e.g. v1.0 or v1.0-beta)"
+          exit 1
+        fi
+
+        echo "VCSI CLI version: $VERSION"
+
+        if gh release view "$VERSION" >/dev/null 2>&1; then
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+          echo "GitHub release $VERSION already exists."
+          echo "Skipping tag creation, build, and release."
+        else
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "No existing release for $VERSION; proceeding."
+        fi
+
+        if git rev-parse "refs/tags/${VERSION}" >/dev/null 2>&1; then
+          echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+          echo "Git tag ${VERSION} already exists."
+        else
+          echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Skip summary
+      if: steps.meta.outputs.skip == 'true'
+      run: |
+        echo "## VCSI CLI release skipped" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        echo "Version \`${{ steps.meta.outputs.version }}\` was not released because a GitHub release with that tag already exists." >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Set up Go
+      if: steps.meta.outputs.skip != 'true'
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: extensions-controller/go.mod
+
+    - name: Build VCSI CLI for multiple platforms
+      if: steps.meta.outputs.skip != 'true'
+      run: |
+        cd extensions-controller
+        chmod +x scripts/build-multi-platform.sh
+        VERSION="${{ steps.meta.outputs.version }}" GIT_COMMIT="${GITHUB_SHA::8}" ./scripts/build-multi-platform.sh
+
+    - name: Generate checksums
+      if: steps.meta.outputs.skip != 'true'
+      run: |
+        cd extensions-controller/dist
+        sha256sum vcsi-* > checksums.txt
+        cat checksums.txt
+
+    - name: Create release notes
+      if: steps.meta.outputs.skip != 'true'
+      run: |
+        cat > release_notes.md << EOF
+        # VCSI CLI ${{ steps.meta.outputs.version }}
+
+        ## Downloads
+
+        | Platform | Architecture | Binary |
+        |----------|--------------|--------|
+        | Linux | x86_64 | \`vcsi-linux-amd64.${{ steps.meta.outputs.version }}\` |
+        | Linux | ARM64 | \`vcsi-linux-arm64.${{ steps.meta.outputs.version }}\` |
+        | macOS | Intel | \`vcsi-darwin-amd64.${{ steps.meta.outputs.version }}\` |
+        | macOS | Apple Silicon | \`vcsi-darwin-arm64.${{ steps.meta.outputs.version }}\` |
+        | Windows | x86_64 | \`vcsi-windows-amd64.${{ steps.meta.outputs.version }}.exe\` |
+        | Windows | ARM64 | \`vcsi-windows-arm64.${{ steps.meta.outputs.version }}.exe\` |
+
+        ## Installation
+
+        \`\`\`bash
+        # Example: Linux x86_64
+        wget https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.version }}/vcsi-linux-amd64.${{ steps.meta.outputs.version }}
+        chmod +x vcsi-linux-amd64.${{ steps.meta.outputs.version }}
+        sudo mv vcsi-linux-amd64.${{ steps.meta.outputs.version }} /usr/local/bin/vcsi
+        vcsi
+        \`\`\`
+
+        ## Verification
+
+        \`\`\`bash
+        sha256sum -c checksums.txt
+        \`\`\`
+
+        See [commits](https://github.com/${{ github.repository }}/commits/${{ steps.meta.outputs.version }}) for details.
+        EOF
+
+    - name: Create git tag from vcsi_version
+      if: steps.meta.outputs.skip != 'true' && steps.meta.outputs.tag_exists == 'false'
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git tag -a "${{ steps.meta.outputs.tag }}" -m "VCSI CLI ${{ steps.meta.outputs.version }}"
+        git push origin "${{ steps.meta.outputs.tag }}"
+
+    - name: Create GitHub Release
+      if: steps.meta.outputs.skip != 'true'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.meta.outputs.tag }}
+        name: VCSI CLI ${{ steps.meta.outputs.version }}
+        body_path: release_notes.md
+        files: |
+          extensions-controller/dist/vcsi-*
+          extensions-controller/dist/checksums.txt
+        fail_on_unmatched_files: true
+
+    - name: Release summary
+      if: steps.meta.outputs.skip != 'true'
+      run: |
+        echo "## VCSI CLI release published" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        echo "**Version:** ${{ steps.meta.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+        echo "**Tag:** ${{ steps.meta.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        ls -lh extensions-controller/dist/vcsi-* >> "$GITHUB_STEP_SUMMARY"

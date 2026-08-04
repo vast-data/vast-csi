@@ -14,7 +14,7 @@ LABEL operators.operatorframework.io.metrics.project_layout=helm.sdk.operatorfra
 LABEL operators.operatorframework.io.test.config.v1=tests/scorecard/
 LABEL operators.operatorframework.io.test.mediatype.v1=scorecard+v1
 
-LABEL com.redhat.openshift.versions="v4.14"
+LABEL com.redhat.openshift.versions="v4.19-v4.21"
 LABEL com.redhat.delivery.operator.bundle=true
 LABEL com.redhat.delivery.backport=true
 

@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## Version 2.6.6
+* Added `ReadOnlyMany` (ROX) access mode support for the block CSI driver
+* Changed default node pod `priorityClass` to `system-node-critical` to ensure node workloads are not evicted under resource pressure (VCSI-358)
+* Added `ReadWriteOncePod` access mode support (VCSI-464)
+* Added `csi_node_nvme_controller_info` Prometheus metric exposing NVMe controller state and metadata (`controller`, `subsysnqn`, `hostnqn`, etc) for block driver node pods. Auto-enabled for the block driver, sourced from nvme-cli and sysfs (VCSI-388)
+* Added mTLS support for NFS mounts via a new `mtls_manager` component, enabling mutual TLS credential handling for secure NFS transport
+* Added async volume replication support via the extensions operator. Introduces `VolumeReplication` and `VolumeGroupReplication` CRDs, an addons controller, and supporting Helm configuration for both NFS and block drivers
+* Fixed an issue causing too many quotas in response (VCSI-380)
+* Removed the `volume_id` label from metrics to prevent unbounded cardinality (VCSI-537)
+* Fixed stage and unpublish failures when mounts encounter I/O errors. `realpath` is now tolerant of I/O errors while iterating over mounts (VCSI-446)
+* `e2fsck` now runs outside the container namespace. Removed the `-f` flag from routine filesystem checks (VCSI-538)
+* Added exponential backoff for VTask polling. Block volume map/unmap retries are now keyed by volume ID (VCSI-530)
+* Added `forceLazyUmountOnTimeout` (`X_CSI_FORCE_LAZY_UMOUNT_ON_TIMEOUT`) option. When enabled, a timed-out umount operation is retried using `umount -l` (lazy unmount), allowing the filesystem to detach immediately while cleanup is deferred until all file descriptors are closed
+* Block: enabled `passthru_err_log_enabled` during NVMe staging to improve error visibility
+* Block: concurrent `NodePublishVolume` requests targeting the same mount path are now serialized
+* Block: added integrity validation for XFS filesystems during staging
+* Block: `ext_resize` now detects and recovers from dirty superblocks (for example, snapshots of live filesystems) before resizing. The `-f` flag has been removed from the standard staging path
+* Block: mount operations now use the `-vvv` option to provide more detailed logging
+* Block: volumes are now deleted without `force=True` by default. If the API returns "Volume is mapped to hosts", the operation is automatically retried with `force=True`
+* Updated `csi-snapshotter` sidecar from v7.0.1 to v8.2.0
+* Fixed an issue causing too many quotaS in response (VCSI-380)
+* Increased default mount/umount timeout from 30s to 90s (`mountUmountTimeout` / `X_CSI_MOUNT_UMOUNT_TIMEOUT`) to reduce premature lazy unmounts under slow storage. Increased `xfs_db` superblock read timeout from 10s to 30s for XFS integrity checks during block volume staging
+
 ## Version 2.6.5
 * Additional logging and timeout for mount/unmount operations (VCSI-343)
 * Added `EXPAND_VOLUME` node capability and implemented `NodeExpandVolume` as a no-op for NFS filesystem volumes. (VCSI-345)
@@ -124,4 +147,3 @@
     * all methods related to provisioning new volume/snapshot moved to `volume_builder.py` (VCSI-15)
     * Config class moved to `configuration.py` (VCSI-15)
     * created `migrate-pv.py` script to enhance PVCs provisioned by version 2.0 of the driver by adding necessary volume attributes (VCSI-44)
- 

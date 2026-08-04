@@ -1,0 +1,62 @@
+apiVersion: vastdata.com/v1alpha1
+kind: VastStorageClassReplication
+metadata:
+  name: app-replication
+  namespace: default
+spec:
+  # primaryStorageClass is the StorageClass of the currently active (primary)
+  # cluster.  The operator sets replicationState=primary on its
+  # VolumeGroupReplication and replicationState=secondary on all others.
+  primaryStorageClass: vastdata-filesystem
+
+  # protectionTopology defines the undirected replication mesh.
+  # For n sites you need exactly n*(n-1)/2 entries (one per pair).
+  #   2 sites → 1 entry  (A–B)
+  #   3 sites → 3 entries (A–B, A–C, B–C)
+  #   4 sites → 6 entries (A–B, A–C, A–D, B–C, B–D, C–D)
+  protectionTopology:
+    # site-a ↔ site-b
+    - source: vastdata-filesystem
+      destination: vastdata-filesystem2
+    - source: vastdata-filesystem
+      destination: vastdata-filesystem3
+    - source: vastdata-filesystem2
+      destination: vastdata-filesystem3
+
+
+  # protectionPolicyTemplate describes how the operator auto-creates one
+  # NATIVE_REPLICATION ProtectionPolicy per topology entry side.
+  protectionPolicyTemplate:
+    # params defines the replication schedule (one or more schedule windows).
+    #
+    # Time unit suffixes (case-insensitive except M vs m):
+    #   s / S  – seconds  (e.g. "30s")
+    #   m      – minutes  (e.g. "15m")   ← lowercase only; uppercase M = months
+    #   h / H  – hours    (e.g. "1h", "6H")
+    #   d / D  – days     (e.g. "2d", "7D")
+    #   w / W  – weeks    (e.g. "1w", "4W")
+    #   M      – months   (= 30 days, e.g. "1M")
+    #   y / Y  – years    (= 365 days, e.g. "1y")
+    #
+    # "every"     – replication interval, e.g. "15m", "1h", "1d"
+    # "keepLocal" – local snapshot retention, e.g. "2d", "1w"
+    # "keepRemote"– remote snapshot retention, e.g. "7d", "4w"
+    # "startAt"   – optional start time: "YYYY-MM-DD HH:MM:SS" or bare "HH:MM"
+    params:
+      - every: 15m
+        keepLocal: 2d
+        keepRemote: 7d
+
+  # failoverType controls how a failover is executed when primaryStorageClass changes.
+  # Allowed values: ungracefulFailover (default) | gracefulFailover
+  failoverType: ungracefulFailover
+
+  # syncIntervalSeconds is the maximum allowed gap between sync points (seconds).
+  syncIntervalSeconds: 900
+
+  # syncPVCPV controls whether the operator creates/deletes static PV+PVC
+  # pairs on each destination cluster so workloads can mount the replica.
+  syncPVCPV: true
+
+  # pvcRemap controls whether PVCs are remapped to the new primary on failover.
+  pvcRemap: true

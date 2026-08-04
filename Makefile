@@ -47,11 +47,13 @@ endif
 # Set default values for tags
 # in simplest case, only PIPE is required eg. export PIPE=xxxxxx. Other tags will be built upon this one:
 # CSI_TAG=xxxxxx
+# EXTENSIONS_TAG=xxxxxx-extensions
 # OPERATOR_TAG=xxxxxx-operator
 # OPERATOR_BUNDLE_TAG=xxxxxx-operator-bundle
 # In more complex scenarios, you can specify all tags
 # separately eg export CSI_TAG=vvvvvv OPERATOR_TAG=yyyyy-operator etc.
 CSI_TAG := $(if $(CSI_TAG),$(CSI_TAG),$(PIPE))
+EXTENSIONS_TAG := $(if $(EXTENSIONS_TAG),$(EXTENSIONS_TAG),$(if $(CSI_TAG),$(CSI_TAG)-extensions))
 OPERATOR_TAG := $(if $(OPERATOR_TAG),$(OPERATOR_TAG),$(if $(PIPE),$(PIPE)-operator))
 OPERATOR_BUNDLE_TAG := $(if $(OPERATOR_BUNDLE_TAG),$(OPERATOR_BUNDLE_TAG),$(if $(PIPE),$(PIPE)-operator-bundle))
 # Define the script for checking required environment variables
@@ -112,6 +114,7 @@ operator-bundle-gen: ## Generate bundle manifests and metadata, then validate ge
           --set managerImage="$(shell scripts/concat_img_tag.sh $(IMG) $(OPERATOR_TAG))" \
           --set proxyImage=$${OPERATOR_PROXY_IMG:-"docker.io/kubebuilder/kube-rbac-proxy@sha256:a2523c532c0c3d51a5396a901d7ded23e402a9a1492c783aae27af6d0c1d2ec5"} \
           --set overrides.csiVastPlugin.repository="$(shell scripts/concat_img_tag.sh $(CSI_PLUGIN_IMG) $(CSI_TAG))" \
+          --set overrides.vastExtensionController.repository="$(shell scripts/concat_img_tag.sh $(CSI_PLUGIN_IMG) $(EXTENSIONS_TAG))" \
           --set imagePullSecret=$(IMG_PULL_SECRET) \
 		  --set ciPipe=$(PIPE)
 	@operator-sdk bundle validate $(CURDIR)/bundle
@@ -197,6 +200,9 @@ create-csi-secret: create-csi-namespace ## Recreate secret for CSI driver
 install-snapshost-crds: ## Install snapshot CRDs
 	@$(CURDIR)/scripts/install_snapshot_crds.sh
 
+install-replication-crds: ## Install VolumeReplication CRDs and Operator (complete stack)
+	@$(CURDIR)/scripts/install_replication_stack.sh
+
 start-minikube: ## Start Minikube cluster
 	@$(call check_required_env,MINIKUBE_DRIVER)
 	@$(CURDIR)/scripts/start-minikube.sh
@@ -224,7 +230,7 @@ endif
 #   Examples:
 #     ENDPOINT=v95 make run nfs
 #     ENDPOINT=v95 DEV_VIP_POOL=vippool-2 make run block
-run: start-minikube create-csi-namespace install-snapshost-crds create-csi-secret ## Run the CSI driver with a specified profile: 'nfs' or 'block'
+run: start-minikube create-csi-namespace install-snapshost-crds install-replication-crds create-csi-secret ## Run the CSI driver with a specified profile: 'nfs' or 'block'
 	@$(call check_required_env,DEV_VIP_POOL DEV_VIEW_POLICY DEV_SUBSYSTEM)
 	@profile="$(word 1, $(runargs))"; \
 	if [ -z "$$profile" ]; then \
