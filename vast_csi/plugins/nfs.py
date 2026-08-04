@@ -448,7 +448,7 @@ class CsiController(ControllerBase, Instrumented):
                 ts = types.Timestamp()
                 ts.FromDatetime(datetime.utcnow())
                 snp = types.Snapshot(
-                    size_bytes=0,  # indicates 'unspecified'
+                    size_bytes=quota.hard_limit,
                     snapshot_id=name,
                     source_volume_id=volume_id,
                     creation_time=ts,
@@ -492,7 +492,7 @@ class CsiController(ControllerBase, Instrumented):
                     raise Abort(INVALID_ARGUMENT, str(exc))
 
             snp = types.Snapshot(
-                size_bytes=0,  # indicates 'unspecified'
+                size_bytes=quota.hard_limit,
                 snapshot_id=to_volume_id_with_metadata(snap.id, cluster_name),
                 source_volume_id=to_volume_id_with_metadata(source_volume_id, cluster_name),
                 creation_time=string_to_proto_timestamp(snap.created),

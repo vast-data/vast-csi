@@ -490,7 +490,7 @@ class BlockController(ControllerBase, Instrumented):
         snapshot_name = snapshot_name.replace(":", "-").replace("/", "-")
         snap = vms_session.snapshots.ensure(name=snapshot_name, path=path, tenant_id=tenant_id)
         snp = types.Snapshot(
-            size_bytes=0,  # indicates 'unspecified'
+            size_bytes=volume.size,
             snapshot_id=to_volume_id_with_metadata(snap.id, cluster_name),
             source_volume_id=to_volume_id_with_metadata(source_volume_id, cluster_name),
             creation_time=string_to_proto_timestamp(snap.created),
