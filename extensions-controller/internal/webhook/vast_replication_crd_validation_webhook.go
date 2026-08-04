@@ -19,6 +19,7 @@ package webhook
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -32,6 +33,7 @@ import (
 	"github.com/vast-data/go-vast-client/resources/typed/expr"
 	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common"
+	cerrors "github.com/vast-data/vast-csi/extensions-controller/internal/common/errors"
 	k8sclient "github.com/vast-data/vast-csi/extensions-controller/internal/common/k8s_client"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/logging"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/ppathdir"
@@ -229,17 +231,13 @@ func (h *replicationCRDValidator) validateAndDefaultTopology(
 			restByStorageClass[scName] = rest
 		}
 	}
-	peersBySC, err := vmsrest.BuildPeerNamesBySC(restByStorageClass)
-	if err != nil {
-		return admission.Errored(http.StatusInternalServerError,
-			fmt.Errorf("failed to list replication peers: %w", err))
-	}
-
-	for i := range topology {
-		t := &topology[i]
-		if err := vmsrest.ResolvePeerName(t, peersBySC); err != nil {
-			return admission.Denied(fmt.Sprintf("protectionTopology[%d]: %v", i, err))
+	if err := vmsrest.ResolveAndFetchTopologyPeers(restByStorageClass, topology); err != nil {
+		var validationErr *cerrors.ValidationError
+		if errors.As(err, &validationErr) {
+			return admission.Denied(validationErr.Error())
 		}
+		return admission.Errored(http.StatusInternalServerError,
+			fmt.Errorf("failed to resolve replication peers: %w", err))
 	}
 
 	// If any peerNames were auto-discovered we need to patch the object so the

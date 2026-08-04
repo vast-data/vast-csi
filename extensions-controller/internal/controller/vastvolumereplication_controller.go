@@ -182,19 +182,10 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 	// regardless of how many topology entries reference it.
 	needsUpdate := false
 	if hasUnresolvedPeers(vvr.Spec.ProtectionTopology) {
-		peersBySC, err := vmsrest.BuildPeerNamesBySC(restByStorageClass)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to list replication peers: %w", err)
+		if err := vmsrest.ResolveAndFetchTopologyPeers(restByStorageClass, vvr.Spec.ProtectionTopology); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to resolve replication peers: %w", err)
 		}
-		for i := range vvr.Spec.ProtectionTopology {
-			t := &vvr.Spec.ProtectionTopology[i]
-			if t.PeerName == "" {
-				if err := vmsrest.ResolvePeerName(t, peersBySC); err != nil {
-					return ctrl.Result{}, fmt.Errorf("protectionTopology[%d]: %w", i, err)
-				}
-				needsUpdate = true
-			}
-		}
+		needsUpdate = true
 	}
 	if needsUpdate {
 		if err := k8s.UpdateVastVolumeReplication(ctx, vvr); err != nil {
