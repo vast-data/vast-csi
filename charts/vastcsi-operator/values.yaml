@@ -38,7 +38,7 @@ overrides:
   csiAddonsSidecar:
     repository: quay.io/csiaddons/k8s-sidecar@sha256:208b4d21b125f4ef9d0ea4082bdf5aeafc9771e0e233e7c60e50e8bf3f5cb3db
   vastExtensionController:
-    repository: docker.io/vastdataorg/csi:v2.6.6-extensions
+    repository: docker.io/vastdataorg/csi@sha256:4ee38a27ee19d033a6cca47cd442855159eeb4645c83fa659bee8d5d8286dbf2
 
 # Disable if you don't have intention to use snapshots (Enabled by default)
 installSnapshotCRDS: true

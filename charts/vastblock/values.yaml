@@ -500,7 +500,7 @@ snapshotClasses: {}
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: 2.6.6  # the version of the Vast CSI driver
+    tag: v2.6.6  # the version of the Vast CSI driver
     imagePullPolicy: IfNotPresent
   csiAttacher:
     repository: registry.k8s.io/sig-storage/csi-attacher
