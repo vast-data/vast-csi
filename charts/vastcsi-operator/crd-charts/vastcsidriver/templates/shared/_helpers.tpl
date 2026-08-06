@@ -112,6 +112,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 - name: X_CSI_RESOLVE_MOUNT_SYMLINKS
   value: {{ $.Values.resolveMountSymlinks | quote }}
 {{- end }}
+{{- if $.Values.allowROManyBlockFsMode }}
+- name: X_CSI_ALLOW_RO_MANY_BLOCK_FS_MODE
+  value: {{ $.Values.allowROManyBlockFsMode | quote }}
+{{- end }}
 {{- if $.Values.truncateVolumeName }}
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}

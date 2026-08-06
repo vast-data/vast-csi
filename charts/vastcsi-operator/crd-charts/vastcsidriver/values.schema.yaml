@@ -2244,6 +2244,14 @@ spec:
         resolved to their canonical paths before comparison.
       type: boolean
       default: {{ .Values.resolveMountSymlinks }}
+    allowROManyBlockFsMode:
+      description: |-
+        (Block driver only) Enable ReadOnlyMany (ROX) access mode for block filesystem volumes.
+        When enabled, multiple pods across different nodes can mount the same block volume
+        in read-only mode. The device and filesystem will be mounted with the 'ro' flag
+        to enforce read-only semantics at the OS level.
+      type: boolean
+      default: {{ .Values.allowROManyBlockFsMode }}
     disableUsageStats:
       description: >-
         Disable sending usage statistics to VAST cluster.
@@ -2651,6 +2659,16 @@ specDescriptors:
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
       - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: |-
+      (Block driver only) Enable ReadOnlyMany (ROX) access mode for block filesystem volumes.
+      When enabled, multiple pods across different nodes can mount the same block volume
+      in read-only mode with OS-level read-only enforcement.
+    displayName: Allow ROX Block Filesystem Mode
+    path: allowROManyBlockFsMode
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+      - *block-driver-dep
   - description: >-
       Disable sending usage statistics to VAST cluster.
       When set to true, the CSI driver will not report plugin usage metrics to VMS.
@@ -3238,6 +3256,7 @@ example:
     mountUmountTimeout: {{ .Values.mountUmountTimeout }}
     forceLazyUmountOnTimeout: {{ .Values.forceLazyUmountOnTimeout }}
     resolveMountSymlinks: {{ .Values.resolveMountSymlinks }}
+    allowROManyBlockFsMode: {{ .Values.allowROManyBlockFsMode }}
     disableUsageStats: {{ .Values.disableUsageStats }}
     cacheMaxAgeSeconds: {{ .Values.cacheMaxAgeSeconds }}
     useLocalIpForMount: {{ .Values.useLocalIpForMount }}
