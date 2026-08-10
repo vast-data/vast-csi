@@ -156,7 +156,11 @@ def nvme_connect(host_nqn, discovery_server, host_id, subsystem_nqn, metrics_reg
                 subsystem_nqn=subsystem_nqn,
             )
     except ProcessExecutionError as exc:
-        raise NVMEConnectionFailed(detail=exc.stderr, host_nqn=host_nqn, discovery_server=discovery_server)
+        raise NVMEConnectionFailed(
+            detail=(exc.stderr or str(exc)).strip(),
+            host_nqn=host_nqn,
+            discovery_server=discovery_server,
+        )
 
 
 def mount(src, tgt, flags=None, bind=False, fs_type=None, metrics_registry=None, enforce_ro=False):
@@ -245,7 +249,6 @@ class BlockController(ControllerBase, Instrumented):
         types.CtrlCapabilityType.EXPAND_VOLUME,
         types.CtrlCapabilityType.CLONE_VOLUME,
     ]
-
 
     def ValidateVolumeCapabilities(
             self,

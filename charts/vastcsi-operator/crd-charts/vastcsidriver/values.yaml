@@ -463,6 +463,10 @@ controller:
       metricRelabelings: []
 
 node:
+  # Comma-separated host directories (under /host) to search for binaries.
+  # Appended to driver defaults (/usr/sbin, /usr/bin, /sbin, /bin, /usr/local/sbin, /usr/local/bin).
+  # Example (GKE COS): "/home/kubernetes/containerized_mounter/rootfs/usr/sbin"
+  hostBinarySearchDirs: ""
   # See controller.dnsPolicy section for details
   dnsPolicy: Default
   # See controller.nodeSelector section for details

@@ -1547,6 +1547,14 @@ spec:
                   the taint. By default, it is not set, which means tolerate the taint forever
                   (do not evict). Zero and negative values will be treated as 0 (evict
                   immediately) by the system.
+        hostBinarySearchDirs:
+          description: >-
+            (Block driver only) Comma-separated host directories (under /host) to search for
+            block tools (nvme, cryptsetup, e2fsck, modprobe, etc.). Appended to driver defaults
+            (/usr/sbin, /usr/bin, /sbin, /bin, /usr/local/sbin, /usr/local/bin).
+            Example (GKE COS): "/home/kubernetes/containerized_mounter/rootfs/usr/sbin"
+          type: string
+          default: {{ .Values.node.hostBinarySearchDirs | quote }}
         propagateHostMountOptions:
           description: >-
             the default host /etc/nfsmount.d mount configuration directory as source for mount options
@@ -2485,6 +2493,16 @@ specDescriptors:
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
       - *nfs-driver-dep
+  - description: >-
+      (Block driver only) Comma-separated host directories (under /host) to search for
+      block tools (nvme, cryptsetup, e2fsck, modprobe, etc.). Appended to driver defaults.
+      Example (GKE COS): "/home/kubernetes/containerized_mounter/rootfs/usr/sbin"
+    displayName: Block Host Binary Search Directories
+    path: node.hostBinarySearchDirs
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+      - *block-driver-dep
   # Images
   - description: Docker images used for CSI configuration and associated image pull policies.
     displayName: CSI images
@@ -3183,6 +3201,7 @@ example:
       nodeSelector: {}
       tolerations: {{ .Values.node.tolerations }}
       propagateHostMountOptions: {{ .Values.node.propagateHostMountOptions }}
+      hostBinarySearchDirs: {{ .Values.node.hostBinarySearchDirs | quote }}
       resources:
         csiVastPlugin:
           limits:
