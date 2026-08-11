@@ -6,6 +6,7 @@
 * Added `ReadWriteOncePod` access mode support (VCSI-464)
 * Added `csi_node_nvme_controller_info` Prometheus metric exposing NVMe controller state and metadata (`controller`, `subsysnqn`, `hostnqn`, etc) for block driver node pods. Auto-enabled for the block driver, sourced from nvme-cli and sysfs (VCSI-388)
 * Added mTLS support for NFS mounts via a new `mtls_manager` component, enabling mutual TLS credential handling for secure NFS transport
+* NFS `xprtsec` (TLS/mTLS): for NFSv3, set `mountproto=tcp` in StorageClass `mountOptions`; omit `mountproto` for NFSv4.
 * Added async volume replication support via the extensions operator. Introduces `VolumeReplication` and `VolumeGroupReplication` CRDs, an addons controller, and supporting Helm configuration for both NFS and block drivers
 * Fixed an issue causing too many quotas in response (VCSI-380)
 * Removed the `volume_id` label from metrics to prevent unbounded cardinality (VCSI-537)
