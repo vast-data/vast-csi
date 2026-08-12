@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## Version 2.6.6-hf1
+* Fixed block node startup crash on minimal OSes (e.g. Talos Linux) when `nvme-tcp` is preloaded but `modprobe` is unavailable. The driver now checks sysfs before attempting host `modprobe`, and resolves host `nvme`/`cryptsetup` via direct `chroot` without requiring host `/usr/bin/env` (VCSI-599)
+* Added `hostBinarySearchDirs` (`X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS`) configuration option to customize host directories searched for block tools (`nvme`, `cryptsetup`, `e2fsck`, etc.)
+* Snapshot `size_bytes` is now populated from the source volume size (block) or quota hard limit (NFS) instead of reporting unspecified, enabling CDI `restoreSize` support
+
 ## Version 2.6.6
 * Added `ReadOnlyMany` (ROX) access mode support for the block CSI driver
 * Changed default node pod `priorityClass` to `system-node-critical` to ensure node workloads are not evicted under resource pressure (VCSI-358)
