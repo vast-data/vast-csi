@@ -132,18 +132,9 @@ storageClassDefaults:
   ephemeralVolumeNameFormat: "csi:{id}:{namespace}:{name}"
   # Add any extra mount NFS options here.
   # For NFS transport security (TLS/mTLS), add "xprtsec=tls" or "xprtsec=mtls".
-  # NFSv3 + xprtsec also needs "mountproto=tcp" (TLS requires TCP; driver does not inject it).
-  # NFSv4 + xprtsec: do not set mountproto (not used on NFSv4 and can break mounts).
-  # Example for NFSv3 TLS:
-  #   mountOptions:
-  #     - "vers=3"
-  #     - "xprtsec=tls"
-  #     - "mountproto=tcp"
   # Example for mTLS:
   #   mountOptions:
-  #     - "vers=3"
   #     - "xprtsec=mtls"
-  #     - "mountproto=tcp"
   # Note: For mTLS with per-volume client certificates, the secret can optionally contain:
   #   - mtls_client_cert: PEM-formatted client certificate
   #   - mtls_client_privkey: PEM-formatted client private key
