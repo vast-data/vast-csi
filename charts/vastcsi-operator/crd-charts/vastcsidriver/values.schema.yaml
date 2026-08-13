@@ -2245,6 +2245,14 @@ spec:
       description: When true, a umount that times out is retried with lazy unmount (-l).
       type: boolean
       default: {{ .Values.forceLazyUmountOnTimeout }}
+    fallbackToDeser:
+      description: |-
+        Required. Must be set explicitly to true or false.
+        When true, unpublish of already-mounted EV volumes may use legacy AES-CFB+pickle
+        metadata and a .vast-csi-meta file on local disk (no tmpfs). New publishes always
+        use tmpfs. Set true only when upgrading a cluster that still has old-format EV
+        volumes mounted; set false again after they unpublish.
+      type: boolean
     resolveMountSymlinks:
       description: >-
         Enable symlink resolution when querying mount information.
@@ -2807,6 +2815,12 @@ specDescriptors:
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
       - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: Required. Must be true or false. Allow unpublish of EV volumes published with the old serializer.
+    displayName: Fallback To Deser
+    path: fallbackToDeser
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
   - description: Timeout for CSI-Addons operations (replication and other CSI-Addons services).
     displayName: Addons Operation Timeout
     path: addonsOperationTimeout
@@ -3274,6 +3288,7 @@ example:
     hostNamePrefix: {{ .Values.hostNamePrefix | quote }}
     mountUmountTimeout: {{ .Values.mountUmountTimeout }}
     forceLazyUmountOnTimeout: {{ .Values.forceLazyUmountOnTimeout }}
+    fallbackToDeser: {{ .Values.fallbackToDeser }}
     resolveMountSymlinks: {{ .Values.resolveMountSymlinks }}
     allowROManyBlockFsMode: {{ .Values.allowROManyBlockFsMode }}
     disableUsageStats: {{ .Values.disableUsageStats }}

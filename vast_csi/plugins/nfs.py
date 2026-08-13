@@ -26,7 +26,7 @@ from easypy.humanize import yesno_to_bool
 
 from vast_csi.logging import logger
 from vast_csi.utils import (
-    get_mount,
+    get_volume_mount,
     normalize_mount_options,
     normalize_volume_id,
     string_to_proto_timestamp,
@@ -35,7 +35,13 @@ from vast_csi.utils import (
     string_to_static_uuid,
     path_exists,
 )
-from vast_csi.filesystem_utils import resource_locked, mount as _mount, umount as _umount
+from vast_csi.filesystem_utils import (
+    resource_locked,
+    mount as _mount,
+    umount as _umount,
+    mount_tmpfs,
+    umount_tmpfs,
+)
 from vast_csi.proto import csi_pb2_grpc as csi_grpc
 from vast_csi import csi_types as types
 from vast_csi.csi_types import (
@@ -70,6 +76,7 @@ from vast_csi.plugins.base import (
     ControllerBase,
     NodeBase,
     Instrumented,
+    META_FILE_NAME,
 )
 from vast_csi.mtls_utils import MtlsManager
 
@@ -109,7 +116,6 @@ def umount(path, ignore_not_mounted=False, lazy=False, metrics_registry=None):
         metrics_operation="nfs",
         timeout=CONF.mount_umount_timeout,
     )
-
 
 
 def _validate_capabilities(capabilities):
@@ -401,7 +407,7 @@ class CsiController(ControllerBase, Instrumented):
             )
         )
 
-    def ControllerUnpublishVolume(self, node_id, volume_id):
+    def ControllerUnpublishVolume(self, vms_session, node_id, volume_id, exit_stack):
         return types.CtrlUnpublishResp()
 
     def ControllerExpandVolume(self, vms_session, volume_id, capacity_range):
@@ -613,7 +619,7 @@ class CsiNode(NodeBase, Instrumented):
 
         if not target_path.is_dir():
             pass
-        elif found_mount := get_mount(target_path):
+        elif found_mount := get_volume_mount(target_path):
             opts = set(found_mount.opts.split(","))
             is_readonly = "ro" in opts
             if found_mount.device != mount_spec:
@@ -641,9 +647,9 @@ class CsiNode(NodeBase, Instrumented):
                 return types.NodePublishResp()
 
         target_path.mkdir()
-        meta_file = target_path[".vast-csi-meta"]
+        mount_tmpfs(target_path, timeout=CONF.mount_umount_timeout)
         self._store_meta_file(
-            meta_file=meta_file,
+            target_path=target_path,
             volume_id=volume_id,
             is_ephemeral=is_ephemeral,
             vms_session=vms_session,
@@ -663,7 +669,7 @@ class CsiNode(NodeBase, Instrumented):
         try:
             flags += mtls_manager.to_mount_flags(volume_id=volume_id)
         except Exception as e:
-            meta_file.delete()
+            self._cleanup_publish_meta_tmpfs(target_path)
             raise Abort(
                 FAILED_PRECONDITION,
                 f"Failed to load mTLS credentials: {e}"
@@ -686,7 +692,7 @@ class CsiNode(NodeBase, Instrumented):
             )
             logger.info(f"mounted: {target_path} flags: {flags}")
         except Exception:
-            meta_file.delete()
+            self._cleanup_publish_meta_tmpfs(target_path)
             # Clean up mTLS credentials on mount failure
             if mtls_manager.requires_mtls():
                 mtls_manager.delete_credentials(volume_id)
@@ -705,14 +711,13 @@ class CsiNode(NodeBase, Instrumented):
     ):
         exit_stack.enter_context(resource_locked(volume_id, abort_on_error=True))
         target_path = local.path(target_path)
-        meta_file = target_path[".vast-csi-meta"]
 
         if not path_exists(target_path, timeout=CONF.mount_umount_timeout):
             logger.info(f"{target_path} does not exist - no need to remove")
         else:
             # make sure we're really unmounted before we delete anything
             for i in range(CONF.unmount_attempts):
-                mount_info = get_mount(target_path, timeout=CONF.mount_umount_timeout)
+                mount_info = get_volume_mount(target_path, timeout=CONF.mount_umount_timeout)
                 if not mount_info:
                     logger.info(f"{target_path} is not mounted")
                     break
@@ -733,14 +738,17 @@ class CsiNode(NodeBase, Instrumented):
                     f"Stuck in unmount loop of {target_path} too many times ({CONF.unmount_attempts})",
                 )
             has_mtls = False
+            meta_file = target_path[META_FILE_NAME]
             if meta_file.exists():
                 meta = self._read_and_process_meta_file(
                     meta_file=meta_file,
                     volume_id=volume_id,
                     vms_session=vms_session,
+                    exit_stack=exit_stack,
                 )
                 has_mtls = meta.get("has_mtls", False)
                 os.remove(meta_file)
+            umount_tmpfs(target_path, timeout=CONF.mount_umount_timeout)
             if has_mtls:
                 MtlsManager.delete_credentials(volume_id)
             logger.info(f"Deleting {target_path}")

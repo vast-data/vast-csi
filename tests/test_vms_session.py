@@ -1,6 +1,9 @@
 import pytest
 import yaml
 import requests
+import base64
+import os
+import pickle
 from plumbum import local
 from io import BytesIO
 from unittest.mock import patch, PropertyMock, MagicMock
@@ -12,6 +15,22 @@ from vast_csi.exceptions import OperationNotSupported, ApiError, LookupFieldErro
 from easypy.semver import SemVer
 from easypy.resilience import _Retry
 from easypy.bunch import Bunch
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
+
+def encrypt_legacy_meta(obj, salt: str) -> str:
+    """Reproduce the pre-tmpfs AES-CFB+pickle blob for fallback deserialization tests."""
+    raw = pickle.dumps(obj.dump_data())
+    digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
+    digest.update(salt.encode("utf-8"))
+    key = digest.finalize()
+    iv = os.urandom(16)
+    cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
+    encryptor = cipher.encryptor()
+    ciphertext = encryptor.update(raw) + encryptor.finalize()
+    return base64.b64encode(iv + ciphertext).decode("utf-8")
 
 
 #####################
@@ -387,15 +406,15 @@ def test_getattr_without_underscore(monkeypatch, mock_credentials):
 # #####################
 def test_serialize(vms_session):
     salt = "test_salt"
-    serialized_data = vms_session.serialize(salt)
+    serialized_data = encrypt_legacy_meta(vms_session, salt)
 
     assert isinstance(serialized_data, str)
     assert len(serialized_data) > 0
 
 def test_deserialize(vms_session):
     salt = "test_salt"
-    serialized_data = vms_session.serialize(salt)
-    deserialized_session = VmsSession.deserialize(salt, serialized_data)
+    serialized_data = encrypt_legacy_meta(vms_session, salt)
+    deserialized_session = VmsSession.deserialize_legacy(salt, serialized_data)
 
     assert deserialized_session.username == vms_session.username
     assert deserialized_session.password == vms_session.password
@@ -426,8 +445,8 @@ def test_vms_session_serialization_different_salts_produce_different_output(vms_
     salt1 = "salt1"
     salt2 = "salt2"
     
-    serialized1 = vms_session.serialize(salt1)
-    serialized2 = vms_session.serialize(salt2)
+    serialized1 = encrypt_legacy_meta(vms_session, salt1)
+    serialized2 = encrypt_legacy_meta(vms_session, salt2)
     
     assert serialized1 != serialized2
     assert isinstance(serialized1, str)
@@ -441,8 +460,8 @@ def test_vms_session_serialization_round_trip_consistency(vms_session):
     salt = "consistency_test_salt"
     
     # Serialize and deserialize
-    serialized_data = vms_session.serialize(salt)
-    deserialized_session = VmsSession.deserialize(salt, serialized_data)
+    serialized_data = encrypt_legacy_meta(vms_session, salt)
+    deserialized_session = VmsSession.deserialize_legacy(salt, serialized_data)
     
     # Test all fields
     assert deserialized_session.username == vms_session.username
@@ -468,11 +487,11 @@ def test_vms_session_serialization_with_wrong_salt_fails():
     correct_salt = "correct_salt"
     wrong_salt = "wrong_salt"
     
-    serialized_data = original_session.serialize(correct_salt)
+    serialized_data = encrypt_legacy_meta(original_session, correct_salt)
     
     # Attempting to deserialize with wrong salt should produce garbage or fail
     try:
-        deserialized_session = VmsSession.deserialize(wrong_salt, serialized_data)
+        deserialized_session = VmsSession.deserialize_legacy(wrong_salt, serialized_data)
         # If it doesn't fail, the data should be corrupted
         assert deserialized_session.username != original_session.username
     except Exception:
@@ -489,8 +508,8 @@ def test_vms_session_serialization_with_none_values():
     )
     
     salt = "none_test_salt"
-    serialized_data = session_with_nones.serialize(salt)
-    deserialized_session = VmsSession.deserialize(salt, serialized_data)
+    serialized_data = encrypt_legacy_meta(session_with_nones, salt)
+    deserialized_session = VmsSession.deserialize_legacy(salt, serialized_data)
     
     assert deserialized_session.username == "user"
     assert deserialized_session.password == "pass"
@@ -512,8 +531,8 @@ def test_vms_session_serialization_with_special_characters():
     )
     
     salt = "special_chars_salt"
-    serialized_data = session_with_special_chars.serialize(salt)
-    deserialized_session = VmsSession.deserialize(salt, serialized_data)
+    serialized_data = encrypt_legacy_meta(session_with_special_chars, salt)
+    deserialized_session = VmsSession.deserialize_legacy(salt, serialized_data)
     
     assert deserialized_session.username == "user@domain.com"
     assert deserialized_session.password == "p@ssw0rd!#$%"
@@ -531,7 +550,7 @@ def test_vms_session_serialization_output_format():
     )
     
     salt = "format_test_salt"
-    serialized_data = session.serialize(salt)
+    serialized_data = encrypt_legacy_meta(session, salt)
     
     # Should be valid base64
     try:
@@ -561,8 +580,8 @@ def test_luks_manager_serialization_round_trip_consistency():
     )
     
     salt = "luks_test_salt"
-    serialized_data = original_manager.serialize(salt)
-    deserialized_manager = LuksManager.deserialize(salt, serialized_data)
+    serialized_data = encrypt_legacy_meta(original_manager, salt)
+    deserialized_manager = LuksManager.deserialize_legacy(salt, serialized_data)
     
     assert deserialized_manager.volume_id == original_manager.volume_id
     assert deserialized_manager.passphrase == original_manager.passphrase
@@ -582,8 +601,8 @@ def test_luks_manager_serialization_different_salts():
     salt1 = "salt1"
     salt2 = "salt2"
     
-    serialized1 = manager.serialize(salt1)
-    serialized2 = manager.serialize(salt2)
+    serialized1 = encrypt_legacy_meta(manager, salt1)
+    serialized2 = encrypt_legacy_meta(manager, salt2)
     
     assert serialized1 != serialized2
     assert isinstance(serialized1, str)
@@ -601,8 +620,8 @@ def test_luks_manager_serialization_with_none_passphrase():
     )
     
     salt = "none_passphrase_salt"
-    serialized_data = manager.serialize(salt)
-    deserialized_manager = LuksManager.deserialize(salt, serialized_data)
+    serialized_data = encrypt_legacy_meta(manager, salt)
+    deserialized_manager = LuksManager.deserialize_legacy(salt, serialized_data)
     
     assert deserialized_manager.volume_id == "test-volume"
     assert deserialized_manager.passphrase is None
@@ -620,8 +639,8 @@ def test_luks_manager_serialization_with_empty_encryption_config():
     )
     
     salt = "empty_config_salt"
-    serialized_data = manager.serialize(salt)
-    deserialized_manager = LuksManager.deserialize(salt, serialized_data)
+    serialized_data = encrypt_legacy_meta(manager, salt)
+    deserialized_manager = LuksManager.deserialize_legacy(salt, serialized_data)
     
     assert deserialized_manager.volume_id == "test-volume"  
     assert deserialized_manager.passphrase == "secret"
@@ -649,8 +668,8 @@ def test_luks_manager_serialization_with_complex_encryption_config():
     )
     
     salt = "complex_config_salt"
-    serialized_data = manager.serialize(salt)
-    deserialized_manager = LuksManager.deserialize(salt, serialized_data)
+    serialized_data = encrypt_legacy_meta(manager, salt)
+    deserialized_manager = LuksManager.deserialize_legacy(salt, serialized_data)
     
     assert deserialized_manager.volume_id == "complex-test-volume"
     assert deserialized_manager.passphrase == "complex-passphrase-123!@#"
@@ -717,15 +736,15 @@ def test_different_classes_same_salt_different_output():
     )
     
     salt = "shared_salt"
-    vms_serialized = vms_session.serialize(salt)
-    luks_serialized = luks_manager.serialize(salt)
+    vms_serialized = encrypt_legacy_meta(vms_session, salt)
+    luks_serialized = encrypt_legacy_meta(luks_manager, salt)
     
     assert vms_serialized != luks_serialized
     
     # Cross-deserialization should fail or produce garbage
     try:
         # This should fail since the data structures are different
-        VmsSession.deserialize(salt, luks_serialized)
+        VmsSession.deserialize_legacy(salt, luks_serialized)
         pytest.fail("Cross-deserialization should not succeed")
     except Exception:
         # Expected - different data structures
@@ -746,8 +765,8 @@ def test_vms_session_serialization_with_empty_strings():
     )
     
     salt = "empty_strings_salt"
-    serialized_data = session_with_empty_strings.serialize(salt)
-    deserialized_session = VmsSession.deserialize(salt, serialized_data)
+    serialized_data = encrypt_legacy_meta(session_with_empty_strings, salt)
+    deserialized_session = VmsSession.deserialize_legacy(salt, serialized_data)
     
     assert deserialized_session.username is None
     assert deserialized_session.password is None
@@ -764,8 +783,8 @@ def test_vms_session_serialization_with_unicode_characters():
     )
     
     salt = "unicode_salt_测试"
-    serialized_data = session_with_unicode.serialize(salt)
-    deserialized_session = VmsSession.deserialize(salt, serialized_data)
+    serialized_data = encrypt_legacy_meta(session_with_unicode, salt)
+    deserialized_session = VmsSession.deserialize_legacy(salt, serialized_data)
     
     assert deserialized_session.username == "用户"
     assert deserialized_session.password == "密码123"
@@ -790,8 +809,8 @@ def test_luks_manager_serialization_with_unicode_in_config():
     )
     
     salt = "unicode_luks_salt"
-    serialized_data = manager.serialize(salt)
-    deserialized_manager = LuksManager.deserialize(salt, serialized_data)
+    serialized_data = encrypt_legacy_meta(manager, salt)
+    deserialized_manager = LuksManager.deserialize_legacy(salt, serialized_data)
     
     assert deserialized_manager.volume_id == "unicode-test-卷"
     assert deserialized_manager.passphrase == "密码-パスワード"
@@ -816,8 +835,8 @@ def test_serialization_with_very_long_strings():
     )
     
     salt = "long_strings_salt"
-    serialized_data = manager.serialize(salt)
-    deserialized_manager = LuksManager.deserialize(salt, serialized_data)
+    serialized_data = encrypt_legacy_meta(manager, salt)
+    deserialized_manager = LuksManager.deserialize_legacy(salt, serialized_data)
     
     assert deserialized_manager.volume_id == "long-test-volume"
     assert deserialized_manager.passphrase == long_string[:100]
@@ -836,8 +855,8 @@ def test_serialization_deterministic_same_input():
     salt = "deterministic_salt"
     
     # Serialize the same session multiple times with the same salt
-    serialized1 = session.serialize(salt)
-    serialized2 = session.serialize(salt)
+    serialized1 = encrypt_legacy_meta(session, salt)
+    serialized2 = encrypt_legacy_meta(session, salt)
     
     # Note: This test might fail because of random IV generation
     # The encrypted content should be different due to IV, but let's test the behavior
@@ -848,8 +867,8 @@ def test_serialization_deterministic_same_input():
     # With random IV, these should actually be different
     # But both should deserialize to the same content
     
-    deserialized1 = VmsSession.deserialize(salt, serialized1)
-    deserialized2 = VmsSession.deserialize(salt, serialized2)
+    deserialized1 = VmsSession.deserialize_legacy(salt, serialized1)
+    deserialized2 = VmsSession.deserialize_legacy(salt, serialized2)
     
     assert deserialized1.username == deserialized2.username
     assert deserialized1.password == deserialized2.password
@@ -868,7 +887,7 @@ def test_serialization_with_malformed_base64():
     
     for malformed_input in malformed_inputs:
         try:
-            LuksManager.deserialize("test_salt", malformed_input)
+            LuksManager.deserialize_legacy("test_salt", malformed_input)
             pytest.fail(f"Expected deserialization to fail for input: {malformed_input}")
         except Exception:
             # Expected - malformed input should fail
@@ -890,8 +909,8 @@ def test_serialization_data_integrity():
     # Multiple serialize/deserialize cycles
     current_manager = original_manager
     for i in range(5):
-        serialized = current_manager.serialize(salt)
-        current_manager = LuksManager.deserialize(salt, serialized)
+        serialized = encrypt_legacy_meta(current_manager, salt)
+        current_manager = LuksManager.deserialize_legacy(salt, serialized)
     
     # After 5 cycles, data should still be identical
     assert current_manager.volume_id == original_manager.volume_id
