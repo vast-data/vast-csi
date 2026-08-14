@@ -1,34 +1,7 @@
-"""Logging helpers that stand in for slash's logger (notice, indented, pipe)."""
-from __future__ import annotations
+"""e2e logging: shared logger plus pytest progress lines."""
+from lib.logging import logger
 
-import logging
-from contextlib import contextmanager
-
-from easypy.logging import initialize as init_easypy_logging
-from vast_csi.logging import init_logging
-
-init_easypy_logging(coloring=False)
-
-logger = logging.getLogger("csi-e2e")
-
-if not logging.getLogger().handlers:
-    init_logging("INFO")
-
-
-def _notice(msg, *args, **kwargs):
-    logger.info(msg, *args, **kwargs)
-
-
-logger.notice = _notice
-
-
-@contextmanager
-def _indented(msg):
-    logger.info(msg)
-    yield
-
-
-logger.indented = _indented
+__all__ = ["logger", "progress"]
 
 
 def progress(msg: str, config=None) -> None:

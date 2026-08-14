@@ -25,13 +25,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--kubeconfig", default=None, help="Path to kubeconfig.")
     parser.add_argument("--vast-endpoint", default=None, help="VAST management endpoint.")
     parser.add_argument("--list-only", action="store_true", help="For CSI suites, only list selected tests.")
-    parser.add_argument("--skip-ensure-csi-resources", action="store_true", help="Skip automatic CR setup for CSI suites.")
-    parser.add_argument(
-        "--kubevirt-profile",
-        choices=("nfs", "block"),
-        default="nfs",
-        help="Storage profile for KubeVirt checkup when suite is kubevirt or all.",
-    )
     return parser.parse_args()
 
 
@@ -45,8 +38,6 @@ def main() -> int:
         shared_args.extend(["--vast-endpoint", args.vast_endpoint])
     if args.list_only:
         shared_args.append("--list-only")
-    if args.skip_ensure_csi_resources:
-        shared_args.append("--skip-ensure-csi-resources")
 
     exit_codes: dict[str, int] = {}
 
@@ -63,11 +54,7 @@ def main() -> int:
         )
 
     if args.suite in ("kubevirt", "all"):
-        kubevirt_args = ["--profile", args.kubevirt_profile, *shared_args]
-        if args.vast_endpoint:
-            kubevirt_args.extend(["--vast-endpoint", args.vast_endpoint])
-        if args.skip_ensure_csi_resources:
-            kubevirt_args.append("--skip-ensure-csi-resources")
+        kubevirt_args = [arg for arg in shared_args if arg != "--list-only"]
         exit_codes["kubevirt"] = _run_script(work_dir / "run_kubevirt.py", kubevirt_args)
 
     print("\n=== Certification summary ===")

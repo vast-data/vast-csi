@@ -17,6 +17,7 @@ from csi_runner import (
     build_config,
     run_csi_suite,
 )
+from lib.constants import VIEW_POLICY_NAME, VIPPOOL_NAME
 
 
 def parse_args() -> argparse.Namespace:
@@ -44,7 +45,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skip-pattern", action="append", default=None, help="Exclude tests matching this keyword.")
     parser.add_argument("--max-tests", type=int, default=12, help="Maximum number of selected tests.")
     parser.add_argument("--list-only", action="store_true", help="Discover + print selected tests without running them.")
-    parser.add_argument("--skip-ensure-csi-resources", action="store_true", help="Skip automatic VastCluster/VastStorage/VastCSIDriver apply.")
     parser.add_argument("--csi-namespace", default="vast-csi", help="Namespace for CSI custom resources.")
     parser.add_argument("--vast-endpoint", default=os.environ.get("VAST_ENDPOINT"), help="VAST management endpoint (ip/fqdn) for VastCluster.")
     parser.add_argument("--vast-username", default=DEFAULT_VAST_USERNAME, help="VAST username for VastCluster.")
@@ -52,9 +52,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--vast-cluster-name", default=None, help="VastCluster metadata.name.")
     parser.add_argument("--vast-storage-name", default=None, help="VastStorage metadata.name.")
     parser.add_argument("--vast-csi-driver-name", default=None, help="VastCSIDriver metadata.name.")
-    parser.add_argument("--vast-vip-pool", default="vippool-1", help="VastStorage spec.vipPool.")
-    parser.add_argument("--vast-view-policy", default="default", help="VastStorage spec.viewPolicy for NFS profile.")
-    parser.add_argument("--vast-subsystem", default=None, help="VastStorage spec.subsystem for block profile.")
+    parser.add_argument("--vast-vip-pool", default=VIPPOOL_NAME, help="VastStorage spec.vipPool.")
+    parser.add_argument("--vast-view-policy", default=VIEW_POLICY_NAME, help="VastStorage spec.viewPolicy for NFS profile.")
     args = parser.parse_args()
 
     profile = PROFILES[args.profile]

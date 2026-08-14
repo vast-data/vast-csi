@@ -8,9 +8,9 @@ from easypy.timing import wait
 from easypy.units import MINUTE, GiB
 from plumbum import FG
 
-from e2e.builders.storage import PVCBuilder, VolumeSnapshotBuilder
-from e2e.builders.workloads import DeploymentBuilder, PodBuilder, StatefulSetBuilder
-from e2e.constants import BUSYBOX_IMAGE, CSI_QUOTA_PREFIX, SNAPSHOT_CLASS, nfs_storage_class
+from lib.builders.storage import PVCBuilder, VolumeSnapshotBuilder
+from lib.builders.workloads import DeploymentBuilder, PodBuilder, StatefulSetBuilder
+from lib.constants import BUSYBOX_IMAGE, CSI_QUOTA_PREFIX, MGMT_SECRET, NFS_MOUNT_OPTIONS, ROOT_EXPORT, SNAPSHOT_CLASS, VIEW_POLICY_NAME, VIPPOOL_NAME, nfs_storage_class
 from e2e.logging import logger
 from e2e.test_suites.common import (
     files_in_pod,
@@ -135,11 +135,13 @@ def test_nfs_ephemeral_volumes(system, k8s):
         "name": "my-eph-vol",
         "csi": {
             "driver": "csi.vastdata.com",
+            "nodePublishSecretRef": {"name": MGMT_SECRET},
             "volumeAttributes": {
                 "size": "1G",
-                "root_export": system.root_export,
-                "vip_pool_name": system.vippool_name,
-                "view_policy": system.view_policy_name,
+                "root_export": ROOT_EXPORT,
+                "vip_pool_name": VIPPOOL_NAME,
+                "view_policy": VIEW_POLICY_NAME,
+                "mount_options": ",".join(NFS_MOUNT_OPTIONS),
             },
         },
     }
@@ -186,8 +188,11 @@ def test_nfs_snapshot_restore(system, k8s):
         name=snap_name, pvc_name=vol_name, snapshot_class_name=snap_class,
     ))
     with logger.indented("waiting for snapshot"):
-        uid = k8s.volumesnapshots.wait(name=snap_name, error_msg=f"no '{snap_name}'")['metadata']['uid']
-        wait(90, lambda: system.snapshots.single(lambda s: uid in s.name), message=f"no snapshot for {uid}")
+        uid = k8s.volumesnapshots.wait(
+            timeout=5 * MINUTE, name=snap_name, error_msg=f"no '{snap_name}'",
+        )['metadata']['uid']
+        wait(5 * MINUTE, lambda: system.snapshots.single(lambda s: uid in s.name),
+             message=f"no snapshot for {uid}")
 
     snap_source = {"name": snap_name, "kind": "VolumeSnapshot", "apiGroup": "snapshot.storage.k8s.io"}
     k8s.pvcs.create(

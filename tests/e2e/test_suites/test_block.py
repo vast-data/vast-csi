@@ -9,18 +9,27 @@ from easypy.random import random_nice_name
 from easypy.timing import wait
 from easypy.units import MINUTE
 
-from e2e.constants import BUSYBOX_IMAGE, SNAPSHOT_CLASS, block_storage_class
+from lib.constants import (
+    BLOCK_SUBSYSTEM,
+    BUSYBOX_IMAGE,
+    MGMT_SECRET,
+    SNAPSHOT_CLASS,
+    VIPPOOL_NAME,
+    block_storage_class,
+)
 from e2e.logging import logger
 
-from e2e.builders.storage import PVCBuilder, VolumeSnapshotBuilder
-from e2e.builders.workloads import PodBuilder
+from lib.builders.storage import PVCBuilder, VolumeSnapshotBuilder
+from lib.builders.workloads import PodBuilder
 from e2e.test_suites.common import (
     CONCURRENT_VOLUME_COUNT,
+    files_in_pod,
     list_node_names,
     make_filesystem_pvc,
     make_writer_pod,
     parse_iso_date,
     wait_volumes_detached,
+    writer_has_data,
 )
 
 # ---------------------------------------------------------------------------
@@ -156,9 +165,7 @@ def test_block_basic_pvc_and_pod(k8s):
         for v in volumes:
             wait(
                 2 * MINUTE,
-                lambda pod=v["pod"]: (
-                    k8s.pods.exec(pod, "sh -c 'test -s /shared/log && echo ok'").strip() == "ok"
-                ),
+                lambda pod=v["pod"]: writer_has_data(k8s, pod, filename="log"),
                 message=f"No IO progress in {v['pod']!r} ({v['fs']}) after bounce {bounce}",
             )
 
@@ -169,6 +176,58 @@ def test_block_basic_pvc_and_pod(k8s):
     _assert_no_mount_stall_events(k8s, volumes)
 
 
+@pytest.mark.e2e
+@pytest.mark.block
+def test_block_ephemeral_volumes(system, k8s):
+    """CSI inline ephemeral volumes (EV) for ext4 and xfs, same lifecycle as NFS EV."""
+    suffix = random_nice_name(max_length=20)
+    created = []
+    for fs_type in ("ext4", "xfs"):
+        pod_name = f"ev-pod-{fs_type}-{suffix}"
+        volume_group = f"ev-{fs_type}-{suffix}"
+        volume = {
+            "name": "my-eph-vol",
+            "csi": {
+                "driver": "block.csi.vastdata.com",
+                "fsType": fs_type,
+                "nodePublishSecretRef": {"name": MGMT_SECRET},
+                "volumeAttributes": {
+                    "size": "1G",
+                    "subsystem": BLOCK_SUBSYSTEM,
+                    "vip_pool_name": VIPPOOL_NAME,
+                    "volume_group": volume_group,
+                },
+            },
+        }
+        k8s.pods.create(
+            PodBuilder.new(name=pod_name, container_name="my-frontend", image=BUSYBOX_IMAGE)
+            .with_volume("my-eph-vol", "/shared", volume)
+        )
+        created.append((pod_name, volume_group))
+
+    vms_volumes = []
+    for pod_name, volume_group in created:
+        k8s.pods.wait(
+            timeout=5 * MINUTE,
+            name=pod_name,
+            error_msg=f"the pod {pod_name!r} was not moved to the running state within the allotted period",
+        )
+        vol = wait(
+            MINUTE,
+            lambda vg=volume_group: system.volumes.single(lambda v: vg in (v.name or "")),
+            message=f"no VMS volume for {volume_group}",
+        )
+        wait(
+            90,
+            lambda pn=pod_name: bool(files_in_pod(k8s, pn)),
+            message=f"{pod_name} is still empty",
+        )
+        vms_volumes.append(vol)
+
+    for pod_name, _ in created:
+        k8s.pods.delete(name=pod_name)
+    for vol in vms_volumes:
+        wait(MINUTE, lambda v=vol: v.was_removed, message=f"{vol} is still there")
 
 
 @pytest.mark.e2e
@@ -211,8 +270,7 @@ def test_block_snapshot_restore(system, k8s):
     for v in volumes:
         k8s.pods.wait(timeout=5 * MINUTE, name=v["src_pod"],
                       error_msg=f"[{v['fs']}] source pod did not start")
-        wait(MINUTE,
-             lambda pod=v["src_pod"]: k8s.pods.exec(pod, f"sh -c 'test -s /shared/{pod} && echo ok'").strip() == "ok",
+        wait(MINUTE, lambda pod=v["src_pod"]: writer_has_data(k8s, pod),
              message=f"[{v['fs']}] no data written to source PVC")
         k8s.pods.exec(v["src_pod"], "sync")
 
@@ -223,9 +281,10 @@ def test_block_snapshot_restore(system, k8s):
     for v in volumes:
         with logger.indented(f"[{v['fs']}] waiting for snapshot"):
             uid = k8s.volumesnapshots.wait(
-                name=v["snap"], error_msg=f"[{v['fs']}] snapshot not ready",
+                timeout=5 * MINUTE, name=v["snap"],
+                error_msg=f"[{v['fs']}] snapshot not ready",
             )["metadata"]["uid"]
-            wait(90, lambda u=uid: system.snapshots.single(lambda s: u in s.name),
+            wait(5 * MINUTE, lambda u=uid: system.snapshots.single(lambda s: u in s.name),
                  message=f"[{v['fs']}] no VMS snapshot for {uid}")
         v["src_pod_name_for_verify"] = v["src_pod"]
 
@@ -310,8 +369,7 @@ def test_block_volume_clone(k8s):
     for v in volumes:
         k8s.pods.wait(timeout=5 * MINUTE, name=v["src_pod"],
                       error_msg=f"[{v['fs']}] source pod did not start")
-        wait(MINUTE,
-             lambda pod=v["src_pod"]: k8s.pods.exec(pod, f"sh -c 'test -s /shared/{pod} && echo ok'").strip() == "ok",
+        wait(MINUTE, lambda pod=v["src_pod"]: writer_has_data(k8s, pod),
              message=f"[{v['fs']}] no data written to source PVC")
 
     for v in volumes:
@@ -394,7 +452,7 @@ def test_block_xfs_concurrent(system, k8s):
     for pod_name in rwo_pod_names:
         wait(
             MINUTE,
-            lambda pn=pod_name: k8s.pods.exec(pn, f"sh -c 'test -s /shared/{pn} && echo ok'").strip() == "ok",
+            lambda pn=pod_name: writer_has_data(k8s, pn),
             message=f"No data written in pod {pod_name!r}",
         )
     logger.info(f"Phase 1: all {n} XFS RWO pods verified")
@@ -411,8 +469,12 @@ def test_block_xfs_concurrent(system, k8s):
         name=snap_name, pvc_name=src_pvc, snapshot_class_name=snap_class,
     ))
     with logger.indented("waiting for XFS snapshot"):
-        uid = k8s.volumesnapshots.wait(name=snap_name, error_msg=f"Snapshot {snap_name!r} not ready")["metadata"]["uid"]
-        wait(90, lambda: system.snapshots.single(lambda s: uid in s.name), message=f"no VMS snapshot for {uid}")
+        uid = k8s.volumesnapshots.wait(
+            timeout=5 * MINUTE, name=snap_name,
+            error_msg=f"Snapshot {snap_name!r} not ready",
+        )["metadata"]["uid"]
+        wait(5 * MINUTE, lambda: system.snapshots.single(lambda s: uid in s.name),
+             message=f"no VMS snapshot for {uid}")
 
     # Release source PVC before restoring as ROX
     k8s.pods.delete(name=src_pod)

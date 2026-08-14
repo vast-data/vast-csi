@@ -9,40 +9,50 @@ Supports separate NFS and block profiles with isolated output folders:
 
 from __future__ import annotations
 
-import base64
 import json
 import os
 import re
 import shlex
 import shutil
-import ssl
+import socket
 import subprocess
+import sys
 import tarfile
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from textwrap import dedent
 from typing import Iterable, Optional
+
+_TESTS_DIR = Path(__file__).resolve().parents[2]
+_REPO_ROOT = _TESTS_DIR.parent
+for _path in (str(_TESTS_DIR), str(_REPO_ROOT)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
+
+from lib.builders.csi_operator import VastClusterBuilder, VastCSIDriverBuilder, VastStorageBuilder
+from lib.constants import (
+    BLOCK_SUBSYSTEM,
+    NFS_MOUNT_OPTIONS as SHARED_NFS_MOUNT_OPTIONS,
+    PASSWORD,
+    ROOT_EXPORT,
+    USERNAME,
+    VIEW_POLICY_NAME,
+    VIPPOOL_NAME,
+)
+from lib.k8s import make_k8s
+from lib.rest.session import TestVmsSession
 
 DEFAULT_IMAGE = "registry.redhat.io/openshift4/ose-tests"
 DEFAULT_SUITE = "openshift/csi"
-DEFAULT_VAST_USERNAME = "admin"
-DEFAULT_VAST_PASSWORD = "123456"
+DEFAULT_VAST_USERNAME = USERNAME
+DEFAULT_VAST_PASSWORD = PASSWORD
 NFS_VOLUME_NAME_FORMAT = "csi:{id}"
-NFS_MOUNT_OPTIONS = ("vers=4.1",)
+NFS_MOUNT_OPTIONS = tuple(SHARED_NFS_MOUNT_OPTIONS)
 # Wait for GSS clone completion before returning from volume clone (required for certification).
 BLOCKING_CLONES = True
 SNAPSHOT_CRDS_SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "install_snapshot_crds.sh"
 SNAPSHOT_CLASS_CRD = "volumesnapshotclasses.snapshot.storage.k8s.io"
-
-
-def _yaml_string(value: str) -> str:
-    """Return a YAML-safe quoted string (avoids numeric passwords becoming integers)."""
-    return json.dumps(value)
 
 
 def _resolve_vast_endpoint(cfg: RunnerConfig) -> str:
@@ -55,96 +65,32 @@ def _resolve_vast_endpoint(cfg: RunnerConfig) -> str:
     return endpoint
 
 
-def _vast_api_request(
-    cfg: RunnerConfig,
-    method: str,
-    resource: str,
-    *,
-    endpoint: str,
-    params: Optional[dict[str, str]] = None,
-    data: Optional[dict[str, object]] = None,
-) -> object:
-    url = f"https://{endpoint}/api/{resource.strip('/')}/"
-    if params:
-        url = f"{url}?{urllib.parse.urlencode(params)}"
+def _vms_session(cfg: RunnerConfig) -> TestVmsSession:
+    return TestVmsSession.connect(
+        endpoint=_resolve_vast_endpoint(cfg),
+        username=cfg.vast_username,
+        password=cfg.vast_password,
+    )
 
-    headers = {
-        "content-type": "application/json",
-        "authorization": "Basic "
-        + base64.b64encode(f"{cfg.vast_username}:{cfg.vast_password}".encode()).decode(),
-    }
-    body = None if data is None else json.dumps(data).encode()
-    request = urllib.request.Request(url, data=body, headers=headers, method=method.upper())
-    context = ssl._create_unverified_context()
-    try:
-        with urllib.request.urlopen(request, context=context, timeout=60) as response:
-            raw = response.read().decode()
-            if not raw:
-                return None
-            return json.loads(raw)
-    except urllib.error.HTTPError as exc:
-        details = exc.read().decode(errors="replace")
-        raise RuntimeError(
-            f"VAST API {method.upper()} {url} failed with HTTP {exc.code}.\n{details}"
-        ) from exc
+
+def _k8s_client(cfg: RunnerConfig):
+    return make_k8s(kubeconfig=cfg.kubeconfig, kubectl=cfg.oc_bin)
 
 
 def ensure_block_subsystem(cfg: RunnerConfig) -> None:
-    """Create NVMe-oF block subsystem (view) on VAST"""
+    """Create NVMe-oF block subsystem (view) on VAST."""
     if cfg.profile != "block" or not cfg.vast_subsystem:
         return
 
-    endpoint = _resolve_vast_endpoint(cfg)
     subsystem = cfg.vast_subsystem
     path = f"/{subsystem}"
-    print(f"Ensuring VAST block subsystem {subsystem!r} at path {path!r} on {endpoint}...")
-
-    existing = _vast_api_request(
-        cfg,
-        "GET",
-        "views",
-        endpoint=endpoint,
-        params={"name": subsystem},
+    print(f"Ensuring VAST block subsystem {subsystem!r} at path {path!r}...")
+    _vms_session(cfg).views.ensure_subsystem(
+        path=path,
+        subsystem=subsystem,
+        policy=cfg.vast_view_policy,
     )
-    if isinstance(existing, list):
-        for view in existing:
-            protocols = view.get("protocols") or []
-            if "BLOCK" in protocols and view.get("name") == subsystem:
-                print(f"VAST block subsystem {subsystem!r} already exists.")
-                return
-
-    policies = _vast_api_request(
-        cfg,
-        "GET",
-        "viewpolicies",
-        endpoint=endpoint,
-        params={"name": cfg.vast_view_policy},
-    )
-    if not isinstance(policies, list) or not policies:
-        raise RuntimeError(
-            f"View policy {cfg.vast_view_policy!r} not found on VAST cluster {endpoint}."
-        )
-
-    _vast_api_request(
-        cfg,
-        "POST",
-        "views",
-        endpoint=endpoint,
-        data={
-            "path": path,
-            "name": subsystem,
-            "create_dir": True,
-            "protocols": ["BLOCK"],
-            "policy_id": policies[0]["id"],
-        },
-    )
-    print(f"Created VAST block subsystem {subsystem!r} at path {path!r}.")
-
-
-def _policy_list(value: object) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [str(item) for item in value]
+    print(f"VAST block subsystem {subsystem!r} is present.")
 
 
 def ensure_nfs_view_policy(cfg: RunnerConfig) -> None:
@@ -156,51 +102,41 @@ def ensure_nfs_view_policy(cfg: RunnerConfig) -> None:
     if cfg.profile != "nfs":
         return
 
-    endpoint = _resolve_vast_endpoint(cfg)
     policy_name = cfg.vast_view_policy
-    print(f"Ensuring view policy {policy_name!r} has nfs_root_squash=[] and nfs_no_squash=['*'] on {endpoint}...")
+    print(f"Ensuring view policy {policy_name!r} has nfs_root_squash=[] and nfs_no_squash=['*']...")
+    session = _vms_session(cfg)
+    session.viewpolicies.ensure_no_root_squash(name=policy_name)
+    print(f"View policy {policy_name!r} has no root squash.")
+    print(f"Ensuring view policy {policy_name!r} allows plain NFS (nfs_enforce_tls=False)...")
+    session.viewpolicies.ensure_plain_nfs(name=policy_name)
+    print(f"View policy {policy_name!r} allows plain NFS.")
 
-    policies = _vast_api_request(
-        cfg,
-        "GET",
-        "viewpolicies",
-        endpoint=endpoint,
-        params={"name": policy_name},
-    )
-    if not isinstance(policies, list) or not policies:
-        raise RuntimeError(f"View policy {policy_name!r} not found on VAST cluster {endpoint}.")
 
-    policy = policies[0]
-    policy_id = policy.get("id")
-    if policy_id is None:
-        raise RuntimeError(f"View policy {policy_name!r} has no id.")
-
-    desired_root: list[str] = []
-    desired_no = ["*"]
-    desired_auth = False
-    current_root = _policy_list(policy.get("nfs_root_squash"))
-    current_no = _policy_list(policy.get("nfs_no_squash"))
-    current_auth = policy.get("use_auth_provider")
-    if current_root == desired_root and current_no == desired_no and current_auth is desired_auth:
-        print(f"View policy {policy_name!r} already has no root squash.")
+def ensure_nfs_trash_folder(cfg: RunnerConfig) -> None:
+    """Enable VAST trash folder so NFS DeleteVolume uses Trash API (e2e prerequisite)."""
+    if cfg.profile != "nfs":
         return
 
-    _vast_api_request(
-        cfg,
-        "PATCH",
-        f"viewpolicies/{policy_id}",
-        endpoint=endpoint,
-        data={
-            "nfs_root_squash": desired_root,
-            "nfs_no_squash": desired_no,
-            "use_auth_provider": desired_auth,
-        },
-    )
-    print(
-        f"Updated view policy {policy_name!r}: "
-        f"nfs_root_squash {current_root} -> {desired_root}, "
-        f"nfs_no_squash {current_no} -> {desired_no}."
-    )
+    print("Ensuring VAST trash folder is enabled...")
+    _vms_session(cfg).clusters.ensure_trash_state(True)
+    print("VAST trash folder is enabled.")
+
+
+def ensure_nfs_exports(cfg: RunnerConfig) -> None:
+    """Ensure the base view ``/`` advertises NFS+NFS4.
+
+    Production ``views.ensure`` leaves an existing NFS-only ``/`` unchanged, so
+    ``vers=4.1`` mounts fail until NFS4 is patched in. Same helper as e2e
+    ``system`` fixture.
+    """
+    if cfg.profile != "nfs":
+        return
+
+    session = _vms_session(cfg)
+    policy_name = cfg.vast_view_policy
+    print(f"Ensuring NFS+NFS4 export '/' on {session.endpoint} (policy={policy_name!r})...")
+    session.views.ensure_export(path="/", protocols=["NFS", "NFS4"], policy=policy_name)
+    print("NFS+NFS4 export '/' is present.")
 
 
 NFS_KEYWORDS = (
@@ -291,7 +227,7 @@ PROFILES: dict[str, ProfileDefaults] = {
         vast_csi_driver_name="block.csi.vastdata.com",
         driver_type="block",
         provisioner="block.csi.vastdata.com",
-        vast_subsystem="redhat-e2e-block",
+        vast_subsystem=BLOCK_SUBSYSTEM,
     ),
 }
 
@@ -310,7 +246,6 @@ class RunnerConfig:
     skip_patterns: tuple[str, ...]
     max_tests: int
     list_only: bool
-    ensure_csi_resources: bool
     csi_namespace: str
     vast_endpoint: Optional[str]
     vast_username: str
@@ -719,17 +654,67 @@ def ensure_snapshot_crds(cfg: RunnerConfig) -> None:
     _reset_failed_vaststorage(cfg)
 
 
-def ensure_csi_resources(cfg: RunnerConfig) -> None:
-    if not cfg.ensure_csi_resources:
+REQUIRED_OPERATOR_CRDS = (
+    "vastclusters.storage.vastdata.com",
+    "vaststorages.storage.vastdata.com",
+    "vastcsidrivers.storage.vastdata.com",
+)
+
+
+def _crd_installed(cfg: RunnerConfig, name: str) -> bool:
+    if not cfg.oc_bin:
+        return False
+    probe = subprocess.run(
+        [cfg.oc_bin, "--kubeconfig", str(cfg.kubeconfig), "get", "crd", name],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    return probe.returncode == 0
+
+
+def _require_csi_operator(cfg: RunnerConfig) -> None:
+    missing = [name for name in REQUIRED_OPERATOR_CRDS if not _crd_installed(cfg, name)]
+    if not missing:
         return
+    raise RuntimeError(
+        "VAST CSI operator is not installed on this cluster "
+        f"(missing CRDs: {', '.join(missing)}).\n"
+        "Install the operator first, then re-run. Example:\n"
+        "  examples/csi-operator/deploy/install-local-olm.sh"
+    )
+
+
+def _cluster_reachable_endpoint(endpoint: str) -> str:
+    """Return an address CSI pods can resolve.
+
+    Lab short names like ``l1158`` work on the laptop (search domain) but not
+    inside CRC/OpenShift. Prefer a literal IPv4 so CreateVolume can reach VMS.
+    """
+    host = endpoint.split("://")[-1].split("/")[0].split(":")[0]
+    if not host or (host.count(".") == 3 and all(part.isdigit() for part in host.split("."))):
+        return host
+    try:
+        ip = socket.getaddrinfo(host, None, socket.AF_INET)[0][4][0]
+    except OSError:
+        return endpoint
+    if ip and ip != host:
+        print(f"Resolved VAST endpoint {host} -> {ip} for in-cluster CSI")
+        return ip
+    return endpoint
+
+
+def ensure_csi_resources(cfg: RunnerConfig) -> None:
     if not cfg.oc_bin or not _can_execute_oc(cfg.oc_bin, cfg.kubeconfig):
         raise RuntimeError(
-            "Cannot ensure CSI resources automatically because 'oc' is unavailable.\n"
-            "Either fix oc permissions/path or use --skip-ensure-csi-resources."
+            "Cannot ensure CSI resources because 'oc' is unavailable.\n"
+            "Fix oc permissions/path and re-run."
         )
 
     endpoint = cfg.vast_endpoint or _existing_cluster_endpoint(cfg)
     if endpoint:
+        endpoint = _cluster_reachable_endpoint(endpoint)
         print(f"Using VastCluster endpoint: {endpoint}")
     else:
         raise RuntimeError(
@@ -737,109 +722,67 @@ def ensure_csi_resources(cfg: RunnerConfig) -> None:
             "Pass --vast-endpoint <ip-or-fqdn> or set VAST_ENDPOINT."
         )
 
-    ns_manifest = dedent(
-        f"""\
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: {cfg.csi_namespace}
-        """
-    )
-    subprocess.run(
-        [cfg.oc_bin, "--kubeconfig", str(cfg.kubeconfig), "apply", "-f", "-"],
-        input=ns_manifest,
-        check=True,
-        text=True,
-    )
+    k8s = _k8s_client(cfg)
+    k8s.namespaces.ensure(cfg.csi_namespace)
+    _require_csi_operator(cfg)
 
     if cfg.profile == "block":
-        crs_manifest = dedent(
-            f"""\
-            apiVersion: storage.vastdata.com/v1
-            kind: VastCluster
-            metadata:
-              name: {cfg.vast_cluster_name}
-              namespace: {cfg.csi_namespace}
-            spec:
-              endpoint: {endpoint}
-              username: {_yaml_string(cfg.vast_username)}
-              password: {_yaml_string(cfg.vast_password)}
-            ---
-            apiVersion: storage.vastdata.com/v1
-            kind: VastStorage
-            metadata:
-              name: {cfg.vast_storage_name}
-              namespace: {cfg.csi_namespace}
-            spec:
-              driverType: {cfg.driver_type}
-              provisioner: {cfg.provisioner}
-              clusterName: {cfg.vast_cluster_name}
-              subsystem: {cfg.vast_subsystem}
-              vipPool: {cfg.vast_vip_pool}
-              blockingClones: {str(BLOCKING_CLONES).lower()}
-              createSnapshotClass: true
-            ---
-            apiVersion: storage.vastdata.com/v1
-            kind: VastCSIDriver
-            metadata:
-              name: {cfg.vast_csi_driver_name}
-              namespace: {cfg.csi_namespace}
-            spec:
-              driverType: {cfg.driver_type}
-            """
+        cluster_name = cfg.vast_cluster_name
+        storage = (
+            VastStorageBuilder.new(
+                name=cfg.vast_storage_name,
+                vast_cluster_name=cluster_name,
+                vip_pool=cfg.vast_vip_pool,
+                provisioner=cfg.provisioner,
+                namespace=cfg.csi_namespace,
+            )
+            .with_block(subsystem=cfg.vast_subsystem, blocking_clones=BLOCKING_CLONES)
         )
+        driver_type = cfg.driver_type
     else:
         cluster_name = _resolve_vast_cluster_name(cfg)
-        volume_name_format_line = ""
-        if cfg.vast_volume_name_format:
-            volume_name_format_line = (
-                f"              volumeNameFormat: {cfg.vast_volume_name_format}\n"
-                f"              ephemeralVolumeNameFormat: {cfg.vast_volume_name_format}\n"
-                f"              snapshotClass:\n"
-                f"                snapshotNameFormat: {cfg.vast_volume_name_format}\n"
+        storage = (
+            VastStorageBuilder.new(
+                name=cfg.vast_storage_name,
+                vast_cluster_name=cluster_name,
+                vip_pool=cfg.vast_vip_pool,
+                provisioner=cfg.provisioner,
+                namespace=cfg.csi_namespace,
             )
-        mount_options_lines = "".join(f"                - {opt}\n" for opt in NFS_MOUNT_OPTIONS)
-        crs_manifest = dedent(
-            f"""\
-            apiVersion: storage.vastdata.com/v1
-            kind: VastCluster
-            metadata:
-              name: {cluster_name}
-              namespace: {cfg.csi_namespace}
-            spec:
-              endpoint: {endpoint}
-              username: {_yaml_string(cfg.vast_username)}
-              password: {_yaml_string(cfg.vast_password)}
-            ---
-            apiVersion: storage.vastdata.com/v1
-            kind: VastStorage
-            metadata:
-              name: {cfg.vast_storage_name}
-              namespace: {cfg.csi_namespace}
-            spec:
-              clusterName: {cluster_name}
-              provisioner: {cfg.provisioner}
-              storagePath: /k8s
-              vipPool: {cfg.vast_vip_pool}
-              viewPolicy: {cfg.vast_view_policy}
-              mountOptions:
-{mount_options_lines}{volume_name_format_line}              blockingClones: {str(BLOCKING_CLONES).lower()}
-              createSnapshotClass: true
-            ---
-            apiVersion: storage.vastdata.com/v1
-            kind: VastCSIDriver
-            metadata:
-              name: {cfg.vast_csi_driver_name}
-              namespace: {cfg.csi_namespace}
-            spec: {{}}
-            """
+            .with_filesystem(view_policy=cfg.vast_view_policy, storage_path=ROOT_EXPORT)
+            .with_mount_options(list(NFS_MOUNT_OPTIONS))
+            .with_blocking_clones(BLOCKING_CLONES)
         )
-    subprocess.run(
-        [cfg.oc_bin, "--kubeconfig", str(cfg.kubeconfig), "apply", "-f", "-"],
-        input=crs_manifest,
-        check=True,
-        text=True,
+        if cfg.vast_volume_name_format:
+            storage = (
+                storage
+                .with_volume_name_format(cfg.vast_volume_name_format)
+                .with_ephemeral_volume_name_format(cfg.vast_volume_name_format)
+                .with_snapshot_name_format(cfg.vast_volume_name_format)
+            )
+        driver_type = "nfs"
+
+    cluster = VastClusterBuilder.new(
+        name=cluster_name,
+        endpoint=endpoint,
+        namespace=cfg.csi_namespace,
+        username=cfg.vast_username,
+        password=cfg.vast_password,
     )
+    driver = (
+        VastCSIDriverBuilder.new(
+            name=cfg.vast_csi_driver_name,
+            namespace=cfg.csi_namespace,
+            driver_type=driver_type,
+        )
+        # Snapshot restore of a 15Gi+ golden image exceeds the chart default 15s gRPC timeout.
+        .with_operation_timeout(300)
+    )
+    if cfg.profile == "nfs":
+        driver = driver.with_deletion_resources(cfg.vast_vip_pool, cfg.vast_view_policy)
+    k8s.vastclusters.apply([cluster.result()])
+    k8s.vaststorages.apply([storage.result()])
+    k8s.vastcsidrivers.apply([driver.result()])
 
 
 def _vsc_snapshot_name_fmt(cfg: RunnerConfig, vsc_name: str) -> Optional[str]:
@@ -1172,7 +1115,6 @@ def build_ensure_config(
     kubeconfig: Path,
     vast_endpoint: Optional[str] = None,
     csi_namespace: str = "vast-csi",
-    vast_subsystem: Optional[str] = None,
     vast_username: str = DEFAULT_VAST_USERNAME,
     vast_password: str = DEFAULT_VAST_PASSWORD,
 ) -> RunnerConfig:
@@ -1192,7 +1134,6 @@ def build_ensure_config(
         skip_patterns=profile.skip_patterns,
         max_tests=0,
         list_only=False,
-        ensure_csi_resources=True,
         csi_namespace=csi_namespace,
         vast_endpoint=vast_endpoint,
         vast_username=vast_username,
@@ -1200,11 +1141,11 @@ def build_ensure_config(
         vast_cluster_name=profile.vast_cluster_name,
         vast_storage_name=profile.vast_storage_name,
         vast_csi_driver_name=profile.vast_csi_driver_name,
-        vast_vip_pool="vippool-1",
-        vast_view_policy="default",
+        vast_vip_pool=VIPPOOL_NAME,
+        vast_view_policy=VIEW_POLICY_NAME,
         driver_type=profile.driver_type,
         provisioner=profile.provisioner,
-        vast_subsystem=vast_subsystem or profile.vast_subsystem,
+        vast_subsystem=profile.vast_subsystem,
         vast_volume_name_format=profile.volume_name_format,
     )
 
@@ -1215,23 +1156,20 @@ def ensure_profile_stack(
     kubeconfig: Path,
     vast_endpoint: Optional[str] = None,
     csi_namespace: str = "vast-csi",
-    vast_subsystem: Optional[str] = None,
-    skip: bool = False,
 ) -> None:
     """Ensure VAST CSI CRs for a profile exist (safe to call from NFS CSI or KubeVirt)."""
-    if skip:
-        return
     cfg = build_ensure_config(
         profile_name,
         kubeconfig=kubeconfig,
         vast_endpoint=vast_endpoint,
         csi_namespace=csi_namespace,
-        vast_subsystem=vast_subsystem,
     )
     if profile_name == "block":
         ensure_block_subsystem(cfg)
     if profile_name == "nfs":
         ensure_nfs_view_policy(cfg)
+        ensure_nfs_trash_folder(cfg)
+        ensure_nfs_exports(cfg)
     ensure_snapshot_crds(cfg)
     ensure_csi_resources(cfg)
     ensure_blocking_clones(cfg)
@@ -1271,7 +1209,6 @@ def build_config(args) -> RunnerConfig:
         skip_patterns=tuple(args.skip_pattern) if args.skip_pattern else profile.skip_patterns,
         max_tests=args.max_tests,
         list_only=args.list_only,
-        ensure_csi_resources=not args.skip_ensure_csi_resources,
         csi_namespace=args.csi_namespace,
         vast_endpoint=args.vast_endpoint,
         vast_username=args.vast_username,
@@ -1283,21 +1220,19 @@ def build_config(args) -> RunnerConfig:
         vast_view_policy=args.vast_view_policy,
         driver_type=profile.driver_type,
         provisioner=profile.provisioner,
-        vast_subsystem=args.vast_subsystem or profile.vast_subsystem,
+        vast_subsystem=profile.vast_subsystem,
         vast_volume_name_format=profile.volume_name_format,
     )
 
 
 def run_csi_suite(cfg: RunnerConfig) -> int:
     validate_prerequisites(cfg)
-    if cfg.ensure_csi_resources:
-        ensure_profile_stack(
-            cfg.profile,
-            kubeconfig=cfg.kubeconfig,
-            vast_endpoint=cfg.vast_endpoint,
-            csi_namespace=cfg.csi_namespace,
-            vast_subsystem=cfg.vast_subsystem,
-        )
+    ensure_profile_stack(
+        cfg.profile,
+        kubeconfig=cfg.kubeconfig,
+        vast_endpoint=cfg.vast_endpoint,
+        csi_namespace=cfg.csi_namespace,
+    )
 
     print(f"Running CSI certification profile: {cfg.profile}")
     print("Discovering candidate tests...")

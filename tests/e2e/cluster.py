@@ -2,40 +2,19 @@
 from __future__ import annotations
 
 import os
-import shutil
 
 from plumbum import local
 
-from e2e.builders.helm import FleetHelmValuesBuilder
-from e2e.constants import CHARTS_DIR, CSI_NAMESPACE, MGMT_SECRET, csi_plugin_image
-from e2e.k8s import K8S
+from lib.builders.helm import FleetHelmValuesBuilder
+from lib.constants import CHARTS_DIR, CSI_NAMESPACE, MGMT_SECRET, csi_plugin_image
 from e2e.logging import logger
+from lib.k8s import K8S, make_k8s as make_k8s_client
 
 _CHART_BY_MARK = {
     "nfs": ["vastcsi"],
     "block": ["vastblock"],
     "cosi": ["vastcosi"],
 }
-
-
-def _kube_cmd():
-    exe = os.environ.get("E2E_KUBECTL") or (shutil.which("oc") and "oc") or "kubectl"
-    cmd = local[exe]
-    kubeconfig = os.environ.get("KUBECONFIG")
-    if kubeconfig:
-        cmd = cmd.with_env(KUBECONFIG=kubeconfig)
-    return cmd
-
-
-def _helm_cmd():
-    helm = shutil.which("helm")
-    if not helm:
-        raise RuntimeError("helm is required to install CSI e2e charts")
-    cmd = local[helm]
-    kubeconfig = os.environ.get("KUBECONFIG")
-    if kubeconfig:
-        cmd = cmd.with_env(KUBECONFIG=kubeconfig)
-    return cmd
 
 
 def charts_for_session(session) -> list[str]:
@@ -54,8 +33,50 @@ def charts_for_session(session) -> list[str]:
     return charts or ["vastcsi"]
 
 
+_SNAPSHOT_PREREQ_HINT = "Install them with: make install-snapshost-crds"
+_COSI_PREREQ_HINT = "Install them with: make install-cosi-crds"
+
+
+def _require_snapshot_prereqs(kube_cmd) -> None:
+    """Fail before helm if snapshot CRDs / controller are missing. Tests never install them."""
+    rc, _, _ = kube_cmd["get", "crd", "volumesnapshots.snapshot.storage.k8s.io"].run(retcode=None)
+    if rc != 0:
+        raise RuntimeError(
+            f"Snapshot CRDs are not installed on this cluster. {_SNAPSHOT_PREREQ_HINT}"
+        )
+
+    rc, stdout, _ = kube_cmd["get", "deploy", "-A", "-o", "name"].run(retcode=None)
+    if rc != 0 or "snapshot-controller" not in (stdout or ""):
+        raise RuntimeError(
+            "Snapshot CRDs are installed, but snapshot-controller is not. "
+            f"VolumeSnapshots will not reconcile until the controller is running. {_SNAPSHOT_PREREQ_HINT}"
+        )
+    logger.info("Snapshot CRDs and snapshot-controller are present.")
+
+
+def _require_cosi_prereqs(kube_cmd) -> None:
+    """Fail before helm if COSI CRDs / controller are missing. Tests never install them."""
+    rc, _, _ = kube_cmd["get", "crd", "bucketclaims.objectstorage.k8s.io"].run(retcode=None)
+    if rc != 0:
+        raise RuntimeError(
+            f"COSI CRDs are not installed on this cluster. {_COSI_PREREQ_HINT}"
+        )
+
+    rc, stdout, _ = kube_cmd["get", "deploy", "-A", "-o", "name"].run(retcode=None)
+    if rc != 0 or "objectstorage-controller" not in (stdout or ""):
+        raise RuntimeError(
+            "COSI CRDs are installed, but objectstorage-controller is not. "
+            f"BucketClaims will not reconcile until the controller is running. {_COSI_PREREQ_HINT}"
+        )
+    logger.info("COSI CRDs and objectstorage-controller are present.")
+
+
 def install_csi_driver(k8s: K8S, system, charts: list[str]) -> None:
     """helm upgrade --install charts/<chart> -f <generated overlay> -n default."""
+    if any(chart in ("vastcsi", "vastblock") for chart in charts):
+        _require_snapshot_prereqs(k8s.kubectl)
+    if "vastcosi" in charts:
+        _require_cosi_prereqs(k8s.kubectl)
     k8s.namespaces.allow_privileged(CSI_NAMESPACE)
     image = csi_plugin_image()
     logger.info(f"CSI plugin image: {image or '(chart default)'}")
@@ -80,5 +101,19 @@ def install_csi_driver(k8s: K8S, system, charts: list[str]) -> None:
     )
 
 
+def _check_cluster_reachable(kube_cmd) -> None:
+    """Fail fast with a clear message when the Kubernetes API server is unreachable."""
+    rc, _, stderr = kube_cmd["get", "nodes"].run(retcode=None)
+    if rc != 0:
+        context = local["kubectl"]["config", "current-context"].run(retcode=None)[1].strip()
+        raise RuntimeError(
+            f"Kubernetes cluster is not reachable (context: {context!r}).\n"
+            f"Details: {stderr.strip()}"
+        )
+
+
 def make_k8s() -> K8S:
-    return K8S(kube_cmd=_kube_cmd(), helm_cmd=_helm_cmd())
+    k8s = make_k8s_client(helm=True)
+    _check_cluster_reachable(k8s.kubectl)
+    return k8s
+

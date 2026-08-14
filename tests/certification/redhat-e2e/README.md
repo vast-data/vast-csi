@@ -37,16 +37,18 @@ python3 tests/certification/redhat-e2e/run_certification.py all
   - Block: `VastCluster` (`cluster-block`), `VastStorage` (`vastdata-block`), `VastCSIDriver` (`block.csi.vastdata.com`)
 - NFS `VastStorage` sets `volumeNameFormat: csi:{id}` so CDI scratch PVCs avoid VAST quota name collisions (no runtime StorageClass patch)
 - NFS view policy (`default` unless overridden): `nfs_root_squash=[]`, `nfs_no_squash=["*"]`, `use_auth_provider=false` so virt-launcher/CSI can chown on NFS
+- NFS exports: `views.ensure_export(path="/", protocols=["NFS", "NFS4"])` so `vers=4.1` mounts work when the existing base view was NFS-only
+- NFS trash folder: `clusters.ensure_trash_state(True)` so DeleteVolume uses Trash API (same as e2e `system` fixture)
+- NFS `VastCSIDriver`: sets `deletionVipPool` / `deletionViewPolicy` (fallback when Trash API is unavailable)
 - All profiles set `blockingClones: true` on `VastStorage` so volume clones wait for GSS completion before provisioning returns (NFS, block, and KubeVirt via shared `ensure_profile_stack()`)
 
 ### KubeVirt
 
-- Runs the Red Hat-required KubeVirt storage checkup
-- Uses the Orion scripts in `scripts/run-kubevirt.sh` and `scripts/run-kubevirt-block.sh`
+- Runs the Red Hat-required KubeVirt storage checkup in Python via `run_kubevirt.py` and `kubevirt_checkup.py` (uses `tests/lib` `make_k8s`, namespaces, StorageClasses, and generic apply)
 - Collects the checkup ConfigMap, logs, and cluster metadata
 - Ensures the same VAST CR stack as NFS CSI via shared `ensure_profile_stack()` (whichever suite runs first creates `vastdata-filesystem`)
-- Block profile also ensures the block stack; NFS `vastdata-filesystem` is always ensured for CDI scratch space
-- **Golden image:** Fedora CoreOS qemu image via HTTP (15Gi PVC) plus DataImportCron, same as the Orion `run-kubevirt.sh` that already passed certification. `cloneStrategy: copy`.
+- **Golden image:** Fedora CoreOS qemu image via HTTP (15Gi PVC) plus DataImportCron. `cloneStrategy: snapshot` so CDI clones via CSI VolumeSnapshots.
+- Makes `vastdata-filesystem` the unique default StorageClass and clears `storageclass.kubernetes.io/is-default-class` on every other class (CRC's `crc-csi-hostpath-provisioner` included).
 
 ## Run examples
 
@@ -60,22 +62,15 @@ Block CSI:
 
 ```bash
 python3 tests/certification/redhat-e2e/run_csi.py --profile block \
-  --vast-endpoint <vast-mgmt-ip-or-fqdn> \
-  --vast-subsystem redhat-e2e-block
+  --vast-endpoint <vast-mgmt-ip-or-fqdn>
 ```
 
 Default VAST credentials are hardcoded as `admin` / `123456`.
 
-KubeVirt on NFS storage class:
+KubeVirt on NFS (`vastdata-filesystem`):
 
 ```bash
-python3 tests/certification/redhat-e2e/run_kubevirt.py --profile nfs
-```
-
-KubeVirt on block storage class:
-
-```bash
-python3 tests/certification/redhat-e2e/run_kubevirt.py --profile block
+python3 tests/certification/redhat-e2e/run_kubevirt.py
 ```
 
 List-only mode for CSI:
@@ -93,11 +88,7 @@ export VAST_ENDPOINT=<vast-mgmt-ip-or-fqdn>
 python3 tests/certification/redhat-e2e/run_certification.py nfs
 ```
 
-If CR setup is already done and should not be touched:
-
-```bash
-python3 tests/certification/redhat-e2e/run_csi.py --profile nfs --skip-ensure-csi-resources
-```
+Every run applies the CSI CR stack (`VastCluster` / `VastStorage` / `VastCSIDriver`). That path is idempotent and typically takes a few seconds.
 
 ## Manifests
 
@@ -126,12 +117,14 @@ When a new run starts for a profile, previous results in that profile folder are
 - Working `oc`/`kubectl` access to the OpenShift cluster
 - VAST CSI operator installed and reachable from the cluster
 - VolumeSnapshot CRDs: installed automatically during CR setup if the cluster does not already have them (CRC often does not)
-- For block: NVMe-oF subsystem created on the VAST cluster (default name: `redhat-e2e-block`; the runner creates it automatically via VMS API before applying CRs)
+- For NFS: trash folder enabled automatically; `deletionViewPolicy` / `deletionVipPool` set on `VastCSIDriver`
+- For block: NVMe-oF subsystem `myblock` is created on the VAST cluster automatically via VMS API before applying CRs (see `tests/lib/constants.py`: `BLOCK_SUBSYSTEM`)
 - For KubeVirt: nested virtualization or emulation enabled on the CRC host (`virtctl` is **not** required)
 
-## KubeVirt helper scripts
+## KubeVirt helpers
 
-- `scripts/run-kubevirt.sh` - NFS/filesystem storage class checkup
-- `scripts/run-kubevirt-block.sh` - block storage class checkup
-- `scripts/cleanup-kubevirt.sh` - cleanup before retest
-- `scripts/verify-golden-image.sh` - verify golden image discovery
+- `python3 tests/certification/redhat-e2e/run_kubevirt.py` — NFS storage checkup (reuses a Bound golden image; does not re-download or re-convert)
+- `python3 tests/certification/redhat-e2e/run_kubevirt.py --cleanup-first` — delete previous checkup job/VMs only; keeps the golden image
+- `python3 tests/certification/redhat-e2e/run_kubevirt.py --reimport-golden-image` — force download/convert again
+- `python3 tests/certification/redhat-e2e/cleanup_kubevirt.py` — delete checkup job/VMs and golden-image resources (add `--keep-golden-image` to keep the converted image)
+- `python3 tests/certification/redhat-e2e/verify_golden_image.py` — verify DataSource, Bound PVC, and DataImportCron UpToDate

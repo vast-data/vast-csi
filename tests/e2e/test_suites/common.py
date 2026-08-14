@@ -6,15 +6,31 @@ from datetime import datetime
 from easypy.bunch import Bunch
 from easypy.timing import wait
 from easypy.units import MINUTE
+from plumbum.commands.processes import ProcessExecutionError
 
-from e2e.builders.storage import PVCBuilder
-from e2e.builders.workloads import PodBuilder
-from e2e.constants import BUSYBOX_IMAGE
+from lib.builders.storage import PVCBuilder
+from lib.builders.workloads import PodBuilder
+from lib.constants import BUSYBOX_IMAGE
 from e2e.logging import logger
 
 WRITE_COMMAND = ["sh", "-c", "while true; do date -Iseconds >> /shared/$HOSTNAME; sleep 1; done"]
 CONCURRENT_VOLUME_COUNT = 3
 POD_MOUNT_PATH = "/shared"
+
+
+def writer_has_data(k8s, pod_name: str, filename: str | None = None) -> bool:
+    """True when the writer has a non-empty file. A missing file is False, not an error.
+
+    ``kubectl exec ... test -s`` exits 1 when the file is absent; plumbum raises.
+    easypy ``wait()`` only retries ``PredicateNotSatisfied``, so that would abort
+    the wait on the first poll after the container becomes Ready.
+    """
+    path = f"{POD_MOUNT_PATH}/{filename or pod_name}"
+    try:
+        out = k8s.pods.exec(pod_name, f"sh -c 'test -s {path} && echo ok || true'")
+    except ProcessExecutionError:
+        return False
+    return (out or "").strip() == "ok"
 
 
 def parse_iso_date(text: str) -> datetime:
