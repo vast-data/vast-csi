@@ -43,6 +43,7 @@ keyctl = "^0.5"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "9.0.3"
+python-dotenv = ">=1.0.0"
 
 [build-system]
 requires = ["poetry-core>=1.2.0"]
@@ -50,4 +51,12 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
 minversion = "6.0"
+testpaths = ["tests/unit"]
+pythonpath = [".", "tests"]
 python_files = ["test_*.py", "*_test.py", "utest_*.py"]
+markers = [
+    "e2e: real Kubernetes cluster end-to-end tests",
+    "nfs: NFS / vastcsi chart tests",
+    "block: block / vastblock chart tests",
+    "cosi: COSI chart tests",
+]
