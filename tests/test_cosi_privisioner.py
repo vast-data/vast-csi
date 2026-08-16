@@ -1,10 +1,12 @@
 import json
 import pytest
 import grpc
+from unittest.mock import MagicMock
 from easypy.bunch import Bunch
 from vast_csi.exceptions import Abort, MissingParameter
 from vast_csi.plugins.cosi import CosiProvisioner, parse_lifecycle_rules
 
+THIRTY_GIB = 30 * 1024 ** 3
 
 COMMON_PARAMS = dict(
     root_export="/buckets",
@@ -21,6 +23,12 @@ COMMON_PARAMS = dict(
     default_retention_period="1d",
     allow_s3_anonymous_access="true",
 )
+
+
+def _view_bunch(name, root_export="/buckets", tenant_id=1, view_id=42):
+    root = root_export.strip("/")
+    path = f"/{root}/{name}" if root else f"/{name}"
+    return Bunch(tenant_id=tenant_id, path=path, id=view_id)
 
 
 class TestParseLifecycleRules:
@@ -88,20 +96,65 @@ class TestParseLifecycleRules:
 
 
 class TestCosiProvisionerSuite:
-    def _create_bucket(self, name, parameters, vms_factory, extra_mocks=()):
-        cosi = CosiProvisioner()
-        session = vms_factory(
+    def _build_create_session(
+        self,
+        name,
+        parameters,
+        vms_factory,
+        existing_view=None,
+        existing_quota=None,
+    ):
+        root_export = parameters.get("root_export", "/buckets")
+        view = existing_view or _view_bunch(name, root_export)
+        return vms_factory(
             ("vippools", "get_vip", "172.0.0.1"),
-            ("views", "one", None),
-            ("views", "create", Bunch(id=42, tenant_id=1)),
+            ("views", "one", existing_view),
+            ("views", "create", view),
             ("users", "one", None),
             ("users", "create", None),
             ("viewpolicies", "one", Bunch(id=1, tenant_id=1, tenant_name="default")),
             ("quospolicies", "one", Bunch(id=1, tenant_id=1)),
+            ("quotas", "one", existing_quota),
+            ("quotas", "ensure", existing_quota or Bunch(id=10)),
             ("s3lifecyclerules", "ensure", Bunch(id=1)),
-            *extra_mocks,
+        )
+
+    def _create_bucket(
+        self,
+        name,
+        parameters,
+        vms_factory,
+        existing_view=None,
+        existing_quota=None,
+    ):
+        cosi = CosiProvisioner()
+        session = self._build_create_session(
+            name, parameters, vms_factory, existing_view, existing_quota
         )
         return cosi.DriverCreateBucket(name=name, parameters=parameters, vms_session=session), session
+
+    def _delete_bucket(
+        self,
+        bucket_id,
+        vms_factory,
+        view=None,
+    ):
+        cosi = CosiProvisioner()
+        session = vms_factory(
+            ("views", "one", view),
+            ("s3lifecyclerules", "delete_many", None),
+            ("folders", "delete", None),
+            ("views", "delete_by_id", None),
+            ("quotas", "delete", None),
+            ("users", "delete", None),
+        )
+        if view is None:
+            session.views.one = MagicMock(return_value=None)
+        return cosi.DriverDeleteBucket(
+            vms_session=session,
+            bucket_id=bucket_id,
+            delete_context=None,
+        ), session
 
     def test_create_bucket(self, vms_session_with_mocked_resources_factory):
         """Test successful bucket creation"""
@@ -146,6 +199,7 @@ class TestCosiProvisionerSuite:
             "name": "test-bucket",
             'api_ver': None,
         }
+        session.quotas.ensure.assert_not_called()
 
     @pytest.mark.parametrize("root_export", ["", "/"])
     def test_create_bucket_with_root_storage_path(self, root_export, vms_session_with_mocked_resources_factory):
@@ -223,6 +277,104 @@ class TestCosiProvisionerSuite:
         assert err.code == grpc.StatusCode.INVALID_ARGUMENT
         assert "64 characters" in err.message
         assert "maximum allowed is 63" in err.message
+
+    def test_create_bucket_with_max_size(self, vms_session_with_mocked_resources_factory):
+        params = COMMON_PARAMS.copy()
+        params["max_size"] = "30Gi"
+        bucket_name = "test-bucket"
+
+        _, session = self._create_bucket(
+            name=bucket_name, parameters=params, vms_factory=vms_session_with_mocked_resources_factory
+        )
+
+        session.quotas.ensure.assert_called_once_with(
+            volume_id=bucket_name,
+            view_path="/buckets/test-bucket",
+            tenant_id=1,
+            requested_capacity=THIRTY_GIB,
+        )
+        assert "max_size" not in session.views.create.call_args.kwargs
+
+    @pytest.mark.parametrize("max_size", [None, ""])
+    def test_create_bucket_without_max_size(self, max_size, vms_session_with_mocked_resources_factory):
+        params = COMMON_PARAMS.copy()
+        if max_size is not None:
+            params["max_size"] = max_size
+        _, session = self._create_bucket(
+            name="test-bucket", parameters=params, vms_factory=vms_session_with_mocked_resources_factory
+        )
+        session.quotas.ensure.assert_not_called()
+
+    @pytest.mark.parametrize("max_size", ["bogus", "0", "-1Gi"])
+    def test_create_bucket_invalid_max_size(self, max_size, vms_session_with_mocked_resources_factory):
+        params = COMMON_PARAMS.copy()
+        params["max_size"] = max_size
+        with pytest.raises(Abort) as exc:
+            self._create_bucket(
+                name="test-bucket", parameters=params, vms_factory=vms_session_with_mocked_resources_factory
+            )
+        assert exc.value.code == grpc.StatusCode.INVALID_ARGUMENT
+
+    def test_create_bucket_retry_same_max_size(self, vms_session_with_mocked_resources_factory):
+        bucket_name = "test-bucket"
+        view = _view_bunch(bucket_name)
+        quota = Bunch(id=10, hard_limit=THIRTY_GIB)
+        params = COMMON_PARAMS.copy()
+        params["max_size"] = "30Gi"
+
+        res, session = self._create_bucket(
+            name=bucket_name,
+            parameters=params,
+            vms_factory=vms_session_with_mocked_resources_factory,
+            existing_view=view,
+            existing_quota=quota,
+        )
+
+        assert res.bucket_id.startswith(f"{bucket_name}@")
+        session.quotas.ensure.assert_not_called()
+
+    def test_create_bucket_retry_different_max_size(self, vms_session_with_mocked_resources_factory):
+        bucket_name = "test-bucket"
+        view = _view_bunch(bucket_name)
+        quota = Bunch(id=10, hard_limit=THIRTY_GIB // 2)
+        params = COMMON_PARAMS.copy()
+        params["max_size"] = "30Gi"
+        session = self._build_create_session(
+            bucket_name,
+            params,
+            vms_session_with_mocked_resources_factory,
+            existing_view=view,
+            existing_quota=quota,
+        )
+
+        with pytest.raises(Abort) as exc:
+            CosiProvisioner().DriverCreateBucket(
+                name=bucket_name, parameters=params, vms_session=session
+            )
+        assert exc.value.code == grpc.StatusCode.ALREADY_EXISTS
+        session.quotas.ensure.assert_not_called()
+
+    def test_create_bucket_view_exists_quota_missing(self, vms_session_with_mocked_resources_factory):
+        bucket_name = "test-bucket"
+        view = _view_bunch(bucket_name)
+        params = COMMON_PARAMS.copy()
+        params["max_size"] = "30Gi"
+
+        res, session = self._create_bucket(
+            name=bucket_name,
+            parameters=params,
+            vms_factory=vms_session_with_mocked_resources_factory,
+            existing_view=view,
+            existing_quota=None,
+        )
+
+        assert res.bucket_id.startswith(f"{bucket_name}@")
+        session.quotas.ensure.assert_called_once_with(
+            volume_id=bucket_name,
+            view_path="/buckets/test-bucket",
+            tenant_id=1,
+            requested_capacity=THIRTY_GIB,
+        )
 
     def test_create_bucket_with_lifecycle_rules(self, vms_session_with_mocked_resources_factory):
         params = dict(
@@ -360,6 +512,7 @@ class TestCosiProvisionerSuite:
             ("s3lifecyclerules", "delete_many", None),
             ("folders", "delete", None),
             ("views", "delete_by_id", None),
+            ("quotas", "delete", None),
             ("users", "delete", None),
         )
         order = []
@@ -375,6 +528,7 @@ class TestCosiProvisionerSuite:
 
         session.s3lifecyclerules.delete_many.assert_called_once_with(view__id=42)
         session.views.delete_by_id.assert_called_once_with(42)
+        session.quotas.delete.assert_called_once_with(name="test-bucket")
         assert order == ["rules", "folders", "view"]
 
     def test_delete_bucket_ok_when_lifecycle_rules_already_gone(
@@ -387,6 +541,7 @@ class TestCosiProvisionerSuite:
             ("s3lifecyclerules", "delete_many", None),
             ("folders", "delete", None),
             ("views", "delete_by_id", None),
+            ("quotas", "delete", None),
             ("users", "delete", None),
         )
 
@@ -399,4 +554,60 @@ class TestCosiProvisionerSuite:
         session.s3lifecyclerules.delete_many.assert_called_once_with(view__id=42)
         session.folders.delete.assert_called_once_with("/buckets/test-bucket", 1)
         session.views.delete_by_id.assert_called_once_with(42)
+        session.quotas.delete.assert_called_once_with(name="test-bucket")
+        session.users.delete.assert_called_once_with(name="test-bucket")
+
+    def test_delete_bucket_with_view_and_quota(self, vms_session_with_mocked_resources_factory):
+        view = _view_bunch("test-bucket")
+        bucket_id = "test-bucket@1@http://172.0.0.1:80"
+
+        _, session = self._delete_bucket(
+            bucket_id=bucket_id,
+            vms_factory=vms_session_with_mocked_resources_factory,
+            view=view,
+        )
+
+        session.s3lifecyclerules.delete_many.assert_called_once_with(view__id=view.id)
+        session.folders.delete.assert_called_once_with(view.path, view.tenant_id)
+        session.views.delete_by_id.assert_called_once_with(view.id)
+        session.quotas.delete.assert_called_once_with(name="test-bucket")
+        session.users.delete.assert_called_once_with(name="test-bucket")
+
+    def test_delete_bucket_with_view_no_quota(self, vms_session_with_mocked_resources_factory):
+        view = _view_bunch("test-bucket")
+        bucket_id = "test-bucket@1@http://172.0.0.1:80"
+
+        _, session = self._delete_bucket(
+            bucket_id=bucket_id,
+            vms_factory=vms_session_with_mocked_resources_factory,
+            view=view,
+        )
+
+        session.views.delete_by_id.assert_called_once_with(view.id)
+        session.quotas.delete.assert_called_once_with(name="test-bucket")
+        session.users.delete.assert_called_once_with(name="test-bucket")
+
+    def test_delete_bucket_view_gone_quota_remains(self, vms_session_with_mocked_resources_factory):
+        bucket_id = "test-bucket@1@http://172.0.0.1:80"
+
+        _, session = self._delete_bucket(
+            bucket_id=bucket_id,
+            vms_factory=vms_session_with_mocked_resources_factory,
+            view=None,
+        )
+
+        session.views.delete_by_id.assert_not_called()
+        session.quotas.delete.assert_called_once_with(name="test-bucket")
+        session.users.delete.assert_called_once_with(name="test-bucket")
+
+    def test_delete_bucket_nothing_on_vast(self, vms_session_with_mocked_resources_factory):
+        bucket_id = "test-bucket@1@http://172.0.0.1:80"
+
+        _, session = self._delete_bucket(
+            bucket_id=bucket_id,
+            vms_factory=vms_session_with_mocked_resources_factory,
+        )
+
+        session.views.delete_by_id.assert_not_called()
+        session.quotas.delete.assert_called_once_with(name="test-bucket")
         session.users.delete.assert_called_once_with(name="test-bucket")
