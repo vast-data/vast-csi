@@ -2247,12 +2247,12 @@ spec:
       default: {{ .Values.forceLazyUmountOnTimeout }}
     fallbackToDeser:
       description: |-
-        Required. Must be set explicitly to true or false.
         When true, unpublish of already-mounted EV volumes may use legacy AES-CFB+pickle
         metadata and a .vast-csi-meta file on local disk (no tmpfs). New publishes always
-        use tmpfs. Set true only when upgrading a cluster that still has old-format EV
-        volumes mounted; set false again after they unpublish.
+        use tmpfs. Leave false (disabled) unless upgrading a cluster that still has
+        old-format EV volumes mounted; set false again after they unpublish.
       type: boolean
+      default: {{ .Values.fallbackToDeser }}
     resolveMountSymlinks:
       description: >-
         Enable symlink resolution when querying mount information.
@@ -2815,7 +2815,7 @@ specDescriptors:
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
       - 'urn:alm:descriptor:com.tectonic.ui:advanced'
-  - description: Required. Must be true or false. Allow unpublish of EV volumes published with the old serializer.
+  - description: When true, allow unpublish of EV volumes published with the old serializer. Default is false (disabled).
     displayName: Fallback To Deser
     path: fallbackToDeser
     x-descriptors:

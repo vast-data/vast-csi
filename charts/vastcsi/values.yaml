@@ -51,12 +51,11 @@ forceLazyUmountOnTimeout: true
 # Empty: store credentials as plaintext JSON.
 # Example: kubectl create secret generic vast-cred-serde --from-literal=key="$(openssl rand -base64 32)"
 credSerializationSecret: ""
-# Required. Must be set explicitly to true or false (helm fails if null/unset).
 # When true, unpublish of already-mounted EV volumes may use legacy AES-CFB+pickle
 # metadata and a .vast-csi-meta file on local disk (no tmpfs). New publishes always
-# use tmpfs. Set true only when upgrading a cluster that still has old-format EV
-# volumes mounted; set false again after they unpublish.
-fallbackToDeser: null
+# use tmpfs. Leave false (disabled) unless upgrading a cluster that still has
+# old-format EV volumes mounted; set false again after they unpublish.
+fallbackToDeser: false
 # Enable symlink resolution when querying mount information.
 # When enabled, mount paths containing symlinks (e.g., /dev/disk/by-uuid/*) will be
 # resolved to their canonical paths before comparison.

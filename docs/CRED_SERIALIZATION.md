@@ -7,7 +7,7 @@ Applies to `vastcsi`, `vastblock`, and the operator `vastcsidriver` chart.
 | Value | Default | Purpose |
 |---|---|---|
 | `credSerializationSecret` | `""` | Kubernetes secret used to encrypt new EV metadata |
-| `fallbackToDeser` | **required** (`true` or `false`) | Allow unpublish of EV volumes published with the old serializer |
+| `fallbackToDeser` | `false` (disabled) | Allow unpublish of EV volumes published with the old serializer |
 
 ## `credSerializationSecret`
 
@@ -33,11 +33,11 @@ Do not rotate or delete this secret while an encrypted EV is still mounted. Unpu
 
 The previous serializer wrote AES-CFB + pickle, keyed only by `SHA-256(volume_id)`, with `.vast-csi-meta` on local disk (no tmpfs). New publishes never write that format.
 
-There is **no default**. Set `true` or `false` on every install/upgrade.
+Default is **`false`** (disabled). Helm still fails if the value is unset/`null` rather than a boolean.
 
 | Setting | Unpublish of **already mounted** EVs |
 |---|---|
-| `false` | Rejects leftover pickle (`legacy serialized metadata rejected`) |
+| `false` (default) | Rejects leftover pickle (`legacy serialized metadata rejected`) |
 | `true` | Reads old pickle metadata and meta on local disk with no tmpfs |
 | unset / `null` | Helm fails: `fallbackToDeser must be set explicitly to true or false` |
 
@@ -47,7 +47,7 @@ Already-mounted old EVs cannot be converted in place.
 
 ## Migration
 
-If the cluster has no CSI inline EV volumes from before this upgrade, set `fallbackToDeser: false`.
+If the cluster has no CSI inline EV volumes from before this upgrade, leave `fallbackToDeser: false` (the chart default).
 
 If old EV volumes are still mounted:
 
