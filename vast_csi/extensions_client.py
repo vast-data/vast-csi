@@ -16,19 +16,23 @@
 """
 Client for the VAST extensions-controller gRPC service.
 
-The extensions-controller serves a VastExtensions gRPC endpoint on a unix
-socket shared with this container.  This module provides thin helpers so that
-other Python code can query it without dealing with channel management.
+The extensions-controller serves a VastExtensions gRPC endpoint.  Python
+connects as a gRPC client over TCP (operator) or a co-located unix
+socket (standalone Helm chart).
 """
 
 import grpc
 
-from vast_csi.configuration import EXTENSIONS_SOCKET
+from vast_csi.configuration import Config
 from vast_csi.proto import vast_extensions_pb2, vast_extensions_pb2_grpc
 
 
+def _extensions_grpc_target() -> str:
+    return Config().extensions_grpc_address
+
+
 def _make_stub() -> vast_extensions_pb2_grpc.VastExtensionsStub:
-    channel = grpc.insecure_channel(f"unix://{EXTENSIONS_SOCKET}")
+    channel = grpc.insecure_channel(_extensions_grpc_target())
     return vast_extensions_pb2_grpc.VastExtensionsStub(channel)
 
 

@@ -247,9 +247,25 @@ extensions:
     # Set to true to disable the PVC label injection webhook.
     # When false (default), labels (storageClass, subsystem, volumeGroup) are
     # automatically injected onto PVCs at creation time based on StorageClass parameters.
-    # Note: replication CRD validation webhooks (VSCR/VVR) are always active
-    # whenever extensions.enabled is true.
+    # Note: replication CRD validation webhooks can be disabled independently
+    # via disableVscrValidationWebhook / disableVvrValidationWebhook.
     disablePvcLabelsWebhook: false
+
+    # Set to true to disable the VastStorageClassReplication validation webhook.
+    # When false (default), --enable-vscr-validation-webhook is passed to the container
+    # and VSCR create/update requests are validated (topology, StorageClass consistency,
+    # replication peer discovery, block subsystem checks).
+    # When true, the flag is omitted and the webhook entry is excluded from the
+    # MutatingWebhookConfiguration.
+    disableVscrValidationWebhook: false
+
+    # Set to true to disable the VastVolumeReplication validation webhook.
+    # When false (default), --enable-vvr-validation-webhook is passed to the container
+    # and VVR create/update requests are validated (topology, PVC StorageClass match,
+    # replication peer discovery, block subsystem checks).
+    # When true, the flag is omitted and the webhook entry is excluded from the
+    # MutatingWebhookConfiguration.
+    disableVvrValidationWebhook: false
 
     # Failure policy applied to all webhook handlers.
     # - Fail:   the operation is rejected when the webhook is unreachable or times out.
