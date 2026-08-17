@@ -48,11 +48,26 @@ hostNamePrefix: ""
 mountUmountTimeout: 90
 # When true, a umount that times out is retried with lazy unmount (-l).
 forceLazyUmountOnTimeout: true
+# Secret that encrypts EV credentials. Must contain a `key` field.
+# Empty: store credentials as plaintext JSON.
+# Example: kubectl create secret generic vast-cred-serde --from-literal=key="$(openssl rand -base64 32)"
+credSerializationSecret: ""
+# When true, unpublish of already-mounted EV volumes may use legacy AES-CFB+pickle
+# metadata and a .vast-csi-meta file on local disk (no tmpfs). New publishes always
+# use tmpfs. Leave false (disabled) unless upgrading a cluster that still has
+# old-format EV volumes mounted; set false again after they unpublish.
+fallbackToDeser: false
 # Enable symlink resolution when querying mount information.
 # When enabled, mount paths containing symlinks (e.g., /dev/disk/by-uuid/*) will be
 # resolved to their canonical paths before comparison.
 # Default: false (skip symlink resolution for maximum performance)
 resolveMountSymlinks: false
+# Enable ReadOnlyMany (ROX) access mode for block filesystem volumes.
+# When enabled, multiple pods across different nodes can mount the same block volume
+# in read-only mode. The device and filesystem will be mounted with the 'ro' flag
+# to enforce read-only semantics at the OS level.
+# Default: false (ROX is disabled for block filesystem volumes)
+allowROManyBlockFsMode: false
 
 ####################
 # DELETE VOLUMES
@@ -457,6 +472,10 @@ controller:
       metricRelabelings: []
 
 node:
+  # Comma-separated host directories (under /host) to search for binaries.
+  # Appended to driver defaults (/usr/sbin, /usr/bin, /sbin, /bin, /usr/local/sbin, /usr/local/bin).
+  # Example (GKE COS): "/home/kubernetes/containerized_mounter/rootfs/usr/sbin"
+  hostBinarySearchDirs: ""
   # See controller.dnsPolicy section for details
   dnsPolicy: Default
   # See controller.nodeSelector section for details

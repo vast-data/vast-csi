@@ -81,6 +81,8 @@ from vast_csi.filesystem_utils import (
     resource_locked,
     mount as _mount,
     umount as _umount,
+    mount_tmpfs,
+    umount_tmpfs,
     temporary_mount as _temporary_mount,
 )
 from vast_csi.configuration import Config
@@ -90,6 +92,7 @@ from vast_csi.plugins.base import (
     ControllerBase,
     NodeBase,
     Instrumented,
+    META_FILE_NAME,
 )
 
 
@@ -156,7 +159,11 @@ def nvme_connect(host_nqn, discovery_server, host_id, subsystem_nqn, metrics_reg
                 subsystem_nqn=subsystem_nqn,
             )
     except ProcessExecutionError as exc:
-        raise NVMEConnectionFailed(detail=exc.stderr, host_nqn=host_nqn, discovery_server=discovery_server)
+        raise NVMEConnectionFailed(
+            detail=(exc.stderr or str(exc)).strip(),
+            host_nqn=host_nqn,
+            discovery_server=discovery_server,
+        )
 
 
 def mount(src, tgt, flags=None, bind=False, fs_type=None, metrics_registry=None, enforce_ro=False):
@@ -245,7 +252,6 @@ class BlockController(ControllerBase, Instrumented):
         types.CtrlCapabilityType.EXPAND_VOLUME,
         types.CtrlCapabilityType.CLONE_VOLUME,
     ]
-
 
     def ValidateVolumeCapabilities(
             self,
@@ -490,7 +496,7 @@ class BlockController(ControllerBase, Instrumented):
         snapshot_name = snapshot_name.replace(":", "-").replace("/", "-")
         snap = vms_session.snapshots.ensure(name=snapshot_name, path=path, tenant_id=tenant_id)
         snp = types.Snapshot(
-            size_bytes=0,  # indicates 'unspecified'
+            size_bytes=volume.size,
             snapshot_id=to_volume_id_with_metadata(snap.id, cluster_name),
             source_volume_id=to_volume_id_with_metadata(source_volume_id, cluster_name),
             creation_time=string_to_proto_timestamp(snap.created),
@@ -724,10 +730,12 @@ class BlockNode(NodeBase, Instrumented):
         volume_context = volume_context or dict()
         target_path = local.path(target_path)
         volume_capabilities = _validate_capabilities(volume_capability, volume_context, publish_context)
-        is_rox_block = staging_target_path and volume_capabilities.is_readonly and not volume_capabilities.is_filesystem
+        is_file_system = volume_capabilities.is_filesystem
+        fs_type = volume_capabilities.fs_type
+        is_rox_block = staging_target_path and volume_capabilities.is_readonly and not is_file_system
 
         logger.info("Checking if volume is already published...")
-        if MountInfo.get_mount_by_destination(
+        if MountInfo.get_volume_mount_by_destination(
                 dest_path=target_path, resolve_symlink=CONF.resolve_mount_symlinks,
         ):
             logger.info(f"Volume already published at {target_path}")
@@ -746,10 +754,23 @@ class BlockNode(NodeBase, Instrumented):
                     "Ephemeral Volume provisioning requires "
                     "configuring a global VMS credentials secret or nodePublishSecretRef secret reference."
                 )
-            # EV volumes doesn't have staging path. Use target path as staging path.
-            # Later staging path will be converted to <target_path>/device
+            # EV has no kubelet staging path. Device bind is <target_path>/device.
+            # CSI inline EV is filesystem-only; overlay tmpfs before that bind
+            # or tmpfs on target_path hides .../device.
             staging_target_path = target_path
             target_path.mkdir()
+            if is_file_system:
+                if not MountInfo.get_tmpfs_mount_by_destination(
+                    target_path, resolve_symlink=CONF.resolve_mount_symlinks,
+                ):
+                    mount_tmpfs(target_path, timeout=CONF.mount_umount_timeout)
+                self._store_meta_file(
+                    target_path=target_path,
+                    volume_id=volume_id,
+                    is_ephemeral=is_ephemeral,
+                    vms_session=vms_session,
+                    luks_manager=luks_manager,
+                )
             logger.info("Retrieving publish context for ephemeral volume...")
             publish_context = self._get_publish_context_for_ev_volumes(
                 volume_context=volume_context,
@@ -776,9 +797,6 @@ class BlockNode(NodeBase, Instrumented):
         mount_flags = volume_capabilities.mount_flags
         needs_ro = readonly or volume_capabilities.ro_mode
 
-        is_file_system = volume_capabilities.is_filesystem
-        fs_type = volume_capabilities.fs_type
-
         if is_file_system:
             logger.info(f"Verifying filesystem type {fs_type} on device...")
             if fs_type != get_filesystem_type(device_bind_path):
@@ -797,14 +815,6 @@ class BlockNode(NodeBase, Instrumented):
             # Filesystem volumes are mounted as directories because the operating system
             # treats them as a hierarchical storage structure.
             target_path.mkdir()
-            meta_file = target_path[".vast-csi-meta"]
-            self._store_meta_file(
-                meta_file=meta_file,
-                volume_id=volume_id,
-                is_ephemeral=is_ephemeral,
-                vms_session=vms_session,
-                luks_manager=luks_manager,
-            )
 
             if needs_ro:
                 logger.info("Publishing volume as read-only (readonly parameter or ROX access mode)")
@@ -823,7 +833,6 @@ class BlockNode(NodeBase, Instrumented):
                         metrics_registry=metrics_registry,
                     )
                 except MountFailed as exc:
-                    meta_file.delete()
                     err_msg = (
                         f"An unexpected error occurred while attempting to mount"
                         f" {device_bind_path} to {target_path}."
@@ -833,9 +842,6 @@ class BlockNode(NodeBase, Instrumented):
                     if exc.detail:
                         err_msg += f" Mount error: {exc.detail.strip()}"
                     raise Abort(INTERNAL, err_msg)
-                except Exception:
-                    meta_file.delete()
-                    raise
         else:
             logger.info(
                 f"Block device mode detected. "
@@ -856,7 +862,7 @@ class BlockNode(NodeBase, Instrumented):
                 )
 
         logger.info("Verifying mount...")
-        if not MountInfo.get_mount_by_destination(
+        if not MountInfo.get_volume_mount_by_destination(
                 dest_path=target_path, resolve_symlink=CONF.resolve_mount_symlinks,
         ):
             err_msg = (
@@ -868,10 +874,10 @@ class BlockNode(NodeBase, Instrumented):
             raise Abort(INTERNAL, err_msg)
         return types.NodePublishResp()
 
-    def NodeUnpublishVolume(self, volume_id, target_path, luks_manager, vms_session=None, metrics_registry=None):
+    def NodeUnpublishVolume(self, volume_id, target_path, luks_manager, exit_stack, vms_session=None, metrics_registry=None):
         target_path = local.path(target_path)
-        meta_file = target_path[".vast-csi-meta"]
-        if MountInfo.get_mount_by_destination(
+        meta_file = target_path[META_FILE_NAME]
+        if MountInfo.get_volume_mount_by_destination(
                 dest_path=target_path, resolve_symlink=CONF.resolve_mount_symlinks,
         ):
             try:
@@ -888,6 +894,7 @@ class BlockNode(NodeBase, Instrumented):
                 meta_file=meta_file,
                 volume_id=volume_id,
                 vms_session=vms_session,
+                exit_stack=exit_stack,
             )
             if meta.get("is_ephemeral"):
                 # EV volumes doesn't have staging path. Use target path as staging path.
@@ -900,6 +907,7 @@ class BlockNode(NodeBase, Instrumented):
                 )
             logger.info("Removing metadata file...")
             os.remove(meta_file)
+        umount_tmpfs(target_path, timeout=CONF.mount_umount_timeout)
 
         remove_path_if_not_mounted(target_path)
         return types.NodeUnpublishResp()
@@ -949,7 +957,7 @@ class BlockNode(NodeBase, Instrumented):
         if volume_capabilities.is_filesystem:
             fs_type = get_filesystem_type(device_bind_path)
             is_ro = volume_capabilities.is_readonly
-            if not MountInfo.get_mount_by_destination(
+            if not MountInfo.get_volume_mount_by_destination(
                     dest_path=volume_path, resolve_symlink=CONF.resolve_mount_symlinks,
             ):
                 logger.info(f"Volume path {volume_path} is not mounted. Create tmp mount.")
@@ -982,7 +990,7 @@ class BlockNode(NodeBase, Instrumented):
             # If the volume is encrypted, we need to get stats from the backing block device
             return self._get_block_stats(luks_manager.get_backing_block_device())
 
-        target_mount = MountInfo.get_mount_by_destination(
+        target_mount = MountInfo.get_volume_mount_by_destination(
             dest_path=volume_path, resolve_symlink=CONF.resolve_mount_symlinks,
         )
         if not target_mount:

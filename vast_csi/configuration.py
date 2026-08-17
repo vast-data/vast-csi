@@ -22,6 +22,7 @@ class Config(TypedEnv):
         convert = staticmethod(local.path)
 
     vms_credentials_store = local.path("/opt/vms-auth")
+    cred_serialization_store = local.path("/opt/cred-serde")
     plugin_name, plugin_version, git_commit, ci_pipe = (
         open("version.info").read().strip().split()
     )
@@ -73,6 +74,8 @@ class Config(TypedEnv):
     mount_umount_timeout = TypedEnv.Int("X_CSI_MOUNT_UMOUNT_TIMEOUT", default=90)
     resolve_mount_symlinks = TypedEnv.Bool("X_CSI_RESOLVE_MOUNT_SYMLINKS", default=False)
     allow_ro_many_block_fs_mode = TypedEnv.Bool("X_CSI_ALLOW_RO_MANY_BLOCK_FS_MODE", default=False)
+    # Comma-separated host directories to search for binaries under /host (appended to defaults).
+    block_host_binary_search_dirs = TypedEnv.Str("X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS", default="")
 
     @cached_property
     def vms_user(self):
@@ -106,6 +109,15 @@ class Config(TypedEnv):
             return self.vms_credentials_store['passphrase'].read().strip()
 
     @cached_property
+    def cred_serialization_key(self):
+        key_file = self.cred_serialization_store / "key"
+        if key_file.exists():
+            raw = key_file.read().strip()
+            if raw:
+                return raw.encode("utf-8")
+        return None
+
+    @cached_property
     def cluster_credentials(self):
         """Read multi-cluster auth configuration from the secret"""
         import yaml
@@ -129,6 +141,7 @@ class Config(TypedEnv):
         return [p.strip() for p in self._nfs_services_wait.split(',') if p.strip()]
 
     unmount_attempts = TypedEnv.Int("X_CSI_UNMOUNT_ATTEMPTS", default=10)
+    fallback_to_deser = TypedEnv.Bool("X_CSI_FALLBACK_TO_DESER", default=False)
 
     @property
     def mode(self):

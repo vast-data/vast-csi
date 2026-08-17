@@ -1,4 +1,6 @@
 import unittest
+import os
+import stat
 import pytest
 from plumbum import local
 from unittest.mock import patch, MagicMock
@@ -160,3 +162,76 @@ def test_require_passphrase_raises_abort():
     mgr = LuksManager("v4", None, {})
     with pytest.raises(Abort, match="Passphrase must be provided"):
         mgr._require_passphrase()
+
+
+def test_host_cryptsetup_executable_missing_raises():
+    from plumbum import ProcessExecutionError
+    import vast_csi.luks_utils as luks_utils
+
+    with patch.object(
+        luks_utils.cryptsetup,
+        "resolve_path",
+        side_effect=ProcessExecutionError(
+            retcode=127, stdout="", stderr="missing", argv=["cryptsetup"],
+        ),
+    ):
+        with pytest.raises(ProcessExecutionError):
+            luks_utils.cryptsetup.get_executable("--version")
+
+
+def test_resolve_host_cryptsetup_path_raises_when_absent(tmp_path, monkeypatch):
+    from plumbum import ProcessExecutionError
+    from vast_csi.filesystem_utils import HostCommandAdapter, host_commands
+    from vast_csi.luks_utils import cryptsetup
+
+    host_commands.reset_cache("cryptsetup")
+    host_root = tmp_path / "host"
+    host_root.mkdir()
+    monkeypatch.setattr(HostCommandAdapter, "HOST_MOUNT", local.path(host_root))
+    monkeypatch.setenv("X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS", "")
+
+    with pytest.raises(ProcessExecutionError, match="host cryptsetup not found"):
+        cryptsetup.resolve_path()
+
+
+def test_resolve_host_cryptsetup_path_finds_binary(tmp_path, monkeypatch):
+    from vast_csi.filesystem_utils import HostCommandAdapter, host_commands
+    from vast_csi.luks_utils import cryptsetup
+
+    host_commands.reset_cache("cryptsetup")
+    host_root = tmp_path / "host"
+    cryptsetup_path = host_root / "usr" / "sbin" / "cryptsetup"
+    cryptsetup_path.parent.mkdir(parents=True)
+    cryptsetup_path.write_text("#!/bin/sh\nexit 0\n")
+    os.chmod(cryptsetup_path, stat.S_IRWXU)
+
+    monkeypatch.setattr(HostCommandAdapter, "HOST_MOUNT", local.path(host_root))
+    monkeypatch.setenv("X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS", "")
+    assert cryptsetup.resolve_path() == "/usr/sbin/cryptsetup"
+
+
+def test_resolve_host_cryptsetup_path_rejects_invalid_search_dirs(monkeypatch):
+    from vast_csi.filesystem_utils import host_commands
+    from vast_csi.luks_utils import cryptsetup
+
+    host_commands.reset_cache("cryptsetup")
+    monkeypatch.setenv("X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS", "usr/sbin")
+
+    with pytest.raises(ValueError, match="absolute"):
+        cryptsetup.resolve_path()
+
+
+def test_resolve_host_cryptsetup_path_honors_extra_search_dirs(tmp_path, monkeypatch):
+    from vast_csi.filesystem_utils import HostCommandAdapter, host_commands
+    from vast_csi.luks_utils import cryptsetup
+
+    host_commands.reset_cache("cryptsetup")
+    host_root = tmp_path / "host"
+    cryptsetup_path = host_root / "opt" / "cryptsetup" / "bin" / "cryptsetup"
+    cryptsetup_path.parent.mkdir(parents=True)
+    cryptsetup_path.write_text("#!/bin/sh\nexit 0\n")
+    os.chmod(cryptsetup_path, stat.S_IRWXU)
+
+    monkeypatch.setattr(HostCommandAdapter, "HOST_MOUNT", local.path(host_root))
+    monkeypatch.setenv("X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS", "/opt/cryptsetup/bin")
+    assert cryptsetup.resolve_path() == "/opt/cryptsetup/bin/cryptsetup"

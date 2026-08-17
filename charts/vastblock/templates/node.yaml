@@ -85,6 +85,9 @@ spec:
               value: "{{ .Values.node.metrics.enabled }}"
             - name: X_CSI_METRICS_PORT
               value: "{{ .Values.node.metrics.port }}"
+            - name: X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS
+              value: "{{ .Values.node.hostBinarySearchDirs }}"
+{{- include "vastcsi.fallbackToDeserEnv" . | nindent 12 }}
 {{- if .Values.node.metrics.enabled }}
           ports:
             - name: metrics
@@ -110,6 +113,7 @@ spec:
               mountPath: /host
               mountPropagation: "Bidirectional"
 {{- include "vastcsi.vmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 12 }}
+{{- include "vastcsi.credSerdeVolumeMount" . | indent 12 }}
           resources: {{- toYaml .Values.node.resources.csiVastPlugin | nindent 12 }}
       hostNetwork: true
       hostPID: true
@@ -144,3 +148,4 @@ spec:
             path: /
             type: Directory
   {{- include "vastcsi.vmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}
+{{- include "vastcsi.credSerdeVolume" . | indent 8 }}

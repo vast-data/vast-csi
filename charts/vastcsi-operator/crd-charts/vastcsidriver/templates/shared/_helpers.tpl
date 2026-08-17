@@ -112,6 +112,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 - name: X_CSI_RESOLVE_MOUNT_SYMLINKS
   value: {{ $.Values.resolveMountSymlinks | quote }}
 {{- end }}
+{{- if $.Values.allowROManyBlockFsMode }}
+- name: X_CSI_ALLOW_RO_MANY_BLOCK_FS_MODE
+  value: {{ $.Values.allowROManyBlockFsMode | quote }}
+{{- end }}
 {{- if $.Values.truncateVolumeName }}
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}
@@ -167,3 +171,11 @@ Usage:
 {{- $type := .type -}}
 {{- join "," (list (printf "replication[%s]" $type) (printf "volumegroup[%s]" $type)) -}}
 {{- end -}}
+
+{{- define "vastcsi.fallbackToDeserEnv" -}}
+{{- if not (kindIs "bool" .Values.fallbackToDeser) }}
+{{- fail "fallbackToDeser must be set explicitly to true or false" }}
+{{- end }}
+- name: X_CSI_FALLBACK_TO_DESER
+  value: {{ .Values.fallbackToDeser | quote }}
+{{- end }}

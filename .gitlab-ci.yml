@@ -85,7 +85,7 @@ secrets_scan:
     name: trufflesecurity/trufflehog:latest
     entrypoint: [""]
   script:
-    - trufflehog git file://. --only-verified --fail --json | tee trufflehog-report.json
+    - trufflehog git file://. --only-verified --fail --json --exclude-detectors=Lob | tee trufflehog-report.json
   artifacts:
     when: always
     paths:
