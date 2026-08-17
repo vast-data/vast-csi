@@ -1,0 +1,12 @@
+# Cluster-wide extensions manager: CSI-Addons controller, replication CRDs,
+# admission webhooks, and replication controllers.
+apiVersion: storage.vastdata.com/v1
+kind: VastExtensionsManager
+metadata:
+  name: extensions-manager
+  namespace: vast-csi
+spec:
+  replication:
+    maxGroupPvcs: 10000
+  imagePullSecrets:
+    - name: regcred

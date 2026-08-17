@@ -1,0 +1,41 @@
+# Block PVCs on the primary StorageClass (filesystem mode, RWO).
+# The extension controller groups PVCs for VolumeGroupReplication.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: block-myapp-data-1
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: vastdata-block
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: block-myapp-data-2
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: vastdata-block
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: block-myapp-data-3
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: vastdata-block

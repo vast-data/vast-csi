@@ -12,8 +12,6 @@ spec:
     replication:
       enabled: false
     webhook:
-      enabled: true
-      disablePvcLabelsWebhook: false
       certManager:
         enabled: true
         certificateRef:

@@ -1,0 +1,12 @@
+# Block CSI driver with CSI-Addons sidecar for replication.
+# Requires VastExtensionsManager in the operator namespace.
+apiVersion: storage.vastdata.com/v1
+kind: VastCSIDriver
+metadata:
+  name: block.csi.vastdata.com
+  namespace: vast-csi
+spec:
+  driverType: block
+  replicationEnabled: true
+  imagePullSecrets:
+    - name: regcred

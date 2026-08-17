@@ -11,8 +11,7 @@ metadata:
 spec:
   driverType: block
   provisioner: block.csi.vastdata.com
-  secretName: vast-mgmt
-  secretNamespace: vast-csi
+  clusterName: vast-mgmt
   subsystem: source
   vipPool: vippool-1
   volumeGroup: /k8s
@@ -26,8 +25,7 @@ metadata:
 spec:
   driverType: block
   provisioner: block.csi.vastdata.com
-  secretName: vast-mgmt2
-  secretNamespace: vast-csi
+  clusterName: vast-mgmt2
   subsystem: destination
   vipPool: vippool-1
   volumeGroup: /k8s-repl

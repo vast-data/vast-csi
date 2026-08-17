@@ -1,16 +1,16 @@
 apiVersion: vastdata.com/v1alpha1
 kind: VastStorageClassReplication
 metadata:
-  name: app-replication
+  name: app-replication-nfs
   namespace: default
 spec:
-  # Site 1 — primary block StorageClass (see 02-vaststorage.yaml)
-  primaryStorageClass: vastdata-block
+  # Site 1 — primary NFS StorageClass (see 03-vaststorage.yaml)
+  primaryStorageClass: vastdata-filesystem
 
   # 2-site topology: site1 ↔ site2 (one entry per pair)
   protectionTopology:
-    - source: vastdata-block
-      destination: vastdata-block2
+    - source: vastdata-filesystem
+      destination: vastdata-filesystem2
 
   protectionPolicyTemplate:
     params:
