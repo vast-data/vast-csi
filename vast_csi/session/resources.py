@@ -365,32 +365,49 @@ class View(VastResource):
             )
         return view
 
-    def ensure_s3view(self, bucket_name, root_export, **kwargs):
-        if not (view := self.one(bucket=bucket_name)):
-            # Parse string parameters to proper types
-            kwargs = parse_string_parameters(kwargs)
+    def ensure_s3view(
+        self,
+        bucket_name,
+        root_export,
+        *,
+        bucket_owner=None,
+        policy_id=None,
+        tenant_id=None,
+        **kwargs,
+    ):
+        bucket_owner = bucket_owner or bucket_name
+        if view := self.one(bucket=bucket_name):
+            return view
 
-            view_policy = kwargs.pop("view_policy", "s3_default_policy")
-            protocols = kwargs.pop("protocols", None) or []
-            if protocols:
-                protocols = [p.upper().strip() for p in protocols.split(",")]
-            if "S3" not in protocols:
-                protocols.append("S3")
-            view_policy = self.session.viewpolicies.one(name=view_policy, fail_if_missing=True)
+        # Parse string parameters to proper types
+        kwargs = parse_string_parameters(kwargs)
+
+        protocols = kwargs.pop("protocols", None) or []
+        if protocols:
+            protocols = [p.upper().strip() for p in protocols.split(",")]
+        if "S3" not in protocols:
+            protocols.append("S3")
+        if policy_id is None or tenant_id is None:
+            view_policy_name = kwargs.pop("view_policy", "s3_default_policy")
+            view_policy = self.session.viewpolicies.one(
+                name=view_policy_name, fail_if_missing=True
+            )
             policy_id = view_policy.id
             tenant_id = view_policy.tenant_id
-            root_export = root_export.strip("/")
-            path = f"/{root_export}/{bucket_name}" if root_export else f"/{bucket_name}"
+        else:
+            kwargs.pop("view_policy", None)
+        root_export = root_export.strip("/")
+        path = f"/{root_export}/{bucket_name}" if root_export else f"/{bucket_name}"
 
-            if "SMB" in protocols:
-                kwargs["share"] = os.path.basename(path)
-            if "create_dir" not in kwargs:
-                kwargs["create_dir"] = True
-            view = self.create(
-                bucket=bucket_name, bucket_owner=bucket_name, path=path,
-                protocols=protocols, policy_id=policy_id, tenant_id=tenant_id,
-                **kwargs
-            )
+        if "SMB" in protocols:
+            kwargs["share"] = os.path.basename(path)
+        if "create_dir" not in kwargs:
+            kwargs["create_dir"] = True
+        view = self.create(
+            bucket=bucket_name, bucket_owner=bucket_owner, path=path,
+            protocols=protocols, policy_id=policy_id, tenant_id=tenant_id,
+            **kwargs
+        )
         return view
 
     @contextmanager
@@ -632,6 +649,26 @@ class GlobalSnapshotStream(VastResource):
 class User(VastResource):
     resource_name = "users"
 
+    def query_user(self, *, username, tenant_id=None, context=None):
+        """GET /users/query/.
+
+        ``context=aggregated`` is sent lowercase: on VMS 5.5.x, uppercase
+        ``AGGREGATED`` returns empty ``origins`` (no ``origins.name``), while
+        lowercase ``aggregated`` (or omitting context) populates provider
+        attribution. Other contexts are uppercased (``LOCAL``, ``AD``, …).
+        """
+        if not username:
+            raise ValueError("username required")
+        params = {"username": username}
+        if tenant_id is not None:
+            params["tenant_id"] = tenant_id
+        if context:
+            # Keep aggregated lowercase so origins.name is populated (VCSI-328).
+            params["context"] = (
+                "aggregated" if context.lower() == "aggregated" else context.upper()
+            )
+        return self.session.get(f"{self.resource_name}/query/", params=params)
+
     def generate_access_key(self, _id, *, access_key=None, secret_key=None, tenant_id=None):
         data = {}
         if tenant_id is not None:
@@ -657,6 +694,19 @@ class User(VastResource):
     def delete_access_key(self, _id, access_key):
         data = dict(access_key=access_key)
         return self.session.delete(f"{self.resource_name}/{_id}/access_keys/", data=data, log_result=False)
+
+    def generate_non_local_access_key(self, *, username, tenant_id, context="aggregated"):
+        data = {"username": username, "tenant_id": tenant_id, "context": context.upper()}
+        return self.session.post(f"{self.resource_name}/non_local_keys/", data=data, log_result=False)
+
+    def delete_non_local_access_key(self, *, username, tenant_id, access_key, context="aggregated"):
+        data = {
+            "username": username,
+            "tenant_id": tenant_id,
+            "access_key": access_key,
+            "context": context.upper(),
+        }
+        return self.session.delete(f"{self.resource_name}/non_local_keys/", data=data, log_result=False)
 
 @apiver.v5
 class Volume(VastResource):

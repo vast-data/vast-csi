@@ -1,0 +1,73 @@
+# COSI existing local/UDB owner + external credentials from a K8s Secret.
+#
+# Driver wire keys are snake_case (bucket_owner / bucket_owner_context below).
+# Helm chart values use camelCase bucketOwner / bucketOwnerContext.
+#
+# External credentials (credentialsSecretName/Namespace) work when the bucket
+# owner resolves as a UDB user (local user via POST /users/ or managed
+# bucket-named user).
+#
+# LIMITATION: external credentials are NOT supported for LDAP/AD owners.
+# VMS non_local_keys API is generate-only; driver returns FAILED_PRECONDITION
+# if a credentials Secret is set for an external owner. For AD service accounts
+# use generated keys (subject to 2-key-per-tenant limit) or pre-install keys
+# outside the driver until VMS adds external-key install on non_local_keys.
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vault-s3-keys
+  namespace: app-team
+type: Opaque
+stringData:
+  accessKeyID: "VCSI328FORCEKEY00001"
+  accessSecretKey: "vcsi328forcekeabcdefghijklmnopqrstuvwxyz"
+
+---
+
+kind: BucketClass
+apiVersion: objectstorage.k8s.io/v1alpha1
+driverName: csi.vastdata.com
+metadata:
+  name: vastdata-bucket-udb-owner
+parameters:
+  root_export: /cosi
+  vip_pool_name: vippool-1
+  view_policy: s3_default_policy
+  scheme: http
+  bucket_owner: cosi-e2e-owner          # UDB/local owner — external creds supported
+  bucket_owner_context: local           # AD/LDAP owners: external creds NOT supported
+
+---
+
+kind: BucketClaim
+apiVersion: objectstorage.k8s.io/v1alpha1
+metadata:
+  name: sample-bucket
+spec:
+  bucketClassName: vastdata-bucket-udb-owner
+  protocols:
+  - s3
+
+---
+
+kind: BucketAccessClass
+apiVersion: objectstorage.k8s.io/v1alpha1
+metadata:
+  name: vast-bac-force
+driverName: csi.vastdata.com
+authenticationType: KEY
+parameters:
+  credentialsSecretName: vault-s3-keys
+  credentialsSecretNamespace: app-team
+
+---
+
+kind: BucketAccess
+apiVersion: objectstorage.k8s.io/v1alpha1
+metadata:
+  name: sample-access
+spec:
+  bucketClaimName: sample-bucket
+  bucketAccessClassName: vast-bac-force
+  credentialsSecretName: sample-access-secret

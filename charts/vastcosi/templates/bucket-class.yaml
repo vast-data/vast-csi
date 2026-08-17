@@ -39,6 +39,19 @@
   {{- fail "storagePath is required value. Please specify valid storage path" -}}
 {{- end }}
 {{- $lifecycle_rules := pluck "lifecycleRules" $options $.Values.bucketClassDefaults | first | default list -}}
+{{- if or (hasKey $options "bucket_owner") (hasKey $options "bucket_owner_context") -}}
+{{- fail (printf "BucketClass '%s': use Helm keys bucketOwner / bucketOwnerContext (not bucket_owner / bucket_owner_context)" $name) -}}
+{{- end -}}
+{{- $bucket_owner_raw := pluck "bucketOwner" $options $.Values.bucketClassDefaults | first | default "" -}}
+{{- $bucket_owner_context_raw := pluck "bucketOwnerContext" $options $.Values.bucketClassDefaults | first | default "" -}}
+{{- if and (empty $bucket_owner_raw) (not (empty $bucket_owner_context_raw)) -}}
+{{- fail (printf "bucketOwner is required when bucketOwnerContext is set on BucketClass '%s'" $name) -}}
+{{- end -}}
+{{- if and (not (empty $bucket_owner_raw)) (empty $bucket_owner_context_raw) -}}
+{{- fail (printf "bucketOwnerContext is required when bucketOwner is set on BucketClass '%s'" $name) -}}
+{{- end -}}
+{{- $bucket_owner := $bucket_owner_raw | quote -}}
+{{- $bucket_owner_context := $bucket_owner_context_raw | quote -}}
 
 kind: BucketClass
 apiVersion: objectstorage.k8s.io/v1alpha1
@@ -57,6 +70,8 @@ parameters:
   "vip_pool_fqdn" $vip_pool_fqdn
   "view_policy" $view_policy
   "max_size" $max_size
+  "bucket_owner" $bucket_owner
+  "bucket_owner_context" $bucket_owner_context
 )) | indent 2 }}
 {{- if ne $vip_pool_fqdn ( quote "" ) }}
 {{- include "vastcosi.dictToBoolParams" (list (dict
@@ -70,7 +85,7 @@ parameters:
   vastdata.com/secret-name: {{ $secret_name }}
   vastdata.com/secret-namespace: {{ $secret_namespace }}
 {{- end }}
-{{- with omit $options "deletionPolicy" "viewPolicy" "vipPool" "vipPoolFQDN" "vipPoolFQDNRandomPrefix" "secretName" "secretNamespace" "scheme" "storagePath" "lifecycleRules" "maxSize" }}
+{{- with omit $options "deletionPolicy" "viewPolicy" "vipPool" "vipPoolFQDN" "vipPoolFQDNRandomPrefix" "secretName" "secretNamespace" "scheme" "storagePath" "lifecycleRules" "maxSize" "bucketOwner" "bucketOwnerContext" "bucket_owner" "bucket_owner_context" }}
   {{- range $key, $value := . }}
   {{ $key }}: {{ $value | quote }}
 {{- end }}

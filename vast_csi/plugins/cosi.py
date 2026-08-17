@@ -30,7 +30,7 @@ from vast_csi.exceptions import Abort
 from vast_csi.extensions_client import resolve_cosi_bucket_auth, resolve_secret
 from vast_csi.plugins.base import Instrumented
 from vast_csi.configuration import Config
-from vast_csi.cosi_credentials import grant_bucket_access
+from vast_csi.cosi_credentials import grant_bucket_access, revoke_bucket_access
 
 
 CONF = None
@@ -122,8 +122,10 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented):
             vms_session.s3lifecyclerules.delete_many(view__id=view.id)
             vms_session.folders.delete(view.path, view.tenant_id)
             vms_session.views.delete_by_id(view.id)
+            # Missing bucket_owner → treat as managed (pre-VCSI-328 / incomplete mocks).
+            if getattr(view, "bucket_owner", parsed.name) == parsed.name:
+                vms_session.users.delete(name=parsed.name)
         vms_session.quotas.delete(name=parsed.name)
-        vms_session.users.delete(name=parsed.name)
         return types.DriverDeleteBucketResp()
 
     def DriverGrantBucketAccess(self, vms_session, bucket_id, name, parameters=None):
@@ -136,11 +138,16 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented):
             parameters=dict(parameters or {}),
         )
 
-    def DriverRevokeBucketAccess(self, vms_session, bucket_id, account_id):
+    def DriverRevokeBucketAccess(
+        self, vms_session, bucket_id, account_id, revoke_access_context=None
+    ):
+        # revoke_access_context: COSI request field; unused by this driver
         parsed = BucketId.parse(bucket_id)
-        if user := vms_session.users.one(name=parsed.name):
-            vms_session.users.delete_access_key(user.id, account_id)
-        return types.DriverRevokeBucketAccessResp()
+        return revoke_bucket_access(
+            vms_session,
+            bucket_name=parsed.name,
+            account_id=account_id,
+        )
 
 
 def serve(server: grpc.Server, conf: Config):
