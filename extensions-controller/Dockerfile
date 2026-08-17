@@ -24,7 +24,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
 
 # Red Hat certification requires a UBI-based runtime image (preflight rejects distroless).
 # ubi-micro is the minimal UBI variant — suitable for static Go binaries.
-FROM registry.access.redhat.com/ubi9/ubi-micro:9.6
+FROM registry.access.redhat.com/ubi9/ubi-micro:9.8
 
 ARG VERSION
 

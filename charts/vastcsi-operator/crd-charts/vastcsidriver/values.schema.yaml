@@ -1991,6 +1991,13 @@ spec:
       description: When true, a umount that times out is retried with lazy unmount (-l).
       type: boolean
       default: {{ .Values.forceLazyUmountOnTimeout }}
+    credSerializationSecret:
+      description: |-
+        Secret that encrypts EV credentials. Must contain a `key` field.
+        Empty: store credentials as plaintext JSON.
+        Example: kubectl create secret generic vast-cred-serde --from-literal=key="$(openssl rand -base64 32)"
+      type: string
+      default: {{ .Values.credSerializationSecret | quote }}
     fallbackToDeser:
       description: |-
         When true, unpublish of already-mounted EV volumes may use legacy AES-CFB+pickle
@@ -2564,6 +2571,25 @@ specDescriptors:
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
       - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: |-
+      Secret that encrypts EV credentials. Must contain a `key` field.
+      Empty: store credentials as plaintext JSON.
+      Example: kubectl create secret generic vast-cred-serde --from-literal=key="$(openssl rand -base64 32)"
+    displayName: Credential Serialization Secret
+    path: credSerializationSecret
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+  - description: |-
+      When true, unpublish of already-mounted EV volumes may use legacy AES-CFB+pickle
+      metadata and a .vast-csi-meta file on local disk (no tmpfs). New publishes always
+      use tmpfs. Leave false (disabled) unless upgrading a cluster that still has
+      old-format EV volumes mounted; set false again after they unpublish.
+    displayName: Fallback To Legacy EV Deserializer
+    path: fallbackToDeser
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
   - description: >-
       Enable VAST asynchronous replication for volumes provisioned by this driver.
       Registers the replication plugin with the cluster VastExtensionsManager,
@@ -2730,6 +2756,7 @@ example:
     hostNamePrefix: {{ .Values.hostNamePrefix | quote }}
     mountUmountTimeout: {{ .Values.mountUmountTimeout }}
     forceLazyUmountOnTimeout: {{ .Values.forceLazyUmountOnTimeout }}
+    credSerializationSecret: {{ .Values.credSerializationSecret | quote }}
     fallbackToDeser: {{ .Values.fallbackToDeser }}
     resolveMountSymlinks: {{ .Values.resolveMountSymlinks }}
     allowROManyBlockFsMode: {{ .Values.allowROManyBlockFsMode }}
