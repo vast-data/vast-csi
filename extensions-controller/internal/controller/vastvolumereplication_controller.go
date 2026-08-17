@@ -32,6 +32,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 
 	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common"
@@ -89,6 +90,7 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 
 	log.Info("=== reconciling VastVolumeReplication ===",
 		zap.String("volumeName", vvr.Spec.VolumeName),
+		zap.String("volumeNamespace", vvr.PVCNamespace()),
 		zap.String("primaryStorageClass", vvr.Spec.PrimaryStorageClass),
 		zap.Int("storageClasses", len(vvr.Spec.AllStorageClasses())))
 
@@ -148,7 +150,7 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 			if err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to get StorageClass %s: %w", scName, err)
 			}
-			dir, err := ppathdir.Predict(ctx, k8s, sc, r.Config.SSLVerify, log, vvr.Spec.VolumeName, vvr.Namespace)
+			dir, err := ppathdir.Predict(ctx, k8s, sc, r.Config.SSLVerify, log, vvr.Spec.VolumeName, vvr.PVCNamespace())
 			if err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to compute PpathDir for StorageClass %s: %w", scName, err)
 			}
@@ -258,7 +260,7 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 		// constellation when they first reconcile so classifyConstellationPVCs
 		// can locate the source PVC and create the mirror PVC.
 		if created && i < len(allSCs)-1 {
-			if waitErr := k8s.WaitForVRC(ctx, vvr.Namespace, vrName, 30*time.Second); waitErr != nil {
+			if waitErr := k8s.WaitForVRC(ctx, vvr.PVCNamespace(), vrName, 30*time.Second); waitErr != nil {
 				log.Warn(
 					"proceeding without confirmed VRC",
 					zap.String("vr", vrName),
@@ -304,7 +306,7 @@ func (r *VastVolumeReplicationReconciler) reconcileSyncStatus(
 		desired = vastv1alpha1.SyncStatusFailed
 	default:
 		vrName := vrNameForSC(vvr.Name, vvr.Spec.PrimaryStorageClass)
-		vr, err := k8s.GetVolumeReplication(ctx, vrName, vvr.Namespace)
+		vr, err := k8s.GetVolumeReplication(ctx, vrName, vvr.PVCNamespace())
 		if err != nil {
 			return
 		}
@@ -349,7 +351,7 @@ func (r *VastVolumeReplicationReconciler) validateOnce(
 		// state — active, partially deleted, etc.) the user must remove it manually
 		// before creating this VVR.
 		if primaryRest, ok := restByStorageClass[vvr.Spec.PrimaryStorageClass]; ok {
-			exists, err := primaryRest.ProtectedPaths.Exists(&typed.ProtectedPathSearchParams{Name: expr.S(vvr.Name)})
+			exists, err := primaryRest.ProtectedPaths.Exists(&typed.ProtectedPathSearchParams{Name: expr.Str(vvr.Name)})
 			if err != nil {
 				return fmt.Errorf("failed to check if protected path %q exists on primary cluster: %w", vvr.Name, err)
 			}
@@ -372,7 +374,7 @@ func (r *VastVolumeReplicationReconciler) validateOnce(
 		if subsystemName == "" {
 			return cerrors.NewValidationError("StorageClass %q is missing required parameter %q", scName, common.StorageClassParameterSubsystem)
 		}
-		viewSearch := typed.ViewSearchParams{Name: expr.S(subsystemName)}
+		viewSearch := typed.ViewSearchParams{Name: expr.Str(subsystemName)}
 		if tn := sc.Parameters["tenant_name"]; tn != "" {
 			viewSearch.RawData = vast_client.Params{"tenant_name": tn}
 		}
@@ -408,8 +410,8 @@ func (r *VastVolumeReplicationReconciler) handleDeletion(
 
 	for _, scName := range vvr.Spec.AllStorageClasses() {
 		name := vrNameForSC(vvr.Name, scName)
-		if err := k8s.DeleteVolumeReplication(ctx, name, vvr.Namespace); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to delete VolumeReplication %s/%s: %w", vvr.Namespace, name, err)
+		if err := k8s.DeleteVolumeReplication(ctx, name, vvr.PVCNamespace()); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to delete VolumeReplication %s/%s: %w", vvr.PVCNamespace(), name, err)
 		}
 	}
 
@@ -427,7 +429,7 @@ func (r *VastVolumeReplicationReconciler) handleDeletion(
 	// gone before removing our finalizer, for the same reason as the VSCR
 	// controller: VRCs look up their parent VVR during cleanup, and removing
 	// the finalizer too early would cause a "not found" error there.
-	vrcs, err := k8s.ListVastReplicationContentsByLabelSelector(ctx, vvr.Namespace,
+	vrcs, err := k8s.ListVastReplicationContentsByLabelSelector(ctx, vvr.PVCNamespace(),
 		map[string]string{common.LabelSourceVVR: vvr.Name})
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to list VastReplicationContents: %w", err)
@@ -447,7 +449,7 @@ func (r *VastVolumeReplicationReconciler) handleDeletion(
 	if vvr.Spec.PrimaryStorageClass != "" && vvr.Status.PpathName != "" {
 		if rest, _, err := vmsrest.NewFromStorageClassName(ctx, k8s, vvr.Spec.PrimaryStorageClass, r.Config.SSLVerify, log); err == nil {
 			ppath, _ := rest.ProtectedPaths.Get(&typed.ProtectedPathSearchParams{
-				Name:    expr.S(vvr.Status.PpathName),
+				Name:    expr.Str(vvr.Status.PpathName),
 				RawData: vast_client.Params{"fields": "id,name,enabled"},
 			})
 			if ppath != nil {
@@ -487,7 +489,7 @@ func (r *VastVolumeReplicationReconciler) countOwnedVRs(
 	count := 0
 	for _, scName := range vvr.Spec.AllStorageClasses() {
 		name := vrNameForSC(vvr.Name, string(scName))
-		if _, err := r.K8sClient.GetVolumeReplication(ctx, name, vvr.Namespace); err == nil {
+		if _, err := r.K8sClient.GetVolumeReplication(ctx, name, vvr.PVCNamespace()); err == nil {
 			count++
 		}
 	}
@@ -574,7 +576,7 @@ func (r *VastVolumeReplicationReconciler) syncVRReplicationStates(
 	// Collect every VR that csi-addons considers primary.
 	var candidates []string
 	for _, scName := range vvr.Spec.AllStorageClasses() {
-		vr, err := k8s.GetVolumeReplication(ctx, vrNameForSC(vvr.Name, scName), vvr.Namespace)
+		vr, err := k8s.GetVolumeReplication(ctx, vrNameForSC(vvr.Name, scName), vvr.PVCNamespace())
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				// VR not yet created (ensureVR may have failed earlier); skip.
@@ -617,7 +619,7 @@ func (r *VastVolumeReplicationReconciler) syncVRReplicationStates(
 		if scName == truePrimarySC {
 			continue
 		}
-		if err := r.ensureReplicationState(ctx, k8s, emit, vvr.Namespace, vrNameForSC(vvr.Name, scName), scName, replicationv1alpha1.Secondary, false); err != nil {
+		if err := r.ensureReplicationState(ctx, k8s, emit, vvr.PVCNamespace(), vrNameForSC(vvr.Name, scName), scName, replicationv1alpha1.Secondary, false); err != nil {
 			errs.Add(fmt.Errorf("SC %s: %w", scName, err))
 		}
 	}
@@ -666,27 +668,34 @@ func (r *VastVolumeReplicationReconciler) ensureVR(
 		dataSourcePVC = mirrorPVCName
 	}
 
-	vr, err := vbuilder.NewVolumeReplication(vrName, vvr.Namespace).
+	pvcNS := vvr.PVCNamespace()
+	b := vbuilder.NewVolumeReplication(vrName, pvcNS).
 		WithManagedByLabel().
-		WithLabelsMap(map[string]string{common.LabelStorageClass: scName, common.LabelSourceVVR: vvr.Name}).
+		WithLabelsMap(map[string]string{
+			common.LabelStorageClass:       scName,
+			common.LabelSourceVVR:          vvr.Name,
+			common.LabelSourceVVRNamespace: vvr.Namespace,
+		}).
 		WithVolumeReplicationClass(className).
 		WithReplicationState(state).
 		WithDataSource(dataSourcePVC).
-		WithAutoResync(true).
-		WithOwnerRef(vvr, k8s.Client().Scheme()).
-		Build()
+		WithAutoResync(true)
+	if pvcNS == vvr.Namespace {
+		b = b.WithOwnerRef(vvr, k8s.Client().Scheme())
+	}
+	vr, err := b.Build()
 	if err != nil {
 		return "", false, err
 	}
 
 	wasCreated, err := k8s.EnsureVolumeReplication(ctx, vr)
 	if err != nil {
-		return "", false, fmt.Errorf("failed to ensure VolumeReplication %s/%s: %w", vvr.Namespace, vrName, err)
+		return "", false, fmt.Errorf("failed to ensure VolumeReplication %s/%s: %w", pvcNS, vrName, err)
 	}
 	if wasCreated {
 		emit.Normalf(events.ReasonVolumeReplicationCreated,
 			"created VolumeReplication %s/%s for StorageClass %q (replicationState=%s, dataSource=%s)",
-			vvr.Namespace, vrName, scName, state, dataSourcePVC)
+			pvcNS, vrName, scName, state, dataSourcePVC)
 		return vrName, true, nil
 	}
 
@@ -696,7 +705,7 @@ func (r *VastVolumeReplicationReconciler) ensureVR(
 	if !isPrimary {
 		return vrName, false, nil
 	}
-	return vrName, false, r.ensureReplicationState(ctx, k8s, emit, vvr.Namespace, vrName, scName, state, primaryChanged)
+	return vrName, false, r.ensureReplicationState(ctx, k8s, emit, pvcNS, vrName, scName, state, primaryChanged)
 }
 
 // mirrorPVCName computes the expected name of the mirror PVC on a secondary
@@ -708,13 +717,13 @@ func (r *VastVolumeReplicationReconciler) mirrorPVCName(
 	vvr *vastv1alpha1.VastVolumeReplication,
 	destSCName string,
 ) (string, error) {
-	sourcePVC, sourcePV, bound, err := k8s.GetPVCandPV(ctx, vvr.Spec.VolumeName, vvr.Namespace)
+	sourcePVC, sourcePV, bound, err := k8s.GetPVCandPV(ctx, vvr.Spec.VolumeName, vvr.PVCNamespace())
 	if err != nil {
-		return "", fmt.Errorf("failed to get source PVC/PV %s/%s: %w", vvr.Namespace, vvr.Spec.VolumeName, err)
+		return "", fmt.Errorf("failed to get source PVC/PV %s/%s: %w", vvr.PVCNamespace(), vvr.Spec.VolumeName, err)
 	}
 	if !bound {
 		return "", cerrors.NewRetryAfterError(
-			fmt.Errorf("PVC %s/%s not yet bound", vvr.Namespace, vvr.Spec.VolumeName),
+			fmt.Errorf("PVC %s/%s not yet bound", vvr.PVCNamespace(), vvr.Spec.VolumeName),
 			15*time.Second,
 		)
 	}
@@ -821,7 +830,7 @@ func (r *VastVolumeReplicationReconciler) ensureResync(
 	vvr *vastv1alpha1.VastVolumeReplication,
 ) error {
 	vrName := vrNameForSC(vvr.Name, vvr.Spec.PrimaryStorageClass)
-	existing, err := k8s.GetVolumeReplication(ctx, vrName, vvr.Namespace)
+	existing, err := k8s.GetVolumeReplication(ctx, vrName, vvr.PVCNamespace())
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			// VR not yet created — normal on first reconcile; clear the flag
@@ -831,13 +840,13 @@ func (r *VastVolumeReplicationReconciler) ensureResync(
 				zap.String("vr", vrName))
 			return k8s.PatchVVRResync(ctx, vvr)
 		}
-		return fmt.Errorf("ensureResync: failed to get VolumeReplication %s/%s: %w", vvr.Namespace, vrName, err)
+		return fmt.Errorf("ensureResync: failed to get VolumeReplication %s/%s: %w", vvr.PVCNamespace(), vrName, err)
 	}
 	if err := k8s.PatchVolumeReplicationState(ctx, existing, replicationv1alpha1.Resync); err != nil {
-		return fmt.Errorf("ensureResync: failed to patch replicationState on VolumeReplication %s/%s: %w", vvr.Namespace, vrName, err)
+		return fmt.Errorf("ensureResync: failed to patch replicationState on VolumeReplication %s/%s: %w", vvr.PVCNamespace(), vrName, err)
 	}
 	emit.Normalf("ResyncTriggered",
-		"replicationState set to resync on VolumeReplication %s/%s", vvr.Namespace, vrName)
+		"replicationState set to resync on VolumeReplication %s/%s", vvr.PVCNamespace(), vrName)
 
 	if err := k8s.PatchVVRResync(ctx, vvr); err != nil {
 		return fmt.Errorf("ensureResync: failed to clear Resync flag on VVR %s/%s: %w", vvr.Namespace, vvr.Name, err)
@@ -861,7 +870,9 @@ func SetupVastVolumeReplicationController(
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(controllerOptions(cfg)).
 		For(&vastv1alpha1.VastVolumeReplication{}).
-		Owns(&replicationv1alpha1.VolumeReplication{},
+		Watches(&replicationv1alpha1.VolumeReplication{},
+			handler.EnqueueRequestsFromMapFunc(k8sclient.MapToParentCR(
+				common.LabelSourceVVR, common.LabelSourceVVRNamespace, "VastVolumeReplication")),
 			builder.WithPredicates(ownedVRPredicate())).
 		Named("vastvolumereplication").
 		Complete(r)

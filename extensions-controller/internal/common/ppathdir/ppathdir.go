@@ -118,7 +118,7 @@ func predictSCR(
 	}
 
 	subsystem, err := rest.Views.Get(&typed.ViewSearchParams{
-		Name:    expr.S(subsystemName),
+		Name:    expr.Str(subsystemName),
 		RawData: vast_client.Params{"fields": "id,path,tenant_id"},
 	})
 	if err != nil {
@@ -213,7 +213,7 @@ func predictBlockVVR(
 	volumeGroup := strings.TrimPrefix(nonPrefixedParams[common.StorageClassParameterVolumeGroup], "/")
 
 	subsystem, err := rest.Views.Get(&typed.ViewSearchParams{
-		Name:    expr.S(subsystemName),
+		Name:    expr.Str(subsystemName),
 		RawData: vast_client.Params{"fields": "id,path"},
 	})
 	if err != nil {

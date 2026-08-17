@@ -82,6 +82,9 @@ func RegisterFlags(c *cobra.Command, cfg *config.Config) {
   {sc_name_suf:<N>}     - last N characters of StorageClass name
   {sc_name_pref:<N>}    - first N characters of StorageClass name`)
 
+	c.Flags().StringVar(&cfg.ExtensionsGRPCBindAddress, "extensions-grpc-bind-address", server.DefaultExtensionsGRPCBindAddress,
+		"Address the VastExtensions gRPC API binds to. Use TCP (e.g. :9090) for cross-pod access, "+
+			"or an absolute unix socket path for co-located sidecars.")
 }
 
 // NewCommand creates the "replication-object" Cobra subcommand that runs the
@@ -141,7 +144,7 @@ VolumeReplicationClass/VolumeGroupReplicationClass, and mirrored VolumeReplicati
 				panic(err)
 			}
 
-			grpcSrv := server.New(server.ExtensionsSocketPath, logger)
+			grpcSrv := server.New(cfg.ExtensionsGRPCBindAddress, logger)
 			grpcSrv.RegisterService(extensions.NewService(k8sClient, cfg.SSLVerify, logger, logging.New(logger, cfg.DevLogging)))
 			if err := mgr.Add(grpcSrv); err != nil {
 				panic(err)

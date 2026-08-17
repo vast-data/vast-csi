@@ -57,14 +57,14 @@ func resolveBlockTenant(
 	}
 
 	if tenantName := sc.Parameters["tenant_name"]; tenantName != "" {
-		tenant, err := rest.Tenants.Get(&typed.TenantSearchParams{Name: expr.S(tenantName)})
+		tenant, err := rest.Tenants.Get(&typed.TenantSearchParams{Name: expr.Str(tenantName)})
 		if err != nil {
 			return nil, fmt.Errorf("failed to get tenant %q: %w", tenantName, err)
 		}
 		return tenant, nil
 	}
 
-	view, err := rest.Views.Get(&typed.ViewSearchParams{Name: expr.S(subsystem)})
+	view, err := rest.Views.Get(&typed.ViewSearchParams{Name: expr.Str(subsystem)})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get view (subsystem) %q: %w", subsystem, err)
 	}

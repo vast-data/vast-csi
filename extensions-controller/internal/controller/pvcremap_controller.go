@@ -128,8 +128,9 @@ func (r *PVCRemapReconciler) reconcileVSCR(ctx context.Context, name, ns string)
 	}
 
 	newPrimary := vscr.Spec.PrimaryStorageClass
+	pvcNS := vscr.PVCNamespace()
 
-	vgr, err := k8s.GetVolumeGroupReplication(ctx, vgrNameForSC(name, newPrimary), ns)
+	vgr, err := k8s.GetVolumeGroupReplication(ctx, vgrNameForSC(name, newPrimary), pvcNS)
 	if k8serrors.IsNotFound(err) {
 		return ctrl.Result{}, nil
 	}
@@ -148,10 +149,10 @@ func (r *PVCRemapReconciler) reconcileVSCR(ctx context.Context, name, ns string)
 	pvcRefs := vgr.Status.PersistentVolumeClaimsRefList
 
 	buildRemapTable := func(ctx context.Context) (map[string]string, error) {
-		return buildSiblingRemapTable(ctx, k8s, ns, pvcRefs)
+		return buildSiblingRemapTable(ctx, k8s, pvcNS, pvcRefs)
 	}
 
-	return doRemap(ctx, log, k8s, ns, buildRemapTable)
+	return doRemap(ctx, log, k8s, pvcNS, buildRemapTable)
 }
 
 func (r *PVCRemapReconciler) reconcileVVR(ctx context.Context, name, ns string) (ctrl.Result, error) {
@@ -170,8 +171,9 @@ func (r *PVCRemapReconciler) reconcileVVR(ctx context.Context, name, ns string) 
 	}
 
 	newPrimary := vvr.Spec.PrimaryStorageClass
+	pvcNS := vvr.PVCNamespace()
 
-	vr, err := k8s.GetVolumeReplication(ctx, vrNameForSC(name, newPrimary), ns)
+	vr, err := k8s.GetVolumeReplication(ctx, vrNameForSC(name, newPrimary), pvcNS)
 	if k8serrors.IsNotFound(err) {
 		return ctrl.Result{}, nil
 	}
@@ -196,7 +198,7 @@ func (r *PVCRemapReconciler) reconcileVVR(ctx context.Context, name, ns string) 
 	sourcePVCName := vvr.Spec.VolumeName
 
 	buildRemapTable := func(ctx context.Context) (map[string]string, error) {
-		mirrors, err := k8s.ListPVCsByLabelSelector(ctx, ns, map[string]string{
+		mirrors, err := k8s.ListPVCsByLabelSelector(ctx, pvcNS, map[string]string{
 			common.LabelManagedBy:    common.LabelManagedByValue,
 			common.LabelStorageClass: newPrimary,
 			common.LabelSourceVVR:    name,
@@ -215,10 +217,10 @@ func (r *PVCRemapReconciler) reconcileVVR(ctx context.Context, name, ns string) 
 		}
 
 		// Build sibling remap table using LabelSourcePVC on managed PVCs.
-		return buildSiblingRemapTable(ctx, k8s, ns, []corev1.LocalObjectReference{{Name: primaryPVCName}})
+		return buildSiblingRemapTable(ctx, k8s, pvcNS, []corev1.LocalObjectReference{{Name: primaryPVCName}})
 	}
 
-	return doRemap(ctx, log, k8s, ns, buildRemapTable)
+	return doRemap(ctx, log, k8s, pvcNS, buildRemapTable)
 }
 
 // ---------------------------------------------------------------------------
@@ -519,33 +521,31 @@ func SetupPVCRemapController(
 	}
 	r := &PVCRemapReconciler{BaseReconciler: base}
 
-	// VGR → enqueue "vscr/<owningVSCRName>"
+	// VGR → enqueue "vscr/<owningVSCRName>" in the VSCR namespace
 	vgrMapper := handler.EnqueueRequestsFromMapFunc(
 		func(_ context.Context, obj client.Object) []reconcile.Request {
-			for _, ref := range obj.GetOwnerReferences() {
-				if ref.Kind == "VastStorageClassReplication" {
-					return []reconcile.Request{{NamespacedName: types.NamespacedName{
-						Namespace: obj.GetNamespace(),
-						Name:      vscrRemapPrefix + ref.Name,
-					}}}
-				}
+			name, ns := k8sclient.ParentCRFromObject(obj, common.LabelSourceVSCR, common.LabelSourceVSCRNamespace, "VastStorageClassReplication")
+			if name == "" {
+				return nil
 			}
-			return nil
+			return []reconcile.Request{{NamespacedName: types.NamespacedName{
+				Namespace: ns,
+				Name:      vscrRemapPrefix + name,
+			}}}
 		},
 	)
 
-	// VR → enqueue "vvr/<owningVVRName>"
+	// VR → enqueue "vvr/<owningVVRName>" in the VVR namespace
 	vrMapper := handler.EnqueueRequestsFromMapFunc(
 		func(_ context.Context, obj client.Object) []reconcile.Request {
-			for _, ref := range obj.GetOwnerReferences() {
-				if ref.Kind == "VastVolumeReplication" {
-					return []reconcile.Request{{NamespacedName: types.NamespacedName{
-						Namespace: obj.GetNamespace(),
-						Name:      vvrRemapPrefix + ref.Name,
-					}}}
-				}
+			name, ns := k8sclient.ParentCRFromObject(obj, common.LabelSourceVVR, common.LabelSourceVVRNamespace, "VastVolumeReplication")
+			if name == "" {
+				return nil
 			}
-			return nil
+			return []reconcile.Request{{NamespacedName: types.NamespacedName{
+				Namespace: ns,
+				Name:      vvrRemapPrefix + name,
+			}}}
 		},
 	)
 
