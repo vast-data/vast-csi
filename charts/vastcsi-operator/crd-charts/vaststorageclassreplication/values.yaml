@@ -1,0 +1,23 @@
+####################
+# VastStorageClassReplication
+####################
+# Create this resource only when exactly one VastExtensionsManager is running.
+# The extensions manager installs webhooks and reconciles VSCR objects.
+
+primaryStorageClass: ""
+volumeNamespace: ""
+
+protectionTopology: []
+
+protectionPolicyTemplate:
+  params:
+    - every: "15m"
+      keepLocal: "1d"
+      keepRemote: "7d"
+
+failoverType: ungracefulFailover
+destVolReclaimPolicy: Retain
+pvcRemap: false
+syncPVCPV: true
+resync: false
+syncIntervalSeconds: 0

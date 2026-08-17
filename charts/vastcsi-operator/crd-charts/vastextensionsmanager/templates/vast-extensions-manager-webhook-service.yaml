@@ -1,0 +1,18 @@
+{{- $wh := .Values.webhook -}}
+{{- $ns := include "vastextensionsmanager.namespace" . | trimAll "\"" }}
+{{- $svcName := include "vastextensionsmanager.webhookServiceName" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svcName }}
+  namespace: {{ $ns }}
+  labels:
+{{- include "vastextensionsmanager.labels" . | nindent 4 }}
+spec:
+  publishNotReadyAddresses: true
+  ports:
+    - port: 443
+      targetPort: {{ $wh.port | default 9443 }}
+      name: webhook
+  selector:
+    app: {{ include "vastextensionsmanager.deploymentName" . }}

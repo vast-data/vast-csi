@@ -1,0 +1,117 @@
+{{- $wh := .Values.webhook -}}
+{{- $repWh := .Values.replication.webhooks -}}
+{{- $filterConfig := $repWh.pvcLabels.filterConfig -}}
+{{- $pvcWebhookEnabled := include "vastextensionsmanager.pvc-labels-webhook-enabled" . -}}
+{{- $vscrWebhookEnabled := include "vastextensionsmanager.vscr-validation-webhook-enabled" . -}}
+{{- $vvrWebhookEnabled := include "vastextensionsmanager.vvr-validation-webhook-enabled" . -}}
+{{- $ns := include "vastextensionsmanager.namespace" . | trimAll "\"" }}
+{{- $svcName := include "vastextensionsmanager.webhookServiceName" . }}
+{{- $secretName := include "vastextensionsmanager.webhookTLSSecretName" . }}
+{{- $cn := printf "%s.%s.svc" $svcName $ns }}
+{{- $altNames := list $cn (printf "%s.%s.svc.cluster.local" $svcName $ns) }}
+{{- $caCrt := "" }}
+{{- if not $wh.certManager.enabled }}
+{{- $existingSecret := lookup "v1" "Secret" $ns $secretName }}
+{{- $tlsCrt := "" }}
+{{- $tlsKey := "" }}
+{{- if $existingSecret }}
+  {{- $tlsCrt = index $existingSecret.data "tls.crt" }}
+  {{- $tlsKey = index $existingSecret.data "tls.key" }}
+  {{- $caCrt  = index $existingSecret.data "ca.crt"  }}
+{{- else }}
+  {{- $ca   := genCA "vast-extensions-manager-webhook-ca" 3650 }}
+  {{- $cert := genSignedCert $cn nil $altNames 3650 $ca }}
+  {{- $tlsCrt = $cert.Cert | b64enc }}
+  {{- $tlsKey = $cert.Key  | b64enc }}
+  {{- $caCrt  = $ca.Cert   | b64enc }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secretName }}
+  namespace: {{ $ns }}
+  labels:
+{{- include "vastextensionsmanager.labels" . | nindent 4 }}
+type: kubernetes.io/tls
+data:
+  tls.crt: {{ $tlsCrt }}
+  tls.key: {{ $tlsKey }}
+  ca.crt:  {{ $caCrt }}
+---
+{{- end }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ $svcName }}
+  labels:
+{{- include "vastextensionsmanager.labels" . | nindent 4 }}
+{{- if $wh.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ include "vastextensionsmanager.webhookInjectCAFrom" . }}
+{{- end }}
+webhooks:
+{{- if $pvcWebhookEnabled }}
+  - name: pvc-label-injector.vastdata.com
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ $repWh.pvcLabels.failurePolicy | default "Fail" }}
+    timeoutSeconds: {{ $repWh.pvcLabels.timeoutSeconds | default 30 }}
+    clientConfig:
+      service:
+        name: {{ $svcName }}
+        namespace: {{ $ns }}
+        path: /mutate-pvc
+{{- if not $wh.certManager.enabled }}
+      caBundle: {{ $caCrt }}
+{{- end }}
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["persistentvolumeclaims"]
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values: ["kube-system", "kube-public"]
+{{- end }}
+{{- if $vscrWebhookEnabled }}
+  - name: vaststorageclassreplication.vastdata.com
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ $repWh.vastStorageClassReplication.failurePolicy | default "Fail" }}
+    timeoutSeconds: {{ $repWh.vastStorageClassReplication.timeoutSeconds | default 30 }}
+    clientConfig:
+      service:
+        name: {{ $svcName }}
+        namespace: {{ $ns }}
+        path: /validate-vastdata-com-v1alpha1-vaststorageclassreplication
+{{- if not $wh.certManager.enabled }}
+      caBundle: {{ $caCrt }}
+{{- end }}
+    rules:
+      - apiGroups: ["vastdata.com"]
+        apiVersions: ["v1alpha1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["vaststorageclassreplications"]
+{{- end }}
+{{- if $vvrWebhookEnabled }}
+  - name: vastvolumereplication.vastdata.com
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ $repWh.vastVolumeReplication.failurePolicy | default "Fail" }}
+    timeoutSeconds: {{ $repWh.vastVolumeReplication.timeoutSeconds | default 30 }}
+    clientConfig:
+      service:
+        name: {{ $svcName }}
+        namespace: {{ $ns }}
+        path: /validate-vastdata-com-v1alpha1-vastvolumereplication
+{{- if not $wh.certManager.enabled }}
+      caBundle: {{ $caCrt }}
+{{- end }}
+    rules:
+      - apiGroups: ["vastdata.com"]
+        apiVersions: ["v1alpha1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["vastvolumereplications"]
+{{- end }}

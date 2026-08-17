@@ -12,12 +12,21 @@
 {{- $cluster_values := dict "Values" (.Files.Get "crd-charts/vastcluster/values.yaml" | trim | fromYaml) "GlobalValues" .Values -}}
 {{- $cluster_spec := tpl (.Files.Get "crd-charts/vastcluster/values.schema.yaml") $cluster_values | trim | fromYaml -}}
 
+{{- $ext_values := dict "Values" (.Files.Get "crd-charts/vastextensionsmanager/values.yaml" | trim | fromYaml) "GlobalValues" .Values -}}
+{{- $ext_spec := tpl (.Files.Get "crd-charts/vastextensionsmanager/values.schema.yaml") $ext_values | trim | fromYaml -}}
+
+{{- $vscr_values := dict "Values" (.Files.Get "crd-charts/vaststorageclassreplication/values.yaml" | trim | fromYaml) "GlobalValues" .Values -}}
+{{- $vscr_spec := tpl (.Files.Get "crd-charts/vaststorageclassreplication/values.schema.yaml") $vscr_values | trim | fromYaml -}}
+
+{{- $vvr_values := dict "Values" (.Files.Get "crd-charts/vastvolumereplication/values.yaml" | trim | fromYaml) "GlobalValues" .Values -}}
+{{- $vvr_spec := tpl (.Files.Get "crd-charts/vastvolumereplication/values.schema.yaml") $vvr_values | trim | fromYaml -}}
+
 apiVersion: operators.coreos.com/v1alpha1
 kind: ClusterServiceVersion
 metadata:
   annotations:
     alm-examples: |-
-      {{ list $csidriver_spec.example $storage_spec.example $cluster_spec.example | toJson }}
+      {{ list $csidriver_spec.example $storage_spec.example $cluster_spec.example $ext_spec.example $vscr_spec.example $vvr_spec.example | toJson }}
     capabilities: Seamless Upgrades
     categories: Storage
     description: |-
@@ -81,6 +90,45 @@ spec:
             name: ''
             version: v1
         specDescriptors: {{- $storage_spec.specDescriptors | toYamlPretty | nindent 10 }}
+      - kind: VastExtensionsManager
+        name: vastextensionsmanagers.storage.vastdata.com
+        displayName: VastExtensionsManager
+        description: {{ $ext_spec.description | trim | quote }}
+        version: v1
+        resources:
+          - kind: Deployment
+            name: ''
+            version: v1
+          - kind: Namespace
+            name: ''
+            version: v1
+        specDescriptors: {{- $ext_spec.specDescriptors | toYamlPretty | nindent 10 }}
+      - kind: VastStorageClassReplication
+        name: vaststorageclassreplications.vastdata.com
+        displayName: VastStorageClassReplication
+        description: {{ $vscr_spec.description | trim | quote }}
+        version: v1alpha1
+        resources:
+          - kind: VolumeGroupReplication
+            name: ''
+            version: v1alpha1
+          - kind: StorageClass
+            name: ''
+            version: v1
+        specDescriptors: {{- $vscr_spec.specDescriptors | toYamlPretty | nindent 10 }}
+      - kind: VastVolumeReplication
+        name: vastvolumereplications.vastdata.com
+        displayName: VastVolumeReplication
+        description: {{ $vvr_spec.description | trim | quote }}
+        version: v1alpha1
+        resources:
+          - kind: VolumeReplication
+            name: ''
+            version: v1alpha1
+          - kind: PersistentVolumeClaim
+            name: ''
+            version: v1
+        specDescriptors: {{- $vvr_spec.specDescriptors | toYamlPretty | nindent 10 }}
   description: |-
     {{- $operator_spec.description | nindent 4 }}
   displayName: VAST CSI driver operator
@@ -156,6 +204,8 @@ spec:
       name: csi-node-driver-registrar
     - image: {{ .Values.overrides.csiAddonsSidecar.repository }}
       name: csi-addons-sidecar
+    - image: {{ .Values.overrides.csiAddonsController.repository }}
+      name: csi-addons-controller
     - image: {{ .Values.overrides.vastExtensionController.repository }}
       name: vast-extension-controller
     - image: {{ .Values.managerImage | required "Operator image is required." }}

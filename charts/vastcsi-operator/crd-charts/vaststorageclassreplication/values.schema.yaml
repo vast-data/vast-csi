@@ -1,0 +1,243 @@
+description: >
+  VastStorageClassReplication declares a replication group across
+  StorageClasses.
+
+spec:
+  description: Spec defines the desired state of VastStorageClassReplication.
+  type: object
+  required:
+    - destVolReclaimPolicy
+    - failoverType
+    - primaryStorageClass
+    - protectionPolicyTemplate
+    - protectionTopology
+    - pvcRemap
+    - syncPVCPV
+  properties:
+    primaryStorageClass:
+      description: >
+        VastStorage (StorageClass) that is currently acting as the active (primary)
+        replica. The StorageClass name matches the VastStorage resource name.
+        The VolumeGroupReplication for this class gets replicationState=primary;
+        all others get replicationState=secondary.
+      type: string
+    volumeNamespace:
+      description: >
+        Optional namespace of the PVCs in this replication group. Leave empty
+        to use this VastStorageClassReplication's namespace.
+      type: string
+      default: ""
+    protectionTopology:
+      description: >
+        Undirected replication mesh. Each entry connects two clusters
+        bidirectionally via a shared PeerName. For n distinct clusters exactly
+        n*(n-1)/2 entries are required (one per unordered cluster pair).
+        Example for 2 clusters: 1 entry (A–B). Example for 3 clusters: 3 entries
+        (A–B, A–C, B–C).
+      type: array
+      minItems: 1
+      items:
+        type: object
+        required:
+          - source
+          - destination
+        properties:
+          source:
+            description: >
+              VastStorage (StorageClass) of one cluster in this replication pair.
+              The StorageClass name matches the VastStorage resource name.
+            type: string
+          destination:
+            description: >
+              VastStorage (StorageClass) of the other cluster in this pair.
+              The StorageClass name matches the VastStorage resource name.
+            type: string
+          peerName:
+            description: >
+              Optional VAST ReplicationPeer name shared by both clusters.
+              Leave empty to let the operator discover the single shared peer.
+              Set explicitly only when more than one shared peer exists.
+            type: string
+          targetExportedDir:
+            description: >
+              Optional absolute path on the Destination StorageClass for
+              subsystem-level block VSCR only. Ignored for other replication types.
+            type: string
+    protectionPolicyTemplate:
+      description: >
+        Schedule for operator-created NATIVE_REPLICATION protection policies.
+        One policy is created per topology entry side and used as a replication
+        stream on the protected path.
+      type: object
+      required:
+        - params
+      properties:
+        params:
+          description: Replication schedule frames. At least one is required.
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+              - every
+            properties:
+              every:
+                description: >
+                  Replication interval. Time units: s/S=seconds, m=minutes
+                  (lowercase only; M=months), h/H=hours, d/D=days, w/W=weeks,
+                  M=months(30d), y/Y=years. Examples: "30s", "15m", "1h", "1d".
+                type: string
+                default: {{ (index .Values.protectionPolicyTemplate.params 0).every | quote }}
+              keepLocal:
+                description: How long local snapshots are retained (same units as every).
+                type: string
+                default: {{ (index .Values.protectionPolicyTemplate.params 0).keepLocal | quote }}
+              keepRemote:
+                description: How long remote snapshots are retained (same units as every).
+                type: string
+                default: {{ (index .Values.protectionPolicyTemplate.params 0).keepRemote | quote }}
+              startAt:
+                description: >
+                  Optional time at which the first snapshot is taken.
+                  Formats: "YYYY-MM-DD HH:MM:SS", "HH:MM", or RFC-3339.
+                type: string
+    failoverType:
+      description: >
+        Failover to execute when the primary StorageClass changes.
+        ungracefulFailover (default) or gracefulFailover.
+      type: string
+      default: {{ .Values.failoverType | quote }}
+      enum:
+        - ungracefulFailover
+        - gracefulFailover
+    destVolReclaimPolicy:
+      description: >
+        Whether destination VAST objects (block volumes or file views/quotas)
+        are deleted when the VSCR is deleted. Defaults to Retain.
+      type: string
+      default: {{ .Values.destVolReclaimPolicy | quote }}
+      enum:
+        - Retain
+        - Delete
+    pvcRemap:
+      description: Whether PVCs are remapped to the new primary on failover.
+      type: boolean
+      default: {{ .Values.pvcRemap }}
+    syncPVCPV:
+      description: >
+        Whether the controller creates/deletes static PV+PVC pairs on each
+        destination cluster. Defaults to true.
+      type: boolean
+      default: {{ .Values.syncPVCPV }}
+    resync:
+      description: "One-shot trigger: set to true to request an immediate resync."
+      type: boolean
+      default: {{ .Values.resync }}
+    syncIntervalSeconds:
+      description: >
+        Replication sync interval in seconds. When omitted or zero, the interval
+        is derived from the "every" field of the first protectionPolicyTemplate entry.
+      type: integer
+      format: int64
+      minimum: 0
+      default: {{ .Values.syncIntervalSeconds }}
+
+specDescriptors:
+  - description: >
+      Optional. Namespace of the PersistentVolumeClaims in this group. Leave
+      empty to use this VastStorageClassReplication's namespace.
+    displayName: Volume Namespace
+    path: volumeNamespace
+    x-descriptors:
+      - 'urn:alm:descriptor:io.kubernetes:Namespace'
+  - description: >
+      VastStorage that is currently acting as the active (primary) replica.
+      The StorageClass name matches the VastStorage resource name.
+    displayName: Primary StorageClass
+    path: primaryStorageClass
+    x-descriptors:
+      - 'urn:alm:descriptor:io.kubernetes:storage.vastdata.com:v1:VastStorage'
+  - description: >
+      Undirected replication mesh. Each entry connects two VastStorage
+      (StorageClass) resources. For two clusters provide a single
+      source/destination pair.
+    displayName: Protection Topology
+    path: protectionTopology
+  - description: >
+      Source VastStorage in this replication pair. The StorageClass name
+      matches the VastStorage resource name.
+    displayName: Source StorageClass
+    path: protectionTopology[0].source
+    x-descriptors:
+      - 'urn:alm:descriptor:io.kubernetes:storage.vastdata.com:v1:VastStorage'
+  - description: >
+      Destination VastStorage in this replication pair. The StorageClass name
+      matches the VastStorage resource name.
+    displayName: Destination StorageClass
+    path: protectionTopology[0].destination
+    x-descriptors:
+      - 'urn:alm:descriptor:io.kubernetes:storage.vastdata.com:v1:VastStorage'
+  - description: >
+      Optional. Leave empty for autodiscovery of the single shared
+      ReplicationPeer. Set only when more than one shared peer exists.
+    displayName: Peer Name
+    path: protectionTopology[0].peerName
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+  - description: Replication schedule frames for operator-created protection policies.
+    displayName: Protection Policy Template
+    path: protectionPolicyTemplate
+  - description: Failover to execute when the primary StorageClass changes.
+    displayName: Failover Type
+    path: failoverType
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:select:ungracefulFailover
+      - urn:alm:descriptor:com.tectonic.ui:select:gracefulFailover
+  - description: Remap PVCs to the new primary StorageClass on failover.
+    displayName: PVC Remap
+    path: pvcRemap
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+  - description: Request an immediate resync (one-shot trigger).
+    displayName: Resync
+    path: resync
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+  - description: Create or delete static PV+PVC pairs on each destination cluster.
+    displayName: Sync PV/PVC
+    path: syncPVCPV
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+  - description: Whether destination VAST objects are deleted when this VSCR is deleted.
+    displayName: Destination Volume Reclaim Policy
+    path: destVolReclaimPolicy
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:select:Retain
+      - urn:alm:descriptor:com.tectonic.ui:select:Delete
+  - description: >
+      Sync interval in seconds. Zero derives the interval from the first
+      protectionPolicyTemplate.params[].every value.
+    displayName: Sync Interval Seconds
+    path: syncIntervalSeconds
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:number
+
+example:
+  apiVersion: vastdata.com/v1alpha1
+  kind: VastStorageClassReplication
+  metadata:
+    name: vscr-sample
+  spec:
+    primaryStorageClass: site-a-sc
+    protectionTopology:
+      - source: site-a-sc
+        destination: site-b-sc
+    protectionPolicyTemplate:
+      params:
+        - every: {{ (index .Values.protectionPolicyTemplate.params 0).every | quote }}
+          keepLocal: {{ (index .Values.protectionPolicyTemplate.params 0).keepLocal | quote }}
+          keepRemote: {{ (index .Values.protectionPolicyTemplate.params 0).keepRemote | quote }}
+    failoverType: {{ .Values.failoverType }}
+    destVolReclaimPolicy: {{ .Values.destVolReclaimPolicy }}
+    pvcRemap: {{ .Values.pvcRemap }}
+    syncPVCPV: {{ .Values.syncPVCPV }}
