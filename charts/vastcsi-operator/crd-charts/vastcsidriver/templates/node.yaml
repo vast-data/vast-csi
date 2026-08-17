@@ -124,6 +124,7 @@ spec:
             - name: X_CSI_NFS_SERVICES_WAIT
               value: "{{ include "vastcsi.nfsServicesArg" . }}"
 {{- end }}
+{{- include "vastcsi.fallbackToDeserEnv" . | nindent 12 }}
 {{- if .Values.node.metrics.enabled }}
           ports:
             - name: metrics
@@ -159,6 +160,7 @@ spec:
               mountPath: /etc/nfsmount.conf.d
           {{- end }}
           {{- include "vastcsi.vmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 12 }}
+          {{- include "vastcsi.credSerdeVolumeMount" . | indent 12 }}
           resources: {{- toYaml .Values.node.resources.csiVastPlugin | nindent 12 }}
       hostNetwork: true
       hostPID: true
@@ -216,6 +218,7 @@ spec:
             type: Directory
         {{- end }}
         {{- include "vastcsi.vmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}
+        {{- include "vastcsi.credSerdeVolume" . | indent 8 }}
         {{- if and .Values.node.propagateHostMountOptions $is_nfs_driver }}
         - name: host-nfsmount-conf-d
           hostPath:

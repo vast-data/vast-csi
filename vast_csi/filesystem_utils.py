@@ -25,6 +25,12 @@ XFS_DB_TIMEOUT = 30
 # - NVMe devices (e.g., /nvme0n1 or nvme1n2)
 DEVICE_NAME_RGX = re.compile(r"^/?nvme\d+n\d+$")
 
+# Cap for the meta overlay tmpfs written before the volume mount.
+# Holds a single .vast-csi-meta JSON file (volume id plus optional AES-GCM
+# encrypted VMS session / LUKS manager). Typical payload is a few KB even
+# with a PEM cert; 64K covers that after page-size rounding (4K x86 / 64K ARM).
+META_TMPFS_SIZE = "64K"
+
 DEFAULT_HOST_BINARY_DIRS = (
     "/usr/sbin",
     "/usr/bin",
@@ -393,23 +399,39 @@ class MountInfo:
             return [MountInfo(line) for line in f if line.strip()]
 
     @classmethod
-    def get_mount_by_destination(cls, dest_path, resolve_symlink=False):
-        """Return the source device for a path.
-        The source of a mounted path will either be the mount source of the
-        mount point or the root if it's a bind mount.
-        
-        Args:
-            dest_path: Path to search for in mount points
-            resolve_symlink: If True, resolve symlinks via get_host_realpath (slower).
-                           If False (default), use paths as-is for better performance.
-        """
+    def _mount_at_destination(cls, dest_path, resolve_symlink=False, fstypes=None, skip_fstypes=None):
         dest_path_resolved = get_host_realpath(dest_path) if resolve_symlink else dest_path
-        mount_info = cls.from_host()
-        for mount in mount_info:
+        allow = set(fstypes) if fstypes else None
+        skip = set(skip_fstypes or ())
+        found = None
+        for mount in cls.from_host():
+            if allow is not None and mount.fs_type not in allow:
+                continue
+            if mount.fs_type in skip:
+                continue
             mount_point_resolved = get_host_realpath(mount.mount_point) if resolve_symlink else mount.mount_point
             if mount_point_resolved == dest_path_resolved:
-                return mount
-        return None
+                found = mount
+        return found
+
+    @classmethod
+    def get_mount_by_destination(cls, dest_path, resolve_symlink=False):
+        """Return the topmost mount for a path (any fstype, including tmpfs)."""
+        return cls._mount_at_destination(dest_path, resolve_symlink=resolve_symlink)
+
+    @classmethod
+    def get_volume_mount_by_destination(cls, dest_path, resolve_symlink=False):
+        """Published volume at dest_path. Never the tmpfs meta overlay."""
+        return cls._mount_at_destination(
+            dest_path, resolve_symlink=resolve_symlink, skip_fstypes=("tmpfs",)
+        )
+
+    @classmethod
+    def get_tmpfs_mount_by_destination(cls, dest_path, resolve_symlink=False):
+        """Meta-overlay tmpfs at dest_path. Never the published volume."""
+        return cls._mount_at_destination(
+            dest_path, resolve_symlink=resolve_symlink, fstypes=("tmpfs",)
+        )
 
     @classmethod
     def get_mounts_by_source(cls, src, resolve_symlink=False):
@@ -556,12 +578,41 @@ def mount(
     logger.info(f"Mount succeeded in {timer.elapsed}: {src!r} -> {tgt!r}")
 
 
-def umount(path, ignore_not_mounted=False, lazy=False, metrics_registry=None, metrics_operation="block_mount", timeout=None):
+def mount_tmpfs(tgt, size=META_TMPFS_SIZE, mode="0700", timeout=None):
+    """Mount an empty tmpfs at tgt for storing .vast-csi-meta before the volume mount."""
+    flags = f"size={size},mode={mode}"
+    mount(
+        src="tmpfs",
+        tgt=tgt,
+        fs_type="tmpfs",
+        flags=flags,
+        timeout=timeout,
+    )
+
+
+def umount_tmpfs(path, ignore_not_mounted=True, lazy=False, timeout=None):
+    """Unmount the tmpfs meta overlay only (`umount -t tmpfs`). Never the volume."""
+    return umount(
+        path,
+        ignore_not_mounted=ignore_not_mounted,
+        lazy=lazy,
+        timeout=timeout,
+        fs_type="tmpfs",
+    )
+
+
+def umount(path, ignore_not_mounted=False, lazy=False, metrics_registry=None, metrics_operation="block_mount", timeout=None, fs_type=None):
     """Unmount a path with run_with_timeout when timeout is set."""
-    logger.info(f"Unmounting {path!r}" + (f" with timeout: {timeout}s" if timeout else ""))
+    logger.info(
+        f"Unmounting {path!r}"
+        + (f" (fs_type={fs_type})" if fs_type else "")
+        + (f" with timeout: {timeout}s" if timeout else "")
+    )
 
     def do_umount():
         flags = ["-v"]
+        if fs_type:
+            flags.extend(["-t", fs_type])
         if lazy:
             flags.append("-l")
         return cmd.umount[flags + [path]].run()
@@ -580,7 +631,9 @@ def umount(path, ignore_not_mounted=False, lazy=False, metrics_registry=None, me
         except TimeoutError:
             raise UmountTimedOut(f"umount timed out after {timeout}s for path: {path}")
         except ProcessExecutionError as exc:
-            if "not mounted" in exc.stderr:
+            stderr = exc.stderr or ""
+            # `umount -t tmpfs PATH` prints "no mount point specified" when no tmpfs is there.
+            if "not mounted" in stderr or "no mount point specified" in stderr:
                 if ignore_not_mounted:
                     logger.info(f"Umount: {path!r} is not mounted (ignored)")
                     return False

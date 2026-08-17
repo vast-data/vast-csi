@@ -171,3 +171,11 @@ Usage:
 {{- $type := .type -}}
 {{- join "," (list (printf "replication[%s]" $type) (printf "volumegroup[%s]" $type)) -}}
 {{- end -}}
+
+{{- define "vastcsi.fallbackToDeserEnv" -}}
+{{- if not (kindIs "bool" .Values.fallbackToDeser) }}
+{{- fail "fallbackToDeser must be set explicitly to true or false" }}
+{{- end }}
+- name: X_CSI_FALLBACK_TO_DESER
+  value: {{ .Values.fallbackToDeser | quote }}
+{{- end }}
