@@ -71,10 +71,10 @@ After installation, test the operator:
 # Basic block driver
 kubectl apply -f ../csidriver-block.yaml
 
-# Block replication (two VAST clusters) — see ../replication/README.md
-kubectl apply -f ../replication/prerequisites/01-secrets.yaml
-kubectl apply -f ../replication/01-vastcsidriver-block.yaml
-# ... follow ../replication/README.md
+# Block replication (two VAST clusters) — see ../replication/block/README.md
+# NFS replication — see ../replication/nfs/README.md
+cd ../replication/block && kubectl apply -f 01-vastcluster.yaml -f 00-vastextensionsmanager.yaml -f 02-vastcsidriver.yaml
+# ... follow ../replication/block/README.md or ../replication/nfs/README.md
 
 # Webhook TLS certificate validation (no VAST backend required) — see ../webhook-certs/README.md
 cd ../webhook-certs && ./scripts/setup.sh && ./scripts/verify-webhook-certs.sh --functional

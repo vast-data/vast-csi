@@ -1,0 +1,31 @@
+# Two StorageClasses — one VAST cluster each.
+#   vastdata-filesystem  (site 1 / primary)  → root export /k8s
+#   vastdata-filesystem2 (site 2 / replica)  → root export /k8s-repl
+---
+apiVersion: storage.vastdata.com/v1
+kind: VastStorage
+metadata:
+  name: vastdata-filesystem
+  namespace: vast-csi
+spec:
+  driverType: nfs
+  provisioner: csi.vastdata.com
+  secretName: vast-mgmt
+  storagePath: /k8s
+  viewPolicy: default
+  vipPool: vippool-1
+  createSnapshotClass: false
+---
+apiVersion: storage.vastdata.com/v1
+kind: VastStorage
+metadata:
+  name: vastdata-filesystem2
+  namespace: vast-csi
+spec:
+  driverType: nfs
+  provisioner: csi.vastdata.com
+  secretName: vast-mgmt2
+  storagePath: /k8s-repl
+  viewPolicy: default
+  vipPool: vippool-1
+  createSnapshotClass: false

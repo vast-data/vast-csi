@@ -1,9 +1,7 @@
 // VAST extensions controller service.
 //
-// Served by the Go extensions-controller on a unix socket shared with the
-// Python CSI plugin container.  Python connects as a gRPC client to query and
-// control operations managed by the controller — without needing direct
-// Kubernetes API access.
+// Served by the Go extensions-controller.  Python CSI plugin containers connect
+// as gRPC clients over TCP (cluster-wide Service) or a co-located unix socket.
 
 syntax = "proto3";
 

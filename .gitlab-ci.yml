@@ -11,7 +11,7 @@ stages:
   - operatorhub
 
 # source: packaging/ci.Dockerfile
-image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:CI-2026-05-04
+image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:CI-2026-08-09
 
 variables:
   PLATFORMS: "linux/amd64,linux/arm64" # comma-separated list of platforms to build multi-arch images
@@ -19,7 +19,7 @@ variables:
   DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
   IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:${CI_PIPELINE_ID}
   # source: packaging/base.Dockerfile
-  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2026-06-25
+  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2026-08-09
   ORION_BRANCH: comet/master
   # Pin the Docker client API version
   DOCKER_API_VERSION: "1.41"
@@ -131,11 +131,8 @@ vulnerability_scan:
   TRIGGER: "lb_csi_sanity [from-upstream]"
 
 
-test_csi [latest]: &test_csi
+.test_csi: &test_csi
   stage: test
-  when: always
-  except:
-    - /v[\d]\.[\d]+/
   trigger:
     project: dev/orion
     branch: $ORION_BRANCH
@@ -235,7 +232,6 @@ update_dockerhub_extensions [prod]:
 
     export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}-extensions
     export DOCKERFILE=extensions-controller/Dockerfile
-    export BUILD_CONTEXT=extensions-controller
     export GIT_TAG=${VERSION}
     make build_image
   after_script:

@@ -19,9 +19,9 @@ libnghttp2
 
 RUN microdnf upgrade -y \
     && microdnf install -y python3.12 python3.12-devel python3.12-pip gcc g++ make findutils which \
-    && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
-    && ln -sf /usr/bin/python3.12 /usr/bin/python \
-    && ln -sf /usr/bin/pip3.12 /usr/bin/pip3 \
+    && ln -sf /usr/bin/python3.12 /usr/local/bin/python3 \
+    && ln -sf /usr/bin/python3.12 /usr/local/bin/python \
+    && ln -sf /usr/bin/pip3.12 /usr/local/bin/pip3 \
     && echo "[centos-stream]" > /etc/yum.repos.d/centos-stream.repo \
     && echo "name=CentOS Stream 9 - BaseOS" >> /etc/yum.repos.d/centos-stream.repo \
     && echo "baseurl=https://mirror.stream.centos.org/9-stream/BaseOS/\$basearch/os/" >> /etc/yum.repos.d/centos-stream.repo \
@@ -38,19 +38,18 @@ COPY LICENSE /licenses/LICENSE
 # Install Poetry and python dependencies
 # PIP_DEFAULT_TIMEOUT: arm64 QEMU emulation is slow — large wheels (grpcio) need more time to download
 ENV PIP_DEFAULT_TIMEOUT=300
-RUN curl -sSL https://install.python-poetry.org | python3 - --version 1.8.5 \
+RUN curl -sSL https://install.python-poetry.org | python3.12 - --version 1.8.5 \
     && mv /root/.local/bin/poetry /usr/local/bin/poetry \
     && poetry config virtualenvs.create false \
     && poetry config virtualenvs.in-project true \
     && poetry config virtualenvs.options.no-pip true \
-    && mkdir .venv \
+    && /usr/bin/python3.12 -m venv /root/.venv \
     && poetry install --only main,dev \
     && rm -f poetry.lock* \
     && /root/.venv/bin/python -m ensurepip --upgrade \
     && /root/.venv/bin/python -m pip install --upgrade setuptools jaraco.context wheel \
     && /root/.venv/bin/python -m pip uninstall pip -y \
-    && rm -rf /root/.local /usr/local/bin/poetry /root/.config/poetry \
-    && ln -sf /usr/bin/python3.12 /usr/bin/python3
+    && rm -rf /root/.local /usr/local/bin/poetry /root/.config/poetry
 
 
 # Dynamically find the GCC directory and remove GCC files

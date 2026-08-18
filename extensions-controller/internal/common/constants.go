@@ -36,10 +36,20 @@ const (
 	// peer VRCs that must mirror PVCs across one another.
 	LabelSourceVSCR = Domain + "/source-vscr"
 
+	// LabelSourceVSCRNamespace is the namespace of the VastStorageClassReplication
+	// named by LabelSourceVSCR.  Empty means the labelled object shares that
+	// namespace (same as before VolumeNamespace was added).
+	LabelSourceVSCRNamespace = Domain + "/source-vscr-namespace"
+
 	// LabelSourceVVR is set on VastReplicationContent objects whose parent
 	// VolumeReplication was created by a VastVolumeReplication.
 	// Its value is the VastVolumeReplication name.
 	LabelSourceVVR = Domain + "/source-vvr"
+
+	// LabelSourceVVRNamespace is the namespace of the VastVolumeReplication
+	// named by LabelSourceVVR.  Empty means the labelled object shares that
+	// namespace.
+	LabelSourceVVRNamespace = Domain + "/source-vvr-namespace"
 )
 
 // StorageClass parameter names

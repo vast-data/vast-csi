@@ -47,6 +47,12 @@ class Config(TypedEnv):
 
     metrics_port = TypedEnv.Int("X_CSI_METRICS_PORT", default=9090)
     metrics_enabled = TypedEnv.Bool("X_CSI_METRICS_ENABLED", default=False)
+
+    # VastExtensionsManager gRPC API (TCP host:port or unix:///path).
+    extensions_grpc_address = TypedEnv.Str(
+        "X_CSI_EXTENSIONS_GRPC_ADDRESS",
+        default="unix:///var/run/vast-extensions/extensions.sock",
+    )
     
     dont_use_trash_api = TypedEnv.Bool("X_CSI_DONT_USE_TRASH_API", default=False)
     use_local_ip_for_mount = TypedEnv.Str("X_CSI_USE_LOCALIP_FOR_MOUNT", default="")
@@ -162,7 +168,3 @@ class Config(TypedEnv):
         return self.mode in {CONTROLLER_AND_NODE, NODE}
 
     avoid_trash_api = Timer(now=-1, expiration=HOUR)
-
-
-# Must match server.ExtensionsSocketPath in the Go extensions-controller.
-EXTENSIONS_SOCKET = "/var/run/vast-extensions/extensions.sock"

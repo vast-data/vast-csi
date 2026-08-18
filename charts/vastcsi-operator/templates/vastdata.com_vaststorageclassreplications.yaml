@@ -1,0 +1,62 @@
+{{/* Load and parse the values.schema.yaml file */}}
+{{- $vscr_values := dict "Values" (.Files.Get "crd-charts/vaststorageclassreplication/values.yaml" | trim | fromYaml) "GlobalValues" .Values -}}
+{{- $vscr_spec := tpl (.Files.Get "crd-charts/vaststorageclassreplication/values.schema.yaml") $vscr_values | trim | fromYaml -}}
+{{- if eq (include "csi-operator.shouldInstallCRD" (merge (dict "crdName" "vaststorageclassreplications.vastdata.com") .)) "true" }}
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: vaststorageclassreplications.vastdata.com
+spec:
+  group: vastdata.com
+  names:
+    kind: VastStorageClassReplication
+    listKind: VastStorageClassReplicationList
+    plural: vaststorageclassreplications
+    shortNames:
+      - vscr
+    singular: vaststorageclassreplication
+  scope: Namespaced
+  versions:
+    - additionalPrinterColumns:
+        - jsonPath: .status.storageClassesPreview
+          name: Storage Classes
+          type: string
+        - jsonPath: .spec.primaryStorageClass
+          name: Primary SC
+          type: string
+        - jsonPath: .spec.failoverType
+          name: Failover Type
+          type: string
+        - jsonPath: .status.currentPrimaryStorageClass
+          name: Current Primary
+          type: string
+        - jsonPath: .status.syncStatus
+          name: Sync Status
+          type: string
+        - jsonPath: .metadata.creationTimestamp
+          name: Age
+          type: date
+      name: v1alpha1
+      schema:
+        openAPIV3Schema:
+          description: {{ $vscr_spec.description | trim | quote }}
+          properties:
+            apiVersion:
+              description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+              type: string
+            kind:
+              description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+              type: string
+            metadata:
+              type: object
+            spec: {{- $vscr_spec.spec | toYamlPretty | nindent 14 }}
+            status:
+              description: Status defines the observed state of VastStorageClassReplication
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+          type: object
+      served: true
+      storage: true
+      subresources:
+        status: {}
+{{- end }}

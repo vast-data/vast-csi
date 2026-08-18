@@ -1,0 +1,204 @@
+####################
+# CSI-ADDONS CLUSTER CONTROLLER (singleton)
+####################
+# CSI-Addons cluster operator settings live under replication.* below.
+# Compute resources for csi-addons-controller-manager live under controller.resources.csiAddonsClusterManager.
+
+####################
+# EXTENSIONS MANAGER
+####################
+# Cluster-wide extensions manager: admission webhooks, replication controllers,
+# and VAST replication CRDs. Create exactly one instance in the operator namespace.
+#
+# Existence of this CR implies extensions are enabled — there is no master disable flag.
+#
+# Features:
+# - PVC Label Injection Webhook: Automatically injects replication-related labels onto
+#   PVCs at creation time based on StorageClass parameters.
+# - Replication controllers: VastStorageClassReplication, VastVolumeReplication,
+#   VastReplicationContent, and related CSI-Addons object reconciliation.
+# Create VSCR/VVR CRs only while exactly one VastExtensionsManager is running.
+# - Remote PVC Controller: Creates PVCs on destination cluster based on source PVCs.
+# - Pod Failover Controller: Terminates pods with source mounts, waits for replication
+#   switchover, and restarts pods with destination PVCs (not yet implemented).
+
+# Shared HTTPS server settings for replication admission webhooks (port, TLS).
+# Individual webhook handlers are configured under replication.webhooks.
+webhook:
+  # Port the extension-controller webhook HTTPS server listens on inside the pod.
+  port: 9443
+  certManager:
+    # When true, webhook TLS is provided by cert-manager (install Issuer/Certificate CRs
+    # separately; Helm only wires cainjector on the MutatingWebhookConfiguration).
+    # When false, Helm generates a self-signed CA+cert Secret on install.
+    enabled: false
+    certificateRef:
+      # cert-manager Certificate CR name that cainjector reads for the MWC caBundle.
+      # Defaults to {release}-webhook-cert when empty.
+      name: ""
+      # Namespace of the Certificate CR. Defaults to the operator namespace when empty.
+      namespace: ""
+
+replication:
+  # devLogging enables human-readable console logging (colored levels, caller, ISO-8601 timestamps)
+  devLogging: true
+  # maxConcurrentReconciles is the worker count per controller-runtime controller.
+  maxConcurrentReconciles: 5
+  # Maximum PVCs per VolumeGroupReplication / VolumeReplication group.
+  # Sized for up to 10k PVCs per VGR/VRC by default.
+  maxGroupPvcs: 10000
+  # Replication admission webhooks. The webhook Service, TLS Secret, and
+  # MutatingWebhookConfiguration are always created when this CR exists.
+  # Each handler can be enabled or disabled independently.
+  webhooks:
+    # Mutating webhook: injects replication-related labels onto PVCs at creation time.
+    pvcLabels:
+      # Enable or disable the PVC label injection handler.
+      enabled: true
+      # API server action when the webhook call fails: Fail (reject) or Ignore (allow).
+      failurePolicy: Fail
+      # Maximum seconds the API server waits for this webhook (1–30; Kubernetes MWC limit).
+      timeoutSeconds: 30
+      filterConfig:
+        # Only PVCs using this exact StorageClass name are processed (empty = any).
+        storageClassName: ""
+        # Only PVCs whose StorageClass name matches this regex are processed (empty = any).
+        # Example: "^vastdata-.*"
+        storageClassNameRegex: ""
+        # Only PVCs whose name matches this regex are processed (empty = any).
+        # Example: "^repl-.*"
+        pvcNameRegex: ""
+        # Only PVCs whose StorageClass provisioner equals this CSI driver name (empty = use regex below).
+        # Mutually exclusive with csiDriverNameRegex.
+        csiDriverName: ""
+        # Required when pvc label webhook is enabled (unless csiDriverName is set).
+        # Matches VAST CSI drivers such as csi.vastdata.com and block.csi.vastdata.com.
+        csiDriverNameRegex: ".*vastdata.*"
+    # Validating webhook for VastStorageClassReplication CR create/update.
+    vastStorageClassReplication:
+      enabled: true
+      # API server action when the webhook call fails: Fail (reject) or Ignore (allow).
+      failurePolicy: Fail
+      # Maximum seconds the API server waits for this webhook (1–30; Kubernetes MWC limit).
+      timeoutSeconds: 30
+    # Validating webhook for VastVolumeReplication CR create/update.
+    vastVolumeReplication:
+      enabled: true
+      # API server action when the webhook call fails: Fail (reject) or Ignore (allow).
+      failurePolicy: Fail
+      # Maximum seconds the API server waits for this webhook (1–30; Kubernetes MWC limit).
+      timeoutSeconds: 30
+  # Format string for destination PVC names. Available tokens:
+  #   {pvc_name}            - full source PVC name
+  #   {pvc_name_suf:<N>}    - last N characters of source PVC name
+  #   {pvc_name_pref:<N>}   - first N characters of source PVC name
+  #   {endpoint}            - VAST endpoint (slugified)
+  #   {sc_name}             - destination StorageClass name
+  #   {sc_name_suf:<N>}     - last N characters of StorageClass name
+  #   {sc_name_pref:<N>}    - first N characters of StorageClass name
+  pvcNameFormat: "{pvc_name}-repl-{endpoint}"
+  # Format string for destination PV names. Available tokens:
+  #   {pv_name}             - full source PV name
+  #   {pv_name_suf:<N>}     - last N characters of source PV name
+  #   {pv_name_pref:<N>}    - first N characters of source PV name
+  #   {endpoint}            - VAST endpoint (slugified)
+  #   {sc_name}             - destination StorageClass name
+  #   {sc_name_suf:<N>}     - last N characters of StorageClass name
+  #   {sc_name_pref:<N>}    - first N characters of StorageClass name
+  pvNameFormat: "{pv_name}-repl-{endpoint}"
+  # applyExistingPvcs, when true, instructs the replication controller to
+  # inject the storageClass label (and the subsystem label for block
+  # StorageClasses) onto existing PVCs whose backing VAST object is found in
+  # the VolumeMapping for the reconciled StorageClass.  This mirrors what the
+  # PVC label webhook does for newly created PVCs, but targets PVCs that were
+  # created before the webhook was enabled.
+  # Runs on every PrimaryStorageClass change.
+  applyExistingPvcs: true
+
+####################
+# EXTENSIONS MANAGER CONTROLLER OPTIONS
+####################
+# Scheduling, resource, and probe configuration for the vast-extensions-manager Deployment
+# (extensions-webhook + extensions-manager containers).
+controller:
+  # runOnMaster flag indicated if Extension Controller should be run on master.
+  runOnMaster: false
+  # runOnControlPlane flag indicated if Extension Controller should be run on control plane node.
+  runOnControlPlane: false
+  # determine how DNS (Domain Name System) resolution should be handled within Pod.
+  dnsPolicy: Default
+  # nodeSelector for the extension controller pod
+  nodeSelector: {}
+  # tolerations for the extension controller pod
+  tolerations: []
+  # Allows to specify which nodes your pod is eligible to be scheduled based on labels on pods that are already running on the node.
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  podAffinity: {}
+  # Allows to specify conditions for preventing pods from being scheduled on nodes where certain labels are already present on other pods.
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  podAntiAffinity: {}
+  # Allows to specify which nodes your pod is eligible to be scheduled on based on labels on the node
+  # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+  nodeAffinity: {}
+  # priorityClassName for the extension controller pod
+  priorityClassName: system-cluster-critical
+  # Resources describes the compute resource requirements.
+  resources:
+    csiAddonsClusterManager:
+      limits:
+        cpu: 1000m
+        memory: 1536Mi
+      requests:
+        cpu: 10m
+        memory: 256Mi
+    extensionsWebhook:
+      limits:
+        memory: 1Gi
+      requests:
+        cpu: 10m
+        memory: 512Mi
+    extensionsManager:
+      limits:
+        memory: 1Gi
+      requests:
+        cpu: 10m
+        memory: 512Mi
+  # Health probes for extension controller containers.
+  probes:
+    extensionsWebhook:
+      liveness:
+        initialDelaySeconds: 30
+        timeoutSeconds: 10
+        periodSeconds: 20
+        failureThreshold: 5
+      readiness:
+        initialDelaySeconds: 10
+        timeoutSeconds: 10
+        periodSeconds: 10
+        failureThreshold: 3
+    extensionsManager:
+      liveness:
+        initialDelaySeconds: 180
+        timeoutSeconds: 15
+        periodSeconds: 30
+        failureThreshold: 10
+      readiness:
+        initialDelaySeconds: 60
+        timeoutSeconds: 15
+        periodSeconds: 15
+        failureThreshold: 6
+
+####################
+# EXTENSIONS MANAGER IMAGE SPECIFICATION
+####################
+image:
+  vastExtensionController:
+    repository: null  # User-defined repository; if not provided, falls back to defaultRepository
+    defaultRepository: null  # Overrides repository globally from charts/vastcsi-operator/values.yaml (overrides.vastExtensionController.repository)
+    imagePullPolicy: IfNotPresent
+  csiAddonsController:
+    repository: null  # User-defined repository; if not provided, falls back to defaultRepository
+    defaultRepository: null  # Overrides repository globally from charts/vastcsi-operator/values.yaml (overrides.csiAddonsController.repository)
+    imagePullPolicy: IfNotPresent
+
+imagePullSecrets: []

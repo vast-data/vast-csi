@@ -1,0 +1,25 @@
+apiVersion: vastdata.com/v1alpha1
+kind: VastStorageClassReplication
+metadata:
+  name: app-replication-block
+  namespace: default
+spec:
+  # Site 1 — primary block StorageClass (see 03-vaststorage.yaml)
+  primaryStorageClass: vastdata-block
+
+  # 2-site topology: site1 ↔ site2 (one entry per pair)
+  protectionTopology:
+    - source: vastdata-block
+      destination: vastdata-block2
+
+  protectionPolicyTemplate:
+    params:
+      - every: 15m
+        keepLocal: 2d
+        keepRemote: 7d
+
+  syncIntervalSeconds: 900
+  failoverType: gracefulFailover
+  destVolReclaimPolicy: Delete
+  syncPVCPV: true
+  pvcRemap: true

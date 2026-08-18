@@ -1,0 +1,12 @@
+apiVersion: v2
+description: Cluster-wide VAST extensions manager (CSI-Addons controller, replication CRDs, webhooks, replication controllers)
+keywords:
+  - vast
+  - csi
+  - csi-addons
+  - replication
+  - extensions
+  - vastdata
+name: vastextensionsmanager
+type: application
+version: 0.1.0

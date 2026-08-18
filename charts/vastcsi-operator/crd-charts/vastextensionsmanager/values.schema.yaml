@@ -1,0 +1,415 @@
+description: >
+  VastExtensionsManager installs the cluster-wide replication stack: CSI-Addons
+  cluster controller, VAST replication CRDs, admission webhooks, and replication
+  controllers. Create exactly one instance per cluster.
+
+spec:
+  description: Spec defines the desired state of VastExtensionsManager.
+  properties:
+    webhook:
+      description: Webhook server infrastructure (HTTPS port, TLS).
+      type: object
+      properties:
+        port:
+          type: integer
+          format: int32
+          default: {{ .Values.webhook.port }}
+        certManager:
+          type: object
+          properties:
+            enabled:
+              description: When true, webhook TLS is provided by cert-manager.
+              type: boolean
+              default: {{ .Values.webhook.certManager.enabled }}
+            certificateRef:
+              type: object
+              properties:
+                name:
+                  description: cert-manager Certificate CR name for the MWC caBundle.
+                  type: string
+                  default: {{ .Values.webhook.certManager.certificateRef.name | quote }}
+                namespace:
+                  description: Namespace of the Certificate CR.
+                  type: string
+                  default: {{ .Values.webhook.certManager.certificateRef.namespace | quote }}
+    replication:
+      description: Replication controller, CSI-Addons cluster controller, and admission webhook configuration.
+      type: object
+      properties:
+        maxGroupPvcs:
+          description: Maximum PVCs per VolumeGroupReplication / VolumeReplication group.
+          type: integer
+          format: int32
+          minimum: 1
+          default: {{ .Values.replication.maxGroupPvcs }}
+        devLogging:
+          description: Enables human-readable console logging (colored levels, caller, ISO-8601 timestamps).
+          type: boolean
+          default: {{ .Values.replication.devLogging }}
+        maxConcurrentReconciles:
+          description: Worker count per controller-runtime controller.
+          type: integer
+          format: int32
+          minimum: 1
+          default: {{ .Values.replication.maxConcurrentReconciles }}
+        webhooks:
+          description: Replication admission webhook handlers.
+          type: object
+          properties:
+            pvcLabels:
+              description: Mutating webhook that injects replication labels onto PVCs at creation time.
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                  default: {{ .Values.replication.webhooks.pvcLabels.enabled }}
+                failurePolicy:
+                  type: string
+                  enum:
+                    - Fail
+                    - Ignore
+                  default: {{ .Values.replication.webhooks.pvcLabels.failurePolicy | quote }}
+                timeoutSeconds:
+                  type: integer
+                  format: int32
+                  minimum: 1
+                  maximum: 30
+                  default: {{ .Values.replication.webhooks.pvcLabels.timeoutSeconds }}
+                filterConfig:
+                  type: object
+                  properties:
+                    storageClassName:
+                      type: string
+                      default: {{ .Values.replication.webhooks.pvcLabels.filterConfig.storageClassName | quote }}
+                    storageClassNameRegex:
+                      type: string
+                      default: {{ .Values.replication.webhooks.pvcLabels.filterConfig.storageClassNameRegex | quote }}
+                    pvcNameRegex:
+                      type: string
+                      default: {{ .Values.replication.webhooks.pvcLabels.filterConfig.pvcNameRegex | quote }}
+                    csiDriverName:
+                      type: string
+                      default: {{ .Values.replication.webhooks.pvcLabels.filterConfig.csiDriverName | quote }}
+                    csiDriverNameRegex:
+                      type: string
+                      default: {{ .Values.replication.webhooks.pvcLabels.filterConfig.csiDriverNameRegex | quote }}
+                      description: >-
+                        Required unless csiDriverName is set. Only PVCs whose StorageClass
+                        provisioner matches this regex are processed.
+            vastStorageClassReplication:
+              description: Validating webhook for VastStorageClassReplication CR create/update.
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                  default: {{ .Values.replication.webhooks.vastStorageClassReplication.enabled }}
+                failurePolicy:
+                  type: string
+                  enum:
+                    - Fail
+                    - Ignore
+                  default: {{ .Values.replication.webhooks.vastStorageClassReplication.failurePolicy | quote }}
+                timeoutSeconds:
+                  type: integer
+                  format: int32
+                  minimum: 1
+                  maximum: 30
+                  default: {{ .Values.replication.webhooks.vastStorageClassReplication.timeoutSeconds }}
+            vastVolumeReplication:
+              description: Validating webhook for VastVolumeReplication CR create/update.
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                  default: {{ .Values.replication.webhooks.vastVolumeReplication.enabled }}
+                failurePolicy:
+                  type: string
+                  enum:
+                    - Fail
+                    - Ignore
+                  default: {{ .Values.replication.webhooks.vastVolumeReplication.failurePolicy | quote }}
+                timeoutSeconds:
+                  type: integer
+                  format: int32
+                  minimum: 1
+                  maximum: 30
+                  default: {{ .Values.replication.webhooks.vastVolumeReplication.timeoutSeconds }}
+        pvcNameFormat:
+          description: Format string for destination PVC names.
+          type: string
+          default: {{ .Values.replication.pvcNameFormat | quote }}
+        pvNameFormat:
+          description: Format string for destination PV names.
+          type: string
+          default: {{ .Values.replication.pvNameFormat | quote }}
+        applyExistingPvcs:
+          description: Label existing PVCs that match VolumeMapping on PrimaryStorageClass reconcile.
+          type: boolean
+          default: {{ .Values.replication.applyExistingPvcs }}
+    controller:
+      description: Scheduling, resource, and probe configuration for controller deployments.
+      type: object
+      x-kubernetes-preserve-unknown-fields: true
+    image:
+      description: Container images for the extensions manager.
+      type: object
+      properties:
+        vastExtensionController:
+          type: object
+          properties:
+            imagePullPolicy:
+              default: {{ .Values.image.vastExtensionController.imagePullPolicy }}
+              type: string
+              enum:
+                - Always
+                - IfNotPresent
+                - Never
+            repository:
+              default: {{ .GlobalValues.overrides.vastExtensionController.repository }}
+              type: string
+        csiAddonsController:
+          type: object
+          properties:
+            imagePullPolicy:
+              default: {{ .Values.image.csiAddonsController.imagePullPolicy }}
+              type: string
+              enum:
+                - Always
+                - IfNotPresent
+                - Never
+            repository:
+              default: {{ .GlobalValues.overrides.csiAddonsController.repository }}
+              type: string
+    imagePullSecrets:
+      description: Image pull secrets for extensions manager container images.
+      {{- if .GlobalValues.imagePullSecret }}
+      default:
+        - name: {{ .GlobalValues.imagePullSecret }}
+      {{- end }}
+      type: array
+      items:
+        properties:
+          name:
+            type: string
+        type: object
+      x-kubernetes-list-type: atomic
+  required:
+    - replication
+  type: object
+
+.replication-field-group: &replication-field-group
+  urn:alm:descriptor:com.tectonic.ui:fieldGroup:replication
+
+specDescriptors:
+  - description: Replication controller, CSI-Addons cluster controller, and admission webhook configuration.
+    displayName: Replication
+    path: replication
+    x-descriptors:
+      - *replication-field-group
+  - description: Enables human-readable console logging.
+    displayName: Dev Logging
+    path: replication.devLogging
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - *replication-field-group
+  - description: Worker count per controller-runtime controller.
+    displayName: Max Concurrent Reconciles
+    path: replication.maxConcurrentReconciles
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:number
+      - *replication-field-group
+  - description: Maximum PVCs per VolumeGroupReplication / VolumeReplication group.
+    displayName: Max Group PVCs
+    path: replication.maxGroupPvcs
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:number
+      - *replication-field-group
+  - description: Format string for destination PVC names.
+    displayName: PVC Name Format
+    path: replication.pvcNameFormat
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:text
+      - *replication-field-group
+  - description: Format string for destination PV names.
+    displayName: PV Name Format
+    path: replication.pvNameFormat
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:text
+      - *replication-field-group
+  - description: Label existing PVCs that match VolumeMapping on PrimaryStorageClass reconcile.
+    displayName: Apply Existing PVCs
+    path: replication.applyExistingPvcs
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - *replication-field-group
+  - description: Port the extension-controller webhook HTTPS server listens on inside the pod.
+    displayName: Webhook Port
+    path: webhook.port
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:number
+      - *replication-field-group
+  - description: When true, webhook TLS is provided by cert-manager instead of a Helm-generated self-signed cert.
+    displayName: Cert-Manager TLS
+    path: webhook.certManager.enabled
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - *replication-field-group
+  - description: cert-manager Certificate CR name for the MutatingWebhookConfiguration caBundle.
+    displayName: Cert-Manager Certificate Name
+    path: webhook.certManager.certificateRef.name
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:text
+      - urn:alm:descriptor:com.tectonic.ui:fieldDependency:webhook.certManager.enabled:true
+      - *replication-field-group
+  - description: Namespace of the cert-manager Certificate CR.
+    displayName: Cert-Manager Certificate Namespace
+    path: webhook.certManager.certificateRef.namespace
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:text
+      - urn:alm:descriptor:com.tectonic.ui:fieldDependency:webhook.certManager.enabled:true
+      - *replication-field-group
+  - description: Enable PVC label injection at PVC creation time.
+    displayName: PVC Labels Webhook Enabled
+    path: replication.webhooks.pvcLabels.enabled
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - *replication-field-group
+  - description: Enable VastStorageClassReplication admission validation webhook.
+    displayName: VSCR Validation Webhook Enabled
+    path: replication.webhooks.vastStorageClassReplication.enabled
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - *replication-field-group
+  - description: Enable VastVolumeReplication admission validation webhook.
+    displayName: VVR Validation Webhook Enabled
+    path: replication.webhooks.vastVolumeReplication.enabled
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - *replication-field-group
+  - description: API server action when the PVC labels webhook call fails.
+    displayName: PVC Labels Failure Policy
+    path: replication.webhooks.pvcLabels.failurePolicy
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:select:Fail
+      - urn:alm:descriptor:com.tectonic.ui:select:Ignore
+      - *replication-field-group
+  - description: Maximum seconds the API server waits for the PVC labels webhook (1–30).
+    displayName: PVC Labels Timeout Seconds
+    path: replication.webhooks.pvcLabels.timeoutSeconds
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:hidden
+  - description: Only PVCs using this exact StorageClass name are processed (empty = any).
+    displayName: PVC Labels StorageClass Name
+    path: replication.webhooks.pvcLabels.filterConfig.storageClassName
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:text
+      - *replication-field-group
+  - description: Only PVCs whose StorageClass name matches this regex are processed (empty = any).
+    displayName: PVC Labels StorageClass Regex
+    path: replication.webhooks.pvcLabels.filterConfig.storageClassNameRegex
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:text
+      - *replication-field-group
+  - description: Only PVCs whose name matches this regex are processed (empty = any).
+    displayName: PVC Labels PVC Name Regex
+    path: replication.webhooks.pvcLabels.filterConfig.pvcNameRegex
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:text
+      - *replication-field-group
+  - description: Only PVCs whose StorageClass provisioner equals this CSI driver name (empty = use regex).
+    displayName: PVC Labels CSI Driver Name
+    path: replication.webhooks.pvcLabels.filterConfig.csiDriverName
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:text
+      - *replication-field-group
+  - description: Only PVCs whose StorageClass provisioner matches this regex (required unless CSI driver name is set).
+    displayName: PVC Labels CSI Driver Regex
+    path: replication.webhooks.pvcLabels.filterConfig.csiDriverNameRegex
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:text
+      - *replication-field-group
+  - description: API server action when the VastStorageClassReplication webhook call fails.
+    displayName: VSCR Failure Policy
+    path: replication.webhooks.vastStorageClassReplication.failurePolicy
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:select:Fail
+      - urn:alm:descriptor:com.tectonic.ui:select:Ignore
+      - *replication-field-group
+  - description: Maximum seconds the API server waits for the VastStorageClassReplication webhook (1–30).
+    displayName: VSCR Timeout Seconds
+    path: replication.webhooks.vastStorageClassReplication.timeoutSeconds
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:hidden
+  - description: API server action when the VastVolumeReplication webhook call fails.
+    displayName: VVR Failure Policy
+    path: replication.webhooks.vastVolumeReplication.failurePolicy
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:select:Fail
+      - urn:alm:descriptor:com.tectonic.ui:select:Ignore
+      - *replication-field-group
+  - description: Maximum seconds the API server waits for the VastVolumeReplication webhook (1–30).
+    displayName: VVR Timeout Seconds
+    path: replication.webhooks.vastVolumeReplication.timeoutSeconds
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:hidden
+  - description: Scheduling, resources, and probes for controller deployments.
+    displayName: Controller
+    path: controller
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:fieldGroup:controller
+  - description: Compute resources for the csi-addons-controller-manager Deployment.
+    displayName: CSI-Addons Cluster Manager Resources
+    path: controller.resources.csiAddonsClusterManager
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:resourceRequirements
+      - urn:alm:descriptor:com.tectonic.ui:fieldGroup:controller
+  - description: VAST Extension Controller container image.
+    displayName: Extension Controller Image
+    path: image.vastExtensionController.repository
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:text
+  - description: CSI-Addons cluster controller image (k8s-controller).
+    displayName: CSI-Addons Controller Image
+    path: image.csiAddonsController.repository
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:text
+  - description: Image pull secrets for extensions manager container images.
+    displayName: Image Pull Secrets
+    path: imagePullSecrets
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:text
+
+example:
+  apiVersion: storage.vastdata.com/v1
+  kind: VastExtensionsManager
+  metadata:
+    name: extensions-manager
+    namespace: vast-csi
+  spec:
+    replication:
+      devLogging: {{ .Values.replication.devLogging }}
+      maxConcurrentReconciles: {{ .Values.replication.maxConcurrentReconciles }}
+      maxGroupPvcs: {{ .Values.replication.maxGroupPvcs }}
+      webhooks:
+        pvcLabels:
+          enabled: {{ .Values.replication.webhooks.pvcLabels.enabled }}
+          failurePolicy: {{ .Values.replication.webhooks.pvcLabels.failurePolicy | quote }}
+          timeoutSeconds: {{ .Values.replication.webhooks.pvcLabels.timeoutSeconds }}
+          filterConfig:
+            csiDriverNameRegex: {{ .Values.replication.webhooks.pvcLabels.filterConfig.csiDriverNameRegex | quote }}
+        vastStorageClassReplication:
+          enabled: {{ .Values.replication.webhooks.vastStorageClassReplication.enabled }}
+        vastVolumeReplication:
+          enabled: {{ .Values.replication.webhooks.vastVolumeReplication.enabled }}
+    webhook:
+      port: {{ .Values.webhook.port }}
+      certManager:
+        enabled: {{ .Values.webhook.certManager.enabled }}
+    image:
+      vastExtensionController:
+        imagePullPolicy: {{ .Values.image.vastExtensionController.imagePullPolicy }}
+        repository: {{ .GlobalValues.overrides.vastExtensionController.repository }}
+      csiAddonsController:
+        imagePullPolicy: {{ .Values.image.csiAddonsController.imagePullPolicy }}
+        repository: {{ .GlobalValues.overrides.csiAddonsController.repository }}
+    imagePullSecrets: {{ empty .GlobalValues.imagePullSecret | ternary "[]" (printf "[{\"name\": \"%s\"}]" .GlobalValues.imagePullSecret) }}

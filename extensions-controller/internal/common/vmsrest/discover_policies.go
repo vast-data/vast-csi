@@ -270,7 +270,7 @@ func ensurePolicy(
 	policyName := tmpl.OwnerName + "-" + edge.PeerName
 
 	// Fast path: return the existing policy without touching the peer API.
-	if existing, err := rest.ProtectionPolicies.Get(&typed.ProtectionPolicySearchParams{Name: expr.S(policyName)}); err == nil {
+	if existing, err := rest.ProtectionPolicies.Get(&typed.ProtectionPolicySearchParams{Name: expr.Str(policyName)}); err == nil {
 		return newReplicationLink(existing.Name, existing.Id, peerA, peerB, edge, localTenant, remoteTenant), nil
 	}
 
@@ -355,7 +355,7 @@ func DeleteProtectionPolicies(
 			continue
 		}
 		for _, name := range policyNames {
-			policy, err := rest.ProtectionPolicies.Get(&typed.ProtectionPolicySearchParams{Name: expr.S(name)})
+			policy, err := rest.ProtectionPolicies.Get(&typed.ProtectionPolicySearchParams{Name: expr.Str(name)})
 			if err != nil {
 				if vast_client.IsNotFoundErr(err) {
 					continue

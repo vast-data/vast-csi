@@ -26,9 +26,14 @@ import (
 
 // VastVolumeReplicationSpec defines the desired state of VastVolumeReplication.
 type VastVolumeReplicationSpec struct {
-	// VolumeName is the name of the PVC (in the same namespace) that should be
-	// replicated across the listed StorageClasses.
+	// VolumeName is the name of the PVC that should be replicated across the
+	// listed StorageClasses.
 	VolumeName string `json:"volumeName"`
+
+	// VolumeNamespace is the namespace of the PVC. When empty, the PVC is
+	// looked up in this VastVolumeReplication's namespace.
+	// +optional
+	VolumeNamespace string `json:"volumeNamespace,omitempty"`
 
 	// PrimaryStorageClass is the StorageClass that is currently acting as the
 	// active (primary) replica.  The VolumeReplication for this class gets
@@ -305,6 +310,15 @@ type VastVolumeReplication struct {
 
 	Spec   VastVolumeReplicationSpec   `json:"spec,omitempty"`
 	Status VastVolumeReplicationStatus `json:"status,omitempty"`
+}
+
+// PVCNamespace returns the namespace of the PVC. Empty VolumeNamespace means
+// this VastVolumeReplication's own namespace.
+func (v *VastVolumeReplication) PVCNamespace() string {
+	if ns := strings.TrimSpace(v.Spec.VolumeNamespace); ns != "" {
+		return ns
+	}
+	return v.Namespace
 }
 
 // +kubebuilder:object:root=true

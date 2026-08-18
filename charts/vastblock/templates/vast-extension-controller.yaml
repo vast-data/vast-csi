@@ -117,6 +117,12 @@ spec:
 {{- if $csiDriverName }}
             - --csi-driver-name={{ $csiDriverName }}
 {{- end }}
+{{- if not $rc.webhook.disableVscrValidationWebhook }}
+            - --enable-vscr-validation-webhook
+{{- end }}
+{{- if not $rc.webhook.disableVvrValidationWebhook }}
+            - --enable-vvr-validation-webhook
+{{- end }}
           ports:
             - name: webhook-server
               containerPort: {{ $rc.webhook.port | default 9443 }}
@@ -152,6 +158,7 @@ spec:
             - --apply-existing-pvcs
 {{- end }}
             - --max-concurrent-reconciles={{ $rc.maxConcurrentReconciles }}
+            - --extensions-grpc-bind-address=/var/run/vast-extensions/extensions.sock
           livenessProbe:
             httpGet:
               path: /healthz

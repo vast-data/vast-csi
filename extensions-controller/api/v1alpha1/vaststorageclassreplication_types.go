@@ -19,6 +19,7 @@ package v1alpha1
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -150,6 +151,12 @@ type VastStorageClassReplicationSpec struct {
 	// Defaults to Retain.
 	// +kubebuilder:default=Retain
 	DestVolReclaimPolicy DestVolReclaimPolicy `json:"destVolReclaimPolicy"`
+
+	// VolumeNamespace is the namespace of the PVCs in this replication group.
+	// When empty, PVCs are looked up in this VastStorageClassReplication's
+	// namespace.
+	// +optional
+	VolumeNamespace string `json:"volumeNamespace,omitempty"`
 }
 
 // EffectiveSyncIntervalSeconds returns the sync interval in seconds.
@@ -294,6 +301,15 @@ type VastStorageClassReplication struct {
 
 	Spec   VastStorageClassReplicationSpec   `json:"spec,omitempty"`
 	Status VastStorageClassReplicationStatus `json:"status,omitempty"`
+}
+
+// PVCNamespace returns the namespace of the PVCs in this replication group.
+// Empty VolumeNamespace means this VastStorageClassReplication's own namespace.
+func (v *VastStorageClassReplication) PVCNamespace() string {
+	if ns := strings.TrimSpace(v.Spec.VolumeNamespace); ns != "" {
+		return ns
+	}
+	return v.Namespace
 }
 
 // +kubebuilder:object:root=true

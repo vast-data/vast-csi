@@ -10,7 +10,7 @@ import (
 
 // GetViewPolicy fetches a view policy by name (GET /viewpolicies/?name=…).
 func GetViewPolicy(rest *vast_client.TypedVMSRest, policyName string) (*typed.ViewPolicyDetailsModel, error) {
-	policy, err := rest.ViewPolicies.Get(&typed.ViewPolicySearchParams{Name: expr.S(policyName)})
+	policy, err := rest.ViewPolicies.Get(&typed.ViewPolicySearchParams{Name: expr.Str(policyName)})
 	if err != nil {
 		return nil, fmt.Errorf("get view policy %q: %w", policyName, err)
 	}
