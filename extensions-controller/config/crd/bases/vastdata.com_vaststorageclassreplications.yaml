@@ -210,6 +210,12 @@ spec:
                   SyncPVCPV controls whether the controller creates/deletes static
                   PV+PVC pairs on each destination cluster.  Defaults to true.
                 type: boolean
+              volumeNamespace:
+                description: |-
+                  VolumeNamespace is the namespace of the PVCs in this replication group.
+                  When empty, PVCs are looked up in this VastStorageClassReplication's
+                  namespace.
+                type: string
             required:
             - destVolReclaimPolicy
             - failoverType

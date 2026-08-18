@@ -6,6 +6,8 @@
        disablePvcLabelsWebhook only controls whether the pvc-label-injector webhook entry
        is included — it is also forwarded as --enable-pvc-label-webhook to the process. */}}
 {{- $pvcWebhookEnabled := and $rc.enabled (not $wh.disablePvcLabelsWebhook) -}}
+{{- $vscrWebhookEnabled := and $rc.enabled (not $wh.disableVscrValidationWebhook) -}}
+{{- $vvrWebhookEnabled := and $rc.enabled (not $wh.disableVvrValidationWebhook) -}}
 {{- if $rc.enabled }}
 {{- if not $wh.certManager.enabled }}
 {{- $ns := include "vastcsi.namespace" . | trimAll "\"" }}
@@ -76,6 +78,7 @@ webhooks:
           operator: NotIn
           values: ["kube-system", "kube-public"]
 {{- end }}
+{{- if $vscrWebhookEnabled }}
   - name: vaststorageclassreplication.vastdata.com
     admissionReviewVersions: ["v1"]
     sideEffects: None
@@ -92,6 +95,8 @@ webhooks:
         apiVersions: ["v1alpha1"]
         operations: ["CREATE", "UPDATE"]
         resources: ["vaststorageclassreplications"]
+{{- end }}
+{{- if $vvrWebhookEnabled }}
   - name: vastvolumereplication.vastdata.com
     admissionReviewVersions: ["v1"]
     sideEffects: None
@@ -108,5 +113,6 @@ webhooks:
         apiVersions: ["v1alpha1"]
         operations: ["CREATE", "UPDATE"]
         resources: ["vastvolumereplications"]
+{{- end }}
 {{- end }}
 {{- end }}

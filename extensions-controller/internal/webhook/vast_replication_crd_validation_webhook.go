@@ -19,6 +19,7 @@ package webhook
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -32,6 +33,7 @@ import (
 	"github.com/vast-data/go-vast-client/resources/typed/expr"
 	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common"
+	cerrors "github.com/vast-data/vast-csi/extensions-controller/internal/common/errors"
 	k8sclient "github.com/vast-data/vast-csi/extensions-controller/internal/common/k8s_client"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/logging"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/ppathdir"
@@ -167,29 +169,31 @@ func (h *vvrAdmissionHandler) Handle(ctx context.Context, req admission.Request)
 }
 
 // validateVVRPVCStorageClass checks that the PVC referenced by spec.volumeName
+// (in spec.volumeNamespace, or the VVR namespace when that field is empty)
 // was provisioned by spec.primaryStorageClass.  This is enforced on CREATE only.
 func (h *replicationCRDValidator) validateVVRPVCStorageClass(
 	ctx context.Context,
 	obj *vastv1alpha1.VastVolumeReplication,
 ) admission.Response {
-	pvc, err := h.k8sClient.GetPVC(ctx, obj.Spec.VolumeName, obj.Namespace)
+	pvcNS := obj.PVCNamespace()
+	pvc, err := h.k8sClient.GetPVC(ctx, obj.Spec.VolumeName, pvcNS)
 	if err != nil {
 		return admission.Denied(fmt.Sprintf(
 			"spec.volumeName: PVC %s/%s not found: %v",
-			obj.Namespace, obj.Spec.VolumeName, err,
+			pvcNS, obj.Spec.VolumeName, err,
 		))
 	}
 	if pvc.Spec.StorageClassName == nil || *pvc.Spec.StorageClassName == "" {
 		return admission.Denied(fmt.Sprintf(
 			"spec.volumeName: PVC %s/%s has no StorageClass set",
-			obj.Namespace, obj.Spec.VolumeName,
+			pvcNS, obj.Spec.VolumeName,
 		))
 	}
 	if *pvc.Spec.StorageClassName != obj.Spec.PrimaryStorageClass {
 		return admission.Denied(fmt.Sprintf(
 			"spec.primaryStorageClass %q does not match the StorageClass of PVC %s/%s (%q); "+
 				"the PVC must be provisioned by the primary StorageClass",
-			obj.Spec.PrimaryStorageClass, obj.Namespace, obj.Spec.VolumeName,
+			obj.Spec.PrimaryStorageClass, pvcNS, obj.Spec.VolumeName,
 			*pvc.Spec.StorageClassName,
 		))
 	}
@@ -229,17 +233,13 @@ func (h *replicationCRDValidator) validateAndDefaultTopology(
 			restByStorageClass[scName] = rest
 		}
 	}
-	peersBySC, err := vmsrest.BuildPeerNamesBySC(restByStorageClass)
-	if err != nil {
-		return admission.Errored(http.StatusInternalServerError,
-			fmt.Errorf("failed to list replication peers: %w", err))
-	}
-
-	for i := range topology {
-		t := &topology[i]
-		if err := vmsrest.ResolvePeerName(t, peersBySC); err != nil {
-			return admission.Denied(fmt.Sprintf("protectionTopology[%d]: %v", i, err))
+	if err := vmsrest.ResolveAndFetchTopologyPeers(restByStorageClass, topology); err != nil {
+		var validationErr *cerrors.ValidationError
+		if errors.As(err, &validationErr) {
+			return admission.Denied(validationErr.Error())
 		}
+		return admission.Errored(http.StatusInternalServerError,
+			fmt.Errorf("failed to resolve replication peers: %w", err))
 	}
 
 	// If any peerNames were auto-discovered we need to patch the object so the
@@ -508,7 +508,7 @@ func (v *replicationCRDValidator) validateSubsystemPresence(
 			return admission.Errored(http.StatusInternalServerError,
 				fmt.Errorf("StorageClass %q: failed to build REST client: %w", scName, err))
 		}
-		viewSearch := typed.ViewSearchParams{Name: expr.S(subsystemName)}
+		viewSearch := typed.ViewSearchParams{Name: expr.Str(subsystemName)}
 		if tn := sc.Parameters["tenant_name"]; tn != "" {
 			viewSearch.RawData = vast_client.Params{"tenant_name": tn}
 		}
@@ -543,6 +543,8 @@ func SetupReplicationCRDValidationWebhooks(
 	k8sClient *k8sclient.K8sClient,
 	sslVerify bool,
 	rainbow *logging.RainbowLogger,
+	vscrEnabled bool,
+	vvrEnabled bool,
 ) {
 	decoder := admission.NewDecoder(mgr.GetScheme())
 	base := &replicationCRDValidator{
@@ -552,12 +554,18 @@ func SetupReplicationCRDValidationWebhooks(
 		decoder:   decoder,
 	}
 
-	mgr.GetWebhookServer().Register(VSCRValidatePath,
-		&admission.Webhook{Handler: &vscrAdmissionHandler{base}})
-	mgr.GetWebhookServer().Register(VVRValidatePath,
-		&admission.Webhook{Handler: &vvrAdmissionHandler{base}})
+	if vscrEnabled {
+		mgr.GetWebhookServer().Register(VSCRValidatePath,
+			&admission.Webhook{Handler: &vscrAdmissionHandler{base}})
+	}
+	if vvrEnabled {
+		mgr.GetWebhookServer().Register(VVRValidatePath,
+			&admission.Webhook{Handler: &vvrAdmissionHandler{base}})
+	}
 
 	rainbow.For("webhook", "setup").Info("registered replication CRD admission webhooks",
+		zap.Bool("vscr_enabled", vscrEnabled),
+		zap.Bool("vvr_enabled", vvrEnabled),
 		zap.String("vscr_path", VSCRValidatePath),
 		zap.String("vvr_path", VVRValidatePath))
 }

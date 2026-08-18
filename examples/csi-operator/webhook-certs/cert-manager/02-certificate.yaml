@@ -1,0 +1,20 @@
+# Certificate for the extension webhook Service.
+# secretName MUST match Helm: {dns-safe-driver}-vast-extension-controller-webhook-tls
+#
+# For driver csi.vastdata.com in vast-csi:
+#   Certificate: csi-vastdata-com-vast-extension-controller-webhook-cert
+#   Secret:      csi-vastdata-com-vast-extension-controller-webhook-tls
+#   Service:     csi-vastdata-com-vast-extension-controller-webhook
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: csi-vastdata-com-vast-extension-controller-webhook-cert
+  namespace: vast-csi
+spec:
+  secretName: csi-vastdata-com-vast-extension-controller-webhook-tls
+  issuerRef:
+    name: vast-csi-webhook-selfsigned
+    kind: Issuer
+  dnsNames:
+    - csi-vastdata-com-vast-extension-controller-webhook.vast-csi.svc
+    - csi-vastdata-com-vast-extension-controller-webhook.vast-csi.svc.cluster.local

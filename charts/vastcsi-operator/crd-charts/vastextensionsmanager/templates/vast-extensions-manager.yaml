@@ -1,0 +1,158 @@
+{{/* Cluster-wide VAST Extensions Manager Deployment */}}
+{{- $ctrl := .Values.controller -}}
+{{- $rep := .Values.replication -}}
+{{- $wh := .Values.webhook -}}
+{{- $grpcPort := include "vastextensionsmanager.grpcPort" . -}}
+{{- $filterConfig := $rep.webhooks.pvcLabels.filterConfig -}}
+{{- $pvcWebhookEnabled := include "vastextensionsmanager.pvc-labels-webhook-enabled" . -}}
+{{- $vscrWebhookEnabled := include "vastextensionsmanager.vscr-validation-webhook-enabled" . -}}
+{{- $vvrWebhookEnabled := include "vastextensionsmanager.vvr-validation-webhook-enabled" . -}}
+{{- $deploymentName := include "vastextensionsmanager.deploymentName" . -}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $deploymentName }}
+  namespace: {{ include "vastextensionsmanager.namespace" . }}
+  labels:
+{{- include "vastextensionsmanager.labels" . | nindent 4 }}
+    app: {{ $deploymentName }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $deploymentName }}
+{{- include "vastextensionsmanager.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: {{ $deploymentName }}
+{{- include "vastextensionsmanager.labels" . | nindent 8 }}
+    spec:
+{{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
+{{- end }}
+{{- if or $ctrl.podAffinity $ctrl.podAntiAffinity $ctrl.nodeAffinity }}
+      affinity:
+{{- if $ctrl.podAffinity }}
+        podAffinity:
+          {{- toYaml $ctrl.podAffinity | nindent 10 }}
+{{- end }}
+{{- if $ctrl.podAntiAffinity }}
+        podAntiAffinity:
+          {{- toYaml $ctrl.podAntiAffinity | nindent 10 }}
+{{- end }}
+{{- if $ctrl.nodeAffinity }}
+        nodeAffinity:
+          {{- toYaml $ctrl.nodeAffinity | nindent 10 }}
+{{- end }}
+{{- end }}
+      containers:
+        - name: extensions-webhook
+          image: {{ include "vastextensionsmanager.vastExtensionControllerImage" . }}
+          imagePullPolicy: {{ .Values.image.vastExtensionController.imagePullPolicy | default "IfNotPresent" }}
+          args:
+            - pvc-label-webhook
+{{- if $pvcWebhookEnabled }}
+            - --enable-pvc-label-webhook
+{{- end }}
+            - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
+            - --health-probe-bind-address=:8081
+            - --metrics-bind-address=0
+{{- if .Values.replication.devLogging }}
+            - --dev-logging
+{{- end }}
+            - --max-concurrent-reconciles={{ .Values.replication.maxConcurrentReconciles }}
+{{- if $filterConfig.storageClassName }}
+            - --storage-class-name={{ $filterConfig.storageClassName }}
+{{- end }}
+{{- if $filterConfig.storageClassNameRegex }}
+            - --storage-class-name-regex={{ $filterConfig.storageClassNameRegex }}
+{{- end }}
+{{- if $filterConfig.pvcNameRegex }}
+            - --pvc-name-regex={{ $filterConfig.pvcNameRegex }}
+{{- end }}
+{{- if and $pvcWebhookEnabled $filterConfig.csiDriverName }}
+            - --csi-driver-name={{ $filterConfig.csiDriverName }}
+{{- else if and $pvcWebhookEnabled $filterConfig.csiDriverNameRegex }}
+            - --csi-driver-name-regex={{ $filterConfig.csiDriverNameRegex }}
+{{- end }}
+{{- if $vscrWebhookEnabled }}
+            - --enable-vscr-validation-webhook
+{{- end }}
+{{- if $vvrWebhookEnabled }}
+            - --enable-vvr-validation-webhook
+{{- end }}
+          ports:
+            - name: webhook-server
+              containerPort: {{ $wh.port | default 9443 }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+{{- toYaml $ctrl.probes.extensionsWebhook.liveness | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+{{- toYaml $ctrl.probes.extensionsWebhook.readiness | nindent 12 }}
+          volumeMounts:
+            - name: webhook-tls
+              mountPath: /tmp/k8s-webhook-server/serving-certs
+              readOnly: true
+          resources: {{- toYaml $ctrl.resources.extensionsWebhook | nindent 12 }}
+        - name: extensions-manager
+          image: {{ include "vastextensionsmanager.vastExtensionControllerImage" . }}
+          imagePullPolicy: {{ .Values.image.vastExtensionController.imagePullPolicy | default "IfNotPresent" }}
+          args:
+            - replication
+            - --pvc-name-format={{ $rep.pvcNameFormat }}
+            - --pv-name-format={{ $rep.pvNameFormat }}
+            - --health-probe-bind-address=:8082
+            - --metrics-bind-address=0
+{{- if .Values.replication.devLogging }}
+            - --dev-logging
+{{- end }}
+{{- if $rep.applyExistingPvcs }}
+            - --apply-existing-pvcs
+{{- end }}
+            - --max-concurrent-reconciles={{ .Values.replication.maxConcurrentReconciles }}
+            - --extensions-grpc-bind-address=:{{ $grpcPort }}
+          ports:
+            - name: grpc
+              containerPort: {{ $grpcPort }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8082
+{{- toYaml $ctrl.probes.extensionsManager.liveness | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8082
+{{- toYaml $ctrl.probes.extensionsManager.readiness | nindent 12 }}
+          resources: {{- toYaml $ctrl.resources.extensionsManager | nindent 12 }}
+      dnsPolicy: {{ $ctrl.dnsPolicy }}
+{{- if or $ctrl.runOnMaster $ctrl.runOnControlPlane $ctrl.nodeSelector }}
+      nodeSelector:
+{{- if $ctrl.runOnMaster }}
+        node-role.kubernetes.io/master: ""
+{{- end }}
+{{- if $ctrl.runOnControlPlane }}
+        node-role.kubernetes.io/control-plane: ""
+{{- end }}
+{{- if $ctrl.nodeSelector }}
+{{- toYaml $ctrl.nodeSelector | nindent 8 }}
+{{- end }}
+{{- end }}
+      priorityClassName: {{ $ctrl.priorityClassName }}
+      serviceAccountName: {{ .Release.Name }}-vast-extensions-manager-sa
+      tolerations:
+{{ toYaml $ctrl.tolerations | indent 8 }}
+      volumes:
+        - name: webhook-tls
+          secret:
+            secretName: {{ include "vastextensionsmanager.webhookTLSSecretName" . }}

@@ -40,3 +40,25 @@
   readOnly: true
 {{- end }}
 {{- end }}
+
+
+{{/* Volume helpers for credSerializationSecret */}}
+
+{{- define "vastcsi.credSerdeVolume" -}}
+{{- if $.Values.credSerializationSecret }}
+- name: cred-serde
+  secret:
+    secretName: {{ $.Values.credSerializationSecret | quote }}
+    items:
+    - key: key
+      path: key
+{{- end }}
+{{- end }}
+
+{{- define "vastcsi.credSerdeVolumeMount" -}}
+{{- if $.Values.credSerializationSecret }}
+- name: cred-serde
+  mountPath: /opt/cred-serde
+  readOnly: true
+{{- end }}
+{{- end }}

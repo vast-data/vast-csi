@@ -117,7 +117,7 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 .PHONY: sync-chart-crds
-sync-chart-crds: manifests ## Sync generated CRDs into vastblock and vastcsi Helm chart templates.
+sync-chart-crds: manifests ## Sync generated CRDs into vastcsi, vastblock, and vastcsi-operator Helm chart templates.
 	hack/sync-chart-crds.sh
 
 .PHONY: generate
@@ -201,7 +201,9 @@ docker-build: ## Build docker image with the manager.
 	$(CONTAINER_TOOL) build --no-cache \
 		--build-arg GIT_TAG=$(GIT_TAG) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
-		-t ${IMG} .
+		--build-arg VERSION=$(GIT_TAG) \
+		-f Dockerfile \
+		-t ${IMG} ..
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
@@ -220,7 +222,7 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
 	- $(CONTAINER_TOOL) buildx create --name extensions-controller-builder
 	$(CONTAINER_TOOL) buildx use extensions-controller-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross ..
 	- $(CONTAINER_TOOL) buildx rm extensions-controller-builder
 	rm Dockerfile.cross
 

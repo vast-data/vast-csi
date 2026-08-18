@@ -9,6 +9,10 @@ spec:
   # VolumeGroupReplication and replicationState=secondary on all others.
   primaryStorageClass: vastdata-filesystem
 
+  # volumeNamespace is optional. When omitted, PVCs are looked up in this
+  # VastStorageClassReplication's namespace.
+  # volumeNamespace: default
+
   # protectionTopology defines the undirected replication mesh.
   # For n sites you need exactly n*(n-1)/2 entries (one per pair).
   #   2 sites → 1 entry  (A–B)

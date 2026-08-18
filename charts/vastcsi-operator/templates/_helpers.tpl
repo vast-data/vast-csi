@@ -1,6 +1,20 @@
 {{/*
 Create chart name and version as used by the chart label.
 */}}
+{{/*
+Emit a CRD from this chart only when it is missing, or already owned by this
+Helm release. Skips CRDs installed by VastExtensionsManager so operator
+upgrades do not fight existing helm ownership.
+*/}}
+{{- define "csi-operator.shouldInstallCRD" -}}
+{{- $existing := lookup "apiextensions.k8s.io/v1" "CustomResourceDefinition" "" .crdName -}}
+{{- $owner := "" -}}
+{{- if and $existing $existing.metadata $existing.metadata.annotations -}}
+{{- $owner = index $existing.metadata.annotations "meta.helm.sh/release-name" | default "" -}}
+{{- end -}}
+{{- if or (not $existing) (eq $owner .Release.Name) -}}true{{- end -}}
+{{- end }}
+
 {{- define "csi-operator.rbac.proxy" -}}
 - apiGroups:
     - authentication.k8s.io
@@ -22,7 +36,13 @@ Create chart name and version as used by the chart label.
   resources:
     - namespaces
   verbs:
-    - get
+    - '*'
+- apiGroups:
+    - ""
+  resources:
+    - configmaps
+  verbs:
+    - '*'
 - apiGroups:
     - ""
   resources:
@@ -127,6 +147,20 @@ Create chart name and version as used by the chart label.
     - update
     - watch
 - apiGroups:
+    - storage.vastdata.com
+  resources:
+    - vastextensionsmanagers
+    - vastextensionsmanagers/status
+    - vastextensionsmanagers/finalizers
+  verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
+- apiGroups:
     - storage.k8s.io
   resources:
     - csidrivers
@@ -200,6 +234,13 @@ Create chart name and version as used by the chart label.
     - create
     - update
     - delete
+- apiGroups:
+    - admissionregistration.k8s.io
+  resources:
+    - mutatingwebhookconfigurations
+    - validatingwebhookconfigurations
+  verbs:
+    - '*'
 {{- end }}
 
 {{- define "csi-operator.rbac.leader-election" -}}
@@ -309,6 +350,12 @@ template:
             value: {{ .Values.overrides.csiResizer.repository }}
           - name: RELATED_IMAGE_CSI_SNAPSHOTTER
             value: {{ .Values.overrides.csiSnapshotter.repository }}
+          - name: RELATED_IMAGE_CSI_ADDONS_SIDECAR
+            value: {{ .Values.overrides.csiAddonsSidecar.repository }}
+          - name: RELATED_IMAGE_CSI_ADDONS_CONTROLLER
+            value: {{ .Values.overrides.csiAddonsController.repository }}
+          - name: RELATED_IMAGE_VAST_EXTENSION_CONTROLLER
+            value: {{ .Values.overrides.vastExtensionController.repository }}
     {{- if .Values.imagePullSecret }}
     imagePullSecrets:
       - name: {{ .Values.imagePullSecret }}

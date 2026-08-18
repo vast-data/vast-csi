@@ -47,11 +47,13 @@ endif
 # Set default values for tags
 # in simplest case, only PIPE is required eg. export PIPE=xxxxxx. Other tags will be built upon this one:
 # CSI_TAG=xxxxxx
+# EXTENSIONS_TAG=xxxxxx-extensions
 # OPERATOR_TAG=xxxxxx-operator
 # OPERATOR_BUNDLE_TAG=xxxxxx-operator-bundle
 # In more complex scenarios, you can specify all tags
 # separately eg export CSI_TAG=vvvvvv OPERATOR_TAG=yyyyy-operator etc.
 CSI_TAG := $(if $(CSI_TAG),$(CSI_TAG),$(PIPE))
+EXTENSIONS_TAG := $(if $(EXTENSIONS_TAG),$(EXTENSIONS_TAG),$(if $(CSI_TAG),$(CSI_TAG)-extensions))
 OPERATOR_TAG := $(if $(OPERATOR_TAG),$(OPERATOR_TAG),$(if $(PIPE),$(PIPE)-operator))
 OPERATOR_BUNDLE_TAG := $(if $(OPERATOR_BUNDLE_TAG),$(OPERATOR_BUNDLE_TAG),$(if $(PIPE),$(PIPE)-operator-bundle))
 # Define the script for checking required environment variables
@@ -112,6 +114,7 @@ operator-bundle-gen: ## Generate bundle manifests and metadata, then validate ge
           --set managerImage="$(shell scripts/concat_img_tag.sh $(IMG) $(OPERATOR_TAG))" \
           --set proxyImage=$${OPERATOR_PROXY_IMG:-"docker.io/kubebuilder/kube-rbac-proxy@sha256:a2523c532c0c3d51a5396a901d7ded23e402a9a1492c783aae27af6d0c1d2ec5"} \
           --set overrides.csiVastPlugin.repository="$(shell scripts/concat_img_tag.sh $(CSI_PLUGIN_IMG) $(CSI_TAG))" \
+          --set overrides.vastExtensionController.repository="$(shell scripts/concat_img_tag.sh $(CSI_PLUGIN_IMG) $(EXTENSIONS_TAG))" \
           --set imagePullSecret=$(IMG_PULL_SECRET) \
 		  --set ciPipe=$(PIPE)
 	@operator-sdk bundle validate $(CURDIR)/bundle
@@ -161,12 +164,12 @@ create-secret: create-csi-namespace ## Create secret for pulling images from the
 operator-bundle-run: create-secret ## Deploy bundle against the configured Kubernetes cluster in ~/.kube/config (auto-refreshes ECR credentials)
 	@$(call check_required_env,IMG OPERATOR_BUNDLE_TAG NAMESPACE IMG_PULL_SECRET)
 	@echo "ECR credentials refreshed, deploying operator bundle..."
-	operator-sdk run bundle "${IMG}:${OPERATOR_BUNDLE_TAG}" --timeout 10m --namespace ${NAMESPACE} --install-mode OwnNamespace --pull-secret-name ${IMG_PULL_SECRET}
+	operator-sdk run bundle "${IMG}:${OPERATOR_BUNDLE_TAG}" --timeout 20m --namespace ${NAMESPACE} --install-mode OwnNamespace --pull-secret-name ${IMG_PULL_SECRET}
 
 operator-bundle-upgrade-run: create-secret ##  Upgrade an Operator previously installed in the bundle format with OLM (auto-refreshes ECR credentials)
 	@$(call check_required_env,IMG OPERATOR_BUNDLE_TAG NAMESPACE IMG_PULL_SECRET)
 	@echo "ECR credentials refreshed, upgrading operator bundle..."
-	operator-sdk run bundle-upgrade "${IMG}:${OPERATOR_BUNDLE_TAG}" --timeout 10m --namespace ${NAMESPACE} --pull-secret-name ${IMG_PULL_SECRET}
+	operator-sdk run bundle-upgrade "${IMG}:${OPERATOR_BUNDLE_TAG}" --timeout 20m --namespace ${NAMESPACE} --pull-secret-name ${IMG_PULL_SECRET}
 
 operator-bundle-clean: ## Cleanup bundle from the configured Kubernetes cluster in ~/.kube/config
 	@$(call check_required_env,NAMESPACE)

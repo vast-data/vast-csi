@@ -130,22 +130,43 @@ func newBase(
 	}, nil
 }
 
+func sourceVSCR(ctx context.Context, k8s *k8s_client.K8sClient, rp *vastv1alpha1.VastReplicationContent) (*vastv1alpha1.VastStorageClassReplication, error) {
+	name := rp.Labels[common.LabelSourceVSCR]
+	if name == "" {
+		return nil, nil
+	}
+	ns := k8s_client.ParentNamespace(rp.Labels, common.LabelSourceVSCRNamespace, rp.Namespace)
+	vscr, err := k8s.GetVastStorageClassReplication(ctx, name, ns)
+	if err != nil {
+		return nil, fmt.Errorf("get VastStorageClassReplication %s/%s: %w", ns, name, err)
+	}
+	return vscr, nil
+}
+
+func sourceVVR(ctx context.Context, k8s *k8s_client.K8sClient, rp *vastv1alpha1.VastReplicationContent) (*vastv1alpha1.VastVolumeReplication, error) {
+	name := rp.Labels[common.LabelSourceVVR]
+	if name == "" {
+		return nil, nil
+	}
+	ns := k8s_client.ParentNamespace(rp.Labels, common.LabelSourceVVRNamespace, rp.Namespace)
+	vvr, err := k8s.GetVastVolumeReplication(ctx, name, ns)
+	if err != nil {
+		return nil, fmt.Errorf("get VastVolumeReplication %s/%s: %w", ns, name, err)
+	}
+	return vvr, nil
+}
+
 // lookupPrimaryStorageClass resolves the primaryStorageClass from the upstream
 // VastStorageClassReplication or VastVolumeReplication that owns this VRC.
-// Returns "" when the VRC has no upstream owner (standalone mode).
 func lookupPrimaryStorageClass(ctx context.Context, k8s *k8s_client.K8sClient, rp *vastv1alpha1.VastReplicationContent) (string, error) {
-	if vscrName := rp.Labels[common.LabelSourceVSCR]; vscrName != "" {
-		vscr, err := k8s.GetVastStorageClassReplication(ctx, vscrName, rp.Namespace)
-		if err != nil {
-			return "", fmt.Errorf("get VastStorageClassReplication %s: %w", vscrName, err)
-		}
+	if vscr, err := sourceVSCR(ctx, k8s, rp); err != nil {
+		return "", err
+	} else if vscr != nil {
 		return vscr.Spec.PrimaryStorageClass, nil
 	}
-	if vvrName := rp.Labels[common.LabelSourceVVR]; vvrName != "" {
-		vvr, err := k8s.GetVastVolumeReplication(ctx, vvrName, rp.Namespace)
-		if err != nil {
-			return "", fmt.Errorf("get VastVolumeReplication %s: %w", vvrName, err)
-		}
+	if vvr, err := sourceVVR(ctx, k8s, rp); err != nil {
+		return "", err
+	} else if vvr != nil {
 		return vvr.Spec.PrimaryStorageClass, nil
 	}
 	panic("neither source VSCR not VVR exists")
@@ -154,21 +175,17 @@ func lookupPrimaryStorageClass(ctx context.Context, k8s *k8s_client.K8sClient, r
 // lookupDestVolReclaimPolicy reads spec.destVolReclaimPolicy from the parent
 // VSCR or VVR.  Empty means Retain (same default as the parent CRDs).
 func lookupDestVolReclaimPolicy(ctx context.Context, k8s *k8s_client.K8sClient, rp *vastv1alpha1.VastReplicationContent) (vastv1alpha1.DestVolReclaimPolicy, error) {
-	if vscrName := rp.Labels[common.LabelSourceVSCR]; vscrName != "" {
-		vscr, err := k8s.GetVastStorageClassReplication(ctx, vscrName, rp.Namespace)
-		if err != nil {
-			return "", fmt.Errorf("get VastStorageClassReplication %s: %w", vscrName, err)
-		}
+	if vscr, err := sourceVSCR(ctx, k8s, rp); err != nil {
+		return "", err
+	} else if vscr != nil {
 		if vscr.Spec.DestVolReclaimPolicy == "" {
 			return vastv1alpha1.DestVolReclaimPolicyRetain, nil
 		}
 		return vscr.Spec.DestVolReclaimPolicy, nil
 	}
-	if vvrName := rp.Labels[common.LabelSourceVVR]; vvrName != "" {
-		vvr, err := k8s.GetVastVolumeReplication(ctx, vvrName, rp.Namespace)
-		if err != nil {
-			return "", fmt.Errorf("get VastVolumeReplication %s: %w", vvrName, err)
-		}
+	if vvr, err := sourceVVR(ctx, k8s, rp); err != nil {
+		return "", err
+	} else if vvr != nil {
 		if vvr.Spec.DestVolReclaimPolicy == "" {
 			return vastv1alpha1.DestVolReclaimPolicyRetain, nil
 		}
@@ -209,25 +226,21 @@ func (b *baseProvisioner) mirrorVolumeHandle(
 		return path.Join("/", volumeGroup, volumeBaseName), nil
 	}
 
-	if vscrName := b.rp.Labels[common.LabelSourceVSCR]; vscrName != "" {
-		vscr, err := b.k8sClient.GetVastStorageClassReplication(ctx, vscrName, b.rp.Namespace)
-		if err != nil {
-			return "", fmt.Errorf("get VastStorageClassReplication %s: %w", vscrName, err)
-		}
+	if vscr, err := sourceVSCR(ctx, b.k8sClient, b.rp); err != nil {
+		return "", err
+	} else if vscr != nil {
 		dir, ok := vscr.Status.PpathDirMapping[sibSc.Name]
 		if !ok {
-			return "", fmt.Errorf("StorageClass %q has no entry in VSCR %s PpathDirMapping", sibSc.Name, vscrName)
+			return "", fmt.Errorf("StorageClass %q has no entry in VSCR %s PpathDirMapping", sibSc.Name, vscr.Name)
 		}
 		return path.Join(dir, volumeBaseName), nil
 	}
-	if vvrName := b.rp.Labels[common.LabelSourceVVR]; vvrName != "" {
-		vvr, err := b.k8sClient.GetVastVolumeReplication(ctx, vvrName, b.rp.Namespace)
-		if err != nil {
-			return "", fmt.Errorf("get VastVolumeReplication %s: %w", vvrName, err)
-		}
+	if vvr, err := sourceVVR(ctx, b.k8sClient, b.rp); err != nil {
+		return "", err
+	} else if vvr != nil {
 		dir, ok := vvr.Status.PpathDirMapping[sibSc.Name]
 		if !ok {
-			return "", fmt.Errorf("StorageClass %q has no entry in VVR %s PpathDirMapping", sibSc.Name, vvrName)
+			return "", fmt.Errorf("StorageClass %q has no entry in VVR %s PpathDirMapping", sibSc.Name, vvr.Name)
 		}
 		return dir, nil
 	}
@@ -495,7 +508,7 @@ func (b *baseProvisioner) getPPath(ctx context.Context, sc *storagev1.StorageCla
 	}
 	ppathName := b.rp.Spec.ProtectedPathName
 	ppath, err := rest.ProtectedPaths.Get(&typed.ProtectedPathSearchParams{
-		Name:    expr.S(ppathName),
+		Name:    expr.Str(ppathName),
 		RawData: vast_client.Params{"fields": "id,name,enabled,state,failure_reason,role,tenant_id,source_dir,protection_policy_name"},
 	})
 	if err != nil {
@@ -557,7 +570,7 @@ func (b *baseProvisioner) deleteSnapshots(_ context.Context, rest *vast_client.T
 	snapshotPath = strings.TrimRight(snapshotPath, "/") + "/"
 	for _, policyName := range policyNames {
 		snapshotSearch := &typed.SnapshotSearchParams{
-			Path:    expr.S(snapshotPath),
+			Path:    expr.Str(snapshotPath),
 			RawData: vast_client.Params{"protection_policy__name": policyName},
 		}
 		snapshots, err := rest.Snapshots.List(snapshotSearch)
@@ -715,9 +728,15 @@ func (b *baseProvisioner) ensureMirrorPVCPV(
 	// query (used by the VVR path) to the correct owner.
 	if vscrName := b.rp.Labels[common.LabelSourceVSCR]; vscrName != "" {
 		pvcLabels[common.LabelSourceVSCR] = vscrName
+		if ns := k8s_client.ParentNamespace(b.rp.Labels, common.LabelSourceVSCRNamespace, ""); ns != "" {
+			pvcLabels[common.LabelSourceVSCRNamespace] = ns
+		}
 	}
 	if vvrName := b.rp.Labels[common.LabelSourceVVR]; vvrName != "" {
 		pvcLabels[common.LabelSourceVVR] = vvrName
+		if ns := k8s_client.ParentNamespace(b.rp.Labels, common.LabelSourceVVRNamespace, ""); ns != "" {
+			pvcLabels[common.LabelSourceVVRNamespace] = ns
+		}
 	}
 
 	pvBuilder := builder.NewPersistentVolume(destPVName).
@@ -782,7 +801,9 @@ var mirrorReplicationLabelKeys = []string{
 	common.LabelSourcePVCNamespace,
 	common.LabelStorageClass,
 	common.LabelSourceVSCR,
+	common.LabelSourceVSCRNamespace,
 	common.LabelSourceVVR,
+	common.LabelSourceVVRNamespace,
 }
 
 func stripMirrorReplicationLabels(k8s *k8s_client.K8sClient, obj client.Object) {

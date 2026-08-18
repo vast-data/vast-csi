@@ -20,7 +20,8 @@ limitations under the License.
 //
 // Usage:
 //
-//	srv := server.New("/var/run/vast-extensions/extensions.sock", logger)
+//	srv := server.New(":9090", logger) // TCP — cluster-wide via a Kubernetes Service
+//	srv := server.New(server.ExtensionsSocketPath, logger) // unix — co-located sidecar
 //	srv.RegisterService(discovery.NewService(k8sClient, logger))
 //	if err := mgr.Add(srv); err != nil { ... }
 package server
@@ -29,6 +30,7 @@ import (
 	"context"
 	"net"
 	"os"
+	"strings"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -42,25 +44,35 @@ type Service interface {
 }
 
 const (
-	// ExtensionsSocketPath is the unix socket path of the extensions gRPC server.
-	// It must match the mountPath in the Helm chart and EXTENSIONS_SOCKET in
-	// the Python extensions_client module.
+	// ExtensionsSocketPath is the default unix socket path for co-located
+	// extensions-manager and replication-vast-plugin containers (standalone Helm chart).
+	// It must match the mountPath in the Helm chart and the Python client default.
 	ExtensionsSocketPath = "/var/run/vast-extensions/extensions.sock"
+
+	// DefaultExtensionsGRPCBindAddress is the default TCP bind address for the
+	// cluster-wide VastExtensionsManager (operator / cross-pod model).
+	DefaultExtensionsGRPCBindAddress = ":9090"
 )
 
-// GRPCServer is a generic unix-socket gRPC server that starts and stops
-// together with the controller-runtime manager.
+// GRPCServer is a gRPC server that starts and stops together with the
+// controller-runtime manager.  It listens on TCP or a unix socket depending on
+// bindAddress (see parseBindAddress).
 type GRPCServer struct {
-	socketPath string
-	services   []Service
-	log        *zap.Logger
+	network     string
+	bindAddress string
+	services    []Service
+	log         *zap.Logger
 }
 
-// New creates a GRPCServer that will listen on socketPath.
-func New(socketPath string, log *zap.Logger) *GRPCServer {
+// New creates a GRPCServer that will listen on bindAddress.
+// Use a TCP address (e.g. ":9090") for cross-pod access, or an absolute unix
+// socket path for co-located sidecars.
+func New(bindAddress string, log *zap.Logger) *GRPCServer {
+	network, addr := parseBindAddress(bindAddress)
 	return &GRPCServer{
-		socketPath: socketPath,
-		log:        log.Named("grpc-server"),
+		network:     network,
+		bindAddress: addr,
+		log:         log.Named("grpc-server"),
 	}
 }
 
@@ -69,19 +81,20 @@ func (s *GRPCServer) RegisterService(svc Service) {
 	s.services = append(s.services, svc)
 }
 
-// Start implements controller-runtime's Runnable.  It creates the unix socket,
+// Start implements controller-runtime's Runnable.  It creates the listener,
 // registers all services, starts the gRPC server, and blocks until ctx is
 // cancelled.
 func (s *GRPCServer) Start(ctx context.Context) error {
-	// Remove stale socket file from a previous run.
-	if err := os.Remove(s.socketPath); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	if err := os.MkdirAll(dirOf(s.socketPath), 0o700); err != nil {
-		return err
+	if s.network == "unix" {
+		if err := os.Remove(s.bindAddress); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if err := os.MkdirAll(dirOf(s.bindAddress), 0o700); err != nil {
+			return err
+		}
 	}
 
-	lis, err := net.Listen("unix", s.socketPath)
+	lis, err := net.Listen(s.network, s.bindAddress)
 	if err != nil {
 		return err
 	}
@@ -91,7 +104,9 @@ func (s *GRPCServer) Start(ctx context.Context) error {
 		svc.RegisterService(srv)
 	}
 
-	s.log.Info("gRPC server listening", zap.String("socket", s.socketPath))
+	s.log.Info("gRPC server listening",
+		zap.String("network", s.network),
+		zap.String("address", s.bindAddress))
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(lis) }()
@@ -103,6 +118,16 @@ func (s *GRPCServer) Start(ctx context.Context) error {
 	case err := <-errCh:
 		return err
 	}
+}
+
+func parseBindAddress(bindAddress string) (network, addr string) {
+	if strings.HasPrefix(bindAddress, "unix://") {
+		return "unix", strings.TrimPrefix(bindAddress, "unix://")
+	}
+	if strings.HasPrefix(bindAddress, "/") {
+		return "unix", bindAddress
+	}
+	return "tcp", bindAddress
 }
 
 func dirOf(path string) string {

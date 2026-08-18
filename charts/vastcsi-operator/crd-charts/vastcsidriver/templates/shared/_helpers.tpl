@@ -21,6 +21,22 @@
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
+{{- define "vastcsi.dnsSafeReleaseName" -}}
+{{- .Release.Name | replace "." "-" | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{- define "vastcsi.workloadNamePrefix" -}}
+{{- ternary "csi" "block" (eq .Values.driverType "nfs") -}}
+{{- end }}
+
+{{/*
+Normalize node.nfsServices.services for Helm and OLM UI.
+The console may store a single array element like "statd rpcbind" instead of ["statd", "rpcbind"].
+*/}}
+{{- define "vastcsi.nfsServicesArg" -}}
+{{- join "," (compact (splitList " " (join " " (default list .Values.node.nfsServices.services)))) -}}
+{{- end -}}
+
 {{/* Common labels */}}
 {{- define "vastcsi.labels" -}}
 helm.sh/chart: {{ include "vastcsi.chart" . }}
@@ -68,9 +84,15 @@ app.kubernetes.io/instance: {{ .Release.Name }}
   value: {{ $.Values.cacheMaxAgeSeconds | default 0 | quote }}
 - name: X_CSI_MOUNT_UMOUNT_TIMEOUT
   value: {{ $.Values.mountUmountTimeout | quote }}
+- name: X_CSI_FORCE_LAZY_UMOUNT_ON_TIMEOUT
+  value: {{ $.Values.forceLazyUmountOnTimeout | quote }}
 {{- if $.Values.resolveMountSymlinks }}
 - name: X_CSI_RESOLVE_MOUNT_SYMLINKS
   value: {{ $.Values.resolveMountSymlinks | quote }}
+{{- end }}
+{{- if $.Values.allowROManyBlockFsMode }}
+- name: X_CSI_ALLOW_RO_MANY_BLOCK_FS_MODE
+  value: {{ $.Values.allowROManyBlockFsMode | quote }}
 {{- end }}
 {{- if $.Values.truncateVolumeName }}
 - name: X_CSI_TRUNCATE_VOLUME_NAME
@@ -83,4 +105,24 @@ app.kubernetes.io/instance: {{ .Release.Name }}
   value: {{ $.Values.hostNamePrefix | quote }}
 {{- end }}
 
+{{- end }}
+
+
+{{/*
+Build the comma-separated list of addons to enable.
+VolumeGroupReplicationClass is always created alongside VolumeReplicationClass.
+Usage:
+{{- include "vastcsi.addons-list" (dict "root" . "type" "nfs") -}}
+*/}}
+{{- define "vastcsi.addons-list" -}}
+{{- $type := .type -}}
+{{- join "," (list (printf "replication[%s]" $type) (printf "volumegroup[%s]" $type)) -}}
+{{- end -}}
+
+{{- define "vastcsi.fallbackToDeserEnv" -}}
+{{- if not (kindIs "bool" .Values.fallbackToDeser) }}
+{{- fail "fallbackToDeser must be set explicitly to true or false" }}
+{{- end }}
+- name: X_CSI_FALLBACK_TO_DESER
+  value: {{ .Values.fallbackToDeser | quote }}
 {{- end }}

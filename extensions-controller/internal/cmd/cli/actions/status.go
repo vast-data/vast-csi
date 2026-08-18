@@ -70,6 +70,9 @@ func printVSCRStatus(obj *vastv1alpha1.VastStorageClassReplication) {
 	fmt.Printf("%s  %s/%s\n", cli.Bold("VastStorageClassReplication"), obj.Namespace, cli.Cyan(obj.Name))
 	fmt.Println(strings.Repeat("─", 60))
 	fmt.Printf("  %-28s %s\n", "Primary StorageClass:", highlightPrimary(obj.Spec.PrimaryStorageClass))
+	if ns := obj.PVCNamespace(); ns != obj.Namespace {
+		fmt.Printf("  %-28s %s\n", "Volume Namespace:", ns)
+	}
 	printAction("Failover Type", string(obj.Spec.FailoverType))
 	if obj.Spec.Resync {
 		fmt.Printf("  %-28s %s\n", "Resync:", cli.Yellow("pending"))
@@ -113,7 +116,7 @@ func printVSCRStatus(obj *vastv1alpha1.VastStorageClassReplication) {
 func printVVRStatus(obj *vastv1alpha1.VastVolumeReplication) {
 	fmt.Printf("%s  %s/%s\n", cli.Bold("VastVolumeReplication"), obj.Namespace, cli.Cyan(obj.Name))
 	fmt.Println(strings.Repeat("─", 60))
-	fmt.Printf("  %-28s %s\n", "Volume (PVC):", cli.Bold(obj.Spec.VolumeName))
+	fmt.Printf("  %-28s %s/%s\n", "Volume (PVC):", obj.PVCNamespace(), cli.Bold(obj.Spec.VolumeName))
 	fmt.Printf("  %-28s %s\n", "Storage Classes:", vastv1alpha1.DisplayableList(obj.Spec.AllStorageClasses()).String())
 	fmt.Printf("  %-28s %s\n", "Primary StorageClass:", highlightPrimary(obj.Spec.PrimaryStorageClass))
 	printAction("Failover Type", string(obj.Spec.FailoverType))
