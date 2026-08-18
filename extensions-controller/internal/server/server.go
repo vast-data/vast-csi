@@ -20,20 +20,23 @@ limitations under the License.
 //
 // Usage:
 //
-//	srv := server.New(":9090", logger) // TCP — cluster-wide via a Kubernetes Service
-//	srv := server.New(server.ExtensionsSocketPath, logger) // unix — co-located sidecar
+//	srv := server.New(":9090", kubeClient, logger) // TCP — TLS + TokenReview
+//	srv := server.New(server.ExtensionsSocketPath, nil, logger) // unix — co-located sidecar
 //	srv.RegisterService(discovery.NewService(k8sClient, logger))
 //	if err := mgr.Add(srv); err != nil { ... }
 package server
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"os"
 	"strings"
 
+	"github.com/vast-data/vast-csi/extensions-controller/internal/server/auth"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"k8s.io/client-go/kubernetes"
 )
 
 // Service is implemented by any gRPC service that wants to register itself
@@ -60,18 +63,21 @@ const (
 type GRPCServer struct {
 	network     string
 	bindAddress string
+	kubeClient  kubernetes.Interface
 	services    []Service
 	log         *zap.Logger
 }
 
 // New creates a GRPCServer that will listen on bindAddress.
-// Use a TCP address (e.g. ":9090") for cross-pod access, or an absolute unix
-// socket path for co-located sidecars.
-func New(bindAddress string, log *zap.Logger) *GRPCServer {
+// TCP always serves TLS and requires a valid ServiceAccount Bearer token
+// (TokenReview). Unix sockets stay plaintext — they are only reachable from
+// co-located containers. kubeClient is required for TCP and ignored for unix.
+func New(bindAddress string, kubeClient kubernetes.Interface, log *zap.Logger) *GRPCServer {
 	network, addr := parseBindAddress(bindAddress)
 	return &GRPCServer{
 		network:     network,
 		bindAddress: addr,
+		kubeClient:  kubeClient,
 		log:         log.Named("grpc-server"),
 	}
 }
@@ -99,14 +105,23 @@ func (s *GRPCServer) Start(ctx context.Context) error {
 		return err
 	}
 
-	srv := grpc.NewServer()
+	var opts []grpc.ServerOption
+	if s.network == "tcp" {
+		opts, err = auth.TCPServerOptions(s.kubeClient)
+		if err != nil {
+			return fmt.Errorf("tcp gRPC auth: %w", err)
+		}
+	}
+
+	srv := grpc.NewServer(opts...)
 	for _, svc := range s.services {
 		svc.RegisterService(srv)
 	}
 
 	s.log.Info("gRPC server listening",
 		zap.String("network", s.network),
-		zap.String("address", s.bindAddress))
+		zap.String("address", s.bindAddress),
+		zap.Bool("tlsAuth", s.network == "tcp"))
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(lis) }()
