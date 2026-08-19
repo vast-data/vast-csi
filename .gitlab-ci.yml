@@ -198,11 +198,6 @@ update_dockerhub [prod]: &update_dockerhub
     export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}
     export DOCKERFILE=Dockerfile
     make build_image
-    
-    # Publish CSI Operator image
-    export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}-operator
-    export DOCKERFILE=operator.Dockerfile
-    make build_image
   after_script:
   - docker logout $DOCKER_HUB
   when: manual
@@ -261,6 +256,34 @@ update_dockerhub [hotfix]:
     export DOCKERFILE=Dockerfile
     make build_image
 
+  after_script:
+  - docker logout $DOCKER_HUB
+  when: manual
+  tags:
+    - vast-dev-builder
+
+
+update_dockerhub_extensions [hotfix]:
+  stage: deploy
+  environment: prod
+  only:
+    - /^v?[\d]+\.[\d]+\.[\d]+-hf[\d]+$/
+  needs:
+    - job: "update_dockerhub [hotfix]"
+  script: |
+    set -x
+    # Extract version from branch name (e.g., 2.6.4-hf1 or v2.6.4-hf1)
+    VERSION=${CI_COMMIT_REF_NAME}
+    [[ "$VERSION" != v* ]] && VERSION="v${VERSION}"
+    echo "Publishing Extensions Controller image: ${VERSION}-extensions"
+
+    docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} $DOCKER_HUB
+    export PUSH_ON_SUCCESS=true
+
+    export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}-extensions
+    export DOCKERFILE=extensions-controller/Dockerfile
+    export GIT_TAG=${VERSION}
+    make build_image
   after_script:
   - docker logout $DOCKER_HUB
   when: manual
