@@ -649,7 +649,7 @@ class BlockHost(VastResource):
     resource_name = "blockhosts"
 
     @requisite(semver="5.3.0")
-    def ensure(self, node_id, transport_type, tenant_name, subsystem, **params):
+    def ensure(self, node_id, transport_type, tenant_name, subsystem, nqn, **params):
         if blockhost := self.one(name=node_id, tenant_name=tenant_name):
             return blockhost
         # Need to determine the tenant_id from the subsystem
@@ -663,7 +663,7 @@ class BlockHost(VastResource):
             os_type="LINUX",
             ana="OPTIMIZED",
             connectivity_type=transport_type,
-            nqn=f"{self.session.config.block_nqn_prefix}{tenant_name}:{node_id}",
+            nqn=nqn,
         )
         try:
             return self.create(**data)

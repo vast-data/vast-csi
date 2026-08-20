@@ -124,6 +124,11 @@ transportType: "TCP"
 # Kubernetes to proceed while the data stream continues in the background.
 blockingClones: false
 
+# When true, NVMe host NQNs use HMAC-SHA256 instead of the plain node name suffix.
+# Requires host_nqn_seed in the StorageClass controller-publish secret.
+# Use one seed per VAST tenant; existing block hosts keep their NQN until recreated.
+hostNqnObfuscation: false
+
 ####################
 # VAST CSI SNAPSHOT CLASS OPTIONS
 ####################

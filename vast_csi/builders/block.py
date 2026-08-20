@@ -39,6 +39,7 @@ class BlockProvisionBase(BaseVolumeBuilder):
     qos_policy: Optional[str] = None
     qos_policy_id: Optional[int] = None
     blocking_clones: Optional[bool] = None
+    host_nqn_obfuscation: Optional[bool] = None
     capacity_range: Optional[int] = None
     pvc_name: Optional[str] = None
     pvc_namespace: Optional[str] = None
@@ -69,6 +70,7 @@ class BlockProvisionBase(BaseVolumeBuilder):
         cls._validate_mount_src(vip_pool_name, vip_pool_fqdn, conf.use_local_ip_for_mount)
         cluster_name = parameters.get("cluster_name")
         blocking_clones = cls._get_bool_param(parameters, "blocking_clones")
+        host_nqn_obfuscation = cls._get_bool_param(parameters, "host_nqn_obfuscation")
         qos_policy = parameters.get("qos_policy")
         if "qos_policy_id" in parameters:
             qos_policy_id = int(parameters.get("qos_policy_id"))
@@ -94,6 +96,7 @@ class BlockProvisionBase(BaseVolumeBuilder):
             qos_policy=qos_policy,
             volume_content_source=volume_content_source,
             blocking_clones=blocking_clones,
+            host_nqn_obfuscation=host_nqn_obfuscation,
             **metadata,
         )
 
@@ -137,6 +140,8 @@ class BlockProvisionBase(BaseVolumeBuilder):
                 context["vip_pool_fqdn_random_prefix"] = "true"
         if self.host_encryption:
             context[f"host_encryption"] = json.dumps(self.host_encryption)
+        if self.host_nqn_obfuscation:
+            context["host_nqn_obfuscation"] = "true"
         return context
 
 
@@ -346,6 +351,7 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
     vip_pool_fqdn: Optional[str] = None
     vip_pool_fqdn_random_prefix: Optional[bool] = None
     host_encryption: Optional[dict] = None
+    host_nqn_obfuscation: Optional[bool] = None
     transport_type: Optional[str] = "TCP"
 
     @classmethod
@@ -365,6 +371,7 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
         vip_pool_fqdn_random_prefix = cls._get_bool_param(parameters, "vip_pool_fqdn_random_prefix", default_value="true")
         transport_type = parameters.get("transport_type", "TCP").upper()
         host_encryption = cls._parse_host_encryption(parameters)
+        host_nqn_obfuscation = cls._get_bool_param(parameters, "host_nqn_obfuscation")
         cls._validate_mount_src(vip_pool_name, vip_pool_fqdn, conf.use_local_ip_for_mount)
         cluster_name = parameters.get("cluster_name")
         return cls(
@@ -380,6 +387,7 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
             transport_type=transport_type,
             cluster_name=cluster_name,
             host_encryption=host_encryption,
+            host_nqn_obfuscation=host_nqn_obfuscation,
         )
 
     @property
@@ -398,6 +406,8 @@ class StaticBlockVolumeBuilder(BaseVolumeBuilder):
                 context["vip_pool_fqdn_random_prefix"] = "true"
         if self.host_encryption:
             context[f"host_encryption"] = json.dumps(self.host_encryption)
+        if self.host_nqn_obfuscation:
+            context["host_nqn_obfuscation"] = "true"
         return context
 
     def build_volume(self) -> types.Volume:
