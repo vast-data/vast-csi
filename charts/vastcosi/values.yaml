@@ -50,7 +50,8 @@ bucketClassDefaults:
 
 bucketClasses: {}
 # bucketClasses:
-#   BucketClass name. This field must be unique across all bucket classes.
+#   BucketClass name. Must be unique and at most 63-36=27 characters (COSI appends a
+#   36-char BucketClaim UID; S3/VAST bucket names are limited to 63 characters).
 #   vastdata-bucket:
 #     vipPool: vippool-1
 #     viewPolicy: s3_policy
@@ -72,10 +73,6 @@ disableUsageStats: false
 # This is useful for handling burst traffic patterns and reducing load on the VMS.
 # Set to 0 to disable caching (default).
 cacheMaxAgeSeconds: 0
-
-# Truncate VAST bucket name if name length is greater than this number.
-# set `truncateVolumeName: null` to disable truncation.
-truncateVolumeName: 64
 
 # The name of the COSI driver registered with Kubernetes.
 # This value is used to identify the driver in COSI objects like BucketClasses etc.

@@ -1,6 +1,7 @@
 import pytest
 import grpc
 from easypy.bunch import Bunch
+from vast_csi.exceptions import Abort
 from vast_csi.plugins.cosi import CosiProvisioner, MissingParameter
 
 
@@ -135,3 +136,23 @@ class TestCosiProvisionerSuite:
         err = ex_context.value
         assert "cannot be empty" in err.message
         assert err.code == grpc.StatusCode.INVALID_ARGUMENT
+
+    def test_create_bucket_rejects_name_longer_than_vast_max(
+        self, vms_session_with_mocked_resources_factory
+    ):
+        """Do not silently truncate: long names must fail so Secret/status stay truthful."""
+        # BucketClass(28) + UID(36) == 64 > VAST max 63
+        bucket_name = "cosi-cluster-local-uscentral" + "a" * 36
+        assert len(bucket_name) == 64
+
+        with pytest.raises(Abort) as ex_context:
+            self._create_bucket(
+                name=bucket_name,
+                parameters=COMMON_PARAMS.copy(),
+                vms_factory=vms_session_with_mocked_resources_factory,
+            )
+
+        err = ex_context.value
+        assert err.code == grpc.StatusCode.INVALID_ARGUMENT
+        assert "64 characters" in err.message
+        assert "maximum allowed is 63" in err.message

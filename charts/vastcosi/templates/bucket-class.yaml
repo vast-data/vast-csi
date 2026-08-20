@@ -3,6 +3,12 @@
 {{/* Iterate over BucketClasses from manifest */}}
 {{- range $name, $options := .Values.bucketClasses }}
 
+{{/* COSI sidecar bucket name = BucketClass name + claim UID; S3/VAST max is 63. */}}
+{{- $classMax := sub 63 36 -}}
+{{- if gt (len $name) $classMax -}}
+  {{- fail (printf "BucketClass name %q is %d characters; must be at most %d so that name+UID stays within the S3/VAST 63-character bucket name limit" $name (len $name) $classMax) -}}
+{{- end }}
+
 {{- $deletion_policy :=  pluck "deletionPolicy" $options $.Values.bucketClassDefaults | first | quote -}}
 {{- $view_policy :=  pluck "viewPolicy" $options $.Values.bucketClassDefaults | first | quote -}}
 {{- $vip_pool_name := pluck "vipPool" $options $.Values.bucketClassDefaults | first | quote -}}

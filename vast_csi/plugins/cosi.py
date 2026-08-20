@@ -16,12 +16,16 @@ from random import randint
 import grpc
 from vast_csi.proto import cosi_pb2_grpc as cosi_grpc
 from vast_csi import csi_types as types
-from vast_csi.exceptions import MissingParameter
+from vast_csi.exceptions import Abort, MissingParameter
 from vast_csi.plugins.base import Instrumented
 from vast_csi.configuration import Config
 
 
 CONF = None
+
+# AWS S3 / VAST max bucket name length. COSI sidecar uses BucketClass.name + BucketClaim.uid.
+VAST_MAX_BUCKET_NAME_LENGTH = 63
+K8S_UID_LENGTH = 36
 
 
 class CosiIdentity(cosi_grpc.IdentityServicer, Instrumented):
@@ -39,8 +43,16 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented):
             raise MissingParameter(param="vip_pool_name")
         scheme = parameters.pop("scheme", "http")
 
-        if CONF.truncate_volume_name:
-            name = name[:CONF.truncate_volume_name]  # crop to Vast's max-length
+        # Never truncate: Secret/status keep the full name; crop would break credentials.
+        if len(name) > VAST_MAX_BUCKET_NAME_LENGTH:
+            class_max = VAST_MAX_BUCKET_NAME_LENGTH - K8S_UID_LENGTH
+            raise Abort(
+                types.INVALID_ARGUMENT,
+                f"Bucket name {name!r} has {len(name)} characters; "
+                f"maximum allowed is {VAST_MAX_BUCKET_NAME_LENGTH}. "
+                f"COSI builds the name as BucketClass name + BucketClaim UID ({K8S_UID_LENGTH} chars). "
+                f"Use a BucketClass name of at most {class_max} characters."
+            )
 
         uid = randint(50000, 60000)
         vms_session.users.ensure(name=name, uid=uid)
