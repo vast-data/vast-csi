@@ -14,6 +14,7 @@
 # Optionally, you can include:
 # - ssl_cert: SSL certificate for secure communication
 # - tenant: The tenant name for tenant scoped authentication (tenant admin).
+# - host_nqn_seed: Random key material for obfuscated NVMe host NQNs when hostNqnObfuscation is enabled.
 secretName: ""
 
 # Set true to enable certificate validity test
@@ -190,6 +191,10 @@ storageClassDefaults:
   # If false (default), the driver returns as soon as the clone operation is initiated, allowing
   # Kubernetes to proceed while the data stream continues in the background.
   blockingClones: false
+  # When true, NVMe host NQNs use HMAC-SHA256 instead of the plain node name suffix.
+  # Requires host_nqn_seed in the StorageClass controller-publish secret (see secretName docs).
+  # Use one seed per VAST tenant; existing block hosts keep their NQN until recreated.
+  hostNqnObfuscation: false
 
 # Default storage class to use with CSI DRIVER.
 # The only required value is 'vipPool' name where user should provide name of existing vip pool on

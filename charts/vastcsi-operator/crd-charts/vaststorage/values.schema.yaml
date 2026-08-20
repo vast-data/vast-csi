@@ -80,6 +80,13 @@ spec:
         Kubernetes to proceed while the data stream continues in the background.
       type: boolean
       default: false
+    hostNqnObfuscation:
+      description: |-
+        When true, NVMe host NQNs use HMAC-SHA256 instead of the plain node name suffix.
+        Requires host_nqn_seed in the StorageClass controller-publish secret.
+        Use one seed per VAST tenant; existing block hosts keep their NQN until recreated.
+      type: boolean
+      default: false
     hostEncryption:
       description: |-
         Enables encryption using LUKS on the device at the client side.
@@ -311,6 +318,14 @@ specDescriptors:
     x-descriptors:
     - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
   - description: >
+      When true, NVMe host NQNs use HMAC-SHA256 instead of the plain node name suffix.
+      Requires host_nqn_seed in the StorageClass controller-publish secret.
+    displayName: Host NQN Obfuscation
+    path: hostNqnObfuscation
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - *block-driver-dep
+  - description: >
       Enables LUKS-based host encryption for block volumes.
       Requires a passphrase to be defined in the vast-mgmt Secret and may optionally include parameters
       such as cipher, key size, hash algorithm, and PBKDF memory cost.
@@ -521,6 +536,7 @@ example:
     volumeGroup: ""
     fsType: ""
     blockingClones: {{ .Values.blockingClones }}
+    hostNqnObfuscation: {{ .Values.hostNqnObfuscation }}
     hostEncryption: {{ .Values.hostEncryption }}
     allowVolumeExpansion: {{ .Values.allowVolumeExpansion }}
     ephemeralVolumeNameFormat: {{ .Values.ephemeralVolumeNameFormat }}

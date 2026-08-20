@@ -1,9 +1,16 @@
 import json
+import hashlib
+import hmac
 from unittest.mock import patch, MagicMock
 import pytest
 from easypy.bunch import bunchify
 from easypy.collections import listify
-from vast_csi.block_utils import get_connected_session, get_hostnqn_from_sysfs
+
+from vast_csi.block_utils import (
+    compute_block_host_nqn,
+    get_connected_session,
+    get_hostnqn_from_sysfs,
+)
 
 ver_2x_nvme_out = [
     {
@@ -359,3 +366,59 @@ def test_try_nvme_probes_rejects_invalid_search_dirs(monkeypatch):
         assert mock_error.call_args[0][0] == "Invalid X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS: %s"
         assert "search dir must be absolute" in str(mock_error.call_args[0][1])
 
+
+NQN_PREFIX = "nqn.2014-08.com.vastcsiblock:"
+NQN_TENANT = "mytenant"
+NQN_HOST = "worker-node-1"
+NQN_SEED = "test-seed"
+
+
+def test_legacy_nqn_without_seed():
+    assert compute_block_host_nqn(
+        prefix=NQN_PREFIX,
+        tenant_name=NQN_TENANT,
+        block_host_name=NQN_HOST,
+    ) == f"{NQN_PREFIX}{NQN_TENANT}:{NQN_HOST}"
+
+
+def test_obfuscated_nqn_is_deterministic():
+    first = compute_block_host_nqn(
+        prefix=NQN_PREFIX,
+        tenant_name=NQN_TENANT,
+        block_host_name=NQN_HOST,
+        seed=NQN_SEED,
+    )
+    second = compute_block_host_nqn(
+        prefix=NQN_PREFIX,
+        tenant_name=NQN_TENANT,
+        block_host_name=NQN_HOST,
+        seed=NQN_SEED,
+    )
+    assert first == second
+    assert first.startswith(f"{NQN_PREFIX}{NQN_TENANT}:")
+    assert first.split(":")[-1] != NQN_HOST
+
+
+def test_different_seeds_produce_different_nqns():
+    a = compute_block_host_nqn(
+        prefix=NQN_PREFIX, tenant_name=NQN_TENANT, block_host_name=NQN_HOST, seed="seed-a"
+    )
+    b = compute_block_host_nqn(
+        prefix=NQN_PREFIX, tenant_name=NQN_TENANT, block_host_name=NQN_HOST, seed="seed-b"
+    )
+    assert a != b
+
+
+def test_obfuscated_nqn_matches_hmac_formula():
+    digest = hmac.new(
+        NQN_SEED.encode(),
+        f"{NQN_TENANT}:{NQN_HOST}".encode(),
+        hashlib.sha256,
+    ).hexdigest()[:32]
+    expected = f"{NQN_PREFIX}{NQN_TENANT}:{digest}"
+    assert compute_block_host_nqn(
+        prefix=NQN_PREFIX,
+        tenant_name=NQN_TENANT,
+        block_host_name=NQN_HOST,
+        seed=NQN_SEED,
+    ) == expected

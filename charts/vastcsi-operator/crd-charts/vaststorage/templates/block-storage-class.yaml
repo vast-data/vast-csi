@@ -22,6 +22,7 @@
 {{- $transport_type := .Values.transportType -}}
 {{- $blocking_clones := .Values.blockingClones -}}
 {{- $host_encryption := .Values.hostEncryption -}}
+{{- $host_nqn_obfuscation := .Values.hostNqnObfuscation | quote -}}
 
 {{- $volume_name_fmt := .Values.volumeNameFormat -}}
 {{- $eph_volume_name_fmt := .Values.ephemeralVolumeNameFormat -}}
@@ -58,6 +59,7 @@ parameters:
 {{- include "vastcsi.dictToBoolParams" (list (dict
   "vip_pool_fqdn_random_prefix" $vip_pool_fqdn_random_prefix
   "blocking_clones" $blocking_clones
+  "host_nqn_obfuscation" $host_nqn_obfuscation
 )) | indent 2 }}
 
 {{- if $host_encryption }}

@@ -42,6 +42,7 @@
 {{- $qos_policy :=  pluck "qosPolicy" $options $.Values.storageClassDefaults | first | quote -}}
 {{- $host_encryption := pluck "hostEncryption" $options $.Values.storageClassDefaults | first | default dict -}}
 {{- $blocking_clones := pluck "blockingClones" $options $.Values.storageClassDefaults | first | quote -}}
+{{- $host_nqn_obfuscation := pluck "hostNqnObfuscation" $options $.Values.storageClassDefaults | first | quote -}}
 
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
@@ -70,6 +71,7 @@ parameters:
 {{- include "vastcsi.dictToBoolParams" (list (dict
   "vip_pool_fqdn_random_prefix" $vip_pool_fqdn_random_prefix
   "blocking_clones" $blocking_clones
+  "host_nqn_obfuscation" $host_nqn_obfuscation
 )) | indent 2 }}
 
 {{- if $host_encryption }}
