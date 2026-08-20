@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "vast-data-csi-driver"
-version = "2.5.0"
+version = "2.6.0"
 description = "VAST CSI Driver allows container orchestration frameworks such as Kubernetes to dynamically provision storage volumes on a VAST cluster."
 authors = ["Ofer Koren <ofer.koren@vastdata.com>", "Volodymyr Boiko <volodymyr.boiko@vastdata.com>"]
 license = "Apache-2.0"

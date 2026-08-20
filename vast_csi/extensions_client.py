@@ -21,19 +21,122 @@ connects as a gRPC client over TCP (operator) or a co-located unix
 socket (standalone Helm chart).
 """
 
+import socket
+import ssl
+import threading
+from pathlib import Path
+
 import grpc
 
 from vast_csi.configuration import Config
 from vast_csi.proto import vast_extensions_pb2, vast_extensions_pb2_grpc
+
+# Must match auth.ServerTLSName in the extensions-controller.
+_TLS_SERVER_NAME = "vast-extensions"
+_SA_TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+
+# gRPC status codes that indicate the extensions-controller is temporarily
+# unreachable rather than a logical error (not-found, invalid argument, etc.).
+_CONNECTION_ERROR_CODES = frozenset({
+    grpc.StatusCode.UNAVAILABLE,
+    grpc.StatusCode.DEADLINE_EXCEEDED,
+})
+
+_cache_lock = threading.Lock()
+_cached_target = None
+_cached_channel = None
+_cached_stub = None
 
 
 def _extensions_grpc_target() -> str:
     return Config().extensions_grpc_address
 
 
-def _make_stub() -> vast_extensions_pb2_grpc.VastExtensionsStub:
-    channel = grpc.insecure_channel(_extensions_grpc_target())
-    return vast_extensions_pb2_grpc.VastExtensionsStub(channel)
+def _is_unix_target(target: str) -> bool:
+    return target.startswith("unix:") or target.startswith("/")
+
+
+def _tcp_host_port(target: str) -> tuple[str, int]:
+    t = target
+    if t.startswith("dns:///"):
+        t = t[len("dns:///") :]
+    host, sep, port = t.rpartition(":")
+    if not sep:
+        raise ValueError(f"TCP gRPC target must be host:port, got {target!r}")
+    return host, int(port)
+
+
+def _peer_cert_pem(host: str, port: int) -> bytes:
+    """Return the server's TLS cert so grpcio can pin it (no InsecureSkipVerify)."""
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    try:
+        ctx.set_alpn_protocols(["h2"])
+    except NotImplementedError:
+        pass
+    with socket.create_connection((host, port), timeout=5) as sock:
+        with ctx.wrap_socket(sock, server_hostname=host) as ssock:
+            der = ssock.getpeercert(binary_form=True)
+    if not der:
+        raise RuntimeError("VastExtensions server did not present a TLS certificate")
+    return ssl.DER_cert_to_PEM_cert(der).encode()
+
+
+def _sa_token_plugin(context, callback):
+    try:
+        token = Path(_SA_TOKEN_PATH).read_text().strip()
+    except OSError as exc:
+        callback(None, exc)
+        return
+    callback((("authorization", f"Bearer {token}"),), None)
+
+
+def _new_channel(target: str) -> grpc.Channel:
+    if _is_unix_target(target):
+        return grpc.insecure_channel(target)
+
+    host, port = _tcp_host_port(target)
+    ssl_creds = grpc.ssl_channel_credentials(root_certificates=_peer_cert_pem(host, port))
+    call_creds = grpc.metadata_call_credentials(_sa_token_plugin, name="sa-token")
+    creds = grpc.composite_channel_credentials(ssl_creds, call_creds)
+    return grpc.secure_channel(
+        target,
+        creds,
+        options=(("grpc.ssl_target_name_override", _TLS_SERVER_NAME),),
+    )
+
+
+def _close_cached_channel() -> None:
+    global _cached_target, _cached_channel, _cached_stub
+    if _cached_channel is not None:
+        _cached_channel.close()
+    _cached_target = None
+    _cached_channel = None
+    _cached_stub = None
+
+
+def _make_stub(*, refresh: bool = False) -> vast_extensions_pb2_grpc.VastExtensionsStub:
+    target = _extensions_grpc_target()
+    with _cache_lock:
+        global _cached_target, _cached_channel, _cached_stub
+        if refresh or _cached_stub is None or _cached_target != target:
+            _close_cached_channel()
+            _cached_channel = _new_channel(target)
+            _cached_stub = vast_extensions_pb2_grpc.VastExtensionsStub(_cached_channel)
+            _cached_target = target
+        return _cached_stub
+
+
+def _rpc(method_name: str, request):
+    stub = _make_stub()
+    try:
+        return getattr(stub, method_name)(request)
+    except grpc.RpcError as exc:
+        if exc.code() not in _CONNECTION_ERROR_CODES:
+            raise
+        stub = _make_stub(refresh=True)
+        return getattr(stub, method_name)(request)
 
 
 def get_storage_class_tenant_guid(storage_class: str) -> str:
@@ -54,11 +157,9 @@ def get_storage_class_tenant_guid(storage_class: str) -> str:
         grpc.RpcError: if the gRPC call fails (socket not available, VMS
             error, StorageClass not found, etc.).
     """
-    stub = _make_stub()
-    resp = stub.GetReplicationTenant(
-        vast_extensions_pb2.GetReplicationTenantRequest(
-            storage_class=storage_class,
-        )
+    resp = _rpc(
+        "GetReplicationTenant",
+        vast_extensions_pb2.GetReplicationTenantRequest(storage_class=storage_class),
     )
     return resp.tenant_guid
 
@@ -121,12 +222,12 @@ def get_replication_info(
         grpc.RpcError: if the gRPC call fails or the StorageClass is not found
             (codes.NOT_FOUND).
     """
-    stub = _make_stub()
-    return stub.GetReplicationInfo(
+    return _rpc(
+        "GetReplicationInfo",
         vast_extensions_pb2.GetReplicationInfoRequest(
             storage_class=storage_class,
             namespace=namespace,
-        )
+        ),
     )
 
 
@@ -158,14 +259,6 @@ def get_failover_type(storage_class: str) -> str:
     return _FAILOVER_TYPE_NAMES[info.failover_type]
 
 
-# gRPC status codes that indicate the extensions-controller is temporarily
-# unreachable rather than a logical error (not-found, invalid argument, etc.).
-_CONNECTION_ERROR_CODES = frozenset({
-    grpc.StatusCode.UNAVAILABLE,
-    grpc.StatusCode.DEADLINE_EXCEEDED,
-})
-
-
 def get_failover_type_if_available(storage_class: str) -> "str | None":
     """Return the failover type for *storage_class*, or ``None`` if the
     extensions-controller is unreachable.
@@ -186,3 +279,5 @@ def get_failover_type_if_available(storage_class: str) -> "str | None":
         if exc.code() in _CONNECTION_ERROR_CODES:
             return None
         raise
+    except OSError:
+        return None
