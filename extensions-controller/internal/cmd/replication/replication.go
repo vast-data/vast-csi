@@ -19,6 +19,7 @@ package replication
 import (
 	"github.com/go-logr/zapr"
 	"github.com/spf13/cobra"
+	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/manager"
@@ -83,8 +84,9 @@ func RegisterFlags(c *cobra.Command, cfg *config.Config) {
   {sc_name_pref:<N>}    - first N characters of StorageClass name`)
 
 	c.Flags().StringVar(&cfg.ExtensionsGRPCBindAddress, "extensions-grpc-bind-address", server.DefaultExtensionsGRPCBindAddress,
-		"Address the VastExtensions gRPC API binds to. Use TCP (e.g. :9090) for cross-pod access, "+
-			"or an absolute unix socket path for co-located sidecars.")
+		"Address the VastExtensions gRPC API binds to. TCP (e.g. :9090) always uses TLS and "+
+			"TokenReview of the caller's ServiceAccount token. Use an absolute unix socket path "+
+			"for co-located sidecars (plaintext, pod-local).")
 }
 
 // NewCommand creates the "replication-object" Cobra subcommand that runs the
@@ -144,7 +146,12 @@ VolumeReplicationClass/VolumeGroupReplicationClass, and mirrored VolumeReplicati
 				panic(err)
 			}
 
-			grpcSrv := server.New(cfg.ExtensionsGRPCBindAddress, logger)
+			kubeClient, err := kubernetes.NewForConfig(mgr.GetConfig())
+			if err != nil {
+				panic(err)
+			}
+
+			grpcSrv := server.New(cfg.ExtensionsGRPCBindAddress, kubeClient, logger)
 			grpcSrv.RegisterService(extensions.NewService(k8sClient, cfg.SSLVerify, logger, logging.New(logger, cfg.DevLogging)))
 			if err := mgr.Add(grpcSrv); err != nil {
 				panic(err)

@@ -90,7 +90,7 @@ spec:
             - name: X_CSI_VMS_TIMEOUT
               value: {{ $sc.operationTimeout | default 120 | quote }}
             - name: X_CSI_EXTENSIONS_GRPC_ADDRESS
-              value: "extensions-manager-grpc:9090"
+              value: "extensions-manager-grpc.{{ include "vastcsi.namespace" . | trimAll "\"" }}.svc.cluster.local:9090"
             - name: CSI_ENDPOINT
               value: unix://{{ printf "%s%s" $plugin_proxy_sock_path $csiaddons_sock }}
             - name: X_CSI_MODE
