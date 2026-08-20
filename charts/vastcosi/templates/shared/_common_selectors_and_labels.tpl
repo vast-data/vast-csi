@@ -25,7 +25,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- define "vastcosi.vastExtensionControllerImage" -}}
 {{- $images := .Values.image -}}
 {{- printf "%s:%s"
-    (required "image.vastExtensionController.repository is required when credsFlattener.enabled is true" (tpl ($images.vastExtensionController.repository | default "") .))
-    (required "image.vastExtensionController.tag is required when credsFlattener.enabled is true" (tpl ($images.vastExtensionController.tag | default "") .))
+    (required "image.vastExtensionController.repository is required when extensions.credsFlattener.enabled is true" (tpl ($images.vastExtensionController.repository | default "") .))
+    (required "image.vastExtensionController.tag is required when extensions.credsFlattener.enabled is true" (tpl ($images.vastExtensionController.tag | default "") .))
 -}}
 {{- end -}}

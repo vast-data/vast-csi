@@ -15,7 +15,26 @@ rules:
   verbs: ["get", "watch", "list", "delete", "update", "create"]
 - apiGroups: [""]
   resources: ["secrets", "events"]
-  verbs: ["get", "delete", "update", "create"]
+  verbs:
+{{- if .Values.extensions.credsFlattener.enabled }}
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+{{- else }}
+  - get
+  - delete
+  - update
+  - create
+{{- end }}
+{{- if .Values.extensions.credsFlattener.enabled }}
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+{{- end }}
 
 ---
 

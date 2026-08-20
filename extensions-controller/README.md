@@ -346,7 +346,7 @@ func NewCommand(name string) *cobra.Command {
     if name == "manager" {
         return newOperatorCommand(name)
     }
-    return newCLICommand(name)
+    return cli.NewCLICommand(name)
 }
 ```
 
@@ -552,7 +552,8 @@ go build -o bin/vcsi ./cmd/main.go    # build the CLI binary
 
 ```bash
 # Start the operator pointing at your kubeconfig context
-./bin/vcsi pvc-label-webhook --kubeconfig ~/.kube/config
+./bin/manager replication --kubeconfig ~/.kube/config
+./bin/manager replication webhook --kubeconfig ~/.kube/config
 ```
 
 ### Project layout
@@ -568,7 +569,9 @@ extensions-controller/
 ├── internal/
 │   ├── cmd/
 │   │   ├── cli/actions/        # vcsi subcommands (failover, status, sync)
-│   │   └── webhook/            # pvc-label-webhook cobra command
+│   │   ├── namespace/          # Namespace interface + Attach helper
+│   │   ├── replication/        # manager replication namespace (namespace.go + module.go)
+│   │   └── webhook/            # manager webhook namespace (namespace.go + module.go)
 │   ├── common/
 │   │   ├── config/             # Config struct + env binding
 │   │   ├── events/             # Event reason constants + BoundReporter
@@ -586,7 +589,7 @@ extensions-controller/
 1. Create `internal/controller/<name>_controller.go` with a `Reconcile` method.
 2. Embed `BaseReconciler` for shared dependencies (`K8sClient`, `Log`, `Config`, `EventReporter`, `Locker`).
 3. Register via `Setup<Name>Controller(mgr, k8sClient, logger, cfg)` — follow the pattern in existing controllers.
-4. Call `Setup<Name>Controller` from `internal/cmd/webhook/webhook.go`.
+4. Call `Setup<Name>Controller` from `internal/cmd/webhook/module.go`.
 
 ### Running tests
 

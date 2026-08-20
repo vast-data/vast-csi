@@ -1,11 +1,11 @@
-package flatten
+package cosi
 
 import (
 	"strings"
 	"testing"
 )
 
-const happyBucketInfo = `{
+const goodBucketInfo = `{
   "spec": {
     "bucketName": "my-bucket",
     "authenticationType": "KEY",
@@ -46,7 +46,7 @@ func TestFlatName(t *testing.T) {
 }
 
 func TestParseBucketInfo_happy(t *testing.T) {
-	got, err := ParseBucketInfo([]byte(happyBucketInfo))
+	got, err := ParseBucketInfo([]byte(goodBucketInfo))
 	if err != nil {
 		t.Fatalf("ParseBucketInfo: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestParseBucketInfo_happy(t *testing.T) {
 }
 
 func TestParseBucketInfo_httpsEndpoint(t *testing.T) {
-	raw := strings.Replace(happyBucketInfo, "http://172.0.0.1:80", "https://vip.example:443", 1)
+	raw := strings.Replace(goodBucketInfo, "http://172.0.0.1:80", "https://vip.example:443", 1)
 	got, err := ParseBucketInfo([]byte(raw))
 	if err != nil {
 		t.Fatalf("ParseBucketInfo: %v", err)
@@ -75,7 +75,7 @@ func TestParseBucketInfo_httpsEndpoint(t *testing.T) {
 }
 
 func TestParseBucketInfo_malformedEndpoint(t *testing.T) {
-	raw := strings.Replace(happyBucketInfo, "http://172.0.0.1:80", "://11.0.0.102:80", 1)
+	raw := strings.Replace(goodBucketInfo, "http://172.0.0.1:80", "://11.0.0.102:80", 1)
 	got, err := ParseBucketInfo([]byte(raw))
 	if err != nil {
 		t.Fatalf("ParseBucketInfo: %v", err)

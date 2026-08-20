@@ -1,22 +1,12 @@
-package cli
+package client
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/fatih/color"
 	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
 	k8sclient "github.com/vast-data/vast-csi/extensions-controller/internal/common/k8s_client"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-)
-
-// Color helpers — enabled by default on TTY; root command may set color.NoColor = true.
-var (
-	Green  = color.New(color.FgGreen).SprintFunc()
-	Yellow = color.New(color.FgYellow).SprintFunc()
-	Red    = color.New(color.FgRed).SprintFunc()
-	Cyan   = color.New(color.FgCyan).SprintFunc()
-	Bold   = color.New(color.Bold).SprintFunc()
 )
 
 // ReplicationCRD constrains the two replication CRD pointer types.

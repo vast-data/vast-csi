@@ -1,4 +1,4 @@
-package credsflatten
+package controller
 
 import (
 	"context"
@@ -24,25 +24,27 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.com/vast-data/vast-csi/extensions-controller/internal/cosi/flatten"
+	"github.com/vast-data/vast-csi/extensions-controller/internal/common/cosi"
 )
 
 const (
 	credentialsSecretNameIndex = "spec.credentialsSecretName"
-	bucketInfoKey              = "BucketInfo"
 	requeueAfter               = 15 * time.Second
 
 	eventReasonFlattenError  = "FlattenError"
 	eventReasonForeignClash  = "FlattenForeignClash"
 	eventReasonMissingSecret = "FlattenWaitingSecret"
+
+	// controller-runtime name and Kubernetes Event source for this reconciler.
+	credentialsFlattenerControllerName = "cosi-credentials-flattener"
 )
 
 // errForeignFlat means *-flat exists but is not owned by this BucketAccess.
 // Returned from CreateOrUpdate TOCTOU guard in ensureFlat*.
 var errForeignFlat = errors.New("foreign flat object")
 
-// BucketAccessReconciler flattens COSI BucketInfo Secrets into Rook-style env vars.
-type BucketAccessReconciler struct {
+// CredentialsFlattenerReconciler flattens COSI BucketInfo Secrets into Rook-style env vars.
+type CredentialsFlattenerReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
@@ -62,7 +64,7 @@ type BucketAccessReconciler struct {
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-func (r *BucketAccessReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *CredentialsFlattenerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	ba := &objectstoragev1alpha1.BucketAccess{}
@@ -73,7 +75,7 @@ func (r *BucketAccessReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	if !flatten.WantFlatten(ba.GetAnnotations()) {
+	if !cosi.WantFlatten(ba.GetAnnotations()) {
 		if err := r.deleteOwnedFlatPair(ctx, ba, ""); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -86,7 +88,7 @@ func (r *BucketAccessReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		r.eventDeduped(ba, corev1.EventTypeWarning, eventReasonFlattenError, "credentialsSecretName is empty")
 		return ctrl.Result{RequeueAfter: requeueAfter}, nil
 	}
-	flatName := flatten.FlatName(credName)
+	flatName := cosi.FlatName(credName)
 
 	// Rename cleanup: drop owned -flat siblings that are not the current flat name.
 	if err := r.deleteOwnedFlatPair(ctx, ba, flatName); err != nil {
@@ -104,12 +106,12 @@ func (r *BucketAccessReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	raw, ok := src.Data[bucketInfoKey]
+	raw, ok := src.Data[cosi.BucketInfoKey]
 	if !ok {
 		r.eventDeduped(ba, corev1.EventTypeWarning, eventReasonFlattenError, "Secret missing BucketInfo key")
 		return ctrl.Result{RequeueAfter: requeueAfter}, nil
 	}
-	data, err := flatten.ParseBucketInfo(raw)
+	data, err := cosi.ParseBucketInfo(raw)
 	if err != nil {
 		logger.Error(err, "BucketInfo parse failed; keeping last-good -flat if any")
 		// Deduped: bad JSON can sit for a long time; Event once, then log-only via logger above on repeats.
@@ -132,14 +134,14 @@ func (r *BucketAccessReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return ctrl.Result{}, nil
 }
 
-func (r *BucketAccessReconciler) event(ba *objectstoragev1alpha1.BucketAccess, eventType, reason, msg string) {
+func (r *CredentialsFlattenerReconciler) event(ba *objectstoragev1alpha1.BucketAccess, eventType, reason, msg string) {
 	if r.Recorder != nil {
 		r.Recorder.Event(ba, eventType, reason, msg)
 	}
 }
 
 // eventDeduped emits an Event only when reason+msg changed since the last emit for this BA.
-func (r *BucketAccessReconciler) eventDeduped(ba *objectstoragev1alpha1.BucketAccess, eventType, reason, msg string) {
+func (r *CredentialsFlattenerReconciler) eventDeduped(ba *objectstoragev1alpha1.BucketAccess, eventType, reason, msg string) {
 	key := types.NamespacedName{Namespace: ba.Namespace, Name: ba.Name}
 	stamp := reason + "|" + msg
 
@@ -157,14 +159,14 @@ func (r *BucketAccessReconciler) eventDeduped(ba *objectstoragev1alpha1.BucketAc
 	r.event(ba, eventType, reason, msg)
 }
 
-func (r *BucketAccessReconciler) clearEventOnce(ba *objectstoragev1alpha1.BucketAccess) {
+func (r *CredentialsFlattenerReconciler) clearEventOnce(ba *objectstoragev1alpha1.BucketAccess) {
 	key := types.NamespacedName{Namespace: ba.Namespace, Name: ba.Name}
 	r.eventOnceMu.Lock()
 	delete(r.eventOnce, key)
 	r.eventOnceMu.Unlock()
 }
 
-func (r *BucketAccessReconciler) reconcileForeignClash(ba *objectstoragev1alpha1.BucketAccess, flatName string) ctrl.Result {
+func (r *CredentialsFlattenerReconciler) reconcileForeignClash(ba *objectstoragev1alpha1.BucketAccess, flatName string) ctrl.Result {
 	r.eventDeduped(ba, corev1.EventTypeWarning, eventReasonForeignClash,
 		fmt.Sprintf("%q already exists and is not owned by this BucketAccess", flatName))
 	return ctrl.Result{RequeueAfter: requeueAfter}
@@ -182,7 +184,7 @@ func isOwnedBy(obj metav1.Object, ba *objectstoragev1alpha1.BucketAccess) bool {
 // ensureFlatPair writes the *-flat Secret and ConfigMap together. On ConfigMap
 // failure after Secret success, rolls back the owned flat Secret so clients never
 // see credentials without matching BUCKET_* env vars.
-func (r *BucketAccessReconciler) ensureFlatPair(ctx context.Context, ba *objectstoragev1alpha1.BucketAccess, flatName string, data flatten.FlatData) error {
+func (r *CredentialsFlattenerReconciler) ensureFlatPair(ctx context.Context, ba *objectstoragev1alpha1.BucketAccess, flatName string, data cosi.FlatData) error {
 	if err := r.ensureFlatSecret(ctx, ba, flatName, data); err != nil {
 		return err
 	}
@@ -195,7 +197,7 @@ func (r *BucketAccessReconciler) ensureFlatPair(ctx context.Context, ba *objects
 	return nil
 }
 
-func (r *BucketAccessReconciler) rollbackFlatSecret(ctx context.Context, ba *objectstoragev1alpha1.BucketAccess, flatName string) error {
+func (r *CredentialsFlattenerReconciler) rollbackFlatSecret(ctx context.Context, ba *objectstoragev1alpha1.BucketAccess, flatName string) error {
 	sec := &corev1.Secret{}
 	if err := r.Get(ctx, types.NamespacedName{Namespace: ba.Namespace, Name: flatName}, sec); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -214,8 +216,8 @@ func (r *BucketAccessReconciler) rollbackFlatSecret(ctx context.Context, ba *obj
 
 // deleteOwnedFlatPair deletes Secrets/ConfigMaps labeled for this BA.
 // If keepName is non-empty, that name is preserved.
-func (r *BucketAccessReconciler) deleteOwnedFlatPair(ctx context.Context, ba *objectstoragev1alpha1.BucketAccess, keepName string) error {
-	sel := client.MatchingLabels{flatten.LabelBucketAccessUID: string(ba.UID)}
+func (r *CredentialsFlattenerReconciler) deleteOwnedFlatPair(ctx context.Context, ba *objectstoragev1alpha1.BucketAccess, keepName string) error {
+	sel := client.MatchingLabels{cosi.LabelBucketAccessUID: string(ba.UID)}
 
 	secList := &corev1.SecretList{}
 	if err := r.List(ctx, secList, client.InNamespace(ba.Namespace), sel); err != nil {
@@ -253,7 +255,7 @@ func (r *BucketAccessReconciler) deleteOwnedFlatPair(ctx context.Context, ba *ob
 	return nil
 }
 
-func (r *BucketAccessReconciler) ensureFlatSecret(ctx context.Context, ba *objectstoragev1alpha1.BucketAccess, flatName string, data flatten.FlatData) error {
+func (r *CredentialsFlattenerReconciler) ensureFlatSecret(ctx context.Context, ba *objectstoragev1alpha1.BucketAccess, flatName string, data cosi.FlatData) error {
 	sec := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: flatName, Namespace: ba.Namespace}}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, sec, func() error {
 		// TOCTOU: between Get and mutate another client can create a Secret with the same name and no
@@ -266,7 +268,7 @@ func (r *BucketAccessReconciler) ensureFlatSecret(ctx context.Context, ba *objec
 		if err := controllerutil.SetControllerReference(ba, sec, r.Scheme); err != nil {
 			return err
 		}
-		metav1.SetMetaDataLabel(&sec.ObjectMeta, flatten.LabelBucketAccessUID, string(ba.UID))
+		metav1.SetMetaDataLabel(&sec.ObjectMeta, cosi.LabelBucketAccessUID, string(ba.UID))
 		sec.Data = map[string][]byte{
 			"AWS_ACCESS_KEY_ID":     []byte(data.AccessKeyID),
 			"AWS_SECRET_ACCESS_KEY": []byte(data.SecretAccessKey),
@@ -276,7 +278,7 @@ func (r *BucketAccessReconciler) ensureFlatSecret(ctx context.Context, ba *objec
 	return err
 }
 
-func (r *BucketAccessReconciler) ensureFlatConfigMap(ctx context.Context, ba *objectstoragev1alpha1.BucketAccess, flatName string, data flatten.FlatData) error {
+func (r *CredentialsFlattenerReconciler) ensureFlatConfigMap(ctx context.Context, ba *objectstoragev1alpha1.BucketAccess, flatName string, data cosi.FlatData) error {
 	cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: flatName, Namespace: ba.Namespace}}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, cm, func() error {
 		// Same TOCTOU guard as ensureFlatSecret (see comment there).
@@ -286,7 +288,7 @@ func (r *BucketAccessReconciler) ensureFlatConfigMap(ctx context.Context, ba *ob
 		if err := controllerutil.SetControllerReference(ba, cm, r.Scheme); err != nil {
 			return err
 		}
-		metav1.SetMetaDataLabel(&cm.ObjectMeta, flatten.LabelBucketAccessUID, string(ba.UID))
+		metav1.SetMetaDataLabel(&cm.ObjectMeta, cosi.LabelBucketAccessUID, string(ba.UID))
 		cm.Data = map[string]string{
 			"BUCKET_NAME":     data.BucketName,
 			"BUCKET_HOST":     data.Host,
@@ -298,12 +300,12 @@ func (r *BucketAccessReconciler) ensureFlatConfigMap(ctx context.Context, ba *ob
 	return err
 }
 
-// SetupBucketAccessReconciler registers the reconciler with primary BA and secondary Secret watches.
-func SetupBucketAccessReconciler(mgr ctrl.Manager) error {
-	r := &BucketAccessReconciler{
+// SetupCredentialsFlattenerController registers the COSI credentials flattener (BucketAccess → *-flat).
+func SetupCredentialsFlattenerController(mgr ctrl.Manager) error {
+	r := &CredentialsFlattenerReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("cosi-secret-flatten"),
+		Recorder: mgr.GetEventRecorderFor(credentialsFlattenerControllerName),
 	}
 
 	if err := mgr.GetFieldIndexer().IndexField(
@@ -355,6 +357,6 @@ func SetupBucketAccessReconciler(mgr ctrl.Manager) error {
 		Owns(&corev1.Secret{}).
 		Owns(&corev1.ConfigMap{}).
 		Watches(&corev1.Secret{}, mapSecretToBA, builder.WithPredicates(ignoreFlatSecrets), builder.OnlyMetadata).
-		Named("cosi-secret-flatten").
+		Named(credentialsFlattenerControllerName).
 		Complete(r)
 }

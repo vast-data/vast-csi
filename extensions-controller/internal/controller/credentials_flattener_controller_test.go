@@ -1,18 +1,175 @@
-package credsflatten
+package controller
 
 import (
 	"context"
 	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/record"
+	objectstoragev1alpha1 "sigs.k8s.io/container-object-storage-interface/client/apis/objectstorage/v1alpha1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/envtest"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	"github.com/vast-data/vast-csi/extensions-controller/internal/cosi/flatten"
+	"github.com/vast-data/vast-csi/extensions-controller/internal/common/cosi"
 )
+
+var (
+	cosiTestOnce   sync.Once
+	cosiTestCfg    *rest.Config
+	cosiTestScheme *runtime.Scheme
+	cosiTestErr    error
+)
+
+const goodBucketInfo = `{
+  "spec": {
+    "bucketName": "my-bucket",
+    "authenticationType": "KEY",
+    "secretS3": {
+      "accessKeyID": "AKIAEXAMPLE",
+      "accessSecretKey": "secret",
+      "endpoint": "http://172.0.0.1:80"
+    }
+  }
+}`
+
+func cosiClientCRDDir() string {
+	out, err := exec.Command(
+		"go", "list", "-m", "-f", "{{.Dir}}",
+		"sigs.k8s.io/container-object-storage-interface/client",
+	).Output()
+	if err != nil {
+		panic("COSI client module dir: " + err.Error())
+	}
+	return filepath.Join(strings.TrimSpace(string(out)), "config", "crd")
+}
+
+func ensureCosiTestEnv() error {
+	cosiTestOnce.Do(func() {
+		logf.SetLogger(zap.New(zap.WriteTo(os.Stderr), zap.UseDevMode(true)))
+
+		cosiTestScheme = runtime.NewScheme()
+		_ = corev1.AddToScheme(cosiTestScheme)
+		_ = objectstoragev1alpha1.AddToScheme(cosiTestScheme)
+
+		testEnv := &envtest.Environment{
+			CRDDirectoryPaths:     []string{cosiClientCRDDir()},
+			ErrorIfCRDPathMissing: true,
+			Scheme:                cosiTestScheme,
+		}
+		if dir := os.Getenv("KUBEBUILDER_ASSETS"); dir != "" {
+			testEnv.BinaryAssetsDirectory = dir
+		}
+
+		cosiTestCfg, cosiTestErr = testEnv.Start()
+	})
+	return cosiTestErr
+}
+
+func newTestClient(t *testing.T) client.Client {
+	t.Helper()
+	if err := ensureCosiTestEnv(); err != nil {
+		t.Fatalf("envtest: %v", err)
+	}
+	c, err := client.New(cosiTestCfg, client.Options{Scheme: cosiTestScheme})
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+	return c
+}
+
+func newReconciler(c client.Client) *CredentialsFlattenerReconciler {
+	return &CredentialsFlattenerReconciler{
+		Client:   c,
+		Scheme:   cosiTestScheme,
+		Recorder: record.NewFakeRecorder(32),
+	}
+}
+
+func makeNS(t *testing.T, c client.Client, name string) {
+	t.Helper()
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	if err := c.Create(context.Background(), ns); err != nil {
+		t.Fatalf("create ns: %v", err)
+	}
+}
+
+func makeBA(name, ns, credSecret string, annotate bool) *objectstoragev1alpha1.BucketAccess {
+	ba := &objectstoragev1alpha1.BucketAccess{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ns,
+		},
+		Spec: objectstoragev1alpha1.BucketAccessSpec{
+			CredentialsSecretName: credSecret,
+		},
+	}
+	if annotate {
+		ba.Annotations = map[string]string{cosi.AnnotationFlatten: "true"}
+	}
+	return ba
+}
+
+func makeCredSecret(name, ns, bucketInfo string) *corev1.Secret {
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+		Data:       map[string][]byte{cosi.BucketInfoKey: []byte(bucketInfo)},
+	}
+}
+
+func reconcileBA(t *testing.T, r *CredentialsFlattenerReconciler, ba *objectstoragev1alpha1.BucketAccess) ctrl.Result {
+	t.Helper()
+	res, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: client.ObjectKeyFromObject(ba),
+	})
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	return res
+}
+
+func getSecret(t *testing.T, c client.Client, ns, name string) (*corev1.Secret, error) {
+	t.Helper()
+	sec := &corev1.Secret{}
+	err := c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: name}, sec)
+	return sec, err
+}
+
+func getCM(t *testing.T, c client.Client, ns, name string) (*corev1.ConfigMap, error) {
+	t.Helper()
+	cm := &corev1.ConfigMap{}
+	err := c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: name}, cm)
+	return cm, err
+}
+
+func TestSetupCredentialsFlattenerController(t *testing.T) {
+	if err := ensureCosiTestEnv(); err != nil {
+		t.Fatalf("envtest: %v", err)
+	}
+	mgr, err := ctrl.NewManager(cosiTestCfg, ctrl.Options{
+		Scheme:  cosiTestScheme,
+		Metrics: metricsserver.Options{BindAddress: "0"},
+	})
+	if err != nil {
+		t.Fatalf("manager: %v", err)
+	}
+	if err := SetupCredentialsFlattenerController(mgr); err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+}
 
 func TestReconcile_Create(t *testing.T) {
 	c := newTestClient(t)
@@ -144,7 +301,7 @@ func TestReconcile_Rotate(t *testing.T) {
 	if err := c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: "creds"}, src); err != nil {
 		t.Fatal(err)
 	}
-	src.Data[bucketInfoKey] = []byte(rotated)
+	src.Data[cosi.BucketInfoKey] = []byte(rotated)
 	if err := c.Update(context.Background(), src); err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +371,7 @@ func TestReconcile_AnnotationAddedLater(t *testing.T) {
 	reconcileBA(t, r, ba)
 
 	_ = c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: "ba"}, ba)
-	ba.Annotations = map[string]string{flatten.AnnotationFlatten: "true"}
+	ba.Annotations = map[string]string{cosi.AnnotationFlatten: "true"}
 	_ = c.Update(context.Background(), ba)
 	reconcileBA(t, r, ba)
 	if _, err := getSecret(t, c, ns, "creds-flat"); err != nil {
@@ -253,7 +410,7 @@ func TestReconcile_BadJSONKeepLastGood(t *testing.T) {
 	reconcileBA(t, r, ba)
 
 	_ = c.Get(context.Background(), client.ObjectKey{Namespace: ns, Name: "creds"}, src)
-	src.Data[bucketInfoKey] = []byte(`garbage`)
+	src.Data[cosi.BucketInfoKey] = []byte(`garbage`)
 	_ = c.Update(context.Background(), src)
 	reconcileBA(t, r, ba)
 
@@ -330,7 +487,7 @@ func TestReconcile_AnnotationValueNotExactTrue(t *testing.T) {
 	makeNS(t, c, ns)
 
 	ba := makeBA("ba", ns, "creds", true)
-	ba.Annotations[flatten.AnnotationFlatten] = "True"
+	ba.Annotations[cosi.AnnotationFlatten] = "True"
 	_ = c.Create(context.Background(), ba)
 	_ = c.Create(context.Background(), makeCredSecret("creds", ns, goodBucketInfo))
 	reconcileBA(t, r, ba)
@@ -340,7 +497,6 @@ func TestReconcile_AnnotationValueNotExactTrue(t *testing.T) {
 }
 
 func TestReconcile_OwnerRefPresent(t *testing.T) {
-	// Spec #6: assert ownerRef so K8s GC would delete on BA delete.
 	c := newTestClient(t)
 	r := newReconciler(c)
 	ns := "ns-owner"
@@ -367,7 +523,6 @@ func TestReconcile_OwnerRefPresent(t *testing.T) {
 	}
 }
 
-// failFlatConfigMapClient fails Create on *-flat ConfigMaps (after flat Secret write).
 type failFlatConfigMapClient struct {
 	client.Client
 }
@@ -389,7 +544,7 @@ func TestEnsureFlatPair_RollbackSecretOnConfigMapFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data, err := flatten.ParseBucketInfo([]byte(goodBucketInfo))
+	data, err := cosi.ParseBucketInfo([]byte(goodBucketInfo))
 	if err != nil {
 		t.Fatal(err)
 	}

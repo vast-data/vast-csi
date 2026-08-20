@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
-	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/cli"
+	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/cli/client"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/manager"
 )
 
@@ -69,7 +69,7 @@ Examples:
 			if manner != "" {
 				desc = manner + " failover"
 			}
-			fmt.Printf("%s Triggering %s on %s/%s ...\n", cli.Cyan("→"), desc, kind, cli.Bold(name))
+			fmt.Printf("%s Triggering %s on %s/%s ...\n", client.Cyan("→"), desc, kind, client.Bold(name))
 
 			// Validate that the requested primary differs from the current one
 			// and is a member of the protection topology.
@@ -90,15 +90,15 @@ Examples:
 					return err
 				}
 			}
-			if err := cli.PatchReplicationSpec(ctx, k8s, vscrName, vvrName, namespace, failoverType, primary); err != nil {
+			if err := client.PatchReplicationSpec(ctx, k8s, vscrName, vvrName, namespace, failoverType, primary); err != nil {
 				return fmt.Errorf("failover failed: %w", err)
 			}
 
-			msg := fmt.Sprintf("Primary StorageClass will switch to %s", cli.Bold(primary))
+			msg := fmt.Sprintf("Primary StorageClass will switch to %s", client.Bold(primary))
 			if failoverType != "" {
-				msg += fmt.Sprintf("; failoverType set to %s", colorFailoverType(failoverType))
+				msg += fmt.Sprintf("; failoverType set to %s", client.FailoverType(failoverType))
 			}
-			fmt.Printf("%s %s\n", cli.Green("✓"), msg)
+			fmt.Printf("%s %s\n", client.Green("✓"), msg)
 			return nil
 		},
 	}
@@ -134,14 +134,4 @@ func validateFailoverPrimary(primary, currentPrimary string, all []string) error
 	}
 	return fmt.Errorf("StorageClass %q is not part of the replication topology\navailable options: %s",
 		primary, vastv1alpha1.DisplayableList(candidates).String())
-}
-
-// colorFailoverType returns failoverType colored for terminal output.
-func colorFailoverType(ft vastv1alpha1.FailoverAction) string {
-	switch ft {
-	case vastv1alpha1.FailoverTypeGraceful, vastv1alpha1.FailoverTypeUngraceful:
-		return cli.Yellow(string(ft))
-	default:
-		return string(ft)
-	}
 }

@@ -44,7 +44,7 @@ helm uninstall cosi-driver  -n vast-cosi
 Enable Rook-style flat env vars (`AWS_*` / `BUCKET_*`) from annotated `BucketAccess`:
 
 ```console
-helm upgrade cosi-driver vast/vastcosi -f values.yaml -n vast-cosi --set credsFlattener.enabled=true
+helm upgrade cosi-driver vast/vastcosi -f values.yaml -n vast-cosi --set extensions.credsFlattener.enabled=true
 ```
 
 Flattener uses the extensions-controller image (`{csiVastPlugin.tag}-extensions`). Override with `image.vastExtensionController.repository` / `tag` if needed.

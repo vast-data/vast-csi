@@ -1,16 +1,10 @@
-package flatten
+package cosi
 
 import (
 	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
-)
-
-const (
-	AnnotationFlatten = "cosi.vastdata.com/flatten-credentials"
-	// LabelBucketAccessUID marks Secret/ConfigMap created by the flattener for a BA.
-	LabelBucketAccessUID = "cosi.vastdata.com/bucketaccess-uid"
 )
 
 // FlatData holds Rook-style flat credential fields derived from BucketInfo JSON.
