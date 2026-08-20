@@ -32,11 +32,10 @@ type Config struct {
 	// PVC Label Injection Webhook
 	//
 	// PvcLabelWebhookEnabled is set by the --enable-pvc-label-webhook CLI flag.
-	// The Helm chart forwards extensions.webhook.disablePvcLabelsWebhook as this
-	// flag: when disablePvcLabelsWebhook is false (the default), --enable-pvc-label-webhook
-	// is passed to the process, enabling label injection.  When true the flag is
-	// omitted and only replication CRD validation webhooks remain active.
-	PvcLabelWebhookEnabled bool   `component:"pvc-label-webhook"`
+	// The Helm chart forwards extensions.replication.webhooks.pvcLabels.enabled.
+	PvcLabelWebhookEnabled bool `component:"pvc-label-webhook"`
+	VSCRValidationWebhookEnabled bool `component:"pvc-label-webhook"`
+	VVRValidationWebhookEnabled  bool `component:"pvc-label-webhook"`
 	WebhookCertPath        string `component:"pvc-label-webhook"`
 	WebhookCertName        string `component:"pvc-label-webhook"`
 	WebhookCertKey         string `component:"pvc-label-webhook"`
@@ -44,6 +43,7 @@ type Config struct {
 	StorageClassNameRegex  string `component:"pvc-label-webhook"`
 	PVCNameRegex           string `component:"pvc-label-webhook"`
 	CSIDriverName          string `component:"pvc-label-webhook"`
+	CSIDriverNameRegex     string `component:"pvc-label-webhook"`
 
 	// Format strings for replication resources
 	PVCNameFormat                    string `component:"replication"`
@@ -61,6 +61,11 @@ type Config struct {
 	// targets PVCs that were created before the webhook was enabled.
 	// Runs on PrimaryStorageClass change
 	ApplyExistingPVCs bool `component:"replication"`
+
+	// ExtensionsGRPCBindAddress is the listen address for the VastExtensions gRPC API.
+	// Use TCP (e.g. ":9090") for cross-pod access via a Kubernetes Service, or a unix
+	// socket path for co-located sidecars in the standalone Helm chart.
+	ExtensionsGRPCBindAddress string `component:"replication"`
 
 	// Shared manager configuration (always displayed)
 	HealthProbeBindAddress string

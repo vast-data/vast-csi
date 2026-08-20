@@ -47,6 +47,15 @@ hostNamePrefix: ""
 # and an error will be returned. This prevents the driver from getting stuck indefinitely
 # due to network issues or unresponsive storage.
 mountUmountTimeout: 90
+# Secret that encrypts EV credentials. Must contain a `key` field.
+# Empty: store credentials as plaintext JSON.
+# Example: kubectl create secret generic vast-cred-serde --from-literal=key="$(openssl rand -base64 32)"
+credSerializationSecret: ""
+# When true, unpublish of already-mounted EV volumes may use legacy AES-CFB+pickle
+# metadata and a .vast-csi-meta file on local disk (no tmpfs). New publishes always
+# use tmpfs. Leave false (disabled) unless upgrading a cluster that still has
+# old-format EV volumes mounted; set false again after they unpublish.
+fallbackToDeser: false
 # Enable symlink resolution when querying mount information.
 # When enabled, mount paths containing symlinks (e.g., /dev/disk/by-uuid/*) will be
 # resolved to their canonical paths before comparison.
@@ -238,9 +247,25 @@ extensions:
     # Set to true to disable the PVC label injection webhook.
     # When false (default), labels (storageClass, subsystem, volumeGroup) are
     # automatically injected onto PVCs at creation time based on StorageClass parameters.
-    # Note: replication CRD validation webhooks (VSCR/VVR) are always active
-    # whenever extensions.enabled is true.
+    # Note: replication CRD validation webhooks can be disabled independently
+    # via disableVscrValidationWebhook / disableVvrValidationWebhook.
     disablePvcLabelsWebhook: false
+
+    # Set to true to disable the VastStorageClassReplication validation webhook.
+    # When false (default), --enable-vscr-validation-webhook is passed to the container
+    # and VSCR create/update requests are validated (topology, StorageClass consistency,
+    # replication peer discovery, block subsystem checks).
+    # When true, the flag is omitted and the webhook entry is excluded from the
+    # MutatingWebhookConfiguration.
+    disableVscrValidationWebhook: false
+
+    # Set to true to disable the VastVolumeReplication validation webhook.
+    # When false (default), --enable-vvr-validation-webhook is passed to the container
+    # and VVR create/update requests are validated (topology, PVC StorageClass match,
+    # replication peer discovery, block subsystem checks).
+    # When true, the flag is omitted and the webhook entry is excluded from the
+    # MutatingWebhookConfiguration.
+    disableVvrValidationWebhook: false
 
     # Failure policy applied to all webhook handlers.
     # - Fail:   the operation is rejected when the webhook is unreachable or times out.
@@ -500,7 +525,7 @@ snapshotClasses: {}
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.6.6  # the version of the Vast CSI driver
+    tag: v2.6.6-hf3  # the version of the Vast CSI driver
     imagePullPolicy: IfNotPresent
   csiAttacher:
     repository: registry.k8s.io/sig-storage/csi-attacher
@@ -650,6 +675,10 @@ controller:
       metricRelabelings: []
 
 node:
+  # Comma-separated host directories (under /host) to search for binaries.
+  # Appended to driver defaults (/usr/sbin, /usr/bin, /sbin, /bin, /usr/local/sbin, /usr/local/bin).
+  # Example (GKE COS): "/home/kubernetes/containerized_mounter/rootfs/usr/sbin"
+  hostBinarySearchDirs: ""
   # See controller.dnsPolicy section for details
   dnsPolicy: Default
   # See controller.nodeSelector section for details

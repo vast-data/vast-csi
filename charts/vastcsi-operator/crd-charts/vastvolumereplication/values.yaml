@@ -1,0 +1,23 @@
+####################
+# VastVolumeReplication
+####################
+# Create this resource only when exactly one VastExtensionsManager is running.
+# The extensions manager installs webhooks and reconciles VVR objects.
+
+volumeName: ""
+volumeNamespace: ""
+primaryStorageClass: ""
+
+protectionTopology: []
+
+protectionPolicyTemplate:
+  params:
+    - every: "15m"
+      keepLocal: "1d"
+      keepRemote: "7d"
+
+failoverType: ungracefulFailover
+destVolReclaimPolicy: Retain
+pvcRemap: false
+resync: false
+syncIntervalSeconds: 0

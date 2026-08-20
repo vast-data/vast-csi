@@ -1,0 +1,61 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-vast-extensions-manager-role
+  labels:
+{{- include "vastextensionsmanager.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["replication.storage.openshift.io"]
+    resources: ["volumereplications", "volumegroupreplications"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["replication.storage.openshift.io"]
+    resources: ["volumereplicationclasses", "volumegroupreplicationclasses"]
+    verbs: ["get", "list", "watch", "create"]
+  - apiGroups: ["vastdata.com"]
+    resources: ["vastreplicationcontents", "vaststorageclassreplications", "vastvolumereplications"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["vastdata.com"]
+    resources: ["vastreplicationcontents/finalizers", "vaststorageclassreplications/finalizers", "vastvolumereplications/finalizers"]
+    verbs: ["update"]
+  - apiGroups: ["vastdata.com"]
+    resources: ["vastreplicationcontents/status", "vaststorageclassreplications/status", "vastvolumereplications/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-vast-extensions-manager-binding
+  labels:
+{{- include "vastextensionsmanager.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-vast-extensions-manager-sa
+    namespace: {{ include "vastextensionsmanager.namespace" . }}
+roleRef:
+  kind: ClusterRole
+  name: {{ .Release.Name }}-vast-extensions-manager-role
+  apiGroup: rbac.authorization.k8s.io

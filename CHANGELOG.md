@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## Version 2.6.6-hf3
+* Updated CSI operator and extensions-controller images to address Trivy HIGH/CVE findings.
+
+## Version 2.6.6-hf2
+* CSI inline ephemeral volume (EV) credentials are now stored on a tmpfs overlay. New publishes always use tmpfs and JSON metadata; set `credSerializationSecret` to encrypt with AES-GCM
+* Added `fallbackToDeser` (`X_CSI_FALLBACK_TO_DESER`) to unpublish EV volumes that still use the old on-disk pickle serializer. Defaults to `false`; set `true` only while old-format EVs remain mounted, then set `false` again after they unpublish
+
+## Version 2.6.6-hf1
+* Fixed block node startup crash on minimal OSes (e.g. Talos Linux) when `nvme-tcp` is preloaded but `modprobe` is unavailable. The driver now checks sysfs before attempting host `modprobe`, and resolves host `nvme`/`cryptsetup` via direct `chroot` without requiring host `/usr/bin/env` (VCSI-599)
+* Added `hostBinarySearchDirs` (`X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS`) configuration option to customize host directories searched for block tools (`nvme`, `cryptsetup`, `e2fsck`, etc.)
+* Snapshot `size_bytes` is now populated from the source volume size (block) or quota hard limit (NFS) instead of reporting unspecified, enabling CDI `restoreSize` support
+
 ## Version 2.6.6
 * Added `ReadOnlyMany` (ROX) access mode support for the block CSI driver
 * Changed default node pod `priorityClass` to `system-node-critical` to ensure node workloads are not evicted under resource pressure (VCSI-358)

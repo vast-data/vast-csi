@@ -37,6 +37,8 @@ overrides:
     repository: registry.k8s.io/sig-storage/csi-snapshotter@sha256:42af0929bcd60a43499825c078a60ff0534e08af8fbeb283aa391be40feb9f3e
   csiAddonsSidecar:
     repository: quay.io/csiaddons/k8s-sidecar@sha256:208b4d21b125f4ef9d0ea4082bdf5aeafc9771e0e233e7c60e50e8bf3f5cb3db
+  csiAddonsController:
+    repository: quay.io/csiaddons/k8s-controller@sha256:318b6dd286db67bee59f2fc2ee0cc9a21302c9f90a43a8d2bda2fdaf78a1ae5b
   vastExtensionController:
     repository: docker.io/vastdataorg/csi@sha256:4ee38a27ee19d033a6cca47cd442855159eeb4645c83fa659bee8d5d8286dbf2
 

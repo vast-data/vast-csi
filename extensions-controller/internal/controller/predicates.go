@@ -26,16 +26,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
-// isOwnedByVSCROrVVR returns true when obj carries an owner reference whose
-// Kind is VastStorageClassReplication or VastVolumeReplication.  Those objects
-// are exclusively managed by their own reconcilers.
+// isOwnedByVSCROrVVR returns true when obj is managed by a VastStorageClassReplication
+// or VastVolumeReplication (owner reference or source label).
 func isOwnedByVSCROrVVR(obj client.Object) bool {
-	for _, ref := range obj.GetOwnerReferences() {
-		if ref.Kind == "VastStorageClassReplication" || ref.Kind == "VastVolumeReplication" {
-			return true
-		}
+	if vast_common.OwnerByKind(obj.GetOwnerReferences(), "VastStorageClassReplication") != nil {
+		return true
 	}
-	return false
+	if vast_common.OwnerByKind(obj.GetOwnerReferences(), "VastVolumeReplication") != nil {
+		return true
+	}
+	labels := obj.GetLabels()
+	if labels == nil {
+		return false
+	}
+	return labels[vast_common.LabelSourceVSCR] != "" || labels[vast_common.LabelSourceVVR] != ""
 }
 
 // VastReplicationContentPredicate gates the VastReplicationContent reconciler.

@@ -58,6 +58,7 @@ type PVCLabelInjector struct {
 	// Cached compiled regexes
 	storageClassNameRegex *regexp.Regexp
 	pvcNameRegex          *regexp.Regexp
+	csiDriverNameRegex    *regexp.Regexp
 	regexOnce             sync.Once
 
 	// scCache maps storageClassName → scInfo.
@@ -125,12 +126,11 @@ func (p *PVCLabelInjector) Handle(ctx context.Context, req admission.Request) ad
 		return admission.Allowed("failed to get storageClass")
 	}
 
-	// CSI driver name filter: skip if the SC's provisioner doesn't match.
-	if p.Config.CSIDriverName != "" && info.provisioner != p.Config.CSIDriverName {
+	// CSI driver provisioner filter (required via CLI when the webhook is enabled).
+	if !p.matchesCSIDriverFilter(info.provisioner) {
 		log.Info("StorageClass provisioner does not match CSI driver filter, skipping",
-			zap.String("provisioner", info.provisioner),
-			zap.String("csiDriverName", p.Config.CSIDriverName))
-		return admission.Allowed("provisioner does not match csi-driver-name filter")
+			zap.String("provisioner", info.provisioner))
+		return admission.Allowed("provisioner does not match CSI driver filter")
 	}
 
 	// Mirror PVCs are created by the extensions controller itself on secondary
@@ -260,7 +260,22 @@ func (p *PVCLabelInjector) compileRegexes() {
 		if p.Config.PVCNameRegex != "" {
 			p.pvcNameRegex = regexp.MustCompile(p.Config.PVCNameRegex)
 		}
+		if p.Config.CSIDriverNameRegex != "" {
+			p.csiDriverNameRegex = regexp.MustCompile(p.Config.CSIDriverNameRegex)
+		}
 	})
+}
+
+func (p *PVCLabelInjector) matchesCSIDriverFilter(provisioner string) bool {
+	p.compileRegexes()
+
+	if p.Config.CSIDriverName != "" {
+		return provisioner == p.Config.CSIDriverName
+	}
+	if p.csiDriverNameRegex != nil {
+		return p.csiDriverNameRegex.MatchString(provisioner)
+	}
+	return false
 }
 
 func (p *PVCLabelInjector) matchesStorageClassFilter(scName string) bool {

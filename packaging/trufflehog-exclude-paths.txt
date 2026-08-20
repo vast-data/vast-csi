@@ -1,0 +1,3 @@
+# Test sources: pytest/go test names can false-positive on Lob detector verification.
+^tests/
+.*_test\.go$

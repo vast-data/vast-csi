@@ -27,6 +27,10 @@ func RegisterFlags(c *cobra.Command, cfg *config.Config) {
 	// Feature flag
 	c.Flags().BoolVar(&cfg.PvcLabelWebhookEnabled, "enable-pvc-label-webhook", false,
 		"Enable the PVC label injection webhook")
+	c.Flags().BoolVar(&cfg.VSCRValidationWebhookEnabled, "enable-vscr-validation-webhook", false,
+		"Enable the VastStorageClassReplication admission webhook")
+	c.Flags().BoolVar(&cfg.VVRValidationWebhookEnabled, "enable-vvr-validation-webhook", false,
+		"Enable the VastVolumeReplication admission webhook")
 
 	// Webhook flags
 	c.Flags().StringVar(&cfg.WebhookCertPath, "webhook-cert-path", "/tmp/k8s-webhook-server/serving-certs",
@@ -42,8 +46,11 @@ func RegisterFlags(c *cobra.Command, cfg *config.Config) {
 	c.Flags().StringVar(&cfg.PVCNameRegex, "pvc-name-regex", "",
 		"If set, only PVCs whose name matches this regex will get labels injected.")
 	c.Flags().StringVar(&cfg.CSIDriverName, "csi-driver-name", "",
-		"If set, only PVCs whose StorageClass provisioner matches this CSI driver name will get labels injected (e.g. csi.vastdata.com).")
+		"Only PVCs whose StorageClass provisioner equals this CSI driver name are processed (e.g. csi.vastdata.com). Mutually exclusive with --csi-driver-name-regex.")
+	c.Flags().StringVar(&cfg.CSIDriverNameRegex, "csi-driver-name-regex", "",
+		"Only PVCs whose StorageClass provisioner matches this regex are processed (e.g. \".*vastdata.*\"). Mutually exclusive with --csi-driver-name.")
 	c.MarkFlagsMutuallyExclusive("storage-class-name", "storage-class-name-regex")
+	c.MarkFlagsMutuallyExclusive("csi-driver-name", "csi-driver-name-regex")
 }
 
 func NewCommand(sharedMgr *manager.SharedManager, cfg *config.Config) *cobra.Command {
@@ -57,6 +64,9 @@ parameters (subsystem, volumeGroup, storageClass).`,
 			if cfg.StorageClassName != "" && cfg.StorageClassNameRegex != "" {
 				return fmt.Errorf("--storage-class-name and --storage-class-name-regex are mutually exclusive")
 			}
+			if cfg.CSIDriverName != "" && cfg.CSIDriverNameRegex != "" {
+				return fmt.Errorf("--csi-driver-name and --csi-driver-name-regex are mutually exclusive")
+			}
 			if cfg.StorageClassNameRegex != "" {
 				if _, err := regexp.Compile(cfg.StorageClassNameRegex); err != nil {
 					return fmt.Errorf("invalid --storage-class-name-regex %q: %w", cfg.StorageClassNameRegex, err)
@@ -66,6 +76,14 @@ parameters (subsystem, volumeGroup, storageClass).`,
 				if _, err := regexp.Compile(cfg.PVCNameRegex); err != nil {
 					return fmt.Errorf("invalid --pvc-name-regex %q: %w", cfg.PVCNameRegex, err)
 				}
+			}
+			if cfg.CSIDriverNameRegex != "" {
+				if _, err := regexp.Compile(cfg.CSIDriverNameRegex); err != nil {
+					return fmt.Errorf("invalid --csi-driver-name-regex %q: %w", cfg.CSIDriverNameRegex, err)
+				}
+			}
+			if cfg.PvcLabelWebhookEnabled && cfg.CSIDriverName == "" && cfg.CSIDriverNameRegex == "" {
+				return fmt.Errorf("PVC label webhook requires --csi-driver-name or --csi-driver-name-regex")
 			}
 			return nil
 		},
@@ -128,7 +146,12 @@ parameters (subsystem, volumeGroup, storageClass).`,
 				}
 			}
 
-			pvcwebhook.SetupReplicationCRDValidationWebhooks(mgr, k8sClient, cfg.SSLVerify, rainbow)
+			if cfg.VSCRValidationWebhookEnabled || cfg.VVRValidationWebhookEnabled {
+				pvcwebhook.SetupReplicationCRDValidationWebhooks(
+					mgr, k8sClient, cfg.SSLVerify, rainbow,
+					cfg.VSCRValidationWebhookEnabled, cfg.VVRValidationWebhookEnabled,
+				)
+			}
 
 			if webhookCertWatcher != nil {
 				if err := mgr.Add(webhookCertWatcher); err != nil {

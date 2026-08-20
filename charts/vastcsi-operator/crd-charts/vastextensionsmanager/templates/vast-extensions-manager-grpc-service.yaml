@@ -1,0 +1,18 @@
+{{- $grpcPort := include "vastextensionsmanager.grpcPort" . -}}
+{{- $ns := include "vastextensionsmanager.namespace" . | trimAll "\"" }}
+{{- $svcName := include "vastextensionsmanager.grpcServiceName" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svcName }}
+  namespace: {{ $ns }}
+  labels:
+{{- include "vastextensionsmanager.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: {{ $grpcPort }}
+      targetPort: grpc
+      name: grpc
+      protocol: TCP
+  selector:
+    app: {{ include "vastextensionsmanager.deploymentName" . }}

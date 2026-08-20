@@ -12,6 +12,8 @@ from vast_csi.utils import (
     yesno_to_bool,
     replace_path_prefix,
     get_mount,
+    get_volume_mount,
+    get_tmpfs_mount,
 )
 
 
@@ -270,6 +272,52 @@ class TestGetMount:
             result = get_mount(target_path, timeout=5)
 
             assert result is None  # None of the mounts match exactly
+
+    def test_get_volume_mount_skips_helper_tmpfs(self):
+        """Helper tmpfs overlay is not the volume mount."""
+        target_path = "/var/lib/kubelet/pods/p/volumes/kubernetes.io~csi/eph/mount"
+        tmpfs = Mock(mountpoint=target_path, device="tmpfs", fstype="tmpfs")
+        nfs = Mock(
+            mountpoint=target_path,
+            device="172.20.16.4:/base/csi-vol",
+            fstype="nfs4",
+        )
+
+        with patch("psutil.disk_partitions") as mock_partitions:
+            mock_partitions.return_value = [tmpfs, nfs]
+            result = get_volume_mount(target_path, timeout=5)
+
+        assert result is nfs
+        assert result.fstype == "nfs4"
+
+    def test_get_volume_mount_only_tmpfs_is_not_a_volume_mount(self):
+        """Failed publish leftover tmpfs means the volume is not mounted."""
+        target_path = "/var/lib/kubelet/pods/p/volumes/kubernetes.io~csi/eph/mount"
+
+        with patch("psutil.disk_partitions") as mock_partitions:
+            mock_partitions.return_value = [
+                Mock(mountpoint=target_path, device="tmpfs", fstype="tmpfs"),
+            ]
+            result = get_volume_mount(target_path, timeout=5)
+
+        assert result is None
+
+    def test_get_tmpfs_mount_finds_helper_only(self):
+        """Cleanup looks up tmpfs, never the NFS volume on the same path."""
+        target_path = "/var/lib/kubelet/pods/p/volumes/kubernetes.io~csi/eph/mount"
+        tmpfs = Mock(mountpoint=target_path, device="tmpfs", fstype="tmpfs")
+        nfs = Mock(
+            mountpoint=target_path,
+            device="172.20.16.4:/base/csi-vol",
+            fstype="nfs4",
+        )
+
+        with patch("psutil.disk_partitions") as mock_partitions:
+            mock_partitions.return_value = [tmpfs, nfs]
+            result = get_tmpfs_mount(target_path, timeout=5)
+
+        assert result is tmpfs
+        assert result.fstype == "tmpfs"
 
     def test_get_mount_daemon_thread_cleanup(self):
         """Test that daemon threads don't prevent process exit."""

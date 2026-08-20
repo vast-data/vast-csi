@@ -164,12 +164,12 @@ create-secret: create-csi-namespace ## Create secret for pulling images from the
 operator-bundle-run: create-secret ## Deploy bundle against the configured Kubernetes cluster in ~/.kube/config (auto-refreshes ECR credentials)
 	@$(call check_required_env,IMG OPERATOR_BUNDLE_TAG NAMESPACE IMG_PULL_SECRET)
 	@echo "ECR credentials refreshed, deploying operator bundle..."
-	operator-sdk run bundle "${IMG}:${OPERATOR_BUNDLE_TAG}" --timeout 10m --namespace ${NAMESPACE} --install-mode OwnNamespace --pull-secret-name ${IMG_PULL_SECRET}
+	operator-sdk run bundle "${IMG}:${OPERATOR_BUNDLE_TAG}" --timeout 20m --namespace ${NAMESPACE} --install-mode OwnNamespace --pull-secret-name ${IMG_PULL_SECRET}
 
 operator-bundle-upgrade-run: create-secret ##  Upgrade an Operator previously installed in the bundle format with OLM (auto-refreshes ECR credentials)
 	@$(call check_required_env,IMG OPERATOR_BUNDLE_TAG NAMESPACE IMG_PULL_SECRET)
 	@echo "ECR credentials refreshed, upgrading operator bundle..."
-	operator-sdk run bundle-upgrade "${IMG}:${OPERATOR_BUNDLE_TAG}" --timeout 10m --namespace ${NAMESPACE} --pull-secret-name ${IMG_PULL_SECRET}
+	operator-sdk run bundle-upgrade "${IMG}:${OPERATOR_BUNDLE_TAG}" --timeout 20m --namespace ${NAMESPACE} --pull-secret-name ${IMG_PULL_SECRET}
 
 operator-bundle-clean: ## Cleanup bundle from the configured Kubernetes cluster in ~/.kube/config
 	@$(call check_required_env,NAMESPACE)

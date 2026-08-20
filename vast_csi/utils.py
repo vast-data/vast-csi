@@ -17,6 +17,9 @@ from easypy.collections import listify
 from . import csi_types as types
 from .exceptions import Abort
 
+# fstype of the .vast-csi-meta overlay. Never a published volume.
+META_TMPFS_FSTYPE = "tmpfs"
+
 
 def normalize_volume_id(volume_id: str) -> str:
     """Return the bare volume name from a volume_id that may be a full path.
@@ -104,33 +107,51 @@ def run_with_timeout(func, timeout, *args, **kwargs):
     return result['value']
 
 
-def get_mount(target_path, timeout=5):
-    """
-    Get mount information for the target path.
-    
-    Args:
-        target_path: Path to check for mount
-        timeout: Timeout in seconds (default: 5). If psutil.disk_partitions()
-                 takes longer than this (e.g., due to unreachable NFS mount),
-                 a TimeoutError will be raised.
-    """
+def _get_mount_at(target_path, timeout, fstypes=None, skip_fstypes=None):
+    """Return the topmost mount at target_path matching fstype filters."""
+    allow = set(fstypes) if fstypes else None
+    skip = set(skip_fstypes or ())
+    target = str(target_path)
 
     def check_mount():
-        partitions = psutil.disk_partitions(all=True)
-        for m in partitions:
-            if m.mountpoint == target_path:
-                return m
-        return None
-    
+        found = None
+        for m in psutil.disk_partitions(all=True):
+            if m.mountpoint != target:
+                continue
+            if allow is not None and m.fstype not in allow:
+                continue
+            if m.fstype in skip:
+                continue
+            found = m
+        return found
+
     try:
         return run_with_timeout(check_mount, timeout)
     except TimeoutError:
-        error_msg = (
+        raise TimeoutError(
             f"get_mount() timed out after {timeout}s while checking {target_path}. "
             f"This usually indicates an unreachable NFS mount. "
             f"Check network connectivity to NFS server."
         )
-        raise TimeoutError(error_msg)
+
+
+def get_volume_mount(target_path, timeout=5):
+    """Published volume at target_path. Never the tmpfs meta overlay."""
+    return _get_mount_at(
+        target_path, timeout, skip_fstypes=(META_TMPFS_FSTYPE,)
+    )
+
+
+def get_tmpfs_mount(target_path, timeout=5):
+    """Meta-overlay tmpfs at target_path. Never the published volume."""
+    return _get_mount_at(
+        target_path, timeout, fstypes=(META_TMPFS_FSTYPE,)
+    )
+
+
+def get_mount(target_path, timeout=5):
+    """Volume mount at target_path (not tmpfs). Prefer get_volume_mount()."""
+    return get_volume_mount(target_path, timeout=timeout)
 
 
 def path_exists(path, timeout=5):

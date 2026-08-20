@@ -129,14 +129,14 @@ func (r *ReplicationObjectReconciler) reconcileVR(ctx context.Context, name, ns 
 		return fmt.Errorf("failed to get StorageClass %s: %w", sourceSCName, err)
 	}
 
-	ownerVVR := common.OwnerByKind(vr.OwnerReferences, "VastVolumeReplication")
-	if ownerVVR == nil {
-		return fmt.Errorf("VolumeReplication %s/%s has no VastVolumeReplication owner reference", ns, name)
+	vvrName, vvrNS := k8sclient.ParentCRFromObject(vr, common.LabelSourceVVR, common.LabelSourceVVRNamespace, "VastVolumeReplication")
+	if vvrName == "" {
+		return fmt.Errorf("VolumeReplication %s/%s has no VastVolumeReplication owner", ns, name)
 	}
 
-	vvr, err := k8s.GetVastVolumeReplication(ctx, ownerVVR.Name, ns)
+	vvr, err := k8s.GetVastVolumeReplication(ctx, vvrName, vvrNS)
 	if err != nil {
-		return fmt.Errorf("failed to get VastVolumeReplication %s/%s: %w", ns, ownerVVR.Name, err)
+		return fmt.Errorf("failed to get VastVolumeReplication %s/%s: %w", vvrNS, vvrName, err)
 	}
 
 	provType := vastv1alpha1.ProvisionerTypeFile
@@ -144,8 +144,9 @@ func (r *ReplicationObjectReconciler) reconcileVR(ctx context.Context, name, ns 
 		provType = vastv1alpha1.ProvisionerTypeBlock
 	}
 	vrcLabels := map[string]string{
-		common.LabelManagedBy: common.LabelManagedByValue,
-		common.LabelSourceVVR: ownerVVR.Name,
+		common.LabelManagedBy:          common.LabelManagedByValue,
+		common.LabelSourceVVR:          vvr.Name,
+		common.LabelSourceVVRNamespace: vvr.Namespace,
 	}
 
 	existing, err := k8s.GetVastReplicationContent(ctx, name, ns)
@@ -230,14 +231,14 @@ func (r *ReplicationObjectReconciler) reconcileVGR(ctx context.Context, name, ns
 		return nil
 	}
 
-	// The owning VSCR tells us the StorageClass even before any PVCs exist.
-	ownerVSCR := common.OwnerByKind(vgr.OwnerReferences, "VastStorageClassReplication")
-	if ownerVSCR == nil {
-		return fmt.Errorf("VolumeGroupReplication %s/%s has no VastStorageClassReplication owner reference", ns, name)
+	// The parent VSCR tells us the StorageClass even before any PVCs exist.
+	vscrName, vscrNS := k8sclient.ParentCRFromObject(vgr, common.LabelSourceVSCR, common.LabelSourceVSCRNamespace, "VastStorageClassReplication")
+	if vscrName == "" {
+		return fmt.Errorf("VolumeGroupReplication %s/%s has no VastStorageClassReplication owner", ns, name)
 	}
-	vscr, err := k8s.GetVastStorageClassReplication(ctx, ownerVSCR.Name, ns)
+	vscr, err := k8s.GetVastStorageClassReplication(ctx, vscrName, vscrNS)
 	if err != nil {
-		return fmt.Errorf("failed to get VastStorageClassReplication %s/%s: %w", ns, ownerVSCR.Name, err)
+		return fmt.Errorf("failed to get VastStorageClassReplication %s/%s: %w", vscrNS, vscrName, err)
 	}
 
 	// StorageClass is taken from the source-selector label stamped at VGR creation time.
@@ -273,8 +274,9 @@ func (r *ReplicationObjectReconciler) reconcileVGR(ctx context.Context, name, ns
 		provType = vastv1alpha1.ProvisionerTypeBlock
 	}
 	vrcLabels := map[string]string{
-		common.LabelManagedBy:  common.LabelManagedByValue,
-		common.LabelSourceVSCR: ownerVSCR.Name,
+		common.LabelManagedBy:           common.LabelManagedByValue,
+		common.LabelSourceVSCR:          vscr.Name,
+		common.LabelSourceVSCRNamespace: vscr.Namespace,
 	}
 
 	existing, err := k8s.GetVastReplicationContent(ctx, name, ns)
@@ -416,7 +418,7 @@ func resolveSourcePPath(
 		return nil, fmt.Errorf("failed to build VAST REST client from StorageClass %s: %w", sourceSC.Name, err)
 	}
 	ppath, err := rest.ProtectedPaths.Get(&typed.ProtectedPathSearchParams{
-		Name:    expr.S(ppathName),
+		Name:    expr.Str(ppathName),
 		RawData: vast_client.Params{"fields": "id,name,enabled,state,failure_reason,role,tenant_id,source_dir,protection_policy_name"},
 	})
 	if err != nil {

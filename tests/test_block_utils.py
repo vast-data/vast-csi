@@ -313,3 +313,49 @@ def test_get_connected_session_multiple_sessions_different_hostnqn():
             host_nqn=host_nqn_1
         )
         assert session is None, "Should NOT find non-existent subsystem"
+
+
+def test_ensure_nvme_tcp_skips_modprobe_when_loaded(monkeypatch):
+    from vast_csi.block_utils import _ensure_nvme_tcp
+
+    monkeypatch.setattr("vast_csi.block_utils.NVME_TCP_MODULE.exists", lambda: True)
+    with patch("vast_csi.block_utils.host_commands.modprobe.get_executable") as mock_get_executable:
+        assert _ensure_nvme_tcp() is True
+        mock_get_executable.assert_not_called()
+
+
+def test_ensure_nvme_tcp_returns_false_when_module_missing(tmp_path, monkeypatch):
+    from plumbum import local, ProcessExecutionError
+    from vast_csi.block_utils import _ensure_nvme_tcp
+    from vast_csi.filesystem_utils import HostCommandAdapter, host_commands
+
+    host_root = tmp_path / "host"
+    host_root.mkdir()
+    monkeypatch.setattr(HostCommandAdapter, "HOST_MOUNT", local.path(host_root))
+    monkeypatch.setattr("vast_csi.block_utils.NVME_TCP_MODULE.exists", lambda: False)
+
+    with patch.object(
+        host_commands.modprobe,
+        "get_executable",
+        side_effect=ProcessExecutionError(
+            retcode=1, stdout="", stderr="modprobe failed", argv=["modprobe", "nvme-tcp"]
+        ),
+    ):
+        assert _ensure_nvme_tcp() is False
+
+
+def test_try_nvme_probes_rejects_invalid_search_dirs(monkeypatch):
+    from vast_csi.block_utils import try_nvme_probes
+
+    monkeypatch.setattr("vast_csi.block_utils._ensure_nvme_tcp", lambda: True)
+    monkeypatch.setenv("X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS", "usr/bin")
+
+    with patch("vast_csi.block_utils.hostnvme") as mock_hostnvme, patch(
+        "vast_csi.block_utils.logger.error"
+    ) as mock_error:
+        try_nvme_probes()
+        mock_hostnvme.assert_not_called()
+        mock_error.assert_called_once()
+        assert mock_error.call_args[0][0] == "Invalid X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS: %s"
+        assert "search dir must be absolute" in str(mock_error.call_args[0][1])
+

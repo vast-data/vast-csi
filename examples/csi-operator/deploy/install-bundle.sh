@@ -59,7 +59,7 @@ fi
 
 operator-sdk run bundle "$BUNDLE_IMAGE" \
     --namespace vast-csi \
-    --timeout 15m
+    --timeout 20m
 
 echo "VAST CSI Operator installed successfully from bundle image!"
 echo ""

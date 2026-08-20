@@ -11,7 +11,6 @@
     image.csiResizer.defaultRepository: $RELATED_IMAGE_CSI_RESIZER
     image.csiSnapshotter.defaultRepository: $RELATED_IMAGE_CSI_SNAPSHOTTER
     image.csiAddonsSidecar.defaultRepository: $RELATED_IMAGE_CSI_ADDONS_SIDECAR
-    image.vastExtensionController.defaultRepository: $RELATED_IMAGE_VAST_EXTENSION_CONTROLLER
 - group: storage.vastdata.com
   version: v1
   kind: VastStorage
@@ -20,4 +19,14 @@
   version: v1
   kind: VastCluster
   chart: helm-charts/vastcluster
+- group: storage.vastdata.com
+  version: v1
+  kind: VastExtensionsManager
+  chart: helm-charts/vastextensionsmanager
+  overrideValues:
+    image.vastExtensionController.defaultRepository: $RELATED_IMAGE_VAST_EXTENSION_CONTROLLER
+    image.csiAddonsController.defaultRepository: $RELATED_IMAGE_CSI_ADDONS_CONTROLLER
+# VastStorageClassReplication and VastVolumeReplication are reconciled by
+# VastExtensionsManager (extensions-controller), not by the helm operator.
+# They are declared in crd-charts for OpenShift UI / OLM CSV only.
 # +kubebuilder:scaffold:watch
