@@ -337,6 +337,16 @@ class Tenant(VastResource):
         return super().get(_id, fail_if_missing=fail_if_missing, api_ver=api_ver, **params)
 
 
+class S3LifecycleRule(VastResource):
+    resource_name = "s3lifecyclerules"
+
+    def ensure(self, name, view_id, **params):
+        entry = self.one(name=name, view__id=view_id)
+        if not entry:
+            entry = self.create(name=name, view_id=view_id, **params)
+        return entry
+
+
 class View(VastResource):
     resource_name = "views"
 

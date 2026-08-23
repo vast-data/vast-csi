@@ -55,6 +55,18 @@ bucketClasses: {}
 #   vastdata-bucket:
 #     vipPool: vippool-1
 #     viewPolicy: s3_policy
+#     # Optional: VMS S3 lifecycle rules applied at bucket create.
+#     # One rule per list element on the bucket's view; removed on bucket delete.
+#     # Rules apply at create only (BucketClass is immutable).
+#     # Rule names must be unique. Unknown keys are rejected.
+#     lifecycleRules:
+#       - name: expire-logs
+#         expiration_days: 30
+#         prefix: logs/
+#       - name: expire-tmp
+#         expiration_days: 7
+#         prefix: tmp/
+#         abort_mpu_days_after_initiation: 1
 
 ####################
 # COSI PLUGIN RUNTIME PARAMETERS

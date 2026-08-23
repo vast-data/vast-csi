@@ -20,7 +20,7 @@ from .wait import wait_task as _wait_task
 # Import resources to register them
 from .resources import (
     Version, Plugin, ViewPolicy, View, QosPolicy, Tenant,
-    Folder, VipPool, Quota, Snapshot, GlobalSnapshotStream,
+    S3LifecycleRule, Folder, VipPool, Quota, Snapshot, GlobalSnapshotStream,
     User, Volume, BlockHost, BlockHostMapping,
     ProtectionPolicy, ProtectedPath, Cluster
 )
@@ -76,6 +76,7 @@ class VmsSession(RESTSession, SerializationMixin):
         self.views = View(self)
         self.quospolicies = QosPolicy(self)
         self.tenants = Tenant(self)
+        self.s3lifecyclerules = S3LifecycleRule(self)
         self.folders = Folder(self)
         self.vippools = VipPool(self)
         self.quotas = Quota(self)
