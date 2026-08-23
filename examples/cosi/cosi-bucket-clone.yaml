@@ -1,0 +1,27 @@
+# Writable COSI bucket clone: annotate BucketClaim (not BucketClass).
+# Permanent bucket-params webhook merges cosi.vastdata.com/* into Bucket.spec.parameters.
+#
+apiVersion: objectstorage.k8s.io/v1alpha1
+kind: BucketClass
+metadata:
+  name: vastdata-bucket
+driverName: csi.vastdata.com
+deletionPolicy: Delete
+parameters:
+  root_export: /cosi/clones
+  vip_pool_name: vippool-1
+  scheme: http
+  view_policy: s3_default_policy
+---
+apiVersion: objectstorage.k8s.io/v1alpha1
+kind: BucketClaim
+metadata:
+  name: my-dev-clone
+  annotations:
+    cosi.vastdata.com/sourceBucket: prod-ml-training-dataset
+    # Wait for GSS before CreateBucket returns (recommended for production clones).
+    cosi.vastdata.com/blockingClones: "true"
+spec:
+  bucketClassName: vastdata-bucket
+  protocols:
+    - S3

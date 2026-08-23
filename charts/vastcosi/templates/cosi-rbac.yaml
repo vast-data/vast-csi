@@ -16,7 +16,6 @@ rules:
 - apiGroups: [""]
   resources: ["secrets", "events"]
   verbs:
-{{- if .Values.extensions.credsFlattener.enabled }}
   - get
   - list
   - watch
@@ -24,17 +23,9 @@ rules:
   - update
   - patch
   - delete
-{{- else }}
-  - get
-  - delete
-  - update
-  - create
-{{- end }}
-{{- if .Values.extensions.credsFlattener.enabled }}
 - apiGroups: [""]
   resources: ["configmaps"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-{{- end }}
 
 ---
 

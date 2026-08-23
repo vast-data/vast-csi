@@ -141,6 +141,11 @@ func configure(cmd *cobra.Command, sharedMgr *manager.SharedManager, cfg *config
 			}
 		}
 
+		// Always register: MutatingWebhookConfiguration lives only on the COSI chart.
+		if err := pvcwebhook.SetupBucketParamsWebhook(mgr, rainbow, cfg.CSIDriverName); err != nil {
+			panic(err)
+		}
+
 		if cfg.VSCRValidationWebhookEnabled || cfg.VVRValidationWebhookEnabled {
 			pvcwebhook.SetupReplicationCRDValidationWebhooks(
 				mgr, k8sClient, cfg.SSLVerify, rainbow,

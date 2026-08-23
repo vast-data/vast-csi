@@ -1,5 +1,6 @@
 {{- $csi_images := .Values.image -}}
 {{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
+{{- $wh := .Values.extensions.webhook -}}
 
 apiVersion: apps/v1
 kind: Deployment
@@ -50,14 +51,16 @@ spec:
         - mountPath: /var/lib/cosi
           name: socket-dir
         resources: {{- toYaml .Values.cosiplugin.resources.objectstorageProvisioner | nindent 10 }}
-{{- if .Values.extensions.credsFlattener.enabled }}
       - name: extensions-manager
         image: {{ include "vastcosi.vastExtensionControllerImage" . }}
         imagePullPolicy: {{ $csi_images.vastExtensionController.imagePullPolicy | default "IfNotPresent" }}
         args:
-        - cosi
-        - --metrics-bind-address={{ .Values.extensions.credsFlattener.metricsBindAddress | default "0" }}
         - --health-probe-bind-address=:8081
+        - --metrics-bind-address={{ .Values.extensions.metricsBindAddress | default "0" }}
+        - webhook
+        - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
+        - --csi-driver-name={{ .Values.cosiDriverName }}
+        - cosi
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -65,6 +68,9 @@ spec:
             - ALL
           readOnlyRootFilesystem: true
         ports:
+        - name: webhook-server
+          containerPort: {{ $wh.port | default 9443 }}
+          protocol: TCP
         - name: mgr-health
           containerPort: 8081
           protocol: TCP
@@ -80,8 +86,11 @@ spec:
             port: mgr-health
           initialDelaySeconds: 5
           periodSeconds: 10
+        volumeMounts:
+        - name: webhook-tls
+          mountPath: /tmp/k8s-webhook-server/serving-certs
+          readOnly: true
         resources: {{- toYaml .Values.cosiplugin.resources.extensionsManager | nindent 10 }}
-{{- end }}
       dnsPolicy: {{ .Values.cosiplugin.dnsPolicy }}
       nodeSelector:
 {{ toYaml .Values.cosiplugin.nodeSelector | indent 8 }}
@@ -91,4 +100,7 @@ spec:
       volumes:
         - name: socket-dir
           emptyDir: {}
+        - name: webhook-tls
+          secret:
+            secretName: {{ .Release.Name }}-cosi-extensions-webhook-tls
 {{- include "vastcosivmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}
