@@ -23,6 +23,7 @@
 {{- if eq $storage_path ( quote "" ) -}}
   {{- fail "storagePath is required value. Please specify valid storage path" -}}
 {{- end }}
+{{- $lifecycle_rules := pluck "lifecycleRules" $options $.Values.bucketClassDefaults | first | default list -}}
 
 kind: BucketClass
 apiVersion: objectstorage.k8s.io/v1alpha1
@@ -40,7 +41,10 @@ parameters:
 {{- if ne $view_policy ( quote "" ) }}
   view_policy: {{ $view_policy }}
 {{- end }}
-{{- with omit $options "deletionPolicy" "viewPolicy" "vipPool" "scheme" "storagePath" }}
+{{- if $lifecycle_rules }}
+{{ include "vastcsi.dictToJsonStringParam" (list $lifecycle_rules "lifecycle_rules") | indent 2 }}
+{{- end }}
+{{- with omit $options "deletionPolicy" "viewPolicy" "vipPool" "scheme" "storagePath" "lifecycleRules" }}
   {{- range $key, $value := . }}
   {{ $key }}: {{ $value | quote }}
 {{- end }}
