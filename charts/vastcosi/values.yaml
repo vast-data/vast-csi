@@ -47,6 +47,8 @@ bucketClassDefaults:
   deletionPolicy: "Delete"
   # Scheme utilized for creating bucket endpoint. Must be one of: http, https
   scheme: "http"
+  # Optional bucket size limit (Kubernetes quantity, e.g. 30Gi). Omit for no quota.
+  maxSize: ""
 
 bucketClasses: {}
 # bucketClasses:

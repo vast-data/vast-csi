@@ -3,6 +3,7 @@
 ## Version 2.6.7
 * Block: added opt-in NVMe host NQN obfuscation (`host_nqn_obfuscation` StorageClass parameter + `host_nqn_seed` in the controller-publish secret). Legacy deployments are unchanged when the flag is disabled. Enabling obfuscation on clusters with existing block hosts requires a planned migration: unpublish volumes, delete or auto-prune VMS block hosts, then republish so new HMAC-based NQNs take effect (VCSI-433)
 * COSI: optional BucketClass `lifecycleRules` (Helm values list) creates VMS S3 lifecycle rules on bucket create and deletes them on bucket delete (VCSI-327)
+* COSI: optional BucketClass parameter `max_size` (Helm `maxSize`) creates a VAST path quota with `hard_limit` on the bucket view path (VCSI-261). The quota applies to all protocols on that view (S3, NFS, SMB), not S3 object count alone. Changing `max_size` on a BucketClass does not resize buckets already provisioned from it.
 
 ## Version 2.6.6-hf2
 * CSI inline ephemeral volume (EV) credentials are now stored on a tmpfs overlay. New publishes always use tmpfs and JSON metadata; set `credSerializationSecret` to encrypt with AES-GCM

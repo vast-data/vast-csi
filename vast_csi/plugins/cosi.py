@@ -18,6 +18,7 @@ import grpc
 from vast_csi.proto import cosi_pb2_grpc as cosi_grpc
 from vast_csi import csi_types as types
 from vast_csi.exceptions import Abort, MissingParameter
+from vast_csi.quantity import parse_quantity
 from vast_csi.plugins.base import Instrumented
 from vast_csi.configuration import Config
 
@@ -112,6 +113,15 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented):
         scheme = parameters.pop("scheme", "http")
         lifecycle_rules_raw = parameters.pop("lifecycle_rules", None)
 
+        requested_capacity = None
+        if max_size := parameters.pop("max_size", None):
+            try:
+                requested_capacity = int(parse_quantity(max_size))
+            except ValueError as exc:
+                raise Abort(types.INVALID_ARGUMENT, f"Invalid max_size {max_size!r}: {exc}")
+            if requested_capacity <= 0:
+                raise Abort(types.INVALID_ARGUMENT, f"max_size must be positive, got {max_size!r}")
+
         # Never truncate: Secret/status keep the full name; crop would break credentials.
         if len(name) > VAST_MAX_BUCKET_NAME_LENGTH:
             class_max = VAST_MAX_BUCKET_NAME_LENGTH - K8S_UID_LENGTH
@@ -135,6 +145,21 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented):
                 name=rule_name, view_id=view.id, **rule_params
             )
 
+        if requested_capacity:
+            if existing := vms_session.quotas.one(path=view.path, tenant_id=view.tenant_id):
+                if existing.hard_limit not in (None, requested_capacity):
+                    raise Abort(
+                        types.ALREADY_EXISTS,
+                        f"Bucket already exists with different max_size ({existing.hard_limit})",
+                    )
+            else:
+                vms_session.quotas.ensure(
+                    volume_id=name,
+                    view_path=view.path,
+                    tenant_id=view.tenant_id,
+                    requested_capacity=requested_capacity,
+                )
+
         port = 443 if scheme == "https" else 80
         vip = vms_session.vippools.get_vip(vip_pool_name=vip_pool_name, tenant_id=view.tenant_id)
         # bucket_id contains bucket name and endpoint
@@ -155,6 +180,7 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented):
             vms_session.s3lifecyclerules.delete_many(view__id=view.id)
             vms_session.folders.delete(view.path, view.tenant_id)
             vms_session.views.delete_by_id(view.id)
+        vms_session.quotas.delete(name=bucket_id)
         vms_session.users.delete(name=bucket_id)
         return types.DriverDeleteBucketResp()
 

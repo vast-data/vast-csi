@@ -20,6 +20,7 @@
   {{- fail "scheme should be either 'http' or 'https'" -}}
 {{- end }}
 {{- $storage_path := pluck "storagePath" $options $.Values.bucketClassDefaults | first | quote -}}
+{{- $max_size := pluck "maxSize" $options $.Values.bucketClassDefaults | first -}}
 {{- if eq $storage_path ( quote "" ) -}}
   {{- fail "storagePath is required value. Please specify valid storage path" -}}
 {{- end }}
@@ -44,7 +45,10 @@ parameters:
 {{- if $lifecycle_rules }}
 {{ include "vastcsi.dictToJsonStringParam" (list $lifecycle_rules "lifecycle_rules") | indent 2 }}
 {{- end }}
-{{- with omit $options "deletionPolicy" "viewPolicy" "vipPool" "scheme" "storagePath" "lifecycleRules" }}
+{{- if ne $max_size "" }}
+  max_size: {{ $max_size | quote }}
+{{- end }}
+{{- with omit $options "deletionPolicy" "viewPolicy" "vipPool" "scheme" "storagePath" "lifecycleRules" "maxSize" }}
   {{- range $key, $value := . }}
   {{ $key }}: {{ $value | quote }}
 {{- end }}

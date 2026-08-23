@@ -4,8 +4,10 @@ driverName: csi.vastdata.com
 metadata:
   name: vastdata-bucket
 parameters:
+  root_export: /cosi-buckets
+  vip_pool_name: vippool-1
   view_policy: s3-policy
-  vip_pool: vippool-1
+  max_size: 30Gi
 
 ---
 
