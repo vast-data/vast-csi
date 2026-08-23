@@ -15,6 +15,7 @@ from vast_csi.mtls_utils import validate_xprtsec_settings
 
 __all__ = [
     "EmptyVolumeBuilder",
+    "VolumeFromBucketBuilder",
     "VolumeFromVolumeBuilder",
     "VolumeFromSnapshotBuilder",
     "StaticVolumeBuilder",
@@ -157,6 +158,83 @@ class EmptyVolumeBuilder(FileSystemProvisionBase):
         )
         return types.Volume(
             capacity_bytes=requested_capacity,
+            volume_id=self.volume_id_with_metadata,
+            volume_context=volume_context,
+        )
+
+
+@final
+@dataclass
+class VolumeFromBucketBuilder(FileSystemProvisionBase):
+    """Bind an inline ephemeral volume to an existing S3 bucket view."""
+
+    bucket_name: Optional[str] = None
+
+    @classmethod
+    def from_parameters(
+            cls,
+            conf,
+            vms_session,
+            name,
+            volume_capabilities,
+            capacity_range,
+            parameters,
+            volume_content_source,
+            ephemeral_volume_name,
+    ):
+        bucket_name = cls._get_required_param(parameters, "bucket_name")
+        vip_pool_fqdn = parameters.get("vip_pool_fqdn")
+        vip_pool_name = parameters.get("vip_pool_name")
+        vip_pool_fqdn_random_prefix = cls._get_bool_param(
+            parameters, "vip_pool_fqdn_random_prefix", default_value="true"
+        )
+        cls._validate_mount_src(vip_pool_name, vip_pool_fqdn, conf.use_local_ip_for_mount)
+        return cls(
+            vms_session=vms_session,
+            configuration=conf,
+            name=name,
+            bucket_name=bucket_name,
+            root_export="",
+            view_policy="",
+            volume_capabilities=volume_capabilities,
+            capacity_range=capacity_range,
+            volume_content_source=volume_content_source,
+            ephemeral_volume_name=ephemeral_volume_name,
+            volume_name_fmt=parameters.get("volume_name_fmt", conf.name_fmt),
+            vip_pool_name=vip_pool_name,
+            vip_pool_fqdn=vip_pool_fqdn,
+            vip_pool_fqdn_random_prefix=vip_pool_fqdn_random_prefix,
+            cluster_name=parameters.get("cluster_name"),
+            **cls._parse_metadata_from_params(parameters),
+        )
+
+    def build_volume(self) -> types.Volume:
+        view = self.vms_session.views.one(bucket=self.bucket_name, fail_if_missing=True)
+
+        nfs_protocol = self.mount_protocol
+        protocols = list(view.protocols or [])
+        if not any(p.upper() == nfs_protocol.upper() for p in protocols):
+            self.vms_session.views.update(view.id, protocols=protocols + [nfs_protocol])
+
+        export_path = view.path
+        if not export_path:
+            raise SourceNotFound(
+                f"View for bucket {self.bucket_name!r} has no export path"
+            )
+
+        volume_name = self.build_volume_name()
+        volume_context = self.volume_context
+        volume_context.update(
+            bucket_name=self.bucket_name,
+            export_path=export_path,
+            view_id=str(view.id),
+            tenant_id=str(view.tenant_id),
+            volume_name=volume_name,
+        )
+        volume_context.pop("view_policy", None)
+
+        return types.Volume(
+            capacity_bytes=0,
             volume_id=self.volume_id_with_metadata,
             volume_context=volume_context,
         )

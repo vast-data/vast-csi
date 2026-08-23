@@ -16,6 +16,7 @@
 * COSI: optional global `secretName` Helm value for legacy single-tenant installs (create and lifecycle fallback when Bucket has no secret refs)
 * COSI: BucketAccessClass `credentialsSecretName` / `credentialsSecretNamespace` installs externally managed S3 keys from a Kubernetes input Secret on the bucket VAST local user (VCSI-326). Requires VAST ≥ 5.4. To rotate keys, update the input Secret and delete/recreate the BucketAccess
 * COSI: optional existing VMS/AD user as S3 bucket owner via BucketClass parameters `bucket_owner` / `bucket_owner_context` (Helm `bucketOwner` / `bucketOwnerContext`); grant/revoke target the owner user; bucket delete skips removal of external owners (VCSI-328)
+* NFS: inline CSI volumes with `volumeAttributes.bucket_name` mount an existing S3 bucket view over NFS (VCSI-146).
 
 ## Version 2.6.6-hf3
 * Refreshed CSI base and CI container images and updated Python 3.12 packaging to remediate Trivy HIGH severity findings in the main CSI image
