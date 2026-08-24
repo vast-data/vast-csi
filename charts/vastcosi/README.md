@@ -60,6 +60,18 @@ Annotate `BucketClaim` (not `BucketClass`):
 
 See `examples/cosi/cosi-bucket-clone.yaml`.
 
+### Per-bucket quota (BucketClaim annotations)
+
+The bucket-params webhook also passes claim-level quota overrides. Annotate `BucketClaim` with `cosi.vastdata.com/maxSize` (claim wins over BucketClass `max_size` from VCSI-261):
+
+```yaml
+metadata:
+  annotations:
+    cosi.vastdata.com/maxSize: "5Gi"
+```
+
+See `examples/cosi/bucketclaim-quota.yaml`.
+
 ### search for all available chart versions
 ```console
 helm search repo -l vast
