@@ -33,17 +33,17 @@ type Config struct {
 	//
 	// PvcLabelWebhookEnabled is set by the --enable-pvc-label-webhook CLI flag.
 	// The Helm chart forwards extensions.replication.webhooks.pvcLabels.enabled.
-	PvcLabelWebhookEnabled bool `component:"pvc-label-webhook"`
-	VSCRValidationWebhookEnabled bool `component:"pvc-label-webhook"`
-	VVRValidationWebhookEnabled  bool `component:"pvc-label-webhook"`
-	WebhookCertPath        string `component:"pvc-label-webhook"`
-	WebhookCertName        string `component:"pvc-label-webhook"`
-	WebhookCertKey         string `component:"pvc-label-webhook"`
-	StorageClassName       string `component:"pvc-label-webhook"`
-	StorageClassNameRegex  string `component:"pvc-label-webhook"`
-	PVCNameRegex           string `component:"pvc-label-webhook"`
-	CSIDriverName          string `component:"pvc-label-webhook"`
-	CSIDriverNameRegex     string `component:"pvc-label-webhook"`
+	PvcLabelWebhookEnabled       bool   `component:"webhook"`
+	VSCRValidationWebhookEnabled bool   `component:"webhook"`
+	VVRValidationWebhookEnabled  bool   `component:"webhook"`
+	WebhookCertPath              string `component:"webhook"`
+	WebhookCertName              string `component:"webhook"`
+	WebhookCertKey               string `component:"webhook"`
+	StorageClassName             string `component:"webhook"`
+	StorageClassNameRegex        string `component:"webhook"`
+	PVCNameRegex                 string `component:"webhook"`
+	CSIDriverName                string `component:"webhook"`
+	CSIDriverNameRegex           string `component:"webhook"`
 
 	// Format strings for replication resources
 	PVCNameFormat                    string `component:"replication"`
@@ -65,7 +65,7 @@ type Config struct {
 	// ExtensionsGRPCBindAddress is the listen address for the VastExtensions gRPC API.
 	// Use TCP (e.g. ":9090") for cross-pod access via a Kubernetes Service, or a unix
 	// socket path for co-located sidecars in the standalone Helm chart.
-	ExtensionsGRPCBindAddress string `component:"replication"`
+	ExtensionsGRPCBindAddress string `component:"server"`
 
 	// Shared manager configuration (always displayed)
 	HealthProbeBindAddress string
@@ -81,11 +81,12 @@ type Config struct {
 // Display prints the configuration in an aligned key-value format.
 //
 // component filters which fields are shown:
-//   - "pvc-label-webhook" → only fields whose component tag contains "pvc-label-webhook"
-//   - "replication"       → only fields whose component tag contains "replication"
+//   - "webhook"     → only fields whose component tag contains "webhook"
+//   - "replication" → only fields whose component tag contains "replication"
+//   - "server"      → only fields whose component tag contains "server"
 //
 // The component struct tag may list multiple values separated by commas, e.g.
-// `component:"pvc-label-webhook,replication"` — such a field is included
+// `component:"webhook,replication"` — such a field is included
 // whenever the requested component matches any of the listed values.
 //
 // Fields with no component tag are only shown when component is "".
@@ -136,13 +137,17 @@ func (c *Config) Display(component string) string {
 	}
 
 	lines := make([]string, 0, len(fields)+1)
-	lines = append(lines, "Configuration:")
+	header := "Configuration:"
+	if component != "" {
+		header = fmt.Sprintf("Configuration[%s]:", component)
+	}
+	lines = append(lines, header)
 	for _, field := range fields {
 		var valueStr string
 		switch field.value.Kind() {
 		case reflect.String:
 			if s := field.value.String(); s == "" {
-				valueStr = "<empty>"
+				valueStr = "-"
 			} else {
 				valueStr = s
 			}

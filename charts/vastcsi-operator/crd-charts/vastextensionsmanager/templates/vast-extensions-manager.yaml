@@ -53,7 +53,7 @@ spec:
           image: {{ include "vastextensionsmanager.vastExtensionControllerImage" . }}
           imagePullPolicy: {{ .Values.image.vastExtensionController.imagePullPolicy | default "IfNotPresent" }}
           args:
-            - pvc-label-webhook
+            - webhook
 {{- if $pvcWebhookEnabled }}
             - --enable-pvc-label-webhook
 {{- end }}
@@ -107,18 +107,19 @@ spec:
           image: {{ include "vastextensionsmanager.vastExtensionControllerImage" . }}
           imagePullPolicy: {{ .Values.image.vastExtensionController.imagePullPolicy | default "IfNotPresent" }}
           args:
-            - replication
-            - --pvc-name-format={{ $rep.pvcNameFormat }}
-            - --pv-name-format={{ $rep.pvNameFormat }}
             - --health-probe-bind-address=:8082
             - --metrics-bind-address=0
 {{- if .Values.replication.devLogging }}
             - --dev-logging
 {{- end }}
+            - --max-concurrent-reconciles={{ .Values.replication.maxConcurrentReconciles }}
+            - replication
+            - --pvc-name-format={{ $rep.pvcNameFormat }}
+            - --pv-name-format={{ $rep.pvNameFormat }}
 {{- if $rep.applyExistingPvcs }}
             - --apply-existing-pvcs
 {{- end }}
-            - --max-concurrent-reconciles={{ .Values.replication.maxConcurrentReconciles }}
+            - server
             - --extensions-grpc-bind-address=:{{ $grpcPort }}
           ports:
             - name: grpc

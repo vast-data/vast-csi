@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
-	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/cli"
+	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/cli/client"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/manager"
 )
 
@@ -67,15 +67,15 @@ Examples:
 }
 
 func printVSCRStatus(obj *vastv1alpha1.VastStorageClassReplication) {
-	fmt.Printf("%s  %s/%s\n", cli.Bold("VastStorageClassReplication"), obj.Namespace, cli.Cyan(obj.Name))
+	fmt.Printf("%s  %s/%s\n", client.Bold("VastStorageClassReplication"), obj.Namespace, client.Cyan(obj.Name))
 	fmt.Println(strings.Repeat("─", 60))
-	fmt.Printf("  %-28s %s\n", "Primary StorageClass:", highlightPrimary(obj.Spec.PrimaryStorageClass))
+	fmt.Printf("  %-28s %s\n", "Primary StorageClass:", client.PrimaryStorageClass(obj.Spec.PrimaryStorageClass))
 	if ns := obj.PVCNamespace(); ns != obj.Namespace {
 		fmt.Printf("  %-28s %s\n", "Volume Namespace:", ns)
 	}
 	printAction("Failover Type", string(obj.Spec.FailoverType))
 	if obj.Spec.Resync {
-		fmt.Printf("  %-28s %s\n", "Resync:", cli.Yellow("pending"))
+		fmt.Printf("  %-28s %s\n", "Resync:", client.Yellow("pending"))
 	}
 	fmt.Printf("  %-28s %d cluster(s), %d target(s)\n", "Topology:", len(obj.Spec.AllStorageClasses()), len(obj.Spec.ProtectionTopology))
 	for _, t := range obj.Spec.ProtectionTopology {
@@ -84,15 +84,15 @@ func printVSCRStatus(obj *vastv1alpha1.VastStorageClassReplication) {
 	if secs, err := obj.Spec.EffectiveSyncIntervalSeconds(); err == nil {
 		fmt.Printf("  %-28s %ds\n", "Sync Interval:", secs)
 	}
-	fmt.Printf("  %-28s %s\n", "PVC Remap:", boolStr(obj.Spec.PVCRemap))
-	fmt.Printf("  %-28s %s\n", "Sync PVC/PV:", boolStr(obj.Spec.SyncPVCPV))
+	fmt.Printf("  %-28s %s\n", "PVC Remap:", client.Bool(obj.Spec.PVCRemap))
+	fmt.Printf("  %-28s %s\n", "Sync PVC/PV:", client.Bool(obj.Spec.SyncPVCPV))
 	fmt.Printf("  %-28s %s\n", "Vol Reclaim Policy:", destVolReclaimStr(obj.Spec.DestVolReclaimPolicy))
 	printProtectionPolicyTemplate(obj.Spec.ProtectionPolicyTemplate)
 	printStorageClassList(obj.Spec.AllStorageClasses())
 	fmt.Println()
-	fmt.Printf("  %s\n", cli.Bold("Status:"))
+	fmt.Printf("  %s\n", client.Bold("Status:"))
 	if obj.Status.CurrentPrimaryStorageClass != "" {
-		fmt.Printf("  %-28s %s\n", "Current Primary:", highlightPrimary(obj.Status.CurrentPrimaryStorageClass))
+		fmt.Printf("  %-28s %s\n", "Current Primary:", client.PrimaryStorageClass(obj.Status.CurrentPrimaryStorageClass))
 	}
 	if obj.Status.PpathName != "" {
 		fmt.Printf("  %-28s %s\n", "Ppath Name:", obj.Status.PpathName)
@@ -114,14 +114,14 @@ func printVSCRStatus(obj *vastv1alpha1.VastStorageClassReplication) {
 }
 
 func printVVRStatus(obj *vastv1alpha1.VastVolumeReplication) {
-	fmt.Printf("%s  %s/%s\n", cli.Bold("VastVolumeReplication"), obj.Namespace, cli.Cyan(obj.Name))
+	fmt.Printf("%s  %s/%s\n", client.Bold("VastVolumeReplication"), obj.Namespace, client.Cyan(obj.Name))
 	fmt.Println(strings.Repeat("─", 60))
-	fmt.Printf("  %-28s %s/%s\n", "Volume (PVC):", obj.PVCNamespace(), cli.Bold(obj.Spec.VolumeName))
+	fmt.Printf("  %-28s %s/%s\n", "Volume (PVC):", obj.PVCNamespace(), client.Bold(obj.Spec.VolumeName))
 	fmt.Printf("  %-28s %s\n", "Storage Classes:", vastv1alpha1.DisplayableList(obj.Spec.AllStorageClasses()).String())
-	fmt.Printf("  %-28s %s\n", "Primary StorageClass:", highlightPrimary(obj.Spec.PrimaryStorageClass))
+	fmt.Printf("  %-28s %s\n", "Primary StorageClass:", client.PrimaryStorageClass(obj.Spec.PrimaryStorageClass))
 	printAction("Failover Type", string(obj.Spec.FailoverType))
 	if obj.Spec.Resync {
-		fmt.Printf("  %-28s %s\n", "Resync:", cli.Yellow("pending"))
+		fmt.Printf("  %-28s %s\n", "Resync:", client.Yellow("pending"))
 	}
 	fmt.Printf("  %-28s %d cluster(s), %d target(s)\n", "Topology:", len(obj.Spec.AllStorageClasses()), len(obj.Spec.ProtectionTopology))
 	for _, t := range obj.Spec.ProtectionTopology {
@@ -130,13 +130,13 @@ func printVVRStatus(obj *vastv1alpha1.VastVolumeReplication) {
 	if secs, err := obj.Spec.EffectiveSyncIntervalSeconds(); err == nil {
 		fmt.Printf("  %-28s %ds\n", "Sync Interval:", secs)
 	}
-	fmt.Printf("  %-28s %s\n", "PVC Remap:", boolStr(obj.Spec.PVCRemap))
+	fmt.Printf("  %-28s %s\n", "PVC Remap:", client.Bool(obj.Spec.PVCRemap))
 	fmt.Printf("  %-28s %s\n", "Vol Reclaim Policy:", destVolReclaimStr(obj.Spec.DestVolReclaimPolicy))
 	printProtectionPolicyTemplate(obj.Spec.ProtectionPolicyTemplate)
 	fmt.Println()
-	fmt.Printf("  %s\n", cli.Bold("Status:"))
+	fmt.Printf("  %s\n", client.Bold("Status:"))
 	if obj.Status.CurrentPrimaryStorageClass != "" {
-		fmt.Printf("  %-28s %s\n", "Current Primary:", highlightPrimary(obj.Status.CurrentPrimaryStorageClass))
+		fmt.Printf("  %-28s %s\n", "Current Primary:", client.PrimaryStorageClass(obj.Status.CurrentPrimaryStorageClass))
 	}
 	if obj.Status.PpathName != "" {
 		fmt.Printf("  %-28s %s\n", "Ppath Name:", obj.Status.PpathName)
@@ -167,13 +167,6 @@ func printStorageClassList(classes []string) {
 	}
 }
 
-func highlightPrimary(sc string) string {
-	if sc == "" {
-		return cli.Yellow("(not set)")
-	}
-	return cli.Green(sc)
-}
-
 func printAction(label, action string) {
 	if action == "" {
 		return
@@ -185,33 +178,11 @@ func printSyncStatus(s string) {
 	if s == "" {
 		return
 	}
-	var colored string
-	switch s {
-	case vastv1alpha1.SyncStatusCompleted:
-		colored = cli.Green(s)
-	case vastv1alpha1.SyncStatusInProgress:
-		colored = cli.Cyan(s)
-	case vastv1alpha1.SyncStatusUnreachable:
-		colored = cli.Yellow(s)
-	case vastv1alpha1.SyncStatusError:
-		colored = cli.Red(s)
-	case vastv1alpha1.SyncStatusInvalid:
-		colored = cli.Red(s)
-	default:
-		colored = s
-	}
-	fmt.Printf("  %-28s %s\n", "Sync Status:", colored)
-}
-
-func boolStr(b bool) string {
-	if b {
-		return cli.Green("true")
-	}
-	return "false"
+	fmt.Printf("  %-28s %s\n", "Sync Status:", client.SyncStatus(s))
 }
 
 func printTopologyTarget(source, destination, peerName string) {
-	line := fmt.Sprintf("%s → %s", cli.Cyan(source), cli.Cyan(destination))
+	line := fmt.Sprintf("%s → %s", client.Cyan(source), client.Cyan(destination))
 	if peerName != "" {
 		line += fmt.Sprintf("  (peer: %s)", peerName)
 	}

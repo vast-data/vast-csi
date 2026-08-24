@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/cli"
+	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/cli/client"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/manager"
 )
 
@@ -53,7 +53,7 @@ Examples:
 			}
 
 			if !yes {
-				fmt.Printf("Delete %s/%s %s? [y/N] ", kind, cli.Bold(name), cli.Yellow("(this triggers cleanup of all owned resources)"))
+				fmt.Printf("Delete %s/%s %s? [y/N] ", kind, client.Bold(name), client.Yellow("(this triggers cleanup of all owned resources)"))
 				reader := bufio.NewReader(os.Stdin)
 				answer, _ := reader.ReadString('\n')
 				if strings.ToLower(strings.TrimSpace(answer)) != "y" {
@@ -62,7 +62,7 @@ Examples:
 				}
 			}
 
-			fmt.Printf("%s Deleting %s/%s ...\n", cli.Cyan("→"), kind, cli.Bold(name))
+			fmt.Printf("%s Deleting %s/%s ...\n", client.Cyan("→"), kind, client.Bold(name))
 
 			if vscrName != "" {
 				obj, err := k8s.GetVastStorageClassReplication(ctx, vscrName, namespace)
@@ -82,7 +82,7 @@ Examples:
 				}
 			}
 
-			fmt.Printf("%s Deletion request accepted for %s/%s\n", cli.Green("✓"), kind, cli.Bold(name))
+			fmt.Printf("%s Deletion request accepted for %s/%s\n", client.Green("✓"), kind, client.Bold(name))
 			fmt.Printf("  The object will disappear once the controller finishes cleaning up owned resources.\n")
 			return nil
 		},

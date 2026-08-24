@@ -21,3 +21,11 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/name: {{ include "vastcosiname" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
+
+{{- define "vastcosi.vastExtensionControllerImage" -}}
+{{- $images := .Values.image -}}
+{{- printf "%s:%s"
+    (required "image.vastExtensionController.repository is required when extensions.credsFlattener.enabled is true" (tpl ($images.vastExtensionController.repository | default "") .))
+    (required "image.vastExtensionController.tag is required when extensions.credsFlattener.enabled is true" (tpl ($images.vastExtensionController.tag | default "") .))
+-}}
+{{- end -}}

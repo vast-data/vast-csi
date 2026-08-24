@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
-	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/cli"
+	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/cli/client"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/manager"
 )
 
@@ -171,14 +171,14 @@ func printListTable(vscrs []vastv1alpha1.VastStorageClassReplication, vvrs []vas
 	printColorRow := func(r listRow) {
 		cols := rowCols(r)
 		colored := []string{
-			cli.Bold(cols[0]),  // KIND
+			client.Bold(cols[0]),  // KIND
 			cols[1],            // NAMESPACE
-			cli.Cyan(cols[2]),  // NAME
+			client.Cyan(cols[2]),  // NAME
 			cols[3],            // STORAGE CLASSES
-			cli.Green(cols[4]), // PRIMARY
+			client.Green(cols[4]), // PRIMARY
 			cols[5],            // FAILOVER TYPE
 			cols[6],
-			colorSyncStatusStr(r.syncStatus),
+			client.SyncStatus(r.syncStatus),
 			cols[8], // AGE
 		}
 		var sb strings.Builder
@@ -224,25 +224,6 @@ func syncStatusStr(s string) string {
 		return "-"
 	}
 	return s
-}
-
-func colorSyncStatusStr(s string) string {
-	switch s {
-	case vastv1alpha1.SyncStatusCompleted:
-		return cli.Green(s)
-	case vastv1alpha1.SyncStatusInProgress:
-		return cli.Cyan(s)
-	case vastv1alpha1.SyncStatusUnreachable:
-		return cli.Yellow(s)
-	case vastv1alpha1.SyncStatusError:
-		return cli.Red(s)
-	case vastv1alpha1.SyncStatusInvalid:
-		return cli.Red(s)
-	case vastv1alpha1.SyncStatusDeleting:
-		return cli.Yellow(s)
-	default:
-		return s
-	}
 }
 
 func age(t time.Time) string {

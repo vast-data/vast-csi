@@ -35,6 +35,7 @@ import (
 	replicationv1alpha1 "github.com/csi-addons/kubernetes-csi-addons/api/replication.storage/v1alpha1"
 	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/config"
+	objectstoragev1alpha1 "sigs.k8s.io/container-object-storage-interface/client/apis/objectstorage/v1alpha1"
 )
 
 // ---------------------------------------------------------------------------
@@ -115,6 +116,7 @@ func (sm *SharedManager) Get(customOpts ...func(*ctrl.Options)) (ctrl.Manager, e
 		utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 		utilruntime.Must(replicationv1alpha1.AddToScheme(scheme))
 		utilruntime.Must(vastv1alpha1.AddToScheme(scheme))
+		utilruntime.Must(objectstoragev1alpha1.AddToScheme(scheme))
 
 		opts := ctrl.Options{
 			Scheme: scheme,
