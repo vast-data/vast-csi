@@ -32,7 +32,6 @@ from vast_csi.proto import csi_pb2_grpc as csi_grpc
 from vast_csi.proto import addons_identity_pb2, addons_identity_pb2_grpc
 from vast_csi import csi_types as types
 from vast_csi.csi_types import FAILED_PRECONDITION, INTERNAL
-
 from vast_csi.utils import stringify_dict
 from vast_csi.filesystem_utils import umount_tmpfs
 from vast_csi.csi_types import INVALID_ARGUMENT, UNKNOWN

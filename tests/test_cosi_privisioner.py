@@ -4,7 +4,8 @@ import grpc
 from unittest.mock import MagicMock
 from easypy.bunch import Bunch
 from vast_csi.exceptions import Abort, MissingParameter
-from vast_csi.plugins.cosi import CosiProvisioner, parse_lifecycle_rules
+from vast_csi.builders.cosi import parse_lifecycle_rules
+from vast_csi.plugins.cosi import CosiProvisioner
 
 THIRTY_GIB = 30 * 1024 ** 3
 
@@ -142,6 +143,8 @@ class TestCosiProvisionerSuite:
         cosi = CosiProvisioner()
         session = vms_factory(
             ("views", "one", view),
+            ("globalsnapstreams", "ensure_snapshot_stream_deleted", None),
+            ("snapshots", "delete", None),
             ("s3lifecyclerules", "delete_many", None),
             ("folders", "delete", None),
             ("views", "delete_by_id", None),
@@ -509,6 +512,8 @@ class TestCosiProvisionerSuite:
         view = Bunch(id=42, path="/buckets/test-bucket", tenant_id=1)
         session = vms_session_with_mocked_resources_factory(
             ("views", "one", view),
+            ("globalsnapstreams", "ensure_snapshot_stream_deleted", None),
+            ("snapshots", "delete", None),
             ("s3lifecyclerules", "delete_many", None),
             ("folders", "delete", None),
             ("views", "delete_by_id", None),
@@ -538,6 +543,8 @@ class TestCosiProvisionerSuite:
         view = Bunch(id=42, path="/buckets/test-bucket", tenant_id=1)
         session = vms_session_with_mocked_resources_factory(
             ("views", "one", view),
+            ("globalsnapstreams", "ensure_snapshot_stream_deleted", None),
+            ("snapshots", "delete", None),
             ("s3lifecyclerules", "delete_many", None),
             ("folders", "delete", None),
             ("views", "delete_by_id", None),

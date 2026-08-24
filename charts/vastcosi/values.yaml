@@ -112,15 +112,16 @@ image:
     imagePullPolicy: IfNotPresent
 
 ####################
-# EXTENSIONS (optional K8s-native addons)
+# EXTENSIONS (always-on with the COSI driver)
 ####################
 extensions:
-  # COSI credentials flattener: creates sibling Secret/ConfigMap *-flat from annotated BucketAccess.
-  # Annotation: cosi.vastdata.com/flatten-credentials: "true"
-  credsFlattener:
-    enabled: false
-    # Metrics bind inside pod only (not cluster-exposed). Use "0" to disable (default).
-    metricsBindAddress: "0"
+  # Bucket-params mutating webhook + TLS (merges cosi.vastdata.com/* claim annotations).
+  # Helm generates a self-signed serving cert (no cert-manager path yet).
+  webhook:
+    port: 9443
+    failurePolicy: Fail
+  # Credentials flattener metrics bind (pod-local). Use "0" to disable.
+  metricsBindAddress: "0"
 
 ####################
 # VAST COSI PLUGIN BEHAVIOR

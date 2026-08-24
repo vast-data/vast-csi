@@ -1,0 +1,17 @@
+{{- $wh := .Values.extensions.webhook -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-cosi-extensions-webhook
+  namespace: {{ include "vastcosinamespace" . }}
+  labels:
+  {{- include "vastcosilabels" . | nindent 4 }}
+spec:
+  ports:
+    - port: 443
+      targetPort: {{ $wh.port | default 9443 }}
+      protocol: TCP
+      name: webhook
+  selector:
+    app: cosi-provisioner
+{{- include "vastcosiselectorLabels" . | nindent 4 }}
