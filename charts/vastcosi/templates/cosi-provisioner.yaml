@@ -50,6 +50,38 @@ spec:
         - mountPath: /var/lib/cosi
           name: socket-dir
         resources: {{- toYaml .Values.cosiplugin.resources.objectstorageProvisioner | nindent 10 }}
+{{- if .Values.extensions.credsFlattener.enabled }}
+      - name: extensions-manager
+        image: {{ include "vastcosi.vastExtensionControllerImage" . }}
+        imagePullPolicy: {{ $csi_images.vastExtensionController.imagePullPolicy | default "IfNotPresent" }}
+        args:
+        - cosi
+        - --metrics-bind-address={{ .Values.extensions.credsFlattener.metricsBindAddress | default "0" }}
+        - --health-probe-bind-address=:8081
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        ports:
+        - name: mgr-health
+          containerPort: 8081
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: mgr-health
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: mgr-health
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources: {{- toYaml .Values.cosiplugin.resources.extensionsManager | nindent 10 }}
+{{- end }}
       dnsPolicy: {{ .Values.cosiplugin.dnsPolicy }}
       nodeSelector:
 {{ toYaml .Values.cosiplugin.nodeSelector | indent 8 }}
