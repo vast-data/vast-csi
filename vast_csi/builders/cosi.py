@@ -37,6 +37,7 @@ _ANNOTATION_PREFIX = "cosi.vastdata.com/"
 _PARAM_SOURCE_BUCKET = f"{_ANNOTATION_PREFIX}sourceBucket"
 _PARAM_BLOCKING_CLONES = f"{_ANNOTATION_PREFIX}blockingClones"
 _PARAM_BUCKET_OWNER_ENFORCED = f"{_ANNOTATION_PREFIX}bucketOwnerEnforced"
+_PARAM_CLAIM_MAX_SIZE = f"{_ANNOTATION_PREFIX}maxSize"
 
 __all__ = [
     "BucketProvisionBase",
@@ -140,8 +141,13 @@ def parse_create_bucket_params(name: str, parameters: dict) -> CreateBucketParam
     scheme = parameters.pop("scheme", "http")
     lifecycle_rules_raw = parameters.pop("lifecycle_rules", None)
 
+    # Claim annotation (via bucket-params webhook) overrides BucketClass max_size.
+    claim_max_size = parameters.pop(_PARAM_CLAIM_MAX_SIZE, None) or None
+    class_max_size = parameters.pop("max_size", None) or None
+    max_size = claim_max_size or class_max_size
+
     requested_capacity = None
-    if max_size := parameters.pop("max_size", None):
+    if max_size:
         try:
             requested_capacity = int(parse_quantity(max_size))
         except ValueError as exc:

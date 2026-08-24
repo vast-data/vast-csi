@@ -298,6 +298,43 @@ class TestCosiProvisionerSuite:
         )
         assert "max_size" not in session.views.create.call_args.kwargs
 
+    def test_create_bucket_claim_max_size_overrides_class(self, vms_session_with_mocked_resources_factory):
+        params = COMMON_PARAMS.copy()
+        params["max_size"] = "30Gi"
+        params["cosi.vastdata.com/maxSize"] = "5Gi"
+        bucket_name = "test-bucket"
+        five_gib = 5 * 1024 ** 3
+
+        _, session = self._create_bucket(
+            name=bucket_name, parameters=params, vms_factory=vms_session_with_mocked_resources_factory
+        )
+
+        session.quotas.ensure.assert_called_once_with(
+            volume_id=bucket_name,
+            view_path="/buckets/test-bucket",
+            tenant_id=1,
+            requested_capacity=five_gib,
+        )
+        assert "max_size" not in session.views.create.call_args.kwargs
+        assert "cosi.vastdata.com/maxSize" not in session.views.create.call_args.kwargs
+
+    def test_create_bucket_claim_max_size_only(self, vms_session_with_mocked_resources_factory):
+        params = COMMON_PARAMS.copy()
+        params["cosi.vastdata.com/maxSize"] = "5Gi"
+        bucket_name = "test-bucket"
+        five_gib = 5 * 1024 ** 3
+
+        _, session = self._create_bucket(
+            name=bucket_name, parameters=params, vms_factory=vms_session_with_mocked_resources_factory
+        )
+
+        session.quotas.ensure.assert_called_once_with(
+            volume_id=bucket_name,
+            view_path="/buckets/test-bucket",
+            tenant_id=1,
+            requested_capacity=five_gib,
+        )
+
     @pytest.mark.parametrize("max_size", [None, ""])
     def test_create_bucket_without_max_size(self, max_size, vms_session_with_mocked_resources_factory):
         params = COMMON_PARAMS.copy()

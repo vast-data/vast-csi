@@ -1,0 +1,48 @@
+# COSI BucketClaim quota examples (VCSI-499)
+# Requires the permanent bucket-params webhook (extensions-manager sidecar).
+
+# --- A: claim-only quota (no class default) ---
+kind: BucketClass
+apiVersion: objectstorage.k8s.io/v1alpha1
+metadata:
+  name: vastdata-no-class-quota
+driverName: csi.vastdata.com
+deletionPolicy: Delete
+parameters:
+  root_export: /cosi-buckets
+  vip_pool_name: vippool-1
+  view_policy: s3-policy
+---
+kind: BucketClaim
+apiVersion: objectstorage.k8s.io/v1alpha1
+metadata:
+  name: quota-from-claim-only
+  annotations:
+    cosi.vastdata.com/maxSize: "5Gi"
+spec:
+  bucketClassName: vastdata-no-class-quota
+  protocols: [s3]
+---
+# --- B: class default only (VCSI-261 — no annotation) ---
+kind: BucketClass
+apiVersion: objectstorage.k8s.io/v1alpha1
+metadata:
+  name: vastdata-class-quota-30gi
+driverName: csi.vastdata.com
+deletionPolicy: Delete
+parameters:
+  root_export: /cosi-buckets
+  vip_pool_name: vippool-1
+  view_policy: s3-policy
+  max_size: 30Gi
+---
+# --- C: class default + claim override (claim wins → 5Gi not 30Gi) ---
+kind: BucketClaim
+apiVersion: objectstorage.k8s.io/v1alpha1
+metadata:
+  name: quota-override
+  annotations:
+    cosi.vastdata.com/maxSize: "5Gi"
+spec:
+  bucketClassName: vastdata-class-quota-30gi
+  protocols: [s3]
