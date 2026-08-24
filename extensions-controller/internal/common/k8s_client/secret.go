@@ -46,3 +46,19 @@ func (k *K8sClient) GetSecretValue(ctx context.Context, name, namespace, key str
 
 	return string(value), nil
 }
+
+// GetSecretCredentials fetches a Kubernetes Secret and returns its data as a
+// string map, matching CSI CreateVolumeRequest.secrets as populated by the
+// external-provisioner sidecar.
+func (k *K8sClient) GetSecretCredentials(ctx context.Context, name, namespace string) (map[string]string, error) {
+	secret, err := k.GetSecret(ctx, name, namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	credentials := make(map[string]string, len(secret.Data))
+	for key, value := range secret.Data {
+		credentials[key] = string(value)
+	}
+	return credentials, nil
+}
