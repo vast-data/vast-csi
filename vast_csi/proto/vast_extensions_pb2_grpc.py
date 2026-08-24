@@ -18,14 +18,14 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in vast_extensions_pb2_grpc.py depends on'
+        + ' but the generated code in vast_extensions_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
     )
 
 
-class VastExtensionsStub(object):
+class VastExtensionsStub:
     """VastExtensions exposes management operations to non-native clients
     """
 
@@ -45,9 +45,14 @@ class VastExtensionsStub(object):
                 request_serializer=vast__extensions__pb2.GetReplicationInfoRequest.SerializeToString,
                 response_deserializer=vast__extensions__pb2.GetReplicationInfoResponse.FromString,
                 _registered_method=True)
+        self.ResolveSecret = channel.unary_unary(
+                '/vastextensions.v1.VastExtensions/ResolveSecret',
+                request_serializer=vast__extensions__pb2.ResolveSecretRequest.SerializeToString,
+                response_deserializer=vast__extensions__pb2.ResolveSecretResponse.FromString,
+                _registered_method=True)
 
 
-class VastExtensionsServicer(object):
+class VastExtensionsServicer:
     """VastExtensions exposes management operations to non-native clients
     """
 
@@ -68,6 +73,15 @@ class VastExtensionsServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ResolveSecret(self, request, context):
+        """ResolveSecret fetches a Kubernetes Secret and returns its data as a
+        key/value map, matching CSI CreateVolumeRequest.secrets as populated by
+        the external-provisioner sidecar.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_VastExtensionsServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -81,6 +95,11 @@ def add_VastExtensionsServicer_to_server(servicer, server):
                     request_deserializer=vast__extensions__pb2.GetReplicationInfoRequest.FromString,
                     response_serializer=vast__extensions__pb2.GetReplicationInfoResponse.SerializeToString,
             ),
+            'ResolveSecret': grpc.unary_unary_rpc_method_handler(
+                    servicer.ResolveSecret,
+                    request_deserializer=vast__extensions__pb2.ResolveSecretRequest.FromString,
+                    response_serializer=vast__extensions__pb2.ResolveSecretResponse.SerializeToString,
+            ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
             'vastextensions.v1.VastExtensions', rpc_method_handlers)
@@ -89,7 +108,7 @@ def add_VastExtensionsServicer_to_server(servicer, server):
 
 
  # This class is part of an EXPERIMENTAL API.
-class VastExtensions(object):
+class VastExtensions:
     """VastExtensions exposes management operations to non-native clients
     """
 
@@ -137,6 +156,33 @@ class VastExtensions(object):
             '/vastextensions.v1.VastExtensions/GetReplicationInfo',
             vast__extensions__pb2.GetReplicationInfoRequest.SerializeToString,
             vast__extensions__pb2.GetReplicationInfoResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ResolveSecret(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/vastextensions.v1.VastExtensions/ResolveSecret',
+            vast__extensions__pb2.ResolveSecretRequest.SerializeToString,
+            vast__extensions__pb2.ResolveSecretResponse.FromString,
             options,
             channel_credentials,
             insecure,

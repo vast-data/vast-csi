@@ -164,6 +164,33 @@ def get_storage_class_tenant_guid(storage_class: str) -> str:
     return resp.tenant_guid
 
 
+def resolve_secret(secret_name: str, secret_namespace: str) -> dict[str, str]:
+    """Fetch a Kubernetes Secret via the extensions-controller.
+
+    Returns the Secret data as a key/value map, matching CSI
+    ``CreateVolumeRequest.secrets``
+
+    Args:
+        secret_name: Kubernetes Secret name.
+        secret_namespace: Kubernetes Secret namespace.
+
+    Returns:
+        Mapping of secret data keys to string values.
+
+    Raises:
+        grpc.RpcError: if the gRPC call fails or the Secret is not found
+            (codes.NOT_FOUND).
+    """
+    resp = _rpc(
+        "ResolveSecret",
+        vast_extensions_pb2.ResolveSecretRequest(
+            secret_name=secret_name,
+            secret_namespace=secret_namespace,
+        ),
+    )
+    return dict(resp.secrets)
+
+
 def get_tenant_guid_for_sibling(storage_class: str) -> str:
     """Return the VAST tenant GUID of the *other* StorageClass in the replication group.
 

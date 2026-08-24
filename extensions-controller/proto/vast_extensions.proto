@@ -21,6 +21,11 @@ service VastExtensions {
   // GetReplicationInfo - return replication related info.
   rpc GetReplicationInfo(GetReplicationInfoRequest)
       returns (GetReplicationInfoResponse);
+
+  // ResolveSecret fetches a Kubernetes Secret and returns its data as a
+  // key/value map, matching CSI CreateVolumeRequest.secrets as populated by
+  // the external-provisioner sidecar.
+  rpc ResolveSecret(ResolveSecretRequest) returns (ResolveSecretResponse);
 }
 
 // ---------------------------------------------------------------------------
@@ -83,4 +88,22 @@ message GetReplicationInfoResponse {
   // failover_type is the failover type configured on the owning resource
   // (ungraceful or graceful).
   FailoverType failover_type = 6;
+}
+
+// ---------------------------------------------------------------------------
+// Secret resolution
+// ---------------------------------------------------------------------------
+
+message ResolveSecretRequest {
+  // secret_name is the Kubernetes Secret name.
+  string secret_name = 1;
+
+  // secret_namespace is the Kubernetes Secret namespace.
+  string secret_namespace = 2;
+}
+
+message ResolveSecretResponse {
+  // secrets contains the Secret data keys and string values, matching the
+  // map passed in CSI RPC requests (e.g. CreateVolumeRequest.secrets).
+  map<string, string> secrets = 1;
 }

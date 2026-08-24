@@ -31,6 +31,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 // Service implements the VastExtensions gRPC service and satisfies the
@@ -195,6 +196,38 @@ func (s *Service) GetReplicationInfo(
 
 	return nil, status.Errorf(codes.NotFound,
 		"StorageClass %q is not part of any VastStorageClassReplication or VastVolumeReplication", req.StorageClass)
+}
+
+// ResolveSecret fetches a Kubernetes Secret and returns its data as a
+// key/value map matching CSI CreateVolumeRequest.secrets.
+func (s *Service) ResolveSecret(
+	ctx context.Context,
+	req *extensionsv1.ResolveSecretRequest,
+) (*extensionsv1.ResolveSecretResponse, error) {
+	if req.SecretName == "" {
+		return nil, status.Error(codes.InvalidArgument, "secret_name must not be empty")
+	}
+	if req.SecretNamespace == "" {
+		return nil, status.Error(codes.InvalidArgument, "secret_namespace must not be empty")
+	}
+
+	log := s.rainbow.For("secret", req.SecretNamespace+"/"+req.SecretName)
+
+	credentials, err := s.k8sClient.GetSecretCredentials(ctx, req.SecretName, req.SecretNamespace)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, status.Errorf(codes.NotFound,
+				"secret %s/%s not found", req.SecretNamespace, req.SecretName)
+		}
+		return nil, status.Errorf(codes.Internal,
+			"failed to get secret %s/%s: %v", req.SecretNamespace, req.SecretName, err)
+	}
+
+	log.Info("resolved secret",
+		zap.String("secretName", req.SecretName),
+		zap.String("secretNamespace", req.SecretNamespace))
+
+	return &extensionsv1.ResolveSecretResponse{Secrets: credentials}, nil
 }
 
 // failoverTypeToProto converts the CR FailoverAction to the corresponding
