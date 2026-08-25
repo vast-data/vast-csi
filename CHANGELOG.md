@@ -7,6 +7,10 @@
 * **Breaking:** extensions-controller container entrypoints renamed: `pvc-label-webhook` → `webhook`; replication sidecar now invokes `replication` and `server` subcommands. Helm charts are updated; custom manifests pinning the old args must be updated on upgrade (VCSI-447)
 * Added optional COSI credentials flattener (`cosi` extensions-controller namespace). Annotated `BucketAccess` resources get sibling `*-flat` Secret and ConfigMap with Rook-style `AWS_*` and `BUCKET_*` env keys. Runs as the `extensions-manager` sidecar in the COSI provisioner pod via the extensions-controller image (`{csi-tag}-extensions`); enable with `extensions.credsFlattener.enabled` (VCSI-447)
 
+## Version 2.6.6-hf3
+* Refreshed CSI base and CI container images and updated Python 3.12 packaging to remediate Trivy HIGH severity findings in the main CSI image
+* Bumped extensions-controller Go module dependencies (including gRPC and golang.org/x/*) to patched versions
+
 ## Version 2.6.6-hf2
 * CSI inline ephemeral volume (EV) credentials are now stored on a tmpfs overlay. New publishes always use tmpfs and JSON metadata; set `credSerializationSecret` to encrypt with AES-GCM
 * Added `fallbackToDeser` (`X_CSI_FALLBACK_TO_DESER`) to unpublish EV volumes that still use the old on-disk pickle serializer. Defaults to `false`; set `true` only while old-format EVs remain mounted, then set `false` again after they unpublish
