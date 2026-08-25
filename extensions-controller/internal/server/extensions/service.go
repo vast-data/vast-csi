@@ -23,6 +23,7 @@ import (
 	"context"
 
 	vastv1alpha1 "github.com/vast-data/vast-csi/extensions-controller/api/v1alpha1"
+	"github.com/vast-data/vast-csi/extensions-controller/internal/common/cosi"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/k8s_client"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/logging"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/vmsrest"
@@ -228,6 +229,45 @@ func (s *Service) ResolveSecret(
 		zap.String("secretNamespace", req.SecretNamespace))
 
 	return &extensionsv1.ResolveSecretResponse{Secrets: credentials}, nil
+}
+
+// ResolveCOSIBucketAuth resolves VMS credentials for a COSI bucket_id.
+func (s *Service) ResolveCOSIBucketAuth(
+	ctx context.Context,
+	req *extensionsv1.ResolveCOSIBucketAuthRequest,
+) (*extensionsv1.ResolveSecretResponse, error) {
+	if req.BucketId == "" {
+		return nil, status.Error(codes.InvalidArgument, "bucket_id must not be empty")
+	}
+
+	log := s.rainbow.For("cosiBucket", req.BucketId)
+
+	bucket, err := s.k8sClient.FindCOSIBucketByID(ctx, req.BucketId)
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "%v", err)
+	}
+
+	secretName, secretNamespace, ok := cosi.SecretRefFromParameters(bucket.Spec.Parameters)
+	if !ok {
+		// Pre-multitenancy / chart-mounted auth: no per-Bucket secret refs.
+		// Empty map → driver falls back to /opt/vms-auth (same as Create without secret params).
+		log.Info("no per-Bucket secret refs; caller should use chart-mounted credentials",
+			zap.String("bucket", bucket.Name))
+		return &extensionsv1.ResolveSecretResponse{Secrets: map[string]string{}}, nil
+	}
+	if secretName == "" || secretNamespace == "" {
+		return nil, status.Error(codes.InvalidArgument,
+			cosi.SecretNameParam+" and "+cosi.SecretNamespaceParam+" must both be set")
+	}
+
+	log.Info("resolved COSI bucket secret refs",
+		zap.String("bucket", bucket.Name),
+		zap.String("secret", secretNamespace+"/"+secretName))
+
+	return s.ResolveSecret(ctx, &extensionsv1.ResolveSecretRequest{
+		SecretName:      secretName,
+		SecretNamespace: secretNamespace,
+	})
 }
 
 // failoverTypeToProto converts the CR FailoverAction to the corresponding

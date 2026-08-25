@@ -101,10 +101,8 @@ func (b *BucketParamsInjector) Handle(ctx context.Context, req admission.Request
 }
 
 // SetupBucketParamsWebhook registers the Bucket parameter merge webhook.
+// driverName must match Bucket.spec.driverName (pass via --csi-driver-name).
 func SetupBucketParamsWebhook(mgr ctrl.Manager, rainbow *logging.RainbowLogger, driverName string) error {
-	if driverName == "" {
-		driverName = cosi.VastCOSIDriverName
-	}
 	decoder := admission.NewDecoder(mgr.GetScheme())
 	mgr.GetWebhookServer().Register(bucketParamsWebhookPath, &admission.Webhook{
 		Handler: &BucketParamsInjector{

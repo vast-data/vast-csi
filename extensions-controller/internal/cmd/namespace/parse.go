@@ -69,7 +69,10 @@ func parseInvocations(args []string, namespaces []Namespace) ([]invocation, erro
 	return invocations, nil
 }
 
-func splitLeadingFlags(args []string) (rootFlags, rest []string) {
+// splitLeadingFlags peels root flags from argv before the first namespace name.
+// namespaceNames prevents bool root flags (e.g. --dev-logging) from swallowing
+// the following namespace token as a fake flag value.
+func splitLeadingFlags(args []string, namespaceNames map[string]struct{}) (rootFlags, rest []string) {
 	i := 0
 	for i < len(args) {
 		if !strings.HasPrefix(args[i], "-") {
@@ -77,8 +80,10 @@ func splitLeadingFlags(args []string) (rootFlags, rest []string) {
 		}
 		rootFlags = append(rootFlags, args[i])
 		if !strings.Contains(args[i], "=") && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-			i++
-			rootFlags = append(rootFlags, args[i])
+			if _, isNS := namespaceNames[args[i+1]]; !isNS {
+				i++
+				rootFlags = append(rootFlags, args[i])
+			}
 		}
 		i++
 	}
