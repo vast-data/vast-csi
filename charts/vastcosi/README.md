@@ -80,3 +80,72 @@ helm search repo -l vast
 ### troubleshooting
  - Add `--wait -v=5 --debug` in `helm install` command to get detailed error
  - Use `kubectl describe` to acquire more info
+
+## Multitenancy (per-BucketClass VMS credentials)
+
+COSI supports per-BucketClass VMS credentials via `secretName` /
+`secretNamespace` Helm keys (same naming as other charts). The chart emits
+`vastdata.com/secret-name` and `vastdata.com/secret-namespace` on the BucketClass.
+Create uses those parameters directly; delete, grant, and revoke resolve the same
+credentials via `ResolveCOSIBucketAuth`, which looks up the Bucket CR by `bucket_id`
+and reads the persisted secret ref — without embedding secrets in `bucket_id`.
+If the Bucket has no secret refs (pre-multitenancy buckets), auth falls back to the
+chart-level mounted secret at `/opt/vms-auth`.
+
+### VMS auth Secret shape
+
+Create a Kubernetes Secret in the namespace referenced by the BucketClass (or the Helm
+release namespace when `secretNamespace` is omitted):
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: team-a-vast-auth
+  namespace: app-team
+stringData:
+  endpoint: vms.example.com
+  token: <API token>          # token-only auth
+  tenant: team-a              # optional; omit or leave empty for cluster-admin
+```
+
+Username/password auth is also supported (`username`, `password`, optional `tenant`).
+
+### BucketClass parameters
+
+In Helm `bucketClasses`, set `secretName` and optionally `secretNamespace`
+(defaults to the release namespace). Choose **either** `vipPool` (VMS resolves a VIP)
+**or** `vipPoolFQDN` (DNS endpoint; skips the VIP lookup). Use
+`vipPoolFQDNRandomPrefix: true` to prepend a random subdomain per bucket.
+
+```yaml
+bucketClasses:
+  team-a-buckets:
+    storagePath: /cosi/team-a
+    viewPolicy: s3-policy-team-a
+    secretName: team-a-vast-auth
+    secretNamespace: app-team
+    vipPoolFQDN: s3-team-a.example.com
+    scheme: https
+```
+
+The rendered BucketClass includes:
+
+```yaml
+parameters:
+  vastdata.com/secret-name: team-a-vast-auth
+  vastdata.com/secret-namespace: app-team
+```
+
+> **NOTE:** BucketClass parameters are immutable. Adding `secretName` to an existing
+> BucketClass requires recreating the BucketClass and any buckets provisioned from it.
+
+### Legacy single-tenant installs
+
+Set the chart-level `secretName` value to mount global credentials at `/opt/vms-auth`.
+BucketClasses without per-class `secretName` continue to use that fallback for create.
+Delete, grant, and revoke on buckets that never stored secret refs on the Bucket CR
+also fall back to `/opt/vms-auth`, so upgrading the driver does not break lifecycle
+of pre-multitenancy buckets when the chart secret is still mounted.
+For multitenant clusters, leave chart `secretName` empty and configure secrets per
+BucketClass instead.

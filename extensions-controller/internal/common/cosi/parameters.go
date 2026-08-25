@@ -3,8 +3,7 @@ package cosi
 import "strings"
 
 const (
-	AnnotationPrefix   = "cosi.vastdata.com/"
-	VastCOSIDriverName = "csi.vastdata.com"
+	AnnotationPrefix = "cosi.vastdata.com/"
 )
 
 // ParamsFromClaimAnnotations copies cosi.vastdata.com/* annotations into parameters
@@ -34,4 +33,14 @@ func MergeParameters(classParams, claimParams map[string]string) map[string]stri
 		merged[k] = v
 	}
 	return merged
+}
+
+// SecretRefFromParameters reads vastdata.com/secret-* from a parameter map.
+func SecretRefFromParameters(params map[string]string) (name, namespace string, ok bool) {
+	name = params[SecretNameParam]
+	namespace = params[SecretNamespaceParam]
+	if name == "" && namespace == "" {
+		return "", "", false
+	}
+	return name, namespace, true
 }

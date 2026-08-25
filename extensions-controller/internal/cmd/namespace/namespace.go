@@ -81,7 +81,11 @@ func execute(root *cobra.Command, ctx Context, namespaces []Namespace, args []st
 		return root.Help()
 	}
 
-	rootArgs, rest := splitLeadingFlags(args)
+	nsNames := make(map[string]struct{}, len(namespaces))
+	for _, ns := range namespaces {
+		nsNames[ns.Name()] = struct{}{}
+	}
+	rootArgs, rest := splitLeadingFlags(args, nsNames)
 	if err := root.ParseFlags(rootArgs); err != nil {
 		return err
 	}

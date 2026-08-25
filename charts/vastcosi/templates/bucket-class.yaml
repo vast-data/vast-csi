@@ -12,8 +12,22 @@
 {{- $deletion_policy :=  pluck "deletionPolicy" $options $.Values.bucketClassDefaults | first | quote -}}
 {{- $view_policy :=  pluck "viewPolicy" $options $.Values.bucketClassDefaults | first | quote -}}
 {{- $vip_pool_name := pluck "vipPool" $options $.Values.bucketClassDefaults | first | quote -}}
-{{- if eq $vip_pool_name ( quote "" ) -}}
-  {{- fail "vipPool is required value. Please specify valid vip pool" -}}
+{{- $vip_pool_fqdn := pluck "vipPoolFQDN" $options $.Values.bucketClassDefaults | first | quote -}}
+{{- $vip_pool_fqdn_random_prefix := pluck "vipPoolFQDNRandomPrefix" $options $.Values.bucketClassDefaults | first | quote -}}
+{{- $secret_name := pluck "secretName" $options $.Values.bucketClassDefaults | first | quote -}}
+{{- $secret_namespace := pluck "secretNamespace" $options $.Values.bucketClassDefaults | first | default $.Release.Namespace | quote -}}
+{{- $secret_namespace_explicit := pluck "secretNamespace" $options $.Values.bucketClassDefaults | first | quote -}}
+
+{{- if and (eq $secret_name ( quote "" )) (ne $secret_namespace_explicit ( quote "" )) -}}
+{{- fail (printf "secretName is required when secretNamespace is set on BucketClass '%s'" $name) -}}
+{{- end -}}
+
+{{- if and (ne $vip_pool_name ( quote "" )) (ne $vip_pool_fqdn ( quote "" )) -}}
+{{- fail (printf "vipPool and vipPoolFQDN are mutually exclusive in the BucketClass '%s' parameters. Do not set a default value from bucketClassDefaults for either field; choose only one to specify." $name) -}}
+{{- end }}
+
+{{- if and (eq $vip_pool_name ( quote "" )) (eq $vip_pool_fqdn ( quote "" )) -}}
+  {{- fail "Either vipPool or vipPoolFQDN is required. Please specify valid vip pool or FQDN" -}}
 {{- end }}
 {{- $scheme := pluck "scheme" $options $.Values.bucketClassDefaults | first | quote -}}
 {{- if not ( $scheme | mustRegexMatch "http|https" ) -}}
@@ -37,18 +51,26 @@ driverName: {{ include "vastcosi.csiDriver" $ }}
 deletionPolicy: {{ $deletion_policy }}
 parameters:
   root_export: {{ $storage_path }}
-  vip_pool_name: {{ $vip_pool_name }}
   scheme: {{ $scheme }}
-{{- if ne $view_policy ( quote "" ) }}
-  view_policy: {{ $view_policy }}
+{{- include "vastcosi.dictToKeyValParams" (list (dict
+  "vip_pool_name" $vip_pool_name
+  "vip_pool_fqdn" $vip_pool_fqdn
+  "view_policy" $view_policy
+  "max_size" $max_size
+)) | indent 2 }}
+{{- if ne $vip_pool_fqdn ( quote "" ) }}
+{{- include "vastcosi.dictToBoolParams" (list (dict
+  "vip_pool_fqdn_random_prefix" $vip_pool_fqdn_random_prefix
+)) | indent 2 }}
 {{- end }}
 {{- if $lifecycle_rules }}
-{{ include "vastcsi.dictToJsonStringParam" (list $lifecycle_rules "lifecycle_rules") | indent 2 }}
+{{ include "vastcosi.dictToJsonStringParam" (list $lifecycle_rules "lifecycle_rules") | indent 2 }}
 {{- end }}
-{{- if ne $max_size "" }}
-  max_size: {{ $max_size | quote }}
+{{- if ne $secret_name ( quote "" ) }}
+  vastdata.com/secret-name: {{ $secret_name }}
+  vastdata.com/secret-namespace: {{ $secret_namespace }}
 {{- end }}
-{{- with omit $options "deletionPolicy" "viewPolicy" "vipPool" "scheme" "storagePath" "lifecycleRules" "maxSize" }}
+{{- with omit $options "deletionPolicy" "viewPolicy" "vipPool" "vipPoolFQDN" "vipPoolFQDNRandomPrefix" "secretName" "secretNamespace" "scheme" "storagePath" "lifecycleRules" "maxSize" }}
   {{- range $key, $value := . }}
   {{ $key }}: {{ $value | quote }}
 {{- end }}

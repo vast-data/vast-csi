@@ -11,6 +11,7 @@ from vast_csi.csi_types import ALREADY_EXISTS, INVALID_ARGUMENT, NOT_FOUND
 from vast_csi.exceptions import Abort, MissingParameter
 from vast_csi.quantity import parse_quantity
 from vast_csi.session.vms_session import VmsSession
+from vast_csi.utils import get_random_fqdn_prefix
 
 _VMS_NAME_MAX_LEN = 64
 
@@ -119,14 +120,46 @@ def parse_lifecycle_rules(raw, bucket_name):
 @dataclass
 class CreateBucketParams:
     root_export: str
-    vip_pool_name: str
     scheme: str = "http"
+    vip_pool_name: Optional[str] = None
+    vip_pool_fqdn: Optional[str] = None
+    vip_pool_fqdn_random_prefix: bool = False
     lifecycle_rules: list = field(default_factory=list)
     requested_capacity: Optional[int] = None
     source_bucket: str | None = None
     blocking_clones: bool = False
     bucket_owner_enforced: bool = True
     remaining_parameters: dict = field(default_factory=dict)
+
+
+def validate_vip_pool_endpoint_params(vip_pool_name=None, vip_pool_fqdn=None):
+    """Require exactly one of vip_pool_name or vip_pool_fqdn."""
+    if vip_pool_name and vip_pool_fqdn:
+        raise Abort(
+            INVALID_ARGUMENT,
+            "vip_pool_name and vip_pool_fqdn are mutually exclusive. Provide one of them.",
+        )
+    if not vip_pool_name and not vip_pool_fqdn:
+        raise Abort(
+            INVALID_ARGUMENT,
+            "either vip_pool_name or vip_pool_fqdn must be provided.",
+        )
+
+
+def resolve_vip_pool_endpoint(
+    vms_session,
+    *,
+    vip_pool_name=None,
+    vip_pool_fqdn=None,
+    vip_pool_fqdn_random_prefix=False,
+    tenant_id=None,
+):
+    """Resolve endpoint from vip pool name or FQDN. Call validate_vip_pool_endpoint_params first."""
+    if vip_pool_fqdn:
+        if vip_pool_fqdn_random_prefix:
+            return f"{get_random_fqdn_prefix()}.{vip_pool_fqdn}"
+        return vip_pool_fqdn
+    return vms_session.vippools.get_vip(vip_pool_name=vip_pool_name, tenant_id=tenant_id)
 
 
 def parse_create_bucket_params(name: str, parameters: dict) -> CreateBucketParams:
@@ -136,8 +169,12 @@ def parse_create_bucket_params(name: str, parameters: dict) -> CreateBucketParam
 
     if (root_export := parameters.pop("root_export", None)) is None:
         raise MissingParameter(param="root_export")
-    if not (vip_pool_name := parameters.pop("vip_pool_name", None)):
-        raise MissingParameter(param="vip_pool_name")
+    vip_pool_name = parameters.pop("vip_pool_name", None) or None
+    vip_pool_fqdn = parameters.pop("vip_pool_fqdn", None) or None
+    validate_vip_pool_endpoint_params(vip_pool_name, vip_pool_fqdn)
+    vip_pool_fqdn_random_prefix = yesno_to_bool(
+        str(parameters.pop("vip_pool_fqdn_random_prefix", None) or "false")
+    )
     scheme = parameters.pop("scheme", "http")
     lifecycle_rules_raw = parameters.pop("lifecycle_rules", None)
 
@@ -186,16 +223,18 @@ def parse_create_bucket_params(name: str, parameters: dict) -> CreateBucketParam
             f"require {_PARAM_SOURCE_BUCKET}",
         )
 
-    # Claim annotations must not leak into ensure_s3view kwargs.
+    # Namespaced driver params (vastdata.com/*) must not leak into ensure_s3view kwargs.
     remaining = {
         key: value
         for key, value in parameters.items()
-        if not key.startswith(_ANNOTATION_PREFIX)
+        if "vastdata.com" not in key
     }
 
     return CreateBucketParams(
         root_export=root_export,
         vip_pool_name=vip_pool_name,
+        vip_pool_fqdn=vip_pool_fqdn,
+        vip_pool_fqdn_random_prefix=vip_pool_fqdn_random_prefix,
         scheme=scheme,
         lifecycle_rules=lifecycle_rules,
         requested_capacity=requested_capacity,
@@ -252,8 +291,12 @@ def build_bucket_endpoint_id(
     vms_session: VmsSession, name: str, view, params: CreateBucketParams
 ) -> str:
     port = 443 if params.scheme == "https" else 80
-    vip = vms_session.vippools.get_vip(
-        vip_pool_name=params.vip_pool_name, tenant_id=view.tenant_id
+    vip = resolve_vip_pool_endpoint(
+        vms_session,
+        vip_pool_name=params.vip_pool_name,
+        vip_pool_fqdn=params.vip_pool_fqdn,
+        vip_pool_fqdn_random_prefix=params.vip_pool_fqdn_random_prefix,
+        tenant_id=view.tenant_id,
     )
     return f"{name}@{view.tenant_id}@{params.scheme}://{vip}:{port}"
 

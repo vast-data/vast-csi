@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x15vast_extensions.proto\x12\x11vastextensions.v1\"4\n\x1bGetReplicationTenantRequest\x12\x15\n\rstorage_class\x18\x01 \x01(\t\"J\n\x1cGetReplicationTenantResponse\x12\x15\n\rstorage_class\x18\x01 \x01(\t\x12\x13\n\x0btenant_guid\x18\x02 \x01(\t\"E\n\x19GetReplicationInfoRequest\x12\x15\n\rstorage_class\x18\x01 \x01(\t\x12\x11\n\tnamespace\x18\x02 \x01(\t\"\xc2\x01\n\x1aGetReplicationInfoResponse\x12\x15\n\rresource_name\x18\x01 \x01(\t\x12\x11\n\tnamespace\x18\x02 \x01(\t\x12\x15\n\rresource_kind\x18\x03 \x01(\t\x12\x12\n\nis_primary\x18\x04 \x01(\x08\x12\x17\n\x0fstorage_classes\x18\x05 \x03(\t\x12\x36\n\rfailover_type\x18\x06 \x01(\x0e\x32\x1f.vastextensions.v1.FailoverType\"E\n\x14ResolveSecretRequest\x12\x13\n\x0bsecret_name\x18\x01 \x01(\t\x12\x18\n\x10secret_namespace\x18\x02 \x01(\t\"\x8f\x01\n\x15ResolveSecretResponse\x12\x46\n\x07secrets\x18\x01 \x03(\x0b\x32\x35.vastextensions.v1.ResolveSecretResponse.SecretsEntry\x1a.\n\x0cSecretsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01*H\n\x0c\x46\x61iloverType\x12\x1c\n\x18\x46\x41ILOVER_TYPE_UNGRACEFUL\x10\x00\x12\x1a\n\x16\x46\x41ILOVER_TYPE_GRACEFUL\x10\x01\x32\xe0\x02\n\x0eVastExtensions\x12w\n\x14GetReplicationTenant\x12..vastextensions.v1.GetReplicationTenantRequest\x1a/.vastextensions.v1.GetReplicationTenantResponse\x12q\n\x12GetReplicationInfo\x12,.vastextensions.v1.GetReplicationInfoRequest\x1a-.vastextensions.v1.GetReplicationInfoResponse\x12\x62\n\rResolveSecret\x12\'.vastextensions.v1.ResolveSecretRequest\x1a(.vastextensions.v1.ResolveSecretResponseB`Z^github.com/vast-data/vast-csi/extensions-controller/internal/server/extensions/v1;extensionsv1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x15vast_extensions.proto\x12\x11vastextensions.v1\"4\n\x1bGetReplicationTenantRequest\x12\x15\n\rstorage_class\x18\x01 \x01(\t\"J\n\x1cGetReplicationTenantResponse\x12\x15\n\rstorage_class\x18\x01 \x01(\t\x12\x13\n\x0btenant_guid\x18\x02 \x01(\t\"E\n\x19GetReplicationInfoRequest\x12\x15\n\rstorage_class\x18\x01 \x01(\t\x12\x11\n\tnamespace\x18\x02 \x01(\t\"\xc2\x01\n\x1aGetReplicationInfoResponse\x12\x15\n\rresource_name\x18\x01 \x01(\t\x12\x11\n\tnamespace\x18\x02 \x01(\t\x12\x15\n\rresource_kind\x18\x03 \x01(\t\x12\x12\n\nis_primary\x18\x04 \x01(\x08\x12\x17\n\x0fstorage_classes\x18\x05 \x03(\t\x12\x36\n\rfailover_type\x18\x06 \x01(\x0e\x32\x1f.vastextensions.v1.FailoverType\"E\n\x14ResolveSecretRequest\x12\x13\n\x0bsecret_name\x18\x01 \x01(\t\x12\x18\n\x10secret_namespace\x18\x02 \x01(\t\"\x8f\x01\n\x15ResolveSecretResponse\x12\x46\n\x07secrets\x18\x01 \x03(\x0b\x32\x35.vastextensions.v1.ResolveSecretResponse.SecretsEntry\x1a.\n\x0cSecretsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"1\n\x1cResolveCOSIBucketAuthRequest\x12\x11\n\tbucket_id\x18\x01 \x01(\t*H\n\x0c\x46\x61iloverType\x12\x1c\n\x18\x46\x41ILOVER_TYPE_UNGRACEFUL\x10\x00\x12\x1a\n\x16\x46\x41ILOVER_TYPE_GRACEFUL\x10\x01\x32\xd4\x03\n\x0eVastExtensions\x12w\n\x14GetReplicationTenant\x12..vastextensions.v1.GetReplicationTenantRequest\x1a/.vastextensions.v1.GetReplicationTenantResponse\x12q\n\x12GetReplicationInfo\x12,.vastextensions.v1.GetReplicationInfoRequest\x1a-.vastextensions.v1.GetReplicationInfoResponse\x12\x62\n\rResolveSecret\x12\'.vastextensions.v1.ResolveSecretRequest\x1a(.vastextensions.v1.ResolveSecretResponse\x12r\n\x15ResolveCOSIBucketAuth\x12/.vastextensions.v1.ResolveCOSIBucketAuthRequest\x1a(.vastextensions.v1.ResolveSecretResponseB`Z^github.com/vast-data/vast-csi/extensions-controller/internal/server/extensions/v1;extensionsv1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,8 +34,8 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._serialized_options = b'Z^github.com/vast-data/vast-csi/extensions-controller/internal/server/extensions/v1;extensionsv1'
   _globals['_RESOLVESECRETRESPONSE_SECRETSENTRY']._loaded_options = None
   _globals['_RESOLVESECRETRESPONSE_SECRETSENTRY']._serialized_options = b'8\001'
-  _globals['_FAILOVERTYPE']._serialized_start=659
-  _globals['_FAILOVERTYPE']._serialized_end=731
+  _globals['_FAILOVERTYPE']._serialized_start=710
+  _globals['_FAILOVERTYPE']._serialized_end=782
   _globals['_GETREPLICATIONTENANTREQUEST']._serialized_start=44
   _globals['_GETREPLICATIONTENANTREQUEST']._serialized_end=96
   _globals['_GETREPLICATIONTENANTRESPONSE']._serialized_start=98
@@ -50,6 +50,8 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_RESOLVESECRETRESPONSE']._serialized_end=657
   _globals['_RESOLVESECRETRESPONSE_SECRETSENTRY']._serialized_start=611
   _globals['_RESOLVESECRETRESPONSE_SECRETSENTRY']._serialized_end=657
-  _globals['_VASTEXTENSIONS']._serialized_start=734
-  _globals['_VASTEXTENSIONS']._serialized_end=1086
+  _globals['_RESOLVECOSIBUCKETAUTHREQUEST']._serialized_start=659
+  _globals['_RESOLVECOSIBUCKETAUTHREQUEST']._serialized_end=708
+  _globals['_VASTEXTENSIONS']._serialized_start=785
+  _globals['_VASTEXTENSIONS']._serialized_end=1253
 # @@protoc_insertion_point(module_scope)

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vast-data/vast-csi/extensions-controller/internal/common/cosi"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/logging"
 	"go.uber.org/zap"
 	admissionv1 "k8s.io/api/admission/v1"
@@ -27,7 +26,7 @@ func newBucketParamsInjector(client client.Client) *BucketParamsInjector {
 		Client:     client,
 		Decoder:    decoder,
 		Rainbow:    logging.New(zap.NewNop(), false),
-		DriverName: cosi.VastCOSIDriverName,
+		DriverName: "csi.vastdata.com",
 	}
 }
 
@@ -52,7 +51,7 @@ func TestBucketParamsInjector_claimNotFound(t *testing.T) {
 	bucket := &objectstoragev1alpha1.Bucket{
 		ObjectMeta: metav1.ObjectMeta{Name: "bc-uid", Namespace: "default"},
 		Spec: objectstoragev1alpha1.BucketSpec{
-			DriverName: cosi.VastCOSIDriverName,
+			DriverName: "csi.vastdata.com",
 			BucketClaim: &corev1.ObjectReference{
 				Name:      "missing-claim",
 				Namespace: "default",
@@ -85,7 +84,7 @@ func TestBucketParamsInjector_mergeClaimAnnotations(t *testing.T) {
 	bucket := &objectstoragev1alpha1.Bucket{
 		ObjectMeta: metav1.ObjectMeta{Name: "bc-uid", Namespace: "default"},
 		Spec: objectstoragev1alpha1.BucketSpec{
-			DriverName: cosi.VastCOSIDriverName,
+			DriverName: "csi.vastdata.com",
 			BucketClaim: &corev1.ObjectReference{
 				Name:      "clone-claim",
 				Namespace: "default",
@@ -131,7 +130,7 @@ func TestBucketParamsInjector_incompleteCloneStillMerged(t *testing.T) {
 	bucket := &objectstoragev1alpha1.Bucket{
 		ObjectMeta: metav1.ObjectMeta{Name: "bc-uid", Namespace: "default"},
 		Spec: objectstoragev1alpha1.BucketSpec{
-			DriverName: cosi.VastCOSIDriverName,
+			DriverName: "csi.vastdata.com",
 			BucketClaim: &corev1.ObjectReference{
 				Name:      "bad-clone",
 				Namespace: "default",

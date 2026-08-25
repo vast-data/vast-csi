@@ -9,6 +9,11 @@
 * **Breaking:** extensions-controller container entrypoints renamed: `pvc-label-webhook` → `webhook`; replication sidecar now invokes `replication` and `server` subcommands. Helm charts are updated; custom manifests pinning the old args must be updated on upgrade (VCSI-447)
 * COSI: writable bucket clones via BucketClaim annotation `cosi.vastdata.com/sourceBucket` (optional `cosi.vastdata.com/blockingClones`). Permanent extensions-manager bucket-params webhook merges full annotation keys into `Bucket.spec.parameters`; CreateBucket validates. Backed by VAST snapshot and Global Snapshot Stream (VCSI-325)
 * Added COSI credentials flattener (`cosi` extensions-controller namespace), permanent with the COSI chart. Annotated `BucketAccess` resources get sibling `*-flat` Secret and ConfigMap with Rook-style `AWS_*` and `BUCKET_*` env keys. Runs as the `extensions-manager` sidecar in the COSI provisioner pod via the extensions-controller image (`{csi-tag}-extensions`) (VCSI-447)
+* COSI: per-BucketClass VMS credentials via `vastdata.com/secret-name` / `vastdata.com/secret-namespace` on BucketClass (VCSI-310)
+* COSI: secret lookup via extensions-controller `ResolveSecret` gRPC (MR 535) instead of in-driver Kubernetes API access
+* COSI: `ResolveCOSIBucketAuth` gRPC resolves per-BucketClass VMS credentials from persisted `Bucket.spec.parameters` for delete, grant, and revoke when the sidecar sends no secret params; buckets without secret refs fall back to chart-mounted `/opt/vms-auth` (VCSI-310)
+* COSI: `vipPoolFQDN` and `vipPoolFQDNRandomPrefix` BucketClass parameters for DNS-based bucket endpoints (VCSI-310)
+* COSI: optional global `secretName` Helm value for legacy single-tenant installs (create and lifecycle fallback when Bucket has no secret refs)
 
 ## Version 2.6.6-hf2
 * CSI inline ephemeral volume (EV) credentials are now stored on a tmpfs overlay. New publishes always use tmpfs and JSON metadata; set `credSerializationSecret` to encrypt with AES-GCM
