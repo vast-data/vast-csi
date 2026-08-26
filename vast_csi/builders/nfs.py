@@ -10,7 +10,12 @@ from vast_csi.quantity import parse_quantity
 from vast_csi.capabilities import Capabilities
 from vast_csi.exceptions import SourceNotFound, MissingParameter
 from vast_csi.builders.base import BaseVolumeBuilder, parse_volume_id
-from vast_csi.mtls_utils import validate_xprtsec_settings
+from vast_csi.mtls_utils import (
+    get_xprtsec_from_mount_options,
+    validate_xprtsec_settings,
+    validate_xprtsec_view_policy,
+)
+from vast_csi.utils import is_ver_nfs4_present
 
 
 __all__ = [
@@ -210,6 +215,16 @@ class VolumeFromBucketBuilder(FileSystemProvisionBase):
 
     def build_volume(self) -> types.Volume:
         view = self.vms_session.views.one(bucket=self.bucket_name, fail_if_missing=True)
+
+        # Skip view-policy lookup unless mount options request tls/mtls.
+        mount_flags = self.volume_capabilities.mount_flags_str
+        if xprtsec := get_xprtsec_from_mount_options(mount_flags):
+            policy = self.vms_session.viewpolicies.get(view.policy_id)
+            validate_xprtsec_view_policy(
+                policy,
+                xprtsec,
+                is_nfs4=is_ver_nfs4_present(mount_flags),
+            )
 
         nfs_protocol = self.mount_protocol
         protocols = list(view.protocols or [])
