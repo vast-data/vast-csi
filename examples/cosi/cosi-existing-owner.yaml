@@ -1,0 +1,56 @@
+# COSI bucket owned by an existing VMS local user (lab stand-in for AD).
+# Production: set bucket_owner_context: AD and bucket_owner to the AD service account.
+#
+# Driver wire keys are snake_case (below). Helm chart values use camelCase
+# bucketOwner / bucketOwnerContext (mapped to these parameters).
+#
+# Prerequisites:
+#   - bucket_owner user must exist in VMS and be queryable via users/query
+#   - bucket_owner and bucket_owner_context are required together
+#
+# VMS limits: 2 access keys per user per tenant — plan grants accordingly.
+
+kind: BucketClass
+apiVersion: objectstorage.k8s.io/v1alpha1
+driverName: csi.vastdata.com
+metadata:
+  name: vastdata-bucket-existing-owner
+parameters:
+  root_export: /cosi
+  vip_pool_name: vippool-1
+  view_policy: s3_default_policy
+  scheme: http
+  bucket_owner: cosi-e2e-owner          # existing VMS username (lab: local user)
+  bucket_owner_context: local           # use AD in production
+
+---
+
+kind: BucketClaim
+apiVersion: objectstorage.k8s.io/v1alpha1
+metadata:
+  name: sample-bucket
+spec:
+  bucketClassName: vastdata-bucket-existing-owner
+  protocols:
+  - s3
+
+---
+
+kind: BucketAccessClass
+apiVersion: objectstorage.k8s.io/v1alpha1
+metadata:
+  name: vast-bac-generate
+driverName: csi.vastdata.com
+authenticationType: KEY
+parameters: {}   # default: VMS-generated key on the bucket owner
+
+---
+
+kind: BucketAccess
+apiVersion: objectstorage.k8s.io/v1alpha1
+metadata:
+  name: sample-access
+spec:
+  bucketClaimName: sample-bucket
+  bucketAccessClassName: vast-bac-generate
+  credentialsSecretName: sample-access-secret

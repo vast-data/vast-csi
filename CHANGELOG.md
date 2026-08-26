@@ -15,6 +15,7 @@
 * COSI: `vipPoolFQDN` and `vipPoolFQDNRandomPrefix` BucketClass parameters for DNS-based bucket endpoints (VCSI-310)
 * COSI: optional global `secretName` Helm value for legacy single-tenant installs (create and lifecycle fallback when Bucket has no secret refs)
 * COSI: BucketAccessClass `credentialsSecretName` / `credentialsSecretNamespace` installs externally managed S3 keys from a Kubernetes input Secret on the bucket VAST local user (VCSI-326). Requires VAST ≥ 5.4. To rotate keys, update the input Secret and delete/recreate the BucketAccess
+* COSI: optional existing VMS/AD user as S3 bucket owner via BucketClass parameters `bucket_owner` / `bucket_owner_context` (Helm `bucketOwner` / `bucketOwnerContext`); grant/revoke target the owner user; bucket delete skips removal of external owners (VCSI-328)
 
 ## Version 2.6.6-hf2
 * CSI inline ephemeral volume (EV) credentials are now stored on a tmpfs overlay. New publishes always use tmpfs and JSON metadata; set `credSerializationSecret` to encrypt with AES-GCM
@@ -26,6 +27,7 @@
 * Snapshot `size_bytes` is now populated from the source volume size (block) or quota hard limit (NFS) instead of reporting unspecified, enabling CDI `restoreSize` support
 
 ## Version 2.6.6
+
 * Added `ReadOnlyMany` (ROX) access mode support for the block CSI driver
 * Changed default node pod `priorityClass` to `system-node-critical` to ensure node workloads are not evicted under resource pressure (VCSI-358)
 * Added `ReadWriteOncePod` access mode support (VCSI-464)

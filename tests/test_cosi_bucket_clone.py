@@ -327,7 +327,12 @@ class TestCosiBucketCloneDelete:
     def test_delete_clone_bucket_cleans_gss_first(self, cosi_provisioner):
         session = _mock_session(
             source_view=_source_view(),
-            dest_view=Bunch(id=7, path=f"/clones/{CLONE_BUCKET}", tenant_id=TENANT_ID),
+            dest_view=Bunch(
+                id=7,
+                path=f"/clones/{CLONE_BUCKET}",
+                tenant_id=TENANT_ID,
+                bucket_owner=CLONE_BUCKET,
+            ),
         )
         order = []
 
@@ -353,7 +358,12 @@ class TestCosiBucketCloneDelete:
 
     def test_delete_clone_bucket_deletes_snapshot(self, cosi_provisioner):
         session = _mock_session(
-            dest_view=Bunch(id=7, path=f"/clones/{CLONE_BUCKET}", tenant_id=TENANT_ID),
+            dest_view=Bunch(
+                id=7,
+                path=f"/clones/{CLONE_BUCKET}",
+                tenant_id=TENANT_ID,
+                bucket_owner=CLONE_BUCKET,
+            ),
         )
         snap_name = cosi_clone_snap_name(CLONE_BUCKET)
         bucket_id = f"{CLONE_BUCKET}@{TENANT_ID}@http://172.0.0.1:80"
@@ -366,7 +376,12 @@ class TestCosiBucketCloneDelete:
 
     def test_delete_empty_bucket_gss_is_noop(self, cosi_provisioner):
         session = _mock_session(
-            dest_view=Bunch(id=7, path=f"/buckets/{CLONE_BUCKET}", tenant_id=TENANT_ID),
+            dest_view=Bunch(
+                id=7,
+                path=f"/buckets/{CLONE_BUCKET}",
+                tenant_id=TENANT_ID,
+                bucket_owner=CLONE_BUCKET,
+            ),
         )
         bucket_id = f"{CLONE_BUCKET}@{TENANT_ID}@http://172.0.0.1:80"
         cosi_provisioner.DriverDeleteBucket(

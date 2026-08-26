@@ -1,6 +1,7 @@
 # Copyright 2026 VAST Data Inc.
 # All Rights Reserved.
 import re
+from dataclasses import dataclass
 
 import grpc
 from requests.exceptions import HTTPError
@@ -15,13 +16,24 @@ from vast_csi.csi_types import (
     RESOURCE_EXHAUSTED,
     UNKNOWN,
 )
-from vast_csi.exceptions import Abort, ApiError
+from vast_csi.exceptions import Abort, ApiError, LookupFieldError
 from vast_csi.extensions_client import resolve_secret
 
 ACCESS_KEY_FIELD = "accessKeyID"
 SECRET_KEY_FIELD = "accessSecretKey"
 ACCESS_KEY_RE = re.compile(r"^[A-Z0-9]{20}$")
 SECRET_KEY_RE = re.compile(r"^[a-zA-Z0-9/+]{40}$")
+
+
+@dataclass(frozen=True)
+class UdbGrantTarget:
+    user: object
+
+
+@dataclass(frozen=True)
+class NonLocalGrantTarget:
+    username: str
+    tenant_id: object
 
 
 def _validate_s3_key_pair(access_key: str, secret_key: str) -> None:
@@ -106,12 +118,12 @@ def _read_external_credentials(parameters: dict) -> tuple[str, str]:
 def _install_external_credentials(
     vms_session,
     *,
-    bucket_name: str,
+    user,
     tenant_id: str,
     endpoint: str,
     parameters: dict,
 ):
-    """Install BucketAccessClass input-Secret keys onto the bucket VAST local user.
+    """Install BucketAccessClass input-Secret keys onto a VAST local (UDB) user.
 
     Deletes existing keys then installs the forced pair (VMS cannot compare secret
     keys). Not atomic: if install fails after deletes, the user may have zero keys
@@ -121,7 +133,6 @@ def _install_external_credentials(
     _validate_s3_key_pair(access_key, secret_key)
 
     # list_access_keys uses GET /users/{id}; list-by-name may omit key material.
-    user = vms_session.users.one(name=bucket_name, fail_if_missing=True)
     for ak in vms_session.users.list_access_keys(user.id):
         try:
             vms_session.users.delete_access_key(user.id, ak)
@@ -141,6 +152,39 @@ def _install_external_credentials(
     return credential_response(access_key, secret_key, endpoint)
 
 
+def _resolve_grant_target(
+    vms_session, bucket_name
+) -> UdbGrantTarget | NonLocalGrantTarget:
+    view = vms_session.views.one(bucket=bucket_name, fail_if_missing=True)
+    owner_name = view.bucket_owner or bucket_name
+    if user := vms_session.users.one(name=owner_name, tenant_id=view.tenant_id):
+        return UdbGrantTarget(user=user)
+    if owner_name != bucket_name:
+        return NonLocalGrantTarget(username=owner_name, tenant_id=view.tenant_id)
+    raise LookupFieldError(field=f"user {owner_name!r}")
+
+
+def _delete_granted_key(
+    vms_session, target: UdbGrantTarget | NonLocalGrantTarget, account_id
+):
+    if isinstance(target, UdbGrantTarget):
+        vms_session.users.delete_access_key(target.user.id, account_id)
+        return
+    vms_session.users.delete_non_local_access_key(
+        username=target.username,
+        tenant_id=target.tenant_id,
+        access_key=account_id,
+        context="aggregated",
+    )
+
+
+def _wants_external_credentials(parameters: dict) -> bool:
+    return bool(
+        parameters.get("credentialsSecretName")
+        or parameters.get("credentialsSecretNamespace")
+    )
+
+
 def grant_bucket_access(
     vms_session,
     *,
@@ -149,16 +193,41 @@ def grant_bucket_access(
     endpoint: str,
     parameters: dict | None = None,
 ):
-    """Grant S3 access: VMS-generated keys, or external keys from BAC Secret params."""
+    """Grant S3 access on the view bucket owner (managed UDB or external).
+
+    External keys (credentialsSecretName/Namespace) install onto UDB owners only.
+    External LDAP/AD owners use VMS non_local_keys generate/delete.
+    """
     parameters = dict(parameters or {})
-    if parameters.get("credentialsSecretName") or parameters.get("credentialsSecretNamespace"):
+    target = _resolve_grant_target(vms_session, bucket_name)
+    external = _wants_external_credentials(parameters)
+
+    if isinstance(target, NonLocalGrantTarget):
+        if external:
+            raise Abort(
+                FAILED_PRECONDITION,
+                "external credentials not supported for external bucket owner",
+            )
+        creds = vms_session.users.generate_non_local_access_key(
+            username=target.username,
+            tenant_id=target.tenant_id,
+            context="aggregated",
+        )
+        return credential_response(creds.access_key, creds.secret_key, endpoint)
+
+    if external:
         return _install_external_credentials(
             vms_session,
-            bucket_name=bucket_name,
+            user=target.user,
             tenant_id=tenant_id,
             endpoint=endpoint,
             parameters=parameters,
         )
-    user = vms_session.users.one(name=bucket_name, fail_if_missing=True)
-    creds = vms_session.users.generate_access_key(user.id)
+    creds = vms_session.users.generate_access_key(target.user.id)
     return credential_response(creds.access_key, creds.secret_key, endpoint)
+
+
+def revoke_bucket_access(vms_session, *, bucket_name: str, account_id: str):
+    target = _resolve_grant_target(vms_session, bucket_name)
+    _delete_granted_key(vms_session, target, account_id)
+    return types.DriverRevokeBucketAccessResp()
