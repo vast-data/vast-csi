@@ -2087,6 +2087,13 @@ specDescriptors:
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:select:nfs'
       - 'urn:alm:descriptor:com.tectonic.ui:select:block'
+  - description: >-
+      Enable VAST asynchronous replication for volumes provisioned by this driver.
+      Registers the replication plugin with the cluster VastExtensionsManager.
+    displayName: Replication Enabled
+    path: replicationEnabled
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
   - description: Whether to verify SSL. This option applies to all sessions across all clusters.
     displayName: verifySsl
     path: verifySsl
@@ -2590,27 +2597,18 @@ specDescriptors:
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
       - 'urn:alm:descriptor:com.tectonic.ui:advanced'
-  - description: >-
-      Enable VAST asynchronous replication for volumes provisioned by this driver.
-      Registers the replication plugin with the cluster VastExtensionsManager,
-      which must be installed once per cluster before enabling this option.
-    displayName: Replication Enabled
-    path: replicationEnabled
-    x-descriptors:
-      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
-      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:replication'
   - description: Replication plugin settings for the dedicated CSI-Addons sidecar Deployment.
     displayName: Replication Plugin
     path: csiAddonsSidecar
     x-descriptors:
-      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:csiAddonsSidecar'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
       - *replication-enabled-dep
   - description: Timeout for replication operations handled by the replication plugin (seconds).
     displayName: Replication Operation Timeout
     path: csiAddonsSidecar.operationTimeout
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:number'
-      - 'urn:alm:descriptor:com.tectonic.ui:fieldGroup:csiAddonsSidecar'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
       - *replication-enabled-dep
   - description: CSI-Addons manager image used by the replication plugin in the controller pod.
     displayName: Replication Manager Image
