@@ -80,6 +80,26 @@ bucketClasses: {}
 #         expiration_days: 7
 #         prefix: tmp/
 #         abort_mpu_days_after_initiation: 1
+#     viewPolicy: s3_policy
+#
+#   # Optional: existing VMS/AD user as S3 bucket owner (Helm camelCase only →
+#   # BucketClass parameters bucket_owner / bucket_owner_context). Do not put
+#   # snake_case keys in values — chart fails. Set both or omit both; omit both
+#   # = managed mode (driver creates a local user named after the bucket).
+#   vastdata-bucket-ad-owned:
+#     storagePath: /cosi
+#     viewPolicy: s3_default_policy
+#     vipPool: vippool-1
+#     bucketOwner: corp-s3-service-account@corp.local
+#     bucketOwnerContext: AD   # required with bucketOwner; use local on lab without AD
+#
+# Grant notes (BucketAccessClass parameters — see examples/cosi/):
+#   - VMS enforces a 2 access-key limit per user per tenant; shared service
+#     accounts cannot rely on generate for many BucketAccess objects.
+#   - credentialsSecretName + credentialsSecretNamespace install keys from a
+#     K8s Secret onto UDB/local owners only (POST /users/{id}/access_keys/).
+#     External LDAP/AD owners must use generated keys (non_local_keys API)
+#     until VMS adds external-key install on non_local_keys.
 
 bucketAccessClasses: {}
 

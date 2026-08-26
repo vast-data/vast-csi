@@ -34,7 +34,12 @@ COMMON_PARAMS = dict(
 def _view_bunch(name, root_export="/buckets", tenant_id=1, view_id=42):
     root = root_export.strip("/")
     path = f"/{root}/{name}" if root else f"/{name}"
-    return Bunch(tenant_id=tenant_id, path=path, id=view_id)
+    return Bunch(
+        tenant_id=tenant_id,
+        path=path,
+        id=view_id,
+        bucket_owner=name,  # managed COSI owner (VCSI-328 delete guard)
+    )
 
 
 class TestBucketId:
@@ -666,7 +671,7 @@ class TestCosiProvisionerSuite:
         assert names == ["cosi-test-bucket-0", "expire-tmp"]
 
     def test_delete_bucket_deletes_lifecycle_rules(self, vms_session_with_mocked_resources_factory):
-        view = Bunch(id=42, path="/buckets/test-bucket", tenant_id=1)
+        view = _view_bunch("test-bucket")
         session = vms_session_with_mocked_resources_factory(
             ("views", "one", view),
             ("globalsnapstreams", "ensure_snapshot_stream_deleted", None),
@@ -697,7 +702,7 @@ class TestCosiProvisionerSuite:
         self, vms_session_with_mocked_resources_factory
     ):
         """delete_many is a no-op when no rules; rest of delete still runs."""
-        view = Bunch(id=42, path="/buckets/test-bucket", tenant_id=1)
+        view = _view_bunch("test-bucket")
         session = vms_session_with_mocked_resources_factory(
             ("views", "one", view),
             ("globalsnapstreams", "ensure_snapshot_stream_deleted", None),
@@ -762,7 +767,8 @@ class TestCosiProvisionerSuite:
 
         session.views.delete_by_id.assert_not_called()
         session.quotas.delete.assert_called_once_with(name="test-bucket")
-        session.users.delete.assert_called_once_with(name="test-bucket")
+        # No view → cannot tell managed vs existing owner; skip user delete (VCSI-328).
+        session.users.delete.assert_not_called()
 
     def test_delete_bucket_nothing_on_vast(self, vms_session_with_mocked_resources_factory):
         bucket_id = "test-bucket@1@http://172.0.0.1:80"
@@ -774,4 +780,4 @@ class TestCosiProvisionerSuite:
 
         session.views.delete_by_id.assert_not_called()
         session.quotas.delete.assert_called_once_with(name="test-bucket")
-        session.users.delete.assert_called_once_with(name="test-bucket")
+        session.users.delete.assert_not_called()

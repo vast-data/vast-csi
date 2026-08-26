@@ -7,8 +7,15 @@ from typing import final, Optional
 
 from easypy.humanize import yesno_to_bool
 
+from vast_csi.cosi_owner import (
+    OwnerConfigError,
+    OwnerNotFoundError,
+    OwnerSpec,
+    resolve_existing_bucket_owner,
+    resolve_owner,
+)
 from vast_csi.csi_types import ALREADY_EXISTS, INVALID_ARGUMENT, NOT_FOUND
-from vast_csi.exceptions import Abort, MissingParameter
+from vast_csi.exceptions import Abort, ApiError, MissingParameter
 from vast_csi.quantity import parse_quantity
 from vast_csi.session.vms_session import VmsSession
 from vast_csi.utils import get_random_fqdn_prefix
@@ -129,6 +136,7 @@ class CreateBucketParams:
     source_bucket: str | None = None
     blocking_clones: bool = False
     bucket_owner_enforced: bool = True
+    owner: OwnerSpec = field(default_factory=OwnerSpec)
     remaining_parameters: dict = field(default_factory=dict)
 
 
@@ -177,6 +185,11 @@ def parse_create_bucket_params(name: str, parameters: dict) -> CreateBucketParam
     )
     scheme = parameters.pop("scheme", "http")
     lifecycle_rules_raw = parameters.pop("lifecycle_rules", None)
+
+    try:
+        owner = resolve_owner(parameters, bucket_name=name)
+    except OwnerConfigError as exc:
+        raise Abort(INVALID_ARGUMENT, str(exc)) from exc
 
     # Claim annotation (via bucket-params webhook) overrides BucketClass max_size.
     claim_max_size = parameters.pop(_PARAM_CLAIM_MAX_SIZE, None) or None
@@ -241,6 +254,7 @@ def parse_create_bucket_params(name: str, parameters: dict) -> CreateBucketParam
         source_bucket=source_bucket,
         blocking_clones=blocking_clones,
         bucket_owner_enforced=bucket_owner_enforced,
+        owner=owner,
         remaining_parameters=remaining,
     )
 
@@ -254,12 +268,14 @@ def provision_bucket_view(vms_session: VmsSession, name: str, params: CreateBuck
             source_bucket=params.source_bucket,
             blocking_clones=params.blocking_clones,
             bucket_owner_enforced=params.bucket_owner_enforced,
+            owner=params.owner,
             remaining_parameters=params.remaining_parameters,
         ).build()
     return EmptyBucketBuilder(
         vms_session=vms_session,
         name=name,
         root_export=params.root_export,
+        owner=params.owner,
         remaining_parameters=params.remaining_parameters,
     ).build()
 
@@ -308,10 +324,47 @@ class BucketProvisionBase:
     vms_session: VmsSession
     name: str
     root_export: str
+    owner: OwnerSpec = field(default_factory=OwnerSpec)
     remaining_parameters: dict = field(default_factory=dict)
 
     def _ensure_bucket_user(self):
         self.vms_session.users.ensure(name=self.name, uid=randint(50000, 60000))
+
+    def _resolve_bucket_owner(self, tenant_id) -> str:
+        if self.owner.is_managed:
+            self._ensure_bucket_user()
+            return self.name
+        try:
+            return resolve_existing_bucket_owner(self.vms_session, self.owner, tenant_id)
+        except OwnerNotFoundError as exc:
+            raise Abort(NOT_FOUND, str(exc)) from exc
+        except OwnerConfigError as exc:
+            raise Abort(INVALID_ARGUMENT, str(exc)) from exc
+        except ApiError as exc:
+            response = exc.response
+            if response is not None:
+                message = (response.text or "").strip() or str(exc)
+                if response.status_code == 404:
+                    raise Abort(NOT_FOUND, message) from exc
+                if response.status_code == 400:
+                    raise Abort(INVALID_ARGUMENT, message) from exc
+            raise
+
+    def _ensure_s3view(self, *, bucket_owner: str, **kwargs):
+        view = self.vms_session.views.ensure_s3view(
+            bucket_name=self.name,
+            root_export=self.root_export,
+            bucket_owner=bucket_owner,
+            **kwargs,
+        )
+        existing = getattr(view, "bucket_owner", None)
+        if existing not in (None, bucket_owner):
+            raise Abort(
+                ALREADY_EXISTS,
+                f"view {self.name!r} already exists with bucket_owner "
+                f"{existing!r}, requested {bucket_owner!r}",
+            )
+        return view
 
 
 @final
@@ -320,11 +373,17 @@ class EmptyBucketBuilder(BucketProvisionBase):
     """Builder for a regular empty COSI bucket (S3 view + bucket owner user)."""
 
     def build(self):
-        self._ensure_bucket_user()
-        return self.vms_session.views.ensure_s3view(
-            bucket_name=self.name,
-            root_export=self.root_export,
-            **self.remaining_parameters,
+        remaining = dict(self.remaining_parameters)
+        view_policy_name = remaining.pop("view_policy", "s3_default_policy")
+        view_policy = self.vms_session.viewpolicies.one(
+            name=view_policy_name, fail_if_missing=True
+        )
+        bucket_owner = self._resolve_bucket_owner(view_policy.tenant_id)
+        return self._ensure_s3view(
+            bucket_owner=bucket_owner,
+            policy_id=view_policy.id,
+            tenant_id=view_policy.tenant_id,
+            **remaining,
         )
 
 
@@ -357,7 +416,8 @@ class CloneBucketBuilder(BucketProvisionBase):
         if not source_view:
             raise Abort(NOT_FOUND, f"Unknown source bucket: {self.source_bucket}")
 
-        view_policy_name = self.remaining_parameters.get("view_policy", "s3_default_policy")
+        remaining = dict(self.remaining_parameters)
+        view_policy_name = remaining.pop("view_policy", "s3_default_policy")
         dest_view_policy = self.vms_session.viewpolicies.one(
             name=view_policy_name, fail_if_missing=True
         )
@@ -371,7 +431,7 @@ class CloneBucketBuilder(BucketProvisionBase):
         tenant_id = source_view.tenant_id
         source_path = source_view.path
 
-        self._ensure_bucket_user()
+        bucket_owner = self._resolve_bucket_owner(tenant_id)
         try:
             snapshot = self.vms_session.snapshots.ensure(
                 name=cosi_clone_snap_name(self.name),
@@ -387,15 +447,15 @@ class CloneBucketBuilder(BucketProvisionBase):
                 wait=self.blocking_clones,
             )
 
-            s3_kwargs = dict(self.remaining_parameters)
-            s3_kwargs.pop("create_dir", None)
+            remaining.pop("create_dir", None)
             if self.bucket_owner_enforced:
-                s3_kwargs["s3_object_ownership_rule"] = "BucketOwnerEnforced"
+                remaining["s3_object_ownership_rule"] = "BucketOwnerEnforced"
 
-            view = self.vms_session.views.ensure_s3view(
-                bucket_name=self.name,
-                root_export=self.root_export,
-                **s3_kwargs,
+            view = self._ensure_s3view(
+                bucket_owner=bucket_owner,
+                policy_id=dest_view_policy.id,
+                tenant_id=dest_view_policy.tenant_id,
+                **remaining,
                 create_dir=False,
             )
             if view.path.rstrip("/") != self.dest_path.rstrip("/"):
@@ -407,5 +467,6 @@ class CloneBucketBuilder(BucketProvisionBase):
         except Abort:
             raise  # keep bucket owner; existing view may already use it
         except Exception:
-            self.vms_session.users.delete(name=self.name)
+            if self.owner.is_managed:
+                self.vms_session.users.delete(name=self.name)
             raise
