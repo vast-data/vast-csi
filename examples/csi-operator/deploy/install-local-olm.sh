@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUNDLE_MANIFESTS_DIR="${SCRIPT_DIR}/../../../bundle/manifests"
 
 # Default version
-VERSION="${1:-v2.6.6}"
+VERSION="${1:-v2.6.7}"
 
 echo "Installing VAST CSI Operator (local OLM installation) version: $VERSION"
 
