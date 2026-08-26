@@ -24,4 +24,4 @@ metadata:
 spec:
   bucketClassName: vastdata-bucket
   protocols:
-    - S3
+    - s3
