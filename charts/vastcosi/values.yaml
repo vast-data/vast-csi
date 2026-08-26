@@ -97,7 +97,7 @@ bucketClasses: {}
 #   - VMS enforces a 2 access-key limit per user per tenant; shared service
 #     accounts cannot rely on generate for many BucketAccess objects.
 #   - credentialsSecretName + credentialsSecretNamespace install keys from a
-#     K8s Secret onto UDB/local owners only (POST /users/{id}/access_keys/).
+#     K8s Secret onto local owners only (POST /users/{id}/access_keys/).
 #     External LDAP/AD owners must use generated keys (non_local_keys API)
 #     until VMS adds external-key install on non_local_keys.
 

@@ -2,7 +2,9 @@
 # All Rights Reserved.
 from dataclasses import dataclass
 
-_VALID_CONTEXTS = frozenset({"ad", "ldap", "local", "udb", "nis", "aggregated"})
+# Customer BucketClass contexts only. ``aggregated`` is used internally for
+# origins checks (see resolve_existing_bucket_owner), not as a public value.
+_VALID_CONTEXTS = frozenset({"ad", "ldap", "local", "nis"})
 
 
 class OwnerConfigError(ValueError):
@@ -60,23 +62,22 @@ def resolve_existing_bucket_owner(vms_session, owner: OwnerSpec, tenant_id) -> s
             f"bucket owner {owner.username!r} not found in "
             f"bucket_owner_context={owner.context!r}",
         )
-    if owner.context != "aggregated":
-        # Lowercase aggregated (see User.query_user): uppercase AGGREGATED
-        # returns empty origins on VMS 5.5.x.
-        aggregated = vms_session.users.query_user(
-            username=owner.username,
-            tenant_id=tenant_id,
-            context="aggregated",
+    # Lowercase aggregated (see User.query_user): uppercase AGGREGATED
+    # returns empty origins on VMS 5.5.x.
+    aggregated = vms_session.users.query_user(
+        username=owner.username,
+        tenant_id=tenant_id,
+        context="aggregated",
+    )
+    if not getattr(aggregated, "name", None):
+        raise OwnerNotFoundError(
+            f"bucket owner {owner.username!r} not found",
         )
-        if not getattr(aggregated, "name", None):
-            raise OwnerNotFoundError(
-                f"bucket owner {owner.username!r} not found",
-            )
-        assert_owner_origin(
-            aggregated,
-            owner.context,
-            explicit_context_resolved=True,
-        )
+    assert_owner_origin(
+        aggregated,
+        owner.context,
+        explicit_context_resolved=True,
+    )
     # VMS S3 views store login_name for LDAP/AD (e.g. user1@domain), not
     # the short users/query name. Prefer login_name so ensure_s3view create
     # and idempotent owner compare stay aligned with the view.
@@ -110,8 +111,6 @@ def assert_owner_origin(
     VCSI-328 e2e). Non-empty mismatch (e.g. ``LDAP`` vs ``local``) still
     fails — soft-pass is empty-only, not a wrong-origin bypass.
     """
-    if context == "aggregated":
-        return
     expected = context.upper()
     actual = (getattr(aggregated_query, "origins", {}) or {}).get("name", "")
     if str(actual).upper() == expected:
