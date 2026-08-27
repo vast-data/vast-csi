@@ -66,12 +66,25 @@ build_csi:
 
 build_csi_operator:
   stage: build
+  needs:
+    - job: build_csi
+    - job: build_extension_controller
   script: |
     set -x
     docker login -u ${RH_DOCKER_USER} -p ${RH_DOCKER_PASSWORD} registry.redhat.io
     export PIPE=${CI_PIPELINE_ID}
     make operator-build
     make operator-push
+    # Build bundle like update_operators_redhat (digest-pinned, PIPE=null) but keep
+    # IMG_PULL_SECRET so ECR private pulls work (production sets it to null).
+    export PIPE=null
+    export IMG=${DOCKER_REGISTRY}/dev/vast-csi
+    export CSI_PLUGIN_IMG=${IMG}
+    export EXTENSIONS_IMG=${IMG}
+    export OPERATOR_TAG=${CI_PIPELINE_ID}-operator
+    export CSI_TAG=${CI_PIPELINE_ID}
+    export EXTENSIONS_TAG=${CI_PIPELINE_ID}-extensions
+    export OPERATOR_BUNDLE_TAG=${CI_PIPELINE_ID}-operator-bundle
     make operator-bundle-build
     make operator-bundle-push
   tags:
@@ -439,15 +452,17 @@ update_operators_redhat:
     set -x 
     docker login -u ${RH_DOCKER_USER} -p ${RH_DOCKER_PASSWORD} registry.connect.redhat.com
     export VERSION=$(sed 's/^v//' version.txt)
+    # Helm-only bundle release: resolve digests from existing 2.6.6 images (no new image publish).
+    export IMAGE_TAG=2.6.6
     
     export IMG_PULL_SECRET=null
     export PIPE=null
     export IMG=${RH_REGISTRY}/csi-operator
-    OPERATOR_TAG=$(./scripts/img_to_digest.sh "${IMG}:${VERSION}") || exit 1
+    OPERATOR_TAG=$(./scripts/img_to_digest.sh "${IMG}:${IMAGE_TAG}") || exit 1
     export OPERATOR_TAG
     
     export CSI_PLUGIN_IMG=${RH_REGISTRY}/csi
-    CSI_TAG=$(./scripts/img_to_digest.sh "${CSI_PLUGIN_IMG}:${VERSION}") || exit 1
+    CSI_TAG=$(./scripts/img_to_digest.sh "${CSI_PLUGIN_IMG}:${IMAGE_TAG}") || exit 1
     export CSI_TAG
 
     # Extensions controller is Docker Hub only (not in Red Hat catalog). Pin digest explicitly.
@@ -485,7 +500,7 @@ update_operators_redhat:
     git reset --hard upstream/main
     
     DEST=operators/vast-csi-operator/${VERSION}
-    echo "Preparing operator bundle for version ${VERSION}..."
+    echo "Preparing operator bundle for version ${VERSION} (images: ${IMAGE_TAG})..."
     
     # Remove existing version if it exists and create fresh directory
     rm -rf $DEST && mkdir -p $DEST    

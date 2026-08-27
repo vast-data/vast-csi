@@ -81,12 +81,19 @@ true
 {{- end -}}
 {{- end }}
 
+{{- define "vastextensionsmanager.resolvedImage" -}}
+{{- $img := .img -}}
+{{- if .ctx.Values.image.useCustomRepositories -}}
+{{- coalesce $img.repository $img.defaultRepository -}}
+{{- else -}}
+{{- coalesce $img.defaultRepository $img.repository -}}
+{{- end -}}
+{{- end }}
+
 {{- define "vastextensionsmanager.vastExtensionControllerImage" -}}
-{{- $images := .Values.image -}}
-{{- $images.vastExtensionController.repository | default $images.vastExtensionController.defaultRepository -}}
+{{- include "vastextensionsmanager.resolvedImage" (dict "ctx" . "img" .Values.image.vastExtensionController) -}}
 {{- end }}
 
 {{- define "vastextensionsmanager.csiAddonsControllerImage" -}}
-{{- $images := .Values.image -}}
-{{- $images.csiAddonsController.repository | default $images.csiAddonsController.defaultRepository -}}
+{{- include "vastextensionsmanager.resolvedImage" (dict "ctx" . "img" .Values.image.csiAddonsController) -}}
 {{- end }}
