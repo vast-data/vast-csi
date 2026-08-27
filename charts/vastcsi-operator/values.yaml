@@ -60,12 +60,9 @@ maturity: "stable"
 # Example: "2.6.5" will generate "replaces: vast-csi-operator.v2.6.5"
 # Leave empty when expanding OCP support beyond the previous bundle's catalogs;
 # use skipRange instead so check_replaces_availability can pass.
-# Empty for 2.6.7: replaces 2.6.5 fails because 2.6.5 is only v4.19-v4.21 while
-# this release needs v4.18-v4.22 (cannot widen published 2.6.5).
-replacesVersion: ""
+# 2.6.8 skips 2.6.6 and 2.6.7 via skipRange (same OCP range v4.18-v4.22).
+replacesVersion: null
 
 # SemVer range of installed versions that can upgrade directly to this release.
-# Keep narrow — broad ranges (e.g. ">=2.5.0 <2.6.7") skip intermediate bundles
-# and remove the option to stay on or install an older version such as 2.6.5.
-# "=2.6.6" targets broken 2.6.6 installs only (delete 2.6.6 from catalog first).
-skipRange: "=2.6.6"
+# Cover broken 2.6.6 (image-pin / vipPool) and unreleased 2.6.7.
+skipRange: ">=2.6.6 <2.6.8"

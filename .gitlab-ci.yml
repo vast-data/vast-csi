@@ -452,17 +452,15 @@ update_operators_redhat:
     set -x 
     docker login -u ${RH_DOCKER_USER} -p ${RH_DOCKER_PASSWORD} registry.connect.redhat.com
     export VERSION=$(sed 's/^v//' version.txt)
-    # Helm-only bundle release: resolve digests from existing 2.6.6 images (no new image publish).
-    export IMAGE_TAG=2.6.6
     
     export IMG_PULL_SECRET=null
     export PIPE=null
     export IMG=${RH_REGISTRY}/csi-operator
-    OPERATOR_TAG=$(./scripts/img_to_digest.sh "${IMG}:${IMAGE_TAG}") || exit 1
+    OPERATOR_TAG=$(./scripts/img_to_digest.sh "${IMG}:${VERSION}") || exit 1
     export OPERATOR_TAG
     
     export CSI_PLUGIN_IMG=${RH_REGISTRY}/csi
-    CSI_TAG=$(./scripts/img_to_digest.sh "${CSI_PLUGIN_IMG}:${IMAGE_TAG}") || exit 1
+    CSI_TAG=$(./scripts/img_to_digest.sh "${CSI_PLUGIN_IMG}:${VERSION}") || exit 1
     export CSI_TAG
 
     # Extensions controller is Docker Hub only (not in Red Hat catalog). Pin digest explicitly.
