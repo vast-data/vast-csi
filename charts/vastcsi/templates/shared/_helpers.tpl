@@ -110,12 +110,12 @@ Usage: include "vastcsi.dictToKeyValParams" (dict $your_dict)
 
 
 {{/*
-Renders key-value pairs where the value is interpreted as boolean true.
-Truthy values include:
-- bool true
-- strings: "true", "1", "on" (case-insensitive, trims quotes)
+Renders key-value pairs where the value is interpreted as a boolean.
+Truthy values: bool true; strings "true", "1", "on" (case-insensitive, trims quotes)
+Falsy values: bool false; strings "false", "0", "off" (case-insensitive, trims quotes)
+Unrecognized / empty values are omitted (driver default applies).
 
-Result: key: "true"
+Result: key: "true" or key: "false"
 */}}
 {{- define "vastcsi.dictToBoolParams" -}}
 {{- $input := index . 0 -}}
@@ -123,11 +123,15 @@ Result: key: "true"
   {{- if kindIs "bool" $value }}
     {{- if $value }}
 {{ $key }}: "true"
+    {{- else }}
+{{ $key }}: "false"
     {{- end }}
   {{- else }}
     {{- $normalized := trimAll "\"" (toString $value) | lower }}
     {{- if or (eq $normalized "true") (eq $normalized "1") (eq $normalized "on") }}
 {{ $key }}: "true"
+    {{- else if or (eq $normalized "false") (eq $normalized "0") (eq $normalized "off") }}
+{{ $key }}: "false"
     {{- end }}
   {{- end }}
 {{- end }}

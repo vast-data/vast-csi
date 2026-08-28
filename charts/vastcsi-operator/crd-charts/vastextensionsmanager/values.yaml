@@ -192,13 +192,17 @@ controller:
 # EXTENSIONS MANAGER IMAGE SPECIFICATION
 ####################
 image:
+  # When false (default), OLM RELATED_IMAGE_* (defaultRepository) wins over CR repository
+  # so operator auto-upgrade refreshes images even if the CR still has a stale pin (VCSI-632).
+  # Set true only to force CR repository overrides (air-gap / custom builds).
+  useCustomRepositories: false
   vastExtensionController:
-    repository: null  # User-defined repository; if not provided, falls back to defaultRepository
-    defaultRepository: null  # Overrides repository globally from charts/vastcsi-operator/values.yaml (overrides.vastExtensionController.repository)
+    repository: null  # Optional override; ignored unless useCustomRepositories=true (OLM) or defaultRepository is unset
+    defaultRepository: null  # Set by operator watches from RELATED_IMAGE_VAST_EXTENSION_CONTROLLER
     imagePullPolicy: IfNotPresent
   csiAddonsController:
-    repository: null  # User-defined repository; if not provided, falls back to defaultRepository
-    defaultRepository: null  # Overrides repository globally from charts/vastcsi-operator/values.yaml (overrides.csiAddonsController.repository)
+    repository: null  # Optional override; ignored unless useCustomRepositories=true (OLM) or defaultRepository is unset
+    defaultRepository: null  # Set by operator watches from RELATED_IMAGE_CSI_ADDONS_CONTROLLER
     imagePullPolicy: IfNotPresent
 
 imagePullSecrets: []

@@ -43,7 +43,7 @@ spec:
           {{- toYaml .Values.controller.nodeAffinity | nindent 10 }}
       containers:
         - name: csi-addons-manager
-          image: {{ $csi_images.csiAddonsSidecar.repository | default $csi_images.csiAddonsSidecar.defaultRepository }}
+          image: {{ include "vastcsi.resolvedImage" (dict "ctx" . "img" $csi_images.csiAddonsSidecar) }}
           args:
             - "--node-id=$(NODE_ID)"
             - "--csi-addons-address={{ printf "%s%s" $plugin_proxy_sock_path $csiaddons_sock }}"
@@ -81,7 +81,7 @@ spec:
               mountPath: {{ $plugin_proxy_sock_path }}
           resources: {{- toYaml $sc.resources.csiAddonsSidecar | nindent 12 }}
         - name: replication-vast-plugin
-          image: {{ $csi_images.csiVastPlugin.repository | default $csi_images.csiVastPlugin.defaultRepository }}
+          image: {{ include "vastcsi.resolvedImage" (dict "ctx" . "img" $csi_images.csiVastPlugin) }}
           args:
             - "serve"
             - "--addons={{ include "vastcsi.addons-list" (dict "type" .Values.driverType) }}"

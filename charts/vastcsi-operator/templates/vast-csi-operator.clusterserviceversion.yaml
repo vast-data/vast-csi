@@ -45,6 +45,9 @@ metadata:
     features.operators.openshift.io/token-auth-aws: "false"
     features.operators.openshift.io/token-auth-azure: "false"
     features.operators.openshift.io/token-auth-gcp: "false"
+    {{- if .Values.skipRange }}
+    olm.skipRange: {{ .Values.skipRange | quote }}
+    {{- end }}
   name: vast-csi-operator.v{{ .Chart.Version }}{{- if .Values.ciPipe }}-{{ .Values.ciPipe }}{{- end }}
   namespace: placeholder
 spec:

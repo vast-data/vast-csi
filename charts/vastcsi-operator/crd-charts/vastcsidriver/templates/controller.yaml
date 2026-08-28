@@ -42,7 +42,7 @@ spec:
           {{- toYaml .Values.controller.nodeAffinity | nindent 10 }}
       containers:
         - name: csi-provisioner
-          image: {{ $csi_images.csiProvisioner.repository | default $csi_images.csiProvisioner.defaultRepository }}
+          image: {{ include "vastcsi.resolvedImage" (dict "ctx" . "img" $csi_images.csiProvisioner) }}
           args:
             {{- include "vastcsi.commonArgs" . | nindent 12 }}
             - "--extra-create-metadata"
@@ -63,7 +63,7 @@ spec:
           resources: {{- toYaml .Values.controller.resources.csiProvisioner | nindent 12 }}
 
         - name: csi-attacher
-          image: {{ $csi_images.csiAttacher.repository | default $csi_images.csiAttacher.defaultRepository }}
+          image: {{ include "vastcsi.resolvedImage" (dict "ctx" . "img" $csi_images.csiAttacher) }}
           args:
             {{- include "vastcsi.commonArgs" . | nindent 12 }}
             - "--timeout={{ .Values.operationTimeout }}s"
@@ -83,7 +83,7 @@ spec:
           resources: {{- toYaml .Values.controller.resources.csiAttacher | nindent 12 }}
 
         - name: csi-snapshotter
-          image: {{ $csi_images.csiSnapshotter.repository | default $csi_images.csiSnapshotter.defaultRepository }}
+          image: {{ include "vastcsi.resolvedImage" (dict "ctx" . "img" $csi_images.csiSnapshotter) }}
           args:
             {{- include "vastcsi.commonArgs" . | nindent 12 }}
             - "--extra-create-metadata"
@@ -105,7 +105,7 @@ spec:
           resources: {{- toYaml .Values.controller.resources.csiSnapshotter | nindent 12 }}
 
         - name: csi-resizer
-          image: {{ $csi_images.csiResizer.repository | default $csi_images.csiResizer.defaultRepository }}
+          image: {{ include "vastcsi.resolvedImage" (dict "ctx" . "img" $csi_images.csiResizer) }}
           args:
             {{- include "vastcsi.commonArgs" . | nindent 12 }}
             - "--timeout={{ .Values.operationTimeout }}s"
@@ -125,7 +125,7 @@ spec:
               mountPath: {{ $plugin_proxy_sock_path }}
           resources: {{- toYaml .Values.controller.resources.csiResizer | nindent 12 }}
         - name: csi-vast-plugin
-          image: {{ $csi_images.csiVastPlugin.repository | default $csi_images.csiVastPlugin.defaultRepository }}
+          image: {{ include "vastcsi.resolvedImage" (dict "ctx" . "img" $csi_images.csiVastPlugin) }}
           args:
             - "serve"
             - "--plugin"

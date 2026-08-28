@@ -1766,9 +1766,18 @@ spec:
     # -- Node -- end ->
     # -- images -- start ->
     image:
-      description: Images used for components
+      description: |-
+        Container images for CSI components. By default the operator manages these
+        images and updates them when the operator is upgraded.
       type: object
       properties:
+        useCustomRepositories:
+          description: |-
+            Leave disabled (recommended) so the operator uses the images that ship
+            with this operator version and updates them on upgrade. Enable only if
+            you need to pull images from a private or custom registry.
+          type: boolean
+          default: false
         csiAttacher:
           type: object
           properties:
@@ -1780,7 +1789,7 @@ spec:
                 - IfNotPresent
                 - Never
             repository:
-              default: {{ .GlobalValues.overrides.csiAttacher.repository }}
+              description: Custom image. Used only when "Use custom images" is enabled.
               type: string
         csiNodeDriverRegistrar:
           type: object
@@ -1793,7 +1802,7 @@ spec:
                 - IfNotPresent
                 - Never
             repository:
-              default: {{ .GlobalValues.overrides.csiNodeDriverRegistrar.repository }}
+              description: Custom image. Used only when "Use custom images" is enabled.
               type: string
         csiProvisioner:
           type: object
@@ -1806,7 +1815,7 @@ spec:
                 - IfNotPresent
                 - Never
             repository:
-              default: {{ .GlobalValues.overrides.csiProvisioner.repository }}
+              description: Custom image. Used only when "Use custom images" is enabled.
               type: string
         csiResizer:
           type: object
@@ -1819,7 +1828,7 @@ spec:
                 - IfNotPresent
                 - Never
             repository:
-              default: {{ .GlobalValues.overrides.csiResizer.repository }}
+              description: Custom image. Used only when "Use custom images" is enabled.
               type: string
         csiSnapshotter:
           type: object
@@ -1832,7 +1841,7 @@ spec:
                 - IfNotPresent
                 - Never
             repository:
-              default: {{ .GlobalValues.overrides.csiSnapshotter.repository }}
+              description: Custom image. Used only when "Use custom images" is enabled.
               type: string
         csiVastPlugin:
           type: object
@@ -1845,7 +1854,7 @@ spec:
                 - IfNotPresent
                 - Never
             repository:
-              default: {{ .GlobalValues.overrides.csiVastPlugin.repository }}
+              description: Custom image. Used only when "Use custom images" is enabled.
               type: string
         csiAddonsSidecar:
           type: object
@@ -1858,7 +1867,7 @@ spec:
                 - IfNotPresent
                 - Never
             repository:
-              default: {{ .GlobalValues.overrides.csiAddonsSidecar.repository }}
+              description: Custom image. Used only when "Use custom images" is enabled.
               type: string
     # -- images -- end ->
     deletionViewPolicy:
@@ -2079,6 +2088,9 @@ spec:
 .replication-enabled-dep: &replication-enabled-dep
   'urn:alm:descriptor:com.tectonic.ui:fieldDependency:replicationEnabled:true'
 
+.use-custom-images-dep: &use-custom-images-dep
+  'urn:alm:descriptor:com.tectonic.ui:fieldDependency:image.useCustomRepositories:true'
+
 specDescriptors:
   # Top Level
   - description: Select the type of driver to deploy.
@@ -2275,71 +2287,99 @@ specDescriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:advanced'
       - *block-driver-dep
   # Images
-  - description: Docker images used for CSI configuration and associated image pull policies.
+  - description: |-
+      Container images for CSI components. By default the operator manages these
+      images and updates them when the operator is upgraded.
     displayName: CSI images
     path: image
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:advanced'
-  - description: Vast CSI driver container image to use.
-    displayName: Vast CSI driver container image
+  - description: |-
+      Leave disabled (recommended) so the operator uses the images that ship with
+      this operator version and updates them on upgrade. Enable only if you need
+      to pull images from a private or custom registry.
+    displayName: Use custom images
+    path: image.useCustomRepositories
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+  - description: Custom Vast CSI driver image.
+    displayName: Vast CSI driver image
     path: image.csiVastPlugin.repository
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:text'
-  - description: Image pull policy for Vast CSI driver container image.
-    displayName: Image pull policy for Vast CSI driver container image
-    path: image.csiVastPlugin.imagePullPolicy
-    x-descriptors:
-      - 'urn:alm:descriptor:com.tectonic.ui:imagePullPolicy'
-  - description: CSI Attacher container image to use.
-    displayName: CSI Attacher container image
+      - *use-custom-images-dep
+  - description: Custom CSI Attacher image.
+    displayName: CSI Attacher image
     path: image.csiAttacher.repository
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:text'
-  - description: Image pull policy for CSI Attacher container image.
-    displayName: Image pull policy for CSI Attacher container image
-    path: image.csiAttacher.imagePullPolicy
-    x-descriptors:
-      - 'urn:alm:descriptor:com.tectonic.ui:imagePullPolicy'
-  - description: CSI NodeDriverRegistrar container image to use.
-    displayName: CSI NodeDriverRegistrar container image
+      - *use-custom-images-dep
+  - description: Custom CSI NodeDriverRegistrar image.
+    displayName: CSI NodeDriverRegistrar image
     path: image.csiNodeDriverRegistrar.repository
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:text'
-  - description: Image pull policy for CSI NodeDriverRegistrar container image.
-    displayName: Image pull policy for CSI NodeDriverRegistrar container image
-    path: image.csiNodeDriverRegistrar.imagePullPolicy
-    x-descriptors:
-      - 'urn:alm:descriptor:com.tectonic.ui:imagePullPolicy'
-  - description: CSI Provisioner container image to use.
-    displayName: CSI Provisioner container image
+      - *use-custom-images-dep
+  - description: Custom CSI Provisioner image.
+    displayName: CSI Provisioner image
     path: image.csiProvisioner.repository
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:text'
-  - description: Image pull policy for CSI Provisioner container image.
-    displayName: Image pull policy for CSI Provisioner container image
-    path: image.csiProvisioner.imagePullPolicy
-    x-descriptors:
-      - 'urn:alm:descriptor:com.tectonic.ui:imagePullPolicy'
-  - description: CSI Resizer container image to use.
-    displayName: CSI Resizer container image
+      - *use-custom-images-dep
+  - description: Custom CSI Resizer image.
+    displayName: CSI Resizer image
     path: image.csiResizer.repository
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:text'
-  - description: Image pull policy for CSI Resizer container image.
-    displayName: Image pull policy for CSI Resizer container image
-    path: image.csiResizer.imagePullPolicy
-    x-descriptors:
-      - 'urn:alm:descriptor:com.tectonic.ui:imagePullPolicy'
-  - description: CSI Snapshotter container image to use.
-    displayName: CSI Snapshotter container image
+      - *use-custom-images-dep
+  - description: Custom CSI Snapshotter image.
+    displayName: CSI Snapshotter image
     path: image.csiSnapshotter.repository
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:text'
-  - description: Image pull policy for CSI Snapshotter container image.
-    displayName: Image pull policy for CSI Snapshotter container image
+      - *use-custom-images-dep
+  - description: Custom CSI-Addons sidecar image (replication only).
+    displayName: CSI-Addons sidecar image
+    path: image.csiAddonsSidecar.repository
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:text'
+      - *use-custom-images-dep
+      - *replication-enabled-dep
+  - description: Image pull policy for Vast CSI driver container.
+    displayName: Vast CSI driver image pull policy
+    path: image.csiVastPlugin.imagePullPolicy
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:hidden'
+  - description: Image pull policy for CSI Attacher container.
+    displayName: CSI Attacher image pull policy
+    path: image.csiAttacher.imagePullPolicy
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:hidden'
+  - description: Image pull policy for CSI NodeDriverRegistrar container.
+    displayName: CSI NodeDriverRegistrar image pull policy
+    path: image.csiNodeDriverRegistrar.imagePullPolicy
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:hidden'
+  - description: Image pull policy for CSI Provisioner container.
+    displayName: CSI Provisioner image pull policy
+    path: image.csiProvisioner.imagePullPolicy
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:hidden'
+  - description: Image pull policy for CSI Resizer container.
+    displayName: CSI Resizer image pull policy
+    path: image.csiResizer.imagePullPolicy
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:hidden'
+  - description: Image pull policy for CSI Snapshotter container.
+    displayName: CSI Snapshotter image pull policy
     path: image.csiSnapshotter.imagePullPolicy
     x-descriptors:
-      - 'urn:alm:descriptor:com.tectonic.ui:imagePullPolicy'
+      - 'urn:alm:descriptor:com.tectonic.ui:hidden'
+  - description: Image pull policy for CSI-Addons sidecar container.
+    displayName: CSI-Addons sidecar image pull policy
+    path: image.csiAddonsSidecar.imagePullPolicy
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:hidden'
   # Hidden fields. The field(s) will be hidden on the UI but can still be accessed through the YAML editor.
   # Delete "hidden" descriptor if you think field should be visible.
   - description: |-
@@ -2610,13 +2650,6 @@ specDescriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:number'
       - 'urn:alm:descriptor:com.tectonic.ui:advanced'
       - *replication-enabled-dep
-  - description: CSI-Addons manager image used by the replication plugin in the controller pod.
-    displayName: Replication Manager Image
-    path: image.csiAddonsSidecar.repository
-    x-descriptors:
-      - 'urn:alm:descriptor:com.tectonic.ui:text'
-      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
-      - *replication-enabled-dep
 example:
   apiVersion: storage.vastdata.com/v1
   kind: VastCSIDriver
@@ -2718,27 +2751,21 @@ example:
           relabelings: []
           metricRelabelings: []
     image:
+      useCustomRepositories: false
       csiAttacher:
         imagePullPolicy: {{ .Values.image.csiAttacher.imagePullPolicy }}
-        repository: {{ .GlobalValues.overrides.csiAttacher.repository }}
       csiNodeDriverRegistrar:
         imagePullPolicy: {{ .Values.image.csiNodeDriverRegistrar.imagePullPolicy }}
-        repository: {{ .GlobalValues.overrides.csiNodeDriverRegistrar.repository }}
       csiProvisioner:
         imagePullPolicy: {{ .Values.image.csiProvisioner.imagePullPolicy }}
-        repository: {{ .GlobalValues.overrides.csiProvisioner.repository }}
       csiResizer:
         imagePullPolicy: {{ .Values.image.csiResizer.imagePullPolicy }}
-        repository: {{ .GlobalValues.overrides.csiResizer.repository }}
       csiSnapshotter:
         imagePullPolicy: {{ .Values.image.csiSnapshotter.imagePullPolicy }}
-        repository: {{ .GlobalValues.overrides.csiSnapshotter.repository }}
       csiVastPlugin:
         imagePullPolicy: {{ .Values.image.csiVastPlugin.imagePullPolicy }}
-        repository: {{ .GlobalValues.overrides.csiVastPlugin.repository }}
       csiAddonsSidecar:
         imagePullPolicy: {{ .Values.image.csiAddonsSidecar.imagePullPolicy }}
-        repository: {{ .GlobalValues.overrides.csiAddonsSidecar.repository }}
     deletionViewPolicy: {{ .Values.deletionViewPolicy }}
     deletionVipPool: {{ .Values.deletionVipPool }}
     dontUseTrashApi: {{ .Values.dontUseTrashApi }}

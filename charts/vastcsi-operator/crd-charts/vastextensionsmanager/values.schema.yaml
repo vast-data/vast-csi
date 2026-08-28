@@ -151,9 +151,18 @@ spec:
       type: object
       x-kubernetes-preserve-unknown-fields: true
     image:
-      description: Container images for the extensions manager.
+      description: |-
+        Container images for the extensions manager. By default the operator manages
+        these images and updates them when the operator is upgraded.
       type: object
       properties:
+        useCustomRepositories:
+          description: |-
+            Leave disabled (recommended) so the operator uses the images that ship
+            with this operator version and updates them on upgrade. Enable only if
+            you need to pull images from a private or custom registry.
+          type: boolean
+          default: false
         vastExtensionController:
           type: object
           properties:
@@ -165,7 +174,7 @@ spec:
                 - IfNotPresent
                 - Never
             repository:
-              default: {{ .GlobalValues.overrides.vastExtensionController.repository }}
+              description: Custom image. Used only when "Use custom images" is enabled.
               type: string
         csiAddonsController:
           type: object
@@ -178,7 +187,7 @@ spec:
                 - IfNotPresent
                 - Never
             repository:
-              default: {{ .GlobalValues.overrides.csiAddonsController.repository }}
+              description: Custom image. Used only when "Use custom images" is enabled.
               type: string
     imagePullSecrets:
       description: Image pull secrets for extensions manager container images.
@@ -199,6 +208,9 @@ spec:
 
 .replication-field-group: &replication-field-group
   urn:alm:descriptor:com.tectonic.ui:fieldGroup:replication
+
+.use-custom-images-dep: &use-custom-images-dep
+  urn:alm:descriptor:com.tectonic.ui:fieldDependency:image.useCustomRepositories:true
 
 specDescriptors:
   - description: Replication controller, CSI-Addons cluster controller, and admission webhook configuration.
@@ -363,16 +375,43 @@ specDescriptors:
     x-descriptors:
       - urn:alm:descriptor:com.tectonic.ui:resourceRequirements
       - urn:alm:descriptor:com.tectonic.ui:fieldGroup:controller
-  - description: VAST Extension Controller container image.
-    displayName: Extension Controller Image
+  - description: |-
+      Container images for the extensions manager. By default the operator manages
+      these images and updates them when the operator is upgraded.
+    displayName: Extensions images
+    path: image
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:advanced
+  - description: |-
+      Leave disabled (recommended) so the operator uses the images that ship with
+      this operator version and updates them on upgrade. Enable only if you need
+      to pull images from a private or custom registry.
+    displayName: Use custom images
+    path: image.useCustomRepositories
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+  - description: Custom Extension Controller image.
+    displayName: Extension Controller image
     path: image.vastExtensionController.repository
     x-descriptors:
       - urn:alm:descriptor:com.tectonic.ui:text
-  - description: CSI-Addons cluster controller image (k8s-controller).
-    displayName: CSI-Addons Controller Image
+      - *use-custom-images-dep
+  - description: Custom CSI-Addons Controller image.
+    displayName: CSI-Addons Controller image
     path: image.csiAddonsController.repository
     x-descriptors:
       - urn:alm:descriptor:com.tectonic.ui:text
+      - *use-custom-images-dep
+  - description: Image pull policy for Extension Controller container.
+    displayName: Extension Controller image pull policy
+    path: image.vastExtensionController.imagePullPolicy
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:hidden
+  - description: Image pull policy for CSI-Addons Controller container.
+    displayName: CSI-Addons Controller image pull policy
+    path: image.csiAddonsController.imagePullPolicy
+    x-descriptors:
+      - urn:alm:descriptor:com.tectonic.ui:hidden
   - description: Image pull secrets for extensions manager container images.
     displayName: Image Pull Secrets
     path: imagePullSecrets
@@ -406,10 +445,9 @@ example:
       certManager:
         enabled: {{ .Values.webhook.certManager.enabled }}
     image:
+      useCustomRepositories: false
       vastExtensionController:
         imagePullPolicy: {{ .Values.image.vastExtensionController.imagePullPolicy }}
-        repository: {{ .GlobalValues.overrides.vastExtensionController.repository }}
       csiAddonsController:
         imagePullPolicy: {{ .Values.image.csiAddonsController.imagePullPolicy }}
-        repository: {{ .GlobalValues.overrides.csiAddonsController.repository }}
     imagePullSecrets: {{ empty .GlobalValues.imagePullSecret | ternary "[]" (printf "[{\"name\": \"%s\"}]" .GlobalValues.imagePullSecret) }}
