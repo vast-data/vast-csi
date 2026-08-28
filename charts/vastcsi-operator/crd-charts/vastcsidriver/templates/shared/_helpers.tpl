@@ -59,6 +59,24 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- coalesce .Release.Name $default_driver_name -}}
 {{- end -}}
 
+{{/*
+Resolve a component container image.
+
+By default, prefer defaultRepository (OLM RELATED_IMAGE_* injected via watches.yaml)
+over CR spec.image.*.repository.
+Set image.useCustomRepositories=true to force CR repository overrides (air-gap / custom builds).
+
+Usage: {{ include "vastcsi.resolvedImage" (dict "ctx" . "img" $csi_images.csiVastPlugin) }}
+*/}}
+{{- define "vastcsi.resolvedImage" -}}
+{{- $img := .img -}}
+{{- if .ctx.Values.image.useCustomRepositories -}}
+{{- coalesce $img.repository $img.defaultRepository -}}
+{{- else -}}
+{{- coalesce $img.defaultRepository $img.repository -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "vastcsi.commonEnv" }}
 - name: X_CSI_PLUGIN_NAME
   value: {{ include "vastcsi.csiDriver" $ | quote }}
