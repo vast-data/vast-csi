@@ -6,6 +6,7 @@ Import the K8S facade and individual resource classes from here.
 from lib.k8s._base import K8S, KubernetesResource, WaitResourceFailed
 from lib.k8s.factory import make_k8s
 from lib.k8s.secret import Secret
+from lib.k8s.node import Node
 from lib.k8s.workloads import Deployment, Namespace, Pod, StatefulSet
 from lib.k8s.storage import (
     PersistentVolumeClaim,
@@ -26,6 +27,7 @@ __all__ = [
     "KubernetesResource",
     "WaitResourceFailed",
     "Secret",
+    "Node",
     "Deployment",
     "Namespace",
     "Pod",

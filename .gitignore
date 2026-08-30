@@ -176,3 +176,5 @@ local_tests/
 
 # Certification run logs
 tests/certification/**/output/
+# Multipass e2e cluster (local)
+/kubeconfig.yaml

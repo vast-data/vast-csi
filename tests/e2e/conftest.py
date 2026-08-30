@@ -3,7 +3,12 @@ from __future__ import annotations
 
 import pytest
 
-from e2e.cluster import charts_for_session, install_csi_driver, make_k8s
+from e2e.cluster import (
+    charts_for_session,
+    features_for_session,
+    install_csi_driver,
+    make_k8s,
+)
 from lib.constants import BLOCK_SUBSYSTEM
 from e2e.logging import logger, progress
 from lib.rest.session import session_from_env
@@ -38,7 +43,9 @@ def cluster(request, system, pytestconfig):
     progress("Installing CSI driver (helm) — first test waits here", pytestconfig)
     k8s = make_k8s()
     charts = charts_for_session(request.session)
-    install_csi_driver(k8s, system, charts)
+    install_csi_driver(
+        k8s, system, charts, features=features_for_session(request.session)
+    )
     progress("CSI driver is ready", pytestconfig)
     return k8s
 

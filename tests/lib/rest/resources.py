@@ -15,6 +15,7 @@ from plumbum import local
 from vast_csi.exceptions import ApiError
 from vast_csi.session import resources as vms
 from vast_csi.session.resources import VastResource
+from vast_csi.utils import generate_ip_range
 
 from lib.constants import VIEW_POLICY_NAME, VIPPOOL_NAME
 from lib.logging import logger
@@ -157,6 +158,39 @@ class ViewPolicy(TestResourceMixin, vms.ViewPolicy):
         policy.nfs_enforce_mtls = False
         return policy
 
+    def default_tenant_id(self, name: str | None = None) -> int:
+        """Tenant id of the named view policy (used only to look up the CSI tenant)."""
+        policy = self.one(name=name or VIEW_POLICY_NAME, fail_if_missing=True)
+        tid = policy.get("tenant_id")
+        if tid is None:
+            raise RuntimeError(f"view policy {name or VIEW_POLICY_NAME!r} has no tenant_id")
+        return int(tid)
+
+    def create_mtls(self, name: str, *, tenant_id: int | None = None) -> Bunch:
+        """Create a dedicated NFS view policy with mTLS enforced.
+
+        Never mutates the shared ``default`` policy. Caller must delete the
+        returned policy when finished.
+        """
+        if name == VIEW_POLICY_NAME or name == "default":
+            raise ValueError("mTLS tests must not use the shared default view policy")
+        tid = tenant_id if tenant_id is not None else self.default_tenant_id()
+        logger.info(
+            f"Creating dedicated mTLS view policy {name!r} "
+            f"(tenant_id={tid}, nfs_enforce_tls/mtls/relaxed=True)"
+        )
+        return self.create(
+            name=name,
+            tenant_id=tid,
+            flavor="NFS",
+            nfs_root_squash=[],
+            nfs_no_squash=["*"],
+            use_auth_provider=False,
+            nfs_enforce_tls=True,
+            nfs_enforce_mtls=True,
+            nfs_enforce_tls_relaxed=True,
+        )
+
 
 class View(TestResourceMixin, vms.View):
     def ensure_export(
@@ -240,6 +274,11 @@ class Folder(TestResourceMixin, vms.Folder):
 
 
 class VipPool(TestResourceMixin, vms.VipPool):
+    def list_ips(self, pool_name: str | None = None) -> list[str]:
+        """Expand VIP pool IP ranges into a flat list of addresses."""
+        pool = self.one(name=pool_name or VIPPOOL_NAME, fail_if_missing=True)
+        return [str(ip) for ip in generate_ip_range(pool.ip_ranges)]
+
     def verify_vip_connectivity(self, pings: int = 2) -> str:
         """Pick a VIP from the e2e pool and ping it before the suite runs."""
         vip = self.get_vip(VIPPOOL_NAME)
@@ -291,6 +330,23 @@ class ProtectedPath(TestResourceMixin, vms.ProtectedPath):
     pass
 
 
+class TlsCertificate(TestResourceMixin, VastResource):
+    """VAST ``/tlscertificates/`` — NFS (and other) mTLS CA material."""
+
+    resource_name = "tlscertificates"
+
+    def upload_nfs_ca(self, *, tenant_id: int, ca_pem: str, filename: str = "client-ca.pem"):
+        """Upload a PEM CA for NFS mTLS on a tenant (multipart form)."""
+        logger.info(f"Uploading NFS mTLS CA for tenant_id={tenant_id}")
+        return self.session.post_multipart(
+            self.resource_name,
+            fields={"tenant_id": tenant_id, "protocols": "NFS"},
+            files={
+                "ca_certificate_file": (filename, ca_pem, "application/x-pem-file"),
+            },
+        )
+
+
 class Cluster(TestResourceMixin, vms.Cluster):
     @property
     def is_loopback(self) -> bool:
@@ -300,6 +356,19 @@ class Cluster(TestResourceMixin, vms.Cluster):
             return False
         name = str(getattr(clusters[0], "name", "") or "").lower()
         return "loop" in name
+
+    def ensure_nfs_server_tls(self, *, certificate_pem: str, private_key_pem: str) -> None:
+        """Install the NFS TLS server identity (``nfs4_certificate`` / ``nfs4_private_key``)."""
+        clusters = self.list()
+        if not clusters:
+            raise RuntimeError("No VAST cluster records available for nfs4_certificate")
+        cluster = clusters[0]
+        logger.info(f"Setting nfs4_certificate on cluster id={cluster.id}")
+        self.update(
+            cluster.id,
+            nfs4_certificate=certificate_pem,
+            nfs4_private_key=private_key_pem,
+        )
 
     def ensure_trash_state(self, enabled: bool, resilient_to_s3_versioning: bool = False) -> bool:
         """Enable or disable the cluster-wide trash folder (NFS volume delete)."""

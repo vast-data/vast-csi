@@ -406,6 +406,11 @@ class K8S:
         return Pod(self)
 
     @cached_property
+    def nodes(self):
+        from lib.k8s.node import Node
+        return Node(self)
+
+    @cached_property
     def deployments(self):
         from lib.k8s.workloads import Deployment
         return Deployment(self)

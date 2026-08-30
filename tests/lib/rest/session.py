@@ -4,6 +4,7 @@ Used by pytest e2e and by OpenShift certification (same VMS REST client).
 """
 from __future__ import annotations
 
+import io
 import os
 import sys
 from pathlib import Path
@@ -26,6 +27,7 @@ from lib.rest.resources import (
     Quota,
     Snapshot,
     Tenant,
+    TlsCertificate,
     User,
     Version,
     View,
@@ -43,7 +45,53 @@ else:
     from vast_csi.configuration import Config
 
 
-class TestVmsSession(VmsSession):
+class MultipartVmsSession(VmsSession):
+    """``VmsSession`` that can also send ``multipart/form-data`` requests.
+
+    The production session is JSON-only: it json-encodes ``data`` and pins
+    ``Content-Type: application/json``. VMS endpoints that accept file uploads
+    (``/tlscertificates/``) need real multipart parts plus the boundary that
+    only ``requests`` can generate, so multipart shaping lives here instead of
+    in ``vast_csi``.
+    """
+
+    def request_multipart(
+        self,
+        verb: str,
+        api_method: str,
+        *args,
+        fields: dict | None = None,
+        files: dict | None = None,
+        **kwargs,
+    ):
+        """Send *fields* and *files* as ``multipart/form-data``.
+
+        *fields* are plain form values, *files* map a part name to a
+        ``(filename, content, content_type)`` tuple.
+        """
+        # Every part goes through ``files``: production json-encodes ``data``,
+        # which would turn form fields into a JSON blob.
+        parts: dict = {name: (None, str(value)) for name, value in (fields or {}).items()}
+        for name, spec in (files or {}).items():
+            filename, content, *rest = spec
+            if isinstance(content, (bytes, str)):
+                # File-like keeps request logging readable (no PEM dump in logs).
+                content = io.BytesIO(content.encode() if isinstance(content, str) else content)
+            parts[name] = (filename, content, *rest)
+
+        # requests drops headers merged as None, so the session's
+        # application/json gives way to multipart/form-data + boundary.
+        headers = dict(kwargs.pop("headers", None) or {})
+        headers["Content-Type"] = None
+
+        # Call request() directly: requests.Session.post() would inject data=None.
+        return self.request(verb.upper(), api_method, *args, files=parts, headers=headers, **kwargs)
+
+    def post_multipart(self, api_method: str, *args, **kwargs):
+        return self.request_multipart("POST", api_method, *args, **kwargs)
+
+
+class TestVmsSession(MultipartVmsSession):
     """``VmsSession`` for tests, with explicit resource analogs."""
 
     def __init__(self, *args, **kwargs):
@@ -66,6 +114,7 @@ class TestVmsSession(VmsSession):
         self.protectionpolicies = ProtectionPolicy(self)
         self.protectedpaths = ProtectedPath(self)
         self.clusters = Cluster(self)
+        self.tlscertificates = TlsCertificate(self)
 
     @classmethod
     def connect(

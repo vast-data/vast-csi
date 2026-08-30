@@ -89,6 +89,10 @@ class StorageClassBuilder(Builder):
         self._body["mountOptions"] = list(dict.fromkeys([*NFS_MOUNT_OPTIONS, *extra]))
         return self
 
+    def with_vip_pool_fqdn_random_prefix(self, enabled: bool) -> "StorageClassBuilder":
+        self._body["parameters"]["vip_pool_fqdn_random_prefix"] = "true" if enabled else "false"
+        return self
+
     def with_clone_background_sync(self, value: str) -> "StorageClassBuilder":
         self._body["parameters"]["clone_background_sync"] = value
         return self

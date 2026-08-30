@@ -57,6 +57,7 @@ python_files = ["test_*.py", "*_test.py", "utest_*.py"]
 markers = [
     "e2e: real Kubernetes cluster end-to-end tests",
     "nfs: NFS / vastcsi chart tests",
+    "mtls: NFS mTLS / xprtsec=mtls tests (vastcsi)",
     "block: block / vastblock chart tests",
     "cosi: COSI chart tests",
 ]

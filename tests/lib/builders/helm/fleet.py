@@ -6,6 +6,7 @@ from typing import Any, Self
 from lib.builders.helm.block import VastBlockHelmValuesBuilder
 from lib.builders.helm.cosi import VastCosiHelmValuesBuilder
 from lib.builders.helm.csi import VastCsiHelmValuesBuilder
+from lib.features import Features
 
 
 class FleetHelmValuesBuilder:
@@ -38,8 +39,9 @@ class FleetHelmValuesBuilder:
         *,
         csi_image: str | None = None,
         image_pull_secrets: tuple[str, ...] = (),
+        features: Features,
     ) -> Self:
-        csi = VastCsiHelmValuesBuilder.for_fleet(system)
+        csi = VastCsiHelmValuesBuilder.for_fleet(system, features=features)
         block = VastBlockHelmValuesBuilder.for_fleet(system)
         cosi = VastCosiHelmValuesBuilder.for_fleet(system)
 

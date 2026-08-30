@@ -42,7 +42,7 @@ PYTEST_E2E = cd "$(REPO_ROOT)" && VAST_ENDPOINT="$(VAST_ENDPOINT)" "$(PYTHON)" -
 
 # Capture everything after the target so `make cert-nfs 10.205.0.233 --list-only`
 # does not fail with "No rule to make target".
-ENDPOINT_TARGETS := e2e e2e-nfs e2e-block e2e-cosi cert-nfs cert-block cert-kubevirt cert-all
+ENDPOINT_TARGETS := e2e e2e-nfs e2e-mtls e2e-block e2e-cosi cert-nfs cert-block cert-kubevirt cert-all
 ARG_TARGETS := unit $(ENDPOINT_TARGETS)
 
 ifneq ($(filter $(CURRENT_TARGET),$(ARG_TARGETS)),)
@@ -65,7 +65,7 @@ define need_endpoint
 	fi
 endef
 
-.PHONY: help unit e2e e2e-nfs e2e-block e2e-cosi cert-nfs cert-block cert-kubevirt cert-all
+.PHONY: help unit e2e e2e-nfs e2e-mtls e2e-block e2e-cosi cert-nfs cert-block cert-kubevirt cert-all
 
 help: ## Show this help
 	@echo "vast-csi tests"
@@ -75,6 +75,7 @@ help: ## Show this help
 	@echo
 	@echo "e2e and certification require a VAST management endpoint:"
 	@echo "  make e2e-nfs <vast_endpoint>"
+	@echo "  make e2e-mtls <vast_endpoint>"
 	@echo "  make e2e-block <vast_endpoint>"
 	@echo "  make e2e-cosi <vast_endpoint>"
 	@echo "  make e2e <vast_endpoint>              # nfs + block + cosi"
@@ -100,13 +101,17 @@ unit: ## Run Python unit tests (no VAST endpoint)
 # e2e (pytest against a live Kubernetes cluster + VAST)
 # -----------------------------------------------------------------------------
 
-e2e: ## Run all e2e suites (nfs, block, cosi)
+e2e: ## Run all e2e suites (nfs, block, cosi; excludes mtls)
 	$(need_endpoint)
-	$(PYTEST_E2E) tests/e2e -m 'nfs or block or cosi' $(EXTRA_ARGS)
+	$(PYTEST_E2E) tests/e2e -m '(nfs and not mtls) or block or cosi' $(EXTRA_ARGS)
 
 e2e-nfs: ## Run NFS e2e (helm vastcsi)
 	$(need_endpoint)
-	$(PYTEST_E2E) tests/e2e -m nfs $(EXTRA_ARGS)
+	$(PYTEST_E2E) tests/e2e -m 'nfs and not mtls' $(EXTRA_ARGS)
+
+e2e-mtls: ## Run NFS mTLS e2e (helm vastcsi, xprtsec=mtls)
+	$(need_endpoint)
+	$(PYTEST_E2E) tests/e2e -m mtls $(EXTRA_ARGS)
 
 e2e-block: ## Run block e2e (helm vastblock)
 	$(need_endpoint)

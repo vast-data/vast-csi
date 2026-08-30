@@ -5,11 +5,22 @@ from typing import Any, Self
 
 from lib.builders.helm.base import HelmValuesBuilder, secret_fields, vippool_fields
 from lib.constants import CSI_NAMESPACE, NFS_MOUNT_OPTIONS, PASSWORD, ROOT_EXPORT, SNAPSHOT_CLASS, USERNAME, VIEW_POLICY_NAME, VIPPOOL_NAME, nfs_storage_class
+from lib.features import Features
+
+
+NFS_SERVICES = ["statd", "rpcbind"]
+NFS_MTLS_SERVICES = [*NFS_SERVICES, "tlshd"]
 
 
 class VastCsiHelmValuesBuilder(HelmValuesBuilder):
     @classmethod
-    def for_fleet(cls, system, *, namespace: str = CSI_NAMESPACE) -> Self:
+    def for_fleet(
+        cls,
+        system,
+        *,
+        namespace: str = CSI_NAMESPACE,
+        features: Features,
+    ) -> Self:
         return (
             cls.new()
             .with_auth(
@@ -19,7 +30,14 @@ class VastCsiHelmValuesBuilder(HelmValuesBuilder):
             )
             .with_deletion_resources(VIPPOOL_NAME, VIEW_POLICY_NAME)
             .with_attach_required(True)
-            .with_nfs_services(True)
+            .with_nfs_services(
+                True,
+                services=(
+                    NFS_MTLS_SERVICES
+                    if features.enabled(Features.MTLS)
+                    else NFS_SERVICES
+                ),
+            )
             .with_nfs_mount_options()
             .with_storage_classes(namespace=namespace)
             .with_snapshot_classes(namespace=namespace)

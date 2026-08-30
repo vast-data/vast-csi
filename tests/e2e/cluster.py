@@ -8,12 +8,18 @@ from plumbum import local
 from lib.builders.helm import FleetHelmValuesBuilder
 from lib.constants import CHARTS_DIR, CSI_NAMESPACE, MGMT_SECRET, csi_plugin_image
 from e2e.logging import logger
+from lib.features import Features
 from lib.k8s import K8S, make_k8s as make_k8s_client
 
 _CHART_BY_MARK = {
     "nfs": ["vastcsi"],
+    "mtls": ["vastcsi"],
     "block": ["vastblock"],
     "cosi": ["vastcosi"],
+}
+
+_FEATURE_BY_MARK = {
+    "mtls": Features.MTLS,
 }
 
 
@@ -31,6 +37,15 @@ def charts_for_session(session) -> list[str]:
                         seen.add(name)
                         charts.append(name)
     return charts or ["vastcsi"]
+
+
+def features_for_session(session) -> Features:
+    """Build enabled features from markers on the collected tests."""
+    return Features(
+        feature
+        for mark, feature in _FEATURE_BY_MARK.items()
+        if any(item.get_closest_marker(mark) for item in session.items)
+    )
 
 
 _SNAPSHOT_PREREQ_HINT = "Install them with: make install-snapshost-crds"
@@ -71,13 +86,17 @@ def _require_cosi_prereqs(kube_cmd) -> None:
     logger.info("COSI CRDs and objectstorage-controller are present.")
 
 
-def install_csi_driver(k8s: K8S, system, charts: list[str]) -> None:
+def install_csi_driver(
+    k8s: K8S, system, charts: list[str], *, features: Features
+) -> None:
     """helm upgrade --install charts/<chart> -f <generated overlay> -n default."""
     if any(chart in ("vastcsi", "vastblock") for chart in charts):
         _require_snapshot_prereqs(k8s.kubectl)
     if "vastcosi" in charts:
         _require_cosi_prereqs(k8s.kubectl)
     k8s.namespaces.allow_privileged(CSI_NAMESPACE)
+    if features.enabled(Features.MTLS) and "vastcsi" in charts:
+        k8s.nodes.ensure_tlshd_conf()
     image = csi_plugin_image()
     logger.info(f"CSI plugin image: {image or '(chart default)'}")
     k8s.secrets.ensure(
@@ -91,6 +110,7 @@ def install_csi_driver(k8s: K8S, system, charts: list[str]) -> None:
     builder = FleetHelmValuesBuilder.for_fleet(
         system,
         csi_image=csi_plugin_image(),
+        features=features,
     )
 
     k8s.helmvalues.install(
