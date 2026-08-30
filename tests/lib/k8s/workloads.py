@@ -1,5 +1,5 @@
 import shlex
-from typing import List, Optional
+from typing import Optional
 
 from easypy.resilience import retrying
 from plumbum import FG

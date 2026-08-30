@@ -24,7 +24,6 @@ from lib.builders.workloads import PodBuilder
 from e2e.test_suites.common import (
     CONCURRENT_VOLUME_COUNT,
     files_in_pod,
-    list_node_names,
     make_filesystem_pvc,
     make_writer_pod,
     parse_iso_date,
@@ -58,7 +57,7 @@ def test_block_basic_pvc_and_pod(k8s):
         ),
     ]
 
-    node_names = list_node_names(k8s)
+    node_names = k8s.nodes.names()
     if len(node_names) < 2:
         pytest.skip(f"Need ≥ 2 nodes for bounce test, found: {node_names}")
 
@@ -562,7 +561,7 @@ def test_block_reschedule_normal(k8s):
     pvc_name = f"block-pvc-{suffix}"
     pod_name = f"block-pod-{suffix}"
 
-    node_names = list_node_names(k8s)
+    node_names = k8s.nodes.names()
     if len(node_names) < 2:
         pytest.skip(f"Expected 2+ nodes for reschedule test, found: {node_names}")
 

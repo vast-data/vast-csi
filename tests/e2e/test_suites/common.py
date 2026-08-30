@@ -80,12 +80,6 @@ def make_writer_pod(
         )
     )
 
-
-def list_node_names(k8s) -> list[str]:
-    nodes_obj = Bunch.from_json(k8s.kubectl("get", "nodes", "-o", "json"))
-    return [n.metadata.name for n in nodes_obj["items"]]
-
-
 def wait_volumes_detached(
     k8s, pvc_names: list[str], source_node: str, timeout: int = 15 * MINUTE
 ):

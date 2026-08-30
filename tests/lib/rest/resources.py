@@ -86,12 +86,6 @@ class TestResourceMixin:
         found = [item for item in self if pred(item)]
         return found[0] if found else None
 
-    def choose(self, pred: Callable[[Any], bool]):
-        found = self.single(pred)
-        if found is None:
-            raise LookupError(f"no matching {type(self).__name__} record")
-        return found
-
 
 class Version(TestResourceMixin, vms.Version):
     pass
@@ -166,7 +160,7 @@ class ViewPolicy(TestResourceMixin, vms.ViewPolicy):
             raise RuntimeError(f"view policy {name or VIEW_POLICY_NAME!r} has no tenant_id")
         return int(tid)
 
-    def create_mtls(self, name: str, *, tenant_id: int | None = None) -> Bunch:
+    def create_mtls(self, name: str, *, tenant_id: int) -> Bunch:
         """Create a dedicated NFS view policy with mTLS enforced.
 
         Never mutates the shared ``default`` policy. Caller must delete the
@@ -174,14 +168,13 @@ class ViewPolicy(TestResourceMixin, vms.ViewPolicy):
         """
         if name == VIEW_POLICY_NAME or name == "default":
             raise ValueError("mTLS tests must not use the shared default view policy")
-        tid = tenant_id if tenant_id is not None else self.default_tenant_id()
         logger.info(
             f"Creating dedicated mTLS view policy {name!r} "
-            f"(tenant_id={tid}, nfs_enforce_tls/mtls/relaxed=True)"
+            f"(tenant_id={tenant_id}, nfs_enforce_tls/mtls/relaxed=True)"
         )
         return self.create(
             name=name,
-            tenant_id=tid,
+            tenant_id=tenant_id,
             flavor="NFS",
             nfs_root_squash=[],
             nfs_no_squash=["*"],

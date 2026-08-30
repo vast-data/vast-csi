@@ -55,7 +55,7 @@ class MultipartVmsSession(VmsSession):
     in ``vast_csi``.
     """
 
-    def request_multipart(
+    def _request_multipart(
         self,
         verb: str,
         api_method: str,
@@ -88,7 +88,7 @@ class MultipartVmsSession(VmsSession):
         return self.request(verb.upper(), api_method, *args, files=parts, headers=headers, **kwargs)
 
     def post_multipart(self, api_method: str, *args, **kwargs):
-        return self.request_multipart("POST", api_method, *args, **kwargs)
+        return self._request_multipart("POST", api_method, *args, **kwargs)
 
 
 class TestVmsSession(MultipartVmsSession):

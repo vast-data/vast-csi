@@ -85,7 +85,7 @@ class Node(KubernetesResource):
                 timeout=20 * MINUTE,
             )
 
-    def point_csi_mount_nfs_at_host(self, namespace: str = CSI_NAMESPACE) -> None:
+    def _point_csi_mount_nfs_at_host(self, namespace: str = CSI_NAMESPACE) -> None:
         """Make CSI node pods use the host ``mount.nfs`` (supports ``xprtsec``).
 
         The CSI plugin image currently ships nfs-utils 2.5.x which rejects
@@ -148,7 +148,7 @@ class Node(KubernetesResource):
             message="csi-vast-node pods not Ready after restart",
         )
         # Wrapper lives in the container rootfs and is lost on restart.
-        self.point_csi_mount_nfs_at_host(namespace=namespace)
+        self._point_csi_mount_nfs_at_host(namespace=namespace)
 
     def _csi_node_pods_ready(self, namespace: str) -> bool:
         pods = self.k8s.pods.get(labels={"app": "csi-vast-node"}, namespace=namespace) or []

@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, List, Optional
 
 from lib.builders.base import Builder, resource_name
-from lib.constants import BLOCK_SUBSYSTEM, CSI_NAMESPACE, NFS_MOUNT_OPTIONS, ROOT_EXPORT, VIEW_POLICY_NAME
+from lib.constants import CSI_NAMESPACE, NFS_MOUNT_OPTIONS, ROOT_EXPORT, VIEW_POLICY_NAME
 
 
 class PVCBuilder(Builder):
@@ -98,58 +98,6 @@ class StorageClassBuilder(Builder):
         return self
 
     def with_secret(self, secret_name: Optional[str]) -> "StorageClassBuilder":
-        if not secret_name:
-            return self
-        params = self._body["parameters"]
-        for key, ns_key in (
-            ("provisioner-secret-name",         "provisioner-secret-namespace"),
-            ("controller-publish-secret-name",   "controller-publish-secret-namespace"),
-            ("node-publish-secret-name",         "node-publish-secret-namespace"),
-            ("controller-expand-secret-name",    "controller-expand-secret-namespace"),
-        ):
-            params[f"csi.storage.k8s.io/{key}"] = secret_name
-            params[f"csi.storage.k8s.io/{ns_key}"] = CSI_NAMESPACE
-        return self
-
-
-class BlockStorageClassBuilder(Builder):
-    """Builder for a StorageClass manifest backed by the block CSI driver.
-
-    Used by the extensions_block suite to create per-test replication SC pairs.
-    The block provisioner requires a VAST subsystem (NVMe-oF) instead of an
-    NFS root_export / view_policy.
-    """
-
-    @classmethod
-    def new(
-        cls,
-        *,
-        name: Optional[str] = None,
-        vip_pool_name: str,
-    ) -> "BlockStorageClassBuilder":
-        body: dict[str, Any] = {
-            "apiVersion": "storage.k8s.io/v1",
-            "kind": "StorageClass",
-            "metadata": {"name": resource_name("storageclass", name)},
-            "provisioner": "block.csi.vastdata.com",
-            "reclaimPolicy": "Delete",
-            "parameters": {
-                "vip_pool_name": vip_pool_name,
-                "subsystem": BLOCK_SUBSYSTEM,
-                "volume_name_fmt": "csi:2:{name}:{id}",
-            },
-        }
-        return cls._from_body(body)
-
-    def with_volume_group(self, volume_group: str) -> "BlockStorageClassBuilder":
-        self._body["parameters"]["volume_group"] = volume_group
-        return self
-
-    def with_reclaim_policy(self, policy: str) -> "BlockStorageClassBuilder":
-        self._body["reclaimPolicy"] = policy
-        return self
-
-    def with_secret(self, secret_name: Optional[str]) -> "BlockStorageClassBuilder":
         if not secret_name:
             return self
         params = self._body["parameters"]

@@ -24,10 +24,6 @@ class HelmValuesBuilder:
     def new(cls) -> Self:
         return cls()
 
-    @classmethod
-    def from_values(cls, values: dict[str, Any]) -> Self:
-        return cls(copy.deepcopy(values))
-
     # ------------------------------------------------------------------
     # Common chart values
     # ------------------------------------------------------------------

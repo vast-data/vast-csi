@@ -15,8 +15,5 @@ class Features:
     def enabled(self, feature: str) -> bool:
         return feature in self._enabled
 
-    def __contains__(self, feature: str) -> bool:
-        return self.enabled(feature)
-
     def __repr__(self) -> str:
         return f"{type(self).__name__}({sorted(self._enabled)!r})"

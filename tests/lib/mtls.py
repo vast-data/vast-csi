@@ -47,7 +47,7 @@ def _pem_key(key: rsa.RSAPrivateKey) -> str:
     ).decode()
 
 
-def build_ca(common_name: str) -> tuple[x509.Certificate, rsa.RSAPrivateKey]:
+def _build_ca(common_name: str) -> tuple[x509.Certificate, rsa.RSAPrivateKey]:
     key = _new_key()
     now = dt.datetime.now(dt.timezone.utc)
     cert = (
@@ -64,19 +64,17 @@ def build_ca(common_name: str) -> tuple[x509.Certificate, rsa.RSAPrivateKey]:
     return cert, key
 
 
-def build_leaf(
+def _build_leaf(
     *,
     ca_cert: x509.Certificate,
     ca_key: rsa.RSAPrivateKey,
     common_name: str,
-    san_dns: Iterable[str] = (),
     san_ips: Iterable[str] = (),
 ) -> tuple[x509.Certificate, rsa.RSAPrivateKey]:
     key = _new_key()
     now = dt.datetime.now(dt.timezone.utc)
     sans: list[x509.GeneralName] = [
-        *[x509.DNSName(d) for d in san_dns],
-        *[x509.IPAddress(ipaddress.ip_address(ip)) for ip in san_ips],
+        x509.IPAddress(ipaddress.ip_address(ip)) for ip in san_ips
     ]
     builder = (
         x509.CertificateBuilder()
@@ -101,8 +99,8 @@ def build_nfs_mtls_material(vip_ips: list[str]) -> tuple[PemBundle, PemBundle]:
     ``client_bundle.ca_pem`` is uploaded as the tenant NFS mTLS CA.
     ``client_bundle`` cert/key go into the StorageClass secret.
     """
-    server_ca, server_ca_key = build_ca(_TLS_CA_CN)
-    server_cert, server_key = build_leaf(
+    server_ca, server_ca_key = _build_ca(_TLS_CA_CN)
+    server_cert, server_key = _build_leaf(
         ca_cert=server_ca,
         ca_key=server_ca_key,
         common_name="vast-csi-e2e-nfs-server",
@@ -114,8 +112,8 @@ def build_nfs_mtls_material(vip_ips: list[str]) -> tuple[PemBundle, PemBundle]:
         ca_pem=_pem_cert(server_ca),
     )
 
-    client_ca, client_ca_key = build_ca(_MTLS_CA_CN)
-    client_cert, client_key = build_leaf(
+    client_ca, client_ca_key = _build_ca(_MTLS_CA_CN)
+    client_cert, client_key = _build_leaf(
         ca_cert=client_ca,
         ca_key=client_ca_key,
         common_name="vast-csi-e2e-nfs-client",

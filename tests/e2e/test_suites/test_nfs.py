@@ -14,7 +14,6 @@ from lib.constants import BUSYBOX_IMAGE, CSI_QUOTA_PREFIX, MGMT_SECRET, NFS_MOUN
 from e2e.logging import logger
 from e2e.test_suites.common import (
     files_in_pod,
-    list_node_names,
     parse_iso_date,
     read_in_pod,
 )
@@ -339,7 +338,7 @@ def test_nfs_reschedule_normal(k8s):
     pvc_name = f"nfs-pvc-{suffix}"
     pod_name = f"nfs-pod-{suffix}"
 
-    node_names = list_node_names(k8s)
+    node_names = k8s.nodes.names()
     if len(node_names) < 2:
         pytest.skip(f"Expected 2+ nodes for reschedule test, found: {node_names}")
 

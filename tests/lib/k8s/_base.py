@@ -19,7 +19,6 @@ except ImportError:
     from functools import cached_property
 from easypy.collections import listify, ListCollection, iterable
 from easypy.exceptions import TException
-from easypy.resilience import retrying
 try:
     from easypy.sync import with_my_lock
 except ImportError:
@@ -147,13 +146,6 @@ class KubernetesResource:
         if not wait:
             args.append("--wait=false")
         self.k8s.kubectl[args] & FG
-
-    def delete_from_path(self, path: str, ignore_not_found: bool = True):
-        try:
-            self.k8s.kubectl["delete", "-f", path] & FG
-        except ProcessExecutionError:
-            if not ignore_not_found:
-                raise
 
     def patch(self, name: str, patch: dict, namespace: str = "default"):
         res = self.get(name, namespace)
@@ -372,10 +364,6 @@ class K8S:
             yaml.dump_all(unbunchify(list(objects)), f, Dumper=_ManifestDumper)
         (self.kubectl["apply", "-f", "-"] << fpath.read()) & FG
 
-    def apply_url(self, url: str) -> None:
-        """Apply a remote manifest URL via kubectl/oc."""
-        self.kubectl["apply", "-f", url] & FG
-
     def __repr__(self):
         return f"K8S[{self.kubectl}]"
 
@@ -479,21 +467,6 @@ class K8S:
     def vaststorages(self):
         from lib.k8s.vast import VastStorage
         return VastStorage(self)
-
-    @cached_property
-    def vvrs(self):
-        from lib.k8s.replication import VastVolumeReplication
-        return VastVolumeReplication(self)
-
-    @cached_property
-    def vscrs(self):
-        from lib.k8s.replication import VastStorageClassReplication
-        return VastStorageClassReplication(self)
-
-    @cached_property
-    def vrcs(self):
-        from lib.k8s.replication import VastReplicationContent
-        return VastReplicationContent(self)
 
     # ------------------------------------------------------------------
     # Diagnostics
