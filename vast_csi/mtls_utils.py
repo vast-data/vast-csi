@@ -1,5 +1,6 @@
 """mTLS credentials for NFS mount authentication using kernel keyring."""
 
+import configparser
 import subprocess
 import re
 from typing import Optional
@@ -10,8 +11,7 @@ from cryptography.hazmat.backends import default_backend
 
 from keyctl import KeyctlWrapper
 
-from easypy.caching import timecache
-from easypy.units import MINUTE
+from easypy.sync import wait, TimeoutException
 from vast_csi.logging import logger
 from vast_csi.exceptions import LookupFieldError, XprtsecValidationError
 from vast_csi.serialization_utils import SerializationMixin
@@ -19,8 +19,12 @@ from vast_csi.configuration import Config
 from vast_csi.utils import is_ver_nfs4_present
 
 
-# Key names for the .nfs: keyring (per NFS documentation)
-NFS_KEYRING_NAME = ".nfs:"
+# Official NFS client keyring (kernel-created on newer kernels). /proc/keys shows
+# "keyring   .nfs: <n|empty>" — the trailing ": …" is the key count, not part of the name.
+# Userspace cannot create leading-dot keyrings (EPERM); use the VAST-owned fallback then.
+# Host/non-override tlshd uses `.nfs`. ConfigMap/Secret overrides list keyrings=vastcsi.
+NFS_KEYRING_NAME = ".nfs"
+NFS_KEYRING_FALLBACK_NAME = "vastcsi"
 
 # Per-volume key prefixes for mTLS credentials
 MTLS_CERT_KEY_PREFIX = "vast-client-cert-"
@@ -28,6 +32,12 @@ MTLS_PRIVKEY_KEY_PREFIX = "vast-client-privkey-"
 
 # Valid xprtsec values for NFS transport security
 VALID_XPRTSEC_VALUES = ("", "tls", "mtls")
+
+# tlshd config, mounted from the ConfigMap when overrides are configured.
+TLSHD_CONF = "/etc/tlshd.conf"
+
+# Seconds to wait for tlshd/sidecar to create the NFS keyring before creating it.
+NFS_KEYRING_WAIT_TIMEOUT = 30
 
 
 def get_xprtsec_from_mount_options(mount_options: str) -> str:
@@ -61,54 +71,151 @@ def get_xprtsec_from_mount_options(mount_options: str) -> str:
     return ""
 
 
-@timecache(expiration=MINUTE * 5)
-def get_nfs_keyring_id():
-    """
-    Find the .nfs: keyring ID created by the NFS subsystem (tlshd).
-    
-    The .nfs: keyring is created by tlshd when it starts. This function
-    finds that keyring and links it to the session keyring for access.
-    
-    Returns:
-        int: The keyring ID of the .nfs: keyring
-        
-    Raises:
-        RuntimeError: If .nfs: keyring is not found (tlshd may not be running)
-    """
-    # Read /proc/keys to find the .nfs: keyring
+def _link_keyring_to_session(keyring_id: int) -> None:
+    """Link the keyring into our session so keys in it are reachable by name."""
     try:
-        with open("/proc/keys", "r") as f:
-            keys_content = f.read()
-    except IOError as e:
-        raise RuntimeError(f"Failed to read /proc/keys: {e}")
-    
-    # Parse /proc/keys to find .nfs: keyring
-    # Format: "0a1b2c3d I--Q---     1 perm 1f3f0000     0     0 keyring   .nfs: 1"
-    for line in keys_content.splitlines():
-        if NFS_KEYRING_NAME in line and "keyring" in line:
-            # Extract the key ID (first field, hex without 0x prefix)
-            match = re.match(r'^([0-9a-f]+)\s+', line)
-            if match:
-                keyring_id = int(match.group(1), 16)
-                logger.debug(f"Found {NFS_KEYRING_NAME} keyring: {hex(keyring_id)}")
-                
-                # Link the .nfs: keyring to session keyring for persistence
-                try:
-                    subprocess.run(
-                        ["keyctl", "link", hex(keyring_id), "@s"],
-                        capture_output=True,
-                        check=True,
-                    )
-                    logger.debug(f"Linked {NFS_KEYRING_NAME} keyring to session keyring")
-                except subprocess.CalledProcessError as e:
-                    logger.warning(f"Failed to link keyring to session: {e}")
-                
-                return keyring_id
-    
-    raise RuntimeError(
-        f"Could not find {NFS_KEYRING_NAME} keyring in /proc/keys. "
-        f"Ensure tlshd service is running: systemctl start tlshd"
+        subprocess.run(
+            ["keyctl", "link", hex(keyring_id), "@s"],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(
+            f"Failed to link NFS keyring {hex(keyring_id)} to the session "
+            f"keyring: {(e.stderr or '').strip() or e}"
+        )
+    logger.debug(f"Linked NFS keyring {hex(keyring_id)} to session keyring")
+
+
+def _create_nfs_keyring() -> int:
+    """Create the userspace NFS keyring (leading-dot names are not allowed)."""
+    # `keyctl newring` creates a keyring; `keyctl add keyring …` is invalid syntax.
+    proc = subprocess.run(
+        ["keyctl", "newring", NFS_KEYRING_FALLBACK_NAME, "@s"],
+        capture_output=True,
+        check=True,
+        text=True,
     )
+    keyring_id = int(proc.stdout.strip())
+    logger.info(
+        f"Created {NFS_KEYRING_FALLBACK_NAME} keyring: {hex(keyring_id)}"
+    )
+    # newring already links into @s; set perms so tlshd can use linked keys.
+    try:
+        subprocess.run(
+            ["keyctl", "setperm", str(keyring_id), "0x3f3f0000"],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(
+            f"Failed to set permissions on NFS keyring {hex(keyring_id)}: "
+            f"{(e.stderr or '').strip() or e}. tlshd could not read credentials "
+            "from a keyring with default permissions"
+        )
+    return keyring_id
+
+
+def ensure_nfs_keyring_id(
+    wait_timeout: float = NFS_KEYRING_WAIT_TIMEOUT,
+    *,
+    create: bool = True,
+) -> Optional[int]:
+    """Return the keyring ID where NFS mTLS certs are stored.
+
+    With node.nfsServices.tlshd ConfigMap/Secret overrides, use only
+    ``vastcsi`` (matching ``keyrings=vastcsi`` in tlshd.conf). Otherwise prefer
+    kernel ``.nfs`` so host/non-override setups keep working, then ``vastcsi``.
+
+    Optionally waits, then creates userspace ``vastcsi`` if still missing and
+    ``create`` is true.
+    """
+    names = (
+        (NFS_KEYRING_FALLBACK_NAME,)
+        if Config().tlshd_overrides
+        else (NFS_KEYRING_NAME, NFS_KEYRING_FALLBACK_NAME)
+    )
+
+    def lookup() -> Optional[int]:
+        try:
+            with open("/proc/keys", "r") as f:
+                keys_content = f.read()
+        except IOError as e:
+            raise RuntimeError(f"Failed to read /proc/keys: {e}")
+
+        for name in names:
+            pattern = rf"keyring\s+{re.escape(name)}:"
+            for line in keys_content.splitlines():
+                if "keyring" in line and re.search(pattern, line):
+                    match = re.match(r"^([0-9a-f]+)\s+", line)
+                    if match:
+                        keyring_id = int(match.group(1), 16)
+                        logger.debug(
+                            f"Found NFS keyring {name!r}: {hex(keyring_id)}"
+                        )
+                        return keyring_id
+        return None
+
+    keyring_id = lookup()
+    if keyring_id is None and wait_timeout > 0:
+        try:
+            wait(
+                wait_timeout,
+                lambda: lookup() is not None,
+                sleep=0.5,
+                message=f"waiting for NFS keyring ({'/'.join(names)})",
+            )
+            keyring_id = lookup()
+        except TimeoutException:
+            keyring_id = None
+
+    if keyring_id is not None:
+        _link_keyring_to_session(keyring_id)
+        return keyring_id
+
+    if not create:
+        return None
+
+    logger.warning(
+        f"NFS keyring not found after {wait_timeout}s; "
+        f"creating {NFS_KEYRING_FALLBACK_NAME} keyring"
+    )
+    return _create_nfs_keyring()
+
+
+def validate_tlshd_keyrings(path: str = TLSHD_CONF) -> None:
+    """Check that a mounted tlshd.conf points tlshd at the ring we load certs into.
+
+    The driver loads client certs into one fixed ring, so a `keyrings=` list
+    that omits it is a typo that would otherwise surface as a mount failure
+    with nothing pointing back at the ConfigMap.
+
+    Raises:
+        RuntimeError: If the file is unreadable, or lists other keyrings only
+    """
+    parser = configparser.ConfigParser(strict=False, interpolation=None)
+    try:
+        parsed = parser.read(path)
+    except (configparser.Error, OSError) as e:
+        raise RuntimeError(f"cannot parse {path}: {e}")
+    if not parsed:
+        raise RuntimeError(
+            f"{path} is missing, but ConfigMap/Secret overrides are "
+            "configured; check node.nfsServices.tlshd.configMap"
+        )
+
+    configured = parser.get("authenticate", "keyrings", fallback="")
+    # ktls-utils accepts a list here; tolerate either separator.
+    keyrings = [name.strip() for name in re.split(r"[;,]", configured) if name.strip()]
+    if NFS_KEYRING_FALLBACK_NAME not in keyrings:
+        raise RuntimeError(
+            f"{path} has keyrings={configured!r}, which does not include "
+            f"{NFS_KEYRING_FALLBACK_NAME!r}. The driver loads NFS client certs "
+            f"into {NFS_KEYRING_FALLBACK_NAME!r}, so tlshd would not find them. "
+            f"Set keyrings={NFS_KEYRING_FALLBACK_NAME} in the tlshd ConfigMap"
+        )
 
 
 def pem_to_der(pem_content: str) -> bytes:
@@ -162,7 +269,10 @@ def load_pem_to_keyring(pem_content: str, key_name: str) -> int:
         )
         return key_serial
 
-    keyring_id = get_nfs_keyring_id()
+    # Sidecar / wait_registered already waited for the keyring; create immediately if missing.
+    keyring_id = ensure_nfs_keyring_id(wait_timeout=0)
+    if keyring_id is None:
+        raise RuntimeError("Could not obtain an NFS keyring for mTLS credentials")
 
     # Convert PEM to DER (binary format)
     der_content = pem_to_der(pem_content)
@@ -183,7 +293,7 @@ def load_pem_to_keyring(pem_content: str, key_name: str) -> int:
 
     if proc.returncode != 0:
         raise RuntimeError(
-            f"Failed to add key '{key_name}' to {NFS_KEYRING_NAME} keyring: {stderr.decode('utf-8', errors='replace')}"
+            f"Failed to add key '{key_name}' to NFS keyring {hex(keyring_id)}: {stderr.decode('utf-8', errors='replace')}"
         )
 
     key_serial = int(stdout.decode().strip())
@@ -193,7 +303,7 @@ def load_pem_to_keyring(pem_content: str, key_name: str) -> int:
     keyctl._system(["keyctl", "setperm", str(key_serial), "0x3f3f0000"])
 
     logger.info(
-        f"Loaded '{key_name}' into {NFS_KEYRING_NAME} keyring: serial={key_serial}"
+        f"Loaded '{key_name}' into NFS keyring {hex(keyring_id)}: serial={key_serial}"
     )
     return key_serial
 
@@ -201,17 +311,16 @@ def load_pem_to_keyring(pem_content: str, key_name: str) -> int:
 def search_in_keyring(key_name: str) -> Optional[int]:
     """
     Search for a key in the .nfs: kernel keyring by name.
-    
+
     Args:
         key_name: Name of the key to search for
-        
+
     Returns:
         Key serial number if found, None otherwise
     """
-    try:
-        keyring_id = get_nfs_keyring_id()
-    except RuntimeError:
-        # .nfs: keyring doesn't exist
+    keyring_id = ensure_nfs_keyring_id(wait_timeout=0, create=False)
+    if keyring_id is None:
+        # NFS keyring doesn't exist
         return None
 
     try:
@@ -223,11 +332,11 @@ def search_in_keyring(key_name: str) -> Optional[int]:
             text=True,
         )
         key_serial = int(proc.stdout.strip())
-        logger.debug(f"Found existing key '{key_name}' in {NFS_KEYRING_NAME} keyring: serial={key_serial}")
+        logger.debug(f"Found existing key '{key_name}' in NFS keyring {hex(keyring_id)}: serial={key_serial}")
         return key_serial
     except subprocess.CalledProcessError:
         # Key doesn't exist
-        logger.debug(f"Key '{key_name}' not found in {NFS_KEYRING_NAME} keyring")
+        logger.debug(f"Key '{key_name}' not found in NFS keyring {hex(keyring_id)}")
         return None
 
 
@@ -251,7 +360,7 @@ def delete_from_keyring(key_name: str) -> None:
             capture_output=True,
             check=True,
         )
-        logger.info(f"Deleted '{key_name}' from {NFS_KEYRING_NAME} keyring")
+        logger.info(f"Deleted '{key_name}' from NFS keyring")
     except subprocess.CalledProcessError as e:
         logger.debug(f"Key '{key_name}' was already deleted or unlink failed: {e}")
 

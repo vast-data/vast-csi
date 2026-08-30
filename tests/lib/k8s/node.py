@@ -134,6 +134,28 @@ class Node(KubernetesResource):
                 log_msg=f"Configuring tlshd truststore on node {node!r}",
             )
 
+    def set_host_tlshd_running(
+        self,
+        enabled: bool,
+        node_names: Optional[List[str]] = None,
+        *,
+        namespace: str = CSI_NAMESPACE,
+    ) -> None:
+        """Start or stop the host tlshd service on each node."""
+        targets = node_names if node_names is not None else self.names()
+        if not targets:
+            raise RuntimeError("No Kubernetes nodes found to manage host tlshd")
+        action = "start" if enabled else "stop"
+        action_label = "Starting" if enabled else "Stopping"
+        for node in targets:
+            self._run_host_script(
+                node,
+                namespace=namespace,
+                name_prefix=f"tlshd-{action}",
+                script=f"chroot /host systemctl {action} tlshd.service",
+                log_msg=f"{action_label} host tlshd on node {node!r}",
+            )
+
     def restart_csi_node_pods(self, namespace: str = CSI_NAMESPACE) -> None:
         """Restart CSI node pods so ``csi-nfs-services`` re-reads host tlshd.conf."""
         logger.info("Restarting csi-vast-node pods to pick up tlshd.conf")

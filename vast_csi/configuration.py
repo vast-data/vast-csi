@@ -68,6 +68,8 @@ class Config(TypedEnv):
     # Comma-separated NFS client daemons the node plugin waits for before mounting
     # (set when the csi-nfs-services sidecar is enabled). Empty disables the gate.
     _nfs_services_wait = TypedEnv.Str("X_CSI_NFS_SERVICES_WAIT", default="")
+    # Set on csi-nfs-services when node.nfsServices.tlshd ConfigMap + Secret are set.
+    tlshd_overrides = TypedEnv.Bool("X_CSI_TLSHD_OVERRIDES", default=False)
     _vms_host = TypedEnv.Str("X_CSI_VMS_HOST", default="")
     name_fmt = "csi:{id}:{namespace}:{name}"
     block_nqn_prefix = "nqn.2014-08.com.vastcsiblock:"

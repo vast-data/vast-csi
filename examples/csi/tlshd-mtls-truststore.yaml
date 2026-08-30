@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vast-nfs-tlshd
+  namespace: vast-csi
+data:
+  tlshd.conf: |
+    [authenticate]
+    keyrings=vastcsi
+
+    [authenticate.client]
+    x509.truststore=/etc/vast-tlshd/nfs-server-ca.pem
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vast-nfs-tlshd-certs
+  namespace: vast-csi
+type: Opaque
+stringData:
+  nfs-server-ca.pem: |
+    -----BEGIN CERTIFICATE-----
+    # Replace with tenant NFS server CA PEM
+    -----END CERTIFICATE-----

@@ -76,6 +76,24 @@ class VastCsiHelmValuesBuilder(HelmValuesBuilder):
         nfs["persistStatd"] = persist_statd
         return self
 
+    def with_tlshd_overrides(
+        self,
+        *,
+        config_map: str,
+        certificates_secret: str,
+        mount_path: str = "/etc/vast-tlshd",
+    ) -> Self:
+        """Mount sidecar tlshd configuration and certificates from Kubernetes."""
+        nfs = self._values.setdefault("node", {}).setdefault("nfsServices", {})
+        nfs["tlshd"] = {
+            "configMap": config_map,
+            "certificates": {
+                "secretName": certificates_secret,
+                "mountPath": mount_path,
+            },
+        }
+        return self
+
     def with_nfs_mount_options(self, options: list[str] | None = None) -> Self:
         """Force NFSv4.1 on every NFS StorageClass (never NFSv3 in e2e)."""
         self._values.setdefault("storageClassDefaults", {})["mountOptions"] = list(
