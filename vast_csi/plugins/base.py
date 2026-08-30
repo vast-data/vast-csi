@@ -497,7 +497,8 @@ class NodeBase(csi_grpc.NodeServicer):
             volume_capabilities=[ev_capability],
             capacity_range=capacity_range,
             parameters=volume_context,
-            **create_vol_kwargs
+            is_ephemeral=True,
+            **create_vol_kwargs,
         )
         volume_context.update(dict(resp.volume.volume_context))
         resp = self.controller.ControllerPublishVolume.__wrapped__(
@@ -587,7 +588,7 @@ class NodeBase(csi_grpc.NodeServicer):
         cred_key = CONF.cred_serialization_key
         fallback = CONF.fallback_to_deser
 
-        if meta.get("is_ephemeral"):
+        if meta.get("is_ephemeral") and not meta.get("bucket_name"):
             if vms_session_data := meta.get("vms_session"):
                 vms_session = VmsSession.deserialize(
                     volume_id,

@@ -1,5 +1,6 @@
 from vast_csi.builders.nfs import (
     EmptyVolumeBuilder,
+    VolumeFromBucketBuilder,
     VolumeFromVolumeBuilder,
     VolumeFromSnapshotBuilder,
     StaticVolumeBuilder,
