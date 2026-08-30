@@ -98,6 +98,7 @@ Create a Kubernetes Secret in the namespace referenced by the BucketClass (or th
 release namespace when `secretNamespace` is omitted):
 
 ```yaml
+# Api-Token (cluster-admin or tenant-scoped token) — omit tenant
 apiVersion: v1
 kind: Secret
 metadata:
@@ -105,11 +106,47 @@ metadata:
   namespace: app-team
 stringData:
   endpoint: vms.example.com
-  token: <API token>          # token-only auth
-  tenant: team-a              # optional; omit or leave empty for cluster-admin
+  token: <API token>
 ```
 
-Username/password auth is also supported (`username`, `password`, optional `tenant`).
+```yaml
+# Username/password tenant-admin — set tenant (driver sends X-Tenant-Name)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: team-a-vast-auth
+  namespace: app-team
+stringData:
+  endpoint: vms.example.com
+  username: <tenant-admin user>
+  password: <password>
+  tenant: team-a
+```
+
+```yaml
+# Username/password cluster-admin — omit tenant
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cluster-vast-auth
+  namespace: app-team
+stringData:
+  endpoint: vms.example.com
+  username: <cluster-admin user>
+  password: <password>
+```
+
+**`tenant:` rule**
+
+| Identity | Auth | `tenant:` |
+|----------|------|-----------|
+| Tenant-admin | username/password | **set** |
+| Cluster-admin | username/password or Api-Token | **omit** |
+| Any identity | Api-Token | **omit** |
+
+Api-Token + `tenant:` can make VMS return HTTP 400. Cluster-admin user/pass + `tenant:` fails VMS login (driver sends `X-Tenant-Name` on `/token/`).
+
+Bucket placement still comes from BucketClass `view_policy` (that VMS policy’s `tenant_id`), not from Secret `tenant:`.
 
 ### BucketClass parameters
 

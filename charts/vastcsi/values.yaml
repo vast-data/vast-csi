@@ -6,7 +6,9 @@
 # Example: kubectl create secret generic vast-mgmt --from-literal=username='< VAST username >' --from-literal=password='< VAST password >'
 # Optionally, you can include:
 # - ssl_cert: SSL certificate for secure communication
-# - tenant: The tenant name for tenant scoped authentication (tenant admin).
+# - tenant: Set only for tenant-admin username/password (driver sends X-Tenant-Name).
+#   Omit for cluster-admin (user/pass or Api-Token). Always omit with Api-Token
+#   (Api-Token + tenant can make VMS return HTTP 400).
 secretName: ""
 
 # API endpoint of VAST appliance - should be provided by user if secretName is not provided in StorageClass attributes
@@ -93,7 +95,9 @@ storageClassDefaults:
   #
   # Optionally, you can include:
   # - ssl_cert: SSL certificate for secure communication with VAST API
-  # - tenant: The tenant name for tenant scoped authentication (tenant admin).
+  # - tenant: Set only for tenant-admin username/password (driver sends X-Tenant-Name).
+  #   Omit for cluster-admin (user/pass or Api-Token). Always omit with Api-Token
+  #   (Api-Token + tenant can make VMS return HTTP 400).
   # - mtls_client_cert: PEM-formatted client certificate for NFS mTLS authentication
   # - mtls_client_privkey: PEM-formatted client private key for NFS mTLS authentication
   #

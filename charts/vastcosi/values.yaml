@@ -14,7 +14,9 @@
 #     --from-literal=endpoint=< VAST endpoint >
 # Optionally, you can include:
 # - ssl_cert: SSL certificate for secure communication
-# - tenant: The tenant name for tenant scoped authentication (tenant admin).
+# - tenant: Set only for tenant-admin username/password (driver sends X-Tenant-Name).
+#   Omit for cluster-admin (user/pass or Api-Token). Always omit with Api-Token
+#   (Api-Token + tenant can make VMS return HTTP 400).
 secretName: ""
 
 # API endpoint of VAST appliance - must be provided by user
