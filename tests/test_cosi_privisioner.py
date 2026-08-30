@@ -3,7 +3,7 @@ import pytest
 import grpc
 from unittest.mock import MagicMock, patch
 from easypy.bunch import Bunch
-from vast_csi.exceptions import Abort, MissingParameter
+from vast_csi.exceptions import Abort, ApiError, MissingParameter
 from vast_csi.builders.cosi import parse_create_bucket_params, parse_lifecycle_rules
 from vast_csi.plugins.cosi import (
     SECRET_NAME_PARAM,
@@ -256,6 +256,7 @@ class TestCosiProvisionerSuite:
         bucket_id,
         vms_factory,
         view=None,
+        delete_context=None,
     ):
         cosi = CosiProvisioner()
         session = vms_factory(
@@ -273,7 +274,7 @@ class TestCosiProvisionerSuite:
         return cosi.DriverDeleteBucket(
             vms_session=session,
             bucket_id=bucket_id,
-            delete_context=None,
+            delete_context=delete_context,
         ), session
 
     def test_create_bucket(self, vms_session_with_mocked_resources_factory):
@@ -683,6 +684,7 @@ class TestCosiProvisionerSuite:
             ("users", "delete", None),
         )
         order = []
+        session.users.delete.side_effect = lambda **kw: order.append("user")
         session.s3lifecyclerules.delete_many.side_effect = lambda **kw: order.append("rules")
         session.folders.delete.side_effect = lambda *a, **kw: order.append("folders")
         session.views.delete_by_id.side_effect = lambda *a, **kw: order.append("view")
@@ -696,7 +698,8 @@ class TestCosiProvisionerSuite:
         session.s3lifecyclerules.delete_many.assert_called_once_with(view__id=42)
         session.views.delete_by_id.assert_called_once_with(42)
         session.quotas.delete.assert_called_once_with(name="test-bucket")
-        assert order == ["rules", "folders", "view"]
+        session.users.delete.assert_called_once_with(name="test-bucket")
+        assert order == ["user", "rules", "folders", "view"]
 
     def test_delete_bucket_ok_when_lifecycle_rules_already_gone(
         self, vms_session_with_mocked_resources_factory
@@ -767,8 +770,8 @@ class TestCosiProvisionerSuite:
 
         session.views.delete_by_id.assert_not_called()
         session.quotas.delete.assert_called_once_with(name="test-bucket")
-        # No view → cannot tell managed vs existing owner; skip user delete (VCSI-328).
-        session.users.delete.assert_not_called()
+        # No bucket_owner in delete_context → managed; delete even if view gone.
+        session.users.delete.assert_called_once_with(name="test-bucket")
 
     def test_delete_bucket_nothing_on_vast(self, vms_session_with_mocked_resources_factory):
         bucket_id = "test-bucket@1@http://172.0.0.1:80"
@@ -780,4 +783,83 @@ class TestCosiProvisionerSuite:
 
         session.views.delete_by_id.assert_not_called()
         session.quotas.delete.assert_called_once_with(name="test-bucket")
+        # Idempotent: users.delete skips when the managed user is already gone.
+        session.users.delete.assert_called_once_with(name="test-bucket")
+
+    def test_delete_bucket_skips_external_owner_from_delete_context(
+        self, vms_session_with_mocked_resources_factory
+    ):
+        """delete_context.bucket_owner → do not delete that (or any) user."""
+        view = _view_bunch("test-bucket")
+        view.bucket_owner = "probe-owner-should-appear"
+        bucket_id = "test-bucket@1@http://172.0.0.1:80"
+
+        _, session = self._delete_bucket(
+            bucket_id=bucket_id,
+            vms_factory=vms_session_with_mocked_resources_factory,
+            view=view,
+            delete_context={
+                "bucket_owner": "probe-owner-should-appear",
+                "bucket_owner_context": "local",
+            },
+        )
+
+        session.views.delete_by_id.assert_called_once_with(view.id)
         session.users.delete.assert_not_called()
+
+    def test_delete_bucket_view_gone_skips_external_owner_from_delete_context(
+        self, vms_session_with_mocked_resources_factory
+    ):
+        """Retry with view gone: delete_context still protects external owner."""
+        bucket_id = "test-bucket@1@http://172.0.0.1:80"
+
+        _, session = self._delete_bucket(
+            bucket_id=bucket_id,
+            vms_factory=vms_session_with_mocked_resources_factory,
+            view=None,
+            delete_context={"bucket_owner": "probe-owner-should-appear"},
+        )
+
+        session.views.delete_by_id.assert_not_called()
+        session.quotas.delete.assert_called_once_with(name="test-bucket")
+        session.users.delete.assert_not_called()
+
+    def test_delete_bucket_retry_after_view_gone_still_deletes_managed_user(
+        self, vms_session_with_mocked_resources_factory
+    ):
+        """VCSI-635: COSI retry after view already gone must still remove managed owner."""
+        bucket_id = "test-bucket@1@http://172.0.0.1:80"
+        view = _view_bunch("test-bucket")
+
+        session1 = vms_session_with_mocked_resources_factory(
+            ("views", "one", view),
+            ("globalsnapstreams", "ensure_snapshot_stream_deleted", None),
+            ("snapshots", "delete", None),
+            ("s3lifecyclerules", "delete_many", None),
+            ("folders", "delete", None),
+            ("views", "delete_by_id", None),
+            ("quotas", "delete", None),
+            ("users", "delete", None),
+        )
+        resp = MagicMock()
+        resp.status_code = 400
+        resp.text = '{"detail":"stat returned an error : IStatResultCode.NOT_FOUND"}'
+        session1.views.delete_by_id.side_effect = ApiError(response=resp)
+
+        with pytest.raises(ApiError):
+            CosiProvisioner().DriverDeleteBucket(
+                vms_session=session1,
+                bucket_id=bucket_id,
+                delete_context=None,
+            )
+        # Managed user removed before view delete failed.
+        session1.users.delete.assert_called_once_with(name="test-bucket")
+
+        _, session2 = self._delete_bucket(
+            bucket_id=bucket_id,
+            vms_factory=vms_session_with_mocked_resources_factory,
+            view=None,
+        )
+        session2.views.delete_by_id.assert_not_called()
+        # View gone: still attempt managed-user delete (idempotent if already gone).
+        session2.users.delete.assert_called_once_with(name="test-bucket")
