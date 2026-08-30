@@ -2,9 +2,11 @@ import logging
 from plumbum.commands.modifiers import PipeToLoggerMixin
 
 
-@logging.setLoggerClass
 class Logger(logging.Logger, PipeToLoggerMixin):
     pass
+
+
+logging.setLoggerClass(Logger)
 
 
 logger = logging.getLogger("vast-csi")

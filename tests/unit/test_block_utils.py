@@ -325,7 +325,9 @@ def test_get_connected_session_multiple_sessions_different_hostnqn():
 def test_ensure_nvme_tcp_skips_modprobe_when_loaded(monkeypatch):
     from vast_csi.block_utils import _ensure_nvme_tcp
 
-    monkeypatch.setattr("vast_csi.block_utils.NVME_TCP_MODULE.exists", lambda: True)
+    nvme_tcp_module = MagicMock()
+    nvme_tcp_module.exists.return_value = True
+    monkeypatch.setattr("vast_csi.block_utils.NVME_TCP_MODULE", nvme_tcp_module)
     with patch("vast_csi.block_utils.host_commands.modprobe.get_executable") as mock_get_executable:
         assert _ensure_nvme_tcp() is True
         mock_get_executable.assert_not_called()
@@ -339,7 +341,9 @@ def test_ensure_nvme_tcp_returns_false_when_module_missing(tmp_path, monkeypatch
     host_root = tmp_path / "host"
     host_root.mkdir()
     monkeypatch.setattr(HostCommandAdapter, "HOST_MOUNT", local.path(host_root))
-    monkeypatch.setattr("vast_csi.block_utils.NVME_TCP_MODULE.exists", lambda: False)
+    nvme_tcp_module = MagicMock()
+    nvme_tcp_module.exists.return_value = False
+    monkeypatch.setattr("vast_csi.block_utils.NVME_TCP_MODULE", nvme_tcp_module)
 
     with patch.object(
         host_commands.modprobe,
