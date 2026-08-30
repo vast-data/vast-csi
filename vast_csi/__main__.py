@@ -69,7 +69,7 @@ def _system_info(*_):
 def _test(args):
     """Runs the tests without code coverage"""
     import pytest
-    pytest_args = ["-x", "tests", "-s", "-v", "--maxfail=5", "--disable-warnings", "-m", "not host_only"]
+    pytest_args = ["-x", "tests/unit", "-s", "-v", "--maxfail=5", "--disable-warnings", "-m", "not host_only"]
     sys.exit(pytest.main(pytest_args))
 
 

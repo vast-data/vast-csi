@@ -1,0 +1,37 @@
+ShortName: vastdatacsidriver
+StorageClass:
+  FromExistingClassName: vastdata-filesystem
+
+SnapshotClass:
+  FromExistingClassName: vastdata-filesystem
+
+Timeouts:
+  Poll: "2s"
+  PodStart: "5m"
+  PodStartShort: "2m"
+  ClaimProvision: "5m"
+  ClaimBound: "3m"
+  PVDelete: "8m"
+  SnapshotCreate: "5m"
+  SnapshotDelete: "5m"
+
+DriverInfo:
+  Name: csi.vastdata.com
+  SupportedSizeRange:
+    Min: 1Gi
+    Max: 10Gi
+  SupportedMountOption:
+    vers=4.1: {}
+  Capabilities:
+    persistence: true
+    fsGroup: false
+    block: false
+    exec: false
+    volumeLimits: false
+    controllerExpansion: true
+    nodeExpansion: false
+    singleNodeVolume: false
+    RWX: true
+    topology: false
+    snapshotDataSource: true
+    pvcDataSource: true

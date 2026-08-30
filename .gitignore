@@ -14,7 +14,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/lib/
 lib64/
 parts/
 sdist/
@@ -163,7 +163,6 @@ cython_debug/
 .history/
 .lh/
 .DS_Store
-/tests/*
 .idea/*
 .pytest_cache
 __pycache__/*
@@ -174,3 +173,8 @@ __pycache__/*
 
 # Local test scripts (not for repo)
 local_tests/
+
+# Certification run logs
+tests/certification/**/output/
+# Multipass e2e cluster (local)
+/kubeconfig.yaml

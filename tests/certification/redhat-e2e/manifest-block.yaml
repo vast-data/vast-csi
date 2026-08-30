@@ -1,0 +1,53 @@
+ShortName: vastdatablockdriver
+StorageClass:
+  FromExistingClassName: vastdata-block
+
+SnapshotClass:
+  FromExistingClassName: vastdata-block
+
+Timeouts:
+  Poll: "2s"
+  PodStart: "5m"
+  PodStartShort: "2m"
+  PodStartSlow: "15m"
+  PodDelete: "5m"
+  ClaimProvision: "5m"
+  ClaimProvisionShort: "1m"
+  DataSourceProvision: "7m"
+  ClaimBound: "3m"
+  PVReclaim: "3m"
+  PVBound: "3m"
+  PVCreate: "3m"
+  PVDelete: "8m"
+  PVDeleteSlow: "20m"
+  SnapshotCreate: "5m"
+  SnapshotDelete: "5m"
+  SnapshotControllerMetrics: "5m"
+  SystemPodsStartup: "10m"
+  NodeSchedulable: "30m"
+  SystemDaemonsetStartup: "5m"
+  NodeNotReady: "3m"
+
+DriverInfo:
+  Name: block.csi.vastdata.com
+  SupportedSizeRange:
+    Min: 1Gi
+    Max: 10Gi
+  SupportedFsType:
+    xfs: {}
+    ext4: {}
+  SupportedMountOption:
+    noatime: {}
+  Capabilities:
+    persistence: true
+    fsGroup: false
+    block: true
+    exec: false
+    volumeLimits: false
+    controllerExpansion: false
+    nodeExpansion: false
+    singleNodeVolume: false
+    RWX: false
+    topology: false
+    snapshotDataSource: false
+    pvcDataSource: false

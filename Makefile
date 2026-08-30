@@ -201,6 +201,9 @@ create-csi-secret: create-csi-namespace ## Recreate secret for CSI driver
 install-snapshost-crds: ## Install snapshot CRDs
 	@$(CURDIR)/scripts/install_snapshot_crds.sh
 
+install-cosi-crds: ## Install COSI CRDs and controller
+	@$(CURDIR)/scripts/install_cosi_crds.sh
+
 install-replication-crds: ## Install VolumeReplication CRDs and Operator (complete stack)
 	@$(CURDIR)/scripts/install_replication_stack.sh
 
