@@ -118,13 +118,16 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented):
         vms_session.snapshots.delete(
             name=cosi_clone_snap_name(parsed.name)
         )
+        # delete_context carries BucketClass params on every delete (incl. retries).
+        # No bucket_owner → we created a managed user named like the bucket → delete it.
+        # bucket_owner set → external user → do not delete.
+        ctx = delete_context or {}
+        if not str(ctx.get("bucket_owner", "")).strip():
+            vms_session.users.delete(name=parsed.name)
         if view := vms_session.views.one(bucket=parsed.name):
             vms_session.s3lifecyclerules.delete_many(view__id=view.id)
             vms_session.folders.delete(view.path, view.tenant_id)
             vms_session.views.delete_by_id(view.id)
-            # Missing bucket_owner → treat as managed (pre-VCSI-328 / incomplete mocks).
-            if getattr(view, "bucket_owner", parsed.name) == parsed.name:
-                vms_session.users.delete(name=parsed.name)
         vms_session.quotas.delete(name=parsed.name)
         return types.DriverDeleteBucketResp()
 
