@@ -21,7 +21,7 @@ helm install csi-driver vast/vastblock -f values.yaml -n vast-block --create-nam
 
 ### install a specific version
 ```console
-helm install csi-driver vast/vastblock -f values.yaml -n vast-block --create-namespace --version 2.6.6
+helm install csi-driver vast/vastblock -f values.yaml -n vast-block --create-namespace --version 2.7.0
 ```
 
 ### Upgrade driver

@@ -14,7 +14,9 @@
 #     --from-literal=endpoint=< VAST endpoint >
 # Optionally, you can include:
 # - ssl_cert: SSL certificate for secure communication
-# - tenant: The tenant name for tenant scoped authentication (tenant admin).
+# - tenant: Set only for tenant-admin username/password (driver sends X-Tenant-Name).
+#   Omit for cluster-admin (user/pass or Api-Token). Always omit with Api-Token
+#   (Api-Token + tenant can make VMS return HTTP 400).
 secretName: ""
 
 # API endpoint of VAST appliance - must be provided by user
@@ -97,7 +99,7 @@ bucketClasses: {}
 #   - VMS enforces a 2 access-key limit per user per tenant; shared service
 #     accounts cannot rely on generate for many BucketAccess objects.
 #   - credentialsSecretName + credentialsSecretNamespace install keys from a
-#     K8s Secret onto UDB/local owners only (POST /users/{id}/access_keys/).
+#     K8s Secret onto local owners only (POST /users/{id}/access_keys/).
 #     External LDAP/AD owners must use generated keys (non_local_keys API)
 #     until VMS adds external-key install on non_local_keys.
 
@@ -132,7 +134,7 @@ cosiDriverName: csi.vastdata.com
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.6.6  # the version of the Vast COSI driver
+    tag: v2.7.0  # the version of the Vast COSI driver
     imagePullPolicy: IfNotPresent
   objectstorageProvisioner:
     repository: gcr.io/k8s-staging-sig-storage/objectstorage-sidecar/objectstorage-sidecar

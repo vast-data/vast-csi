@@ -14,7 +14,8 @@ kind: BucketClass
 apiVersion: objectstorage.k8s.io/v1alpha1
 driverName: csi.vastdata.com
 metadata:
-  name: vastdata-bucket-existing-owner
+  # ≤27 chars: COSI name = BucketClass name + claim UID (36); S3/VAST max 63
+  name: vastdata-ext-owner
 parameters:
   root_export: /cosi
   vip_pool_name: vippool-1
@@ -30,7 +31,7 @@ apiVersion: objectstorage.k8s.io/v1alpha1
 metadata:
   name: sample-bucket
 spec:
-  bucketClassName: vastdata-bucket-existing-owner
+  bucketClassName: vastdata-ext-owner
   protocols:
   - s3
 

@@ -286,10 +286,10 @@ class TestMtlsManagerXprtsecModes:
         flags = manager.to_mount_flags("test-volume")
         assert flags == []
 
-    def test_tls_mode_returns_mountproto_tcp(self):
+    def test_tls_mode_returns_empty_flags(self):
         manager = MtlsManager(xprtsec="tls")
         flags = manager.to_mount_flags("test-volume")
-        assert flags == ["mountproto=tcp"]
+        assert flags == []  # xprtsec=tls is already in StorageClass mountOptions
 
     def test_tls_mode_no_credentials_needed(self):
         """Test TLS-only mode doesn't require credentials."""
@@ -298,12 +298,12 @@ class TestMtlsManagerXprtsecModes:
         assert manager.requires_tls()
         assert not manager.requires_mtls()
 
-    def test_mtls_without_credentials_returns_mountproto_tcp(self):
+    def test_mtls_without_credentials_returns_empty_flags(self):
         manager = MtlsManager(xprtsec="mtls")
-
+        
         flags = manager.to_mount_flags("test-volume")
-
-        assert flags == ["mountproto=tcp"]
+        
+        assert flags == []
 
     @patch('vast_csi.mtls_utils.load_mtls_credentials')
     def test_mtls_with_credentials_returns_cert_serials(self, mock_load_creds):
@@ -317,11 +317,9 @@ class TestMtlsManagerXprtsecModes:
         
         flags = manager.to_mount_flags("test-volume")
 
-        assert set(flags) == {
-            "mountproto=tcp",
-            "cert_serial=0x1e240",  # 123456 in hex
-            "privkey_serial=0xc0a14",  # 789012 in hex
-        }
+        assert "cert_serial=0x1e240" in flags  # 123456 in hex
+        assert "privkey_serial=0xc0a14" in flags  # 789012 in hex
+        assert len(flags) == 2  # Only cert_serial and privkey_serial
 
     def test_requires_tls_returns_true_for_tls(self):
         """Test requires_tls returns True for TLS mode."""
