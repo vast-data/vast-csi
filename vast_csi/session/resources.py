@@ -139,8 +139,15 @@ class VastResource(ABC):
         return entries[0]
 
     def ensure(self, name, api_ver=None, **params):
-        """Ensure entry with provided name exists. Create if not found."""
-        entry = self.one(name=name, api_ver=api_ver)
+        """Ensure entry with provided name exists. Create if not found.
+
+        When ``tenant_id`` is in ``params``, look up by name+tenant so create
+        under cluster-admin does not reuse a same-named row from another tenant.
+        """
+        lookup = {"name": name}
+        if "tenant_id" in params:
+            lookup["tenant_id"] = params["tenant_id"]
+        entry = self.one(api_ver=api_ver, **lookup)
         if not entry:
             entry = self.create(name=name, api_ver=api_ver, **params)
         return entry
@@ -691,8 +698,10 @@ class User(VastResource):
         user = self.get(user_id)
         return [item[0] for item in user.access_keys or []]
 
-    def delete_access_key(self, _id, access_key):
+    def delete_access_key(self, _id, access_key, *, tenant_id=None):
         data = dict(access_key=access_key)
+        if tenant_id is not None:
+            data["tenant_id"] = tenant_id
         return self.session.delete(f"{self.resource_name}/{_id}/access_keys/", data=data, log_result=False)
 
     def generate_non_local_access_key(self, *, username, tenant_id, context="aggregated"):

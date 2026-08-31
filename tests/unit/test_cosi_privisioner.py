@@ -318,9 +318,57 @@ class TestCosiProvisionerSuite:
         assert 50000 <= ensure_user_kwargs.pop("uid") <= 60000
         assert ensure_user_kwargs == {
             "name": "test-bucket",
+            "tenant_id": 1,
             'api_ver': None,
         }
+        session.users.one.assert_called_with(name="test-bucket", tenant_id=1, api_ver=None)
         session.quotas.ensure.assert_not_called()
+
+    def test_create_bucket_pins_managed_user_to_view_policy_tenant(
+        self, vms_session_with_mocked_resources_factory
+    ):
+        """Cluster-admin auth + non-default view_policy tenant.
+
+        Managed UDB owner must be created with view_policy.tenant_id so S3 keys
+        resolve on that tenant (not the default tenant).
+        """
+        bucket_name = "bucket-class-700d2f-1"
+        tenant_id = 7
+        params = dict(
+            root_export="/700d2f-1",
+            vip_pool_name="700d2f-1",
+            view_policy="700d2f-1-s3",
+            scheme="http",
+            create_dir="true",
+        )
+        view = _view_bunch(bucket_name, root_export="/700d2f-1", tenant_id=tenant_id)
+        session = vms_session_with_mocked_resources_factory(
+            ("vippools", "get_vip", "172.27.77.21"),
+            ("views", "one", None),
+            ("views", "create", view),
+            ("users", "one", None),
+            ("users", "create", None),
+            ("viewpolicies", "one", Bunch(id=99, tenant_id=tenant_id, tenant_name="700d2f-1")),
+            ("quospolicies", "one", None),
+            ("quotas", "one", None),
+            ("quotas", "ensure", None),
+            ("s3lifecyclerules", "ensure", None),
+        )
+        res = CosiProvisioner().DriverCreateBucket(
+            name=bucket_name, parameters=params, vms_session=session
+        )
+        assert res.bucket_id.startswith(f"{bucket_name}@{tenant_id}@")
+        create_kwargs = session.users.create.call_args.kwargs
+        create_kwargs.pop("uid")
+        assert create_kwargs == {
+            "name": bucket_name,
+            "tenant_id": tenant_id,
+            "api_ver": None,
+        }
+        session.users.one.assert_called_with(
+            name=bucket_name, tenant_id=tenant_id, api_ver=None
+        )
+        assert session.views.create.call_args.kwargs["tenant_id"] == tenant_id
 
     @pytest.mark.parametrize("root_export", ["", "/"])
     def test_create_bucket_with_root_storage_path(self, root_export, vms_session_with_mocked_resources_factory):
@@ -697,8 +745,8 @@ class TestCosiProvisionerSuite:
 
         session.s3lifecyclerules.delete_many.assert_called_once_with(view__id=42)
         session.views.delete_by_id.assert_called_once_with(42)
-        session.quotas.delete.assert_called_once_with(name="test-bucket")
-        session.users.delete.assert_called_once_with(name="test-bucket")
+        session.quotas.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
+        session.users.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
         assert order == ["user", "rules", "folders", "view"]
 
     def test_delete_bucket_ok_when_lifecycle_rules_already_gone(
@@ -726,8 +774,8 @@ class TestCosiProvisionerSuite:
         session.s3lifecyclerules.delete_many.assert_called_once_with(view__id=42)
         session.folders.delete.assert_called_once_with("/buckets/test-bucket", 1)
         session.views.delete_by_id.assert_called_once_with(42)
-        session.quotas.delete.assert_called_once_with(name="test-bucket")
-        session.users.delete.assert_called_once_with(name="test-bucket")
+        session.quotas.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
+        session.users.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
 
     def test_delete_bucket_with_view_and_quota(self, vms_session_with_mocked_resources_factory):
         view = _view_bunch("test-bucket")
@@ -742,8 +790,8 @@ class TestCosiProvisionerSuite:
         session.s3lifecyclerules.delete_many.assert_called_once_with(view__id=view.id)
         session.folders.delete.assert_called_once_with(view.path, view.tenant_id)
         session.views.delete_by_id.assert_called_once_with(view.id)
-        session.quotas.delete.assert_called_once_with(name="test-bucket")
-        session.users.delete.assert_called_once_with(name="test-bucket")
+        session.quotas.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
+        session.users.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
 
     def test_delete_bucket_with_view_no_quota(self, vms_session_with_mocked_resources_factory):
         view = _view_bunch("test-bucket")
@@ -756,8 +804,8 @@ class TestCosiProvisionerSuite:
         )
 
         session.views.delete_by_id.assert_called_once_with(view.id)
-        session.quotas.delete.assert_called_once_with(name="test-bucket")
-        session.users.delete.assert_called_once_with(name="test-bucket")
+        session.quotas.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
+        session.users.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
 
     def test_delete_bucket_view_gone_quota_remains(self, vms_session_with_mocked_resources_factory):
         bucket_id = "test-bucket@1@http://172.0.0.1:80"
@@ -769,9 +817,9 @@ class TestCosiProvisionerSuite:
         )
 
         session.views.delete_by_id.assert_not_called()
-        session.quotas.delete.assert_called_once_with(name="test-bucket")
+        session.quotas.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
         # No bucket_owner in delete_context → managed; delete even if view gone.
-        session.users.delete.assert_called_once_with(name="test-bucket")
+        session.users.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
 
     def test_delete_bucket_nothing_on_vast(self, vms_session_with_mocked_resources_factory):
         bucket_id = "test-bucket@1@http://172.0.0.1:80"
@@ -782,9 +830,9 @@ class TestCosiProvisionerSuite:
         )
 
         session.views.delete_by_id.assert_not_called()
-        session.quotas.delete.assert_called_once_with(name="test-bucket")
+        session.quotas.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
         # Idempotent: users.delete skips when the managed user is already gone.
-        session.users.delete.assert_called_once_with(name="test-bucket")
+        session.users.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
 
     def test_delete_bucket_skips_external_owner_from_delete_context(
         self, vms_session_with_mocked_resources_factory
@@ -821,7 +869,7 @@ class TestCosiProvisionerSuite:
         )
 
         session.views.delete_by_id.assert_not_called()
-        session.quotas.delete.assert_called_once_with(name="test-bucket")
+        session.quotas.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
         session.users.delete.assert_not_called()
 
     def test_delete_bucket_retry_after_view_gone_still_deletes_managed_user(
@@ -853,7 +901,7 @@ class TestCosiProvisionerSuite:
                 delete_context=None,
             )
         # Managed user removed before view delete failed.
-        session1.users.delete.assert_called_once_with(name="test-bucket")
+        session1.users.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
 
         _, session2 = self._delete_bucket(
             bucket_id=bucket_id,
@@ -862,4 +910,4 @@ class TestCosiProvisionerSuite:
         )
         session2.views.delete_by_id.assert_not_called()
         # View gone: still attempt managed-user delete (idempotent if already gone).
-        session2.users.delete.assert_called_once_with(name="test-bucket")
+        session2.users.delete.assert_called_once_with(name="test-bucket", tenant_id="1")

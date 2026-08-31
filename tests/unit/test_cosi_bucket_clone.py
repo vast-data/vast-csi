@@ -262,7 +262,7 @@ class TestCosiBucketCloneCreate:
                 name=CLONE_BUCKET,
                 parameters=params.copy(),
             )
-        session.users.delete.assert_called_once_with(name=CLONE_BUCKET)
+        session.users.delete.assert_called_once_with(name=CLONE_BUCKET, tenant_id=TENANT_ID)
 
         resp = cosi_provisioner.DriverCreateBucket(
             vms_session=session,
@@ -291,6 +291,7 @@ class TestCosiBucketCloneCreate:
 
         for call in session.users.ensure.call_args_list:
             assert call.kwargs["name"] == CLONE_BUCKET
+            assert call.kwargs["tenant_id"] == TENANT_ID
 
     def test_clone_failure_deletes_orphan_user(self, cosi_provisioner):
         session = _mock_session(source_view=_source_view())
@@ -303,7 +304,7 @@ class TestCosiBucketCloneCreate:
             cosi_provisioner.DriverCreateBucket(
                 vms_session=session, name=CLONE_BUCKET, parameters=params
             )
-        session.users.delete.assert_called_once_with(name=CLONE_BUCKET)
+        session.users.delete.assert_called_once_with(name=CLONE_BUCKET, tenant_id=TENANT_ID)
 
     def test_existing_view_wrong_path_fails(self, cosi_provisioner):
         session = _mock_session(source_view=_source_view())
@@ -372,7 +373,9 @@ class TestCosiBucketCloneDelete:
             bucket_id=bucket_id,
             delete_context=None,
         )
-        session.snapshots.delete.assert_called_once_with(name=snap_name)
+        session.snapshots.delete.assert_called_once_with(
+            name=snap_name, tenant_id=str(TENANT_ID)
+        )
 
     def test_delete_empty_bucket_gss_is_noop(self, cosi_provisioner):
         session = _mock_session(
@@ -393,4 +396,7 @@ class TestCosiBucketCloneDelete:
             name=cosi_clone_stream_name(CLONE_BUCKET)
         )
         session.folders.delete.assert_called_once()
-        session.snapshots.delete.assert_called_once()
+        session.snapshots.delete.assert_called_once_with(
+            name=cosi_clone_snap_name(CLONE_BUCKET),
+            tenant_id=str(TENANT_ID),
+        )

@@ -28,6 +28,7 @@ SECRET_KEY_RE = re.compile(r"^[a-zA-Z0-9/+]{40}$")
 @dataclass(frozen=True)
 class UdbGrantTarget:
     user: object
+    tenant_id: object
 
 
 @dataclass(frozen=True)
@@ -135,7 +136,7 @@ def _install_external_credentials(
     # list_access_keys uses GET /users/{id}; list-by-name may omit key material.
     for ak in vms_session.users.list_access_keys(user.id):
         try:
-            vms_session.users.delete_access_key(user.id, ak)
+            vms_session.users.delete_access_key(user.id, ak, tenant_id=tenant_id)
         except (HTTPError, ApiError) as exc:
             if exc.response is not None and exc.response.status_code == 404:
                 continue
@@ -158,7 +159,7 @@ def _resolve_grant_target(
     view = vms_session.views.one(bucket=bucket_name, fail_if_missing=True)
     owner_name = view.bucket_owner or bucket_name
     if user := vms_session.users.one(name=owner_name, tenant_id=view.tenant_id):
-        return UdbGrantTarget(user=user)
+        return UdbGrantTarget(user=user, tenant_id=view.tenant_id)
     if owner_name != bucket_name:
         return NonLocalGrantTarget(username=owner_name, tenant_id=view.tenant_id)
     raise LookupFieldError(field=f"user {owner_name!r}")
@@ -168,7 +169,9 @@ def _delete_granted_key(
     vms_session, target: UdbGrantTarget | NonLocalGrantTarget, account_id
 ):
     if isinstance(target, UdbGrantTarget):
-        vms_session.users.delete_access_key(target.user.id, account_id)
+        vms_session.users.delete_access_key(
+            target.user.id, account_id, tenant_id=target.tenant_id
+        )
         return
     vms_session.users.delete_non_local_access_key(
         username=target.username,
@@ -223,7 +226,7 @@ def grant_bucket_access(
             endpoint=endpoint,
             parameters=parameters,
         )
-    creds = vms_session.users.generate_access_key(target.user.id)
+    creds = vms_session.users.generate_access_key(target.user.id, tenant_id=tenant_id)
     return credential_response(creds.access_key, creds.secret_key, endpoint)
 
 
