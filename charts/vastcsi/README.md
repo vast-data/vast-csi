@@ -21,7 +21,7 @@ helm install csi-driver vast/vastcsi -f values.yaml -n vast-csi --create-namespa
 
 ### install a specific version
 ```console
-helm install csi-driver vast/vastcsi -f values.yaml -n vast-csi --create-namespace --version 2.6.6
+helm install csi-driver vast/vastcsi -f values.yaml -n vast-csi --create-namespace --version 2.7.0
 ```
 
 ### Upgrade driver

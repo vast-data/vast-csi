@@ -52,7 +52,7 @@ If you prefer to manually update the bundle image in the manifests:
 1. Edit `03-catalogsource.yaml` and update the image:
    ```yaml
    spec:
-     image: quay.io/vastdata/vast-csi-operator-bundle:v2.6.6
+     image: quay.io/vastdata/vast-csi-operator-bundle:v2.7.0
    ```
 
 2. Apply the manifests:
@@ -97,12 +97,12 @@ To remove the operator:
 
 ```bash
 # For local OLM installation
-kubectl delete csv vast-csi-operator.v2.6.6 -n vast-csi
+kubectl delete csv vast-csi-operator.v2.7.0 -n vast-csi
 kubectl delete operatorgroup vast-csi-operator-group -n vast-csi
 kubectl delete namespace vast-csi
 
 # For bundle installation
-kubectl delete csv vast-csi-operator.v2.6.6 -n vast-csi
+kubectl delete csv vast-csi-operator.v2.7.0 -n vast-csi
 kubectl delete operatorgroup vast-csi-operator-group -n vast-csi
 kubectl delete catalogsource vast-csi-operator-catalog -n olm
 kubectl delete subscription vast-csi-operator -n vast-csi

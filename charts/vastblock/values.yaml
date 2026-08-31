@@ -13,7 +13,9 @@
 #
 # Optionally, you can include:
 # - ssl_cert: SSL certificate for secure communication
-# - tenant: The tenant name for tenant scoped authentication (tenant admin).
+# - tenant: Set only for tenant-admin username/password (driver sends X-Tenant-Name).
+#   Omit for cluster-admin (user/pass or Api-Token). Always omit with Api-Token
+#   (Api-Token + tenant can make VMS return HTTP 400).
 # - host_nqn_seed: Random key material for obfuscated NVMe host NQNs when hostNqnObfuscation is enabled.
 secretName: ""
 
@@ -100,7 +102,9 @@ storageClassDefaults:
   #
   # Optionally, you can include:
   # - ssl_cert: SSL certificate for secure communication
-  # - tenant: The tenant name for tenant scoped authentication (tenant admin).
+  # - tenant: Set only for tenant-admin username/password (driver sends X-Tenant-Name).
+  #   Omit for cluster-admin (user/pass or Api-Token). Always omit with Api-Token
+  #   (Api-Token + tenant can make VMS return HTTP 400).
   # All other fields are ignored.
   secretName: ""
   # Secret namespace. If not specified then secret will be searched in the same namespace as StorageClass is created.
@@ -530,7 +534,7 @@ snapshotClasses: {}
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.6.6  # the version of the Vast CSI driver
+    tag: v2.7.0  # the version of the Vast CSI driver
     imagePullPolicy: IfNotPresent
   csiAttacher:
     repository: registry.k8s.io/sig-storage/csi-attacher
