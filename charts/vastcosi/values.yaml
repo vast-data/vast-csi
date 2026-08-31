@@ -137,8 +137,9 @@ image:
     tag: v2.7.0  # the version of the Vast COSI driver
     imagePullPolicy: IfNotPresent
   objectstorageProvisioner:
-    repository: gcr.io/k8s-staging-sig-storage/objectstorage-sidecar/objectstorage-sidecar
-    tag: v20230130-v0.1.0-24-gc0cf995
+    # v0.2.2: Update path calls Add/Grant. Nested staging path is obsolete.
+    repository: registry.k8s.io/sig-storage/objectstorage-sidecar
+    tag: v0.2.2
     imagePullPolicy: IfNotPresent
   # Extensions-controller image (COSI credentials flattener and other K8s-native addons).
   vastExtensionController:
