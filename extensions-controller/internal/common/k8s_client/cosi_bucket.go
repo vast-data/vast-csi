@@ -12,6 +12,7 @@ import (
 const cosiBucketIDIndex = "status.bucketID"
 
 // RegisterCOSIBucketIDIndex indexes Bucket.status.bucketID for O(1) lookup via MatchingFields.
+// Call from the cosi namespace only — needs objectstorage.k8s.io CRDs (not present on replication-only installs).
 func RegisterCOSIBucketIDIndex(ctx context.Context, indexer client.FieldIndexer) error {
 	return indexer.IndexField(ctx, &objectstoragev1alpha1.Bucket{}, cosiBucketIDIndex,
 		func(obj client.Object) []string {
@@ -25,7 +26,8 @@ func RegisterCOSIBucketIDIndex(ctx context.Context, indexer client.FieldIndexer)
 }
 
 // FindCOSIBucketByID returns the Bucket whose status.bucketID matches bucketID.
-// Requires RegisterCOSIBucketIDIndex on the manager that owns this client.
+// Requires RegisterCOSIBucketIDIndex on the manager that owns this client
+// (cosi namespace — needs objectstorage.k8s.io CRDs).
 func (k *K8sClient) FindCOSIBucketByID(ctx context.Context, bucketID string) (*objectstoragev1alpha1.Bucket, error) {
 	list := &objectstoragev1alpha1.BucketList{}
 	if err := k.client.List(ctx, list, client.MatchingFields{cosiBucketIDIndex: bucketID}); err != nil {
