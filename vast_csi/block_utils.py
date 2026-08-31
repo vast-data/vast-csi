@@ -15,6 +15,8 @@ DEVICE_NAME_RGX = re.compile(r"nvme\d+n\d+")
 BLOCK_DEVICE_INFO_PATH = local.path("/sys/block")
 NVME_CLASS_PATH = local.path("/sys/class/nvme")
 NVME_TCP_MODULE = local.path("/sys/module/nvme_tcp")
+NVME_MULTIPATH_PARAM = local.path("/sys/module/nvme_core/parameters/multipath")
+NVME_IOPOLICY_PARAM = local.path("/sys/module/nvme_core/parameters/iopolicy")
 
 
 def _ensure_nvme_tcp() -> bool:
@@ -67,9 +69,17 @@ def try_nvme_probes():
 
 
 def is_native_multipath_enabled():
+    """Return True when NVMe native multipath is available.
+
+    RHEL 10+ removes the multipath module parameter while keeping multipath
+    enabled by default. When that param is absent, presence of iopolicy
+    indicates CONFIG_NVME_MULTIPATH (Mayastor-compatible probe). Missing both
+    means multipath is not compiled in (e.g. some Talos kernels).
+    """
     try:
-        with open("/sys/module/nvme_core/parameters/multipath", "r") as f:
-            return f.read().strip() == "Y"
+        if NVME_MULTIPATH_PARAM.exists():
+            return NVME_MULTIPATH_PARAM.read().strip() == "Y"
+        return NVME_IOPOLICY_PARAM.exists()
     except Exception:
         return False
 

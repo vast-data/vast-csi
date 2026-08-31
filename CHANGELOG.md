@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## Version 2.6.7
+* Block: treat missing nvme_core multipath sysfs as enabled when iopolicy is present (RHEL 10); keep fail-closed when both are absent (VCSI-634)
 * COSI: dropped `truncateVolumeName`; reject bucket names longer than 63 characters instead of truncating (VCSI-533, VCSI-532)
 * Block: added opt-in NVMe host NQN obfuscation (`host_nqn_obfuscation` StorageClass parameter + `host_nqn_seed` in the controller-publish secret). Legacy deployments are unchanged when the flag is disabled. Enabling obfuscation on clusters with existing block hosts requires a planned migration: unpublish volumes, delete or auto-prune VMS block hosts, then republish so new HMAC-based NQNs take effect (VCSI-433)
 * COSI: optional BucketClass `lifecycleRules` (Helm values list) creates VMS S3 lifecycle rules on bucket create and deletes them on bucket delete (VCSI-327)
