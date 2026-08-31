@@ -27,10 +27,6 @@ func configure(cmd *cobra.Command, sharedMgr *manager.SharedManager, cfg *config
 			panic(err)
 		}
 
-		if err := k8s_client.RegisterCOSIBucketIDIndex(c.Context(), mgr.GetFieldIndexer()); err != nil {
-			panic(err)
-		}
-
 		factory := k8s_client.NewFactory("extensions-controller")
 		k8sClient, err := factory.K8sClientForController(mgr.GetClient(), logger)
 		if err != nil {
