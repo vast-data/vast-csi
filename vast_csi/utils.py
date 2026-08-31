@@ -32,6 +32,25 @@ def normalize_volume_id(volume_id: str) -> str:
     return volume_id.strip("/").rsplit("/", 1)[-1]
 
 
+def build_snapshot_name(
+    *,
+    name_fmt: str,
+    namespace: str,
+    name: str,
+    snap_id: str,
+    truncate_to: int | None = None,
+) -> str:
+    """Format, sanitize, and optionally truncate a VMS snapshot name.
+
+    Default formats put ``{id}`` first so prefix truncation keeps uniqueness.
+    """
+    snapshot_name = name_fmt.format(namespace=namespace, name=name, id=snap_id)
+    snapshot_name = snapshot_name.replace(":", "-").replace("/", "-")
+    if truncate_to:
+        snapshot_name = snapshot_name[:truncate_to]
+    return snapshot_name
+
+
 @contextmanager
 def to_abort(code=types.ABORTED):
     """

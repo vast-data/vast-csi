@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## Version 2.7.0
+* NFS/Block: truncate VMS snapshot names via `truncateSnapshotName` (default 128) so OpenShift long project/snapshot names do not exceed the VMS 128-char limit (VCSI-553)
 * COSI: bump objectstorage-sidecar to `registry.k8s.io/sig-storage/objectstorage-sidecar:v0.2.2` so BucketAccess grant runs on Update as well as Add (fixes intermittent missing credentials Secret; VCSI-520). Sidecar container runs as root so it can dial the plugin unix socket (image defaults to non-root). Follow-ups not in this release: non-root sidecar via shared socket perms/`fsGroup` (for Restricted PSS); air-gap must mirror `registry.k8s.io/sig-storage/objectstorage-sidecar:v0.2.2`.
 * NFS: allow deleting a PVC that still has snapshots when trash is enabled (`dontUseTrashApi=false` + VMS trash). RO restore keeps the fast direct `.snapshot/` mount while the source view exists; after trash delete, falls back to Global Snapshot Stream clone (same path as RWO restore). Trash-off (`dontUseTrashApi=true`) behavior unchanged (VCSI-119)
 * NFS `xprtsec` (TLS/mTLS): for NFSv3, set `mountproto=tcp` in StorageClass `mountOptions`; omit `mountproto` for NFSv4 (VCSI-602)

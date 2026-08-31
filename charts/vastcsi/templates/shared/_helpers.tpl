@@ -58,6 +58,10 @@
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}
 {{- end }}
+{{ if $.Values.truncateSnapshotName -}}
+- name: X_CSI_TRUNCATE_SNAPSHOT_NAME
+  value: {{ $.Values.truncateSnapshotName | quote }}
+{{- end }}
 {{- if .extraEnv }}
 {{- range $key, $value := .extraEnv }}
 - name: {{ $key }}

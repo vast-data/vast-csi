@@ -116,6 +116,10 @@ Usage: {{ include "vastcsi.resolvedImage" (dict "ctx" . "img" $csi_images.csiVas
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}
 {{- end }}
+{{- if $.Values.truncateSnapshotName }}
+- name: X_CSI_TRUNCATE_SNAPSHOT_NAME
+  value: {{ $.Values.truncateSnapshotName | quote }}
+{{- end }}
 - name: X_CSI_BLOCK_HOSTS_AUTO_PRUNE
   value: {{ $.Values.blockHostsAutoPrune | quote }}
 {{- if $.Values.hostNamePrefix }}

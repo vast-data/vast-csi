@@ -330,6 +330,66 @@ def test_block_snapshot_restore(system, k8s):
 
 
 
+
+@pytest.mark.e2e
+@pytest.mark.block
+def test_block_long_snapshot_name_truncates(system, k8s):
+    """Long project + snapshot names must still create a VMS snap (name <= 128)."""
+    suffix = random_nice_name(max_length=8)
+    ns = ("e2e-blk-long-snap-" + "n" * 50)[:63]
+    snap_name = ("blk-long-snap-" + "s" * 60)[:63]
+    src_pvc = f"snap-src-ext4-{suffix}"
+    src_pod = f"snap-src-pod-ext4-{suffix}"
+    sc = block_storage_class(fs_type="ext4")
+    snap_class = SNAPSHOT_CLASS
+
+    assert len(ns) + len(snap_name) + len("csi-") + 36 + 2 > 128
+
+    k8s.namespaces.ensure(ns)
+    k8s.namespaces.allow_privileged(ns)
+
+    k8s.pvcs.create(make_filesystem_pvc(src_pvc, sc, storage="2Gi").with_namespace(ns))
+    k8s.pvcs.wait(
+        timeout=3 * MINUTE,
+        name=src_pvc,
+        namespace=ns,
+        error_msg="[ext4] source PVC did not bind",
+    )
+    k8s.pods.create(
+        make_writer_pod(src_pod, src_pvc, volume_name="block-data").with_namespace(ns)
+    )
+    k8s.pods.wait(
+        timeout=5 * MINUTE,
+        name=src_pod,
+        namespace=ns,
+        error_msg="[ext4] source pod did not start",
+    )
+
+    k8s.volumesnapshots.create(
+        VolumeSnapshotBuilder.new(
+            name=snap_name, pvc_name=src_pvc, snapshot_class_name=snap_class,
+        ).with_namespace(ns)
+    )
+    with logger.indented("[ext4] waiting for long-named snapshot"):
+        uid = k8s.volumesnapshots.wait(
+            timeout=5 * MINUTE,
+            name=snap_name,
+            namespace=ns,
+            error_msg="[ext4] snapshot not ready",
+        )["metadata"]["uid"]
+        vms_snap = wait(
+            5 * MINUTE,
+            lambda: system.snapshots.single(lambda s: uid in s.name),
+            message=f"[ext4] no VMS snapshot for {uid}",
+        )
+
+    assert vms_snap is not None
+    assert len(vms_snap.name) <= 128, (
+        f"VMS snapshot name length {len(vms_snap.name)} exceeds 128: {vms_snap.name!r}"
+    )
+
+
+
 @pytest.mark.e2e
 @pytest.mark.block
 def test_block_volume_clone(k8s):

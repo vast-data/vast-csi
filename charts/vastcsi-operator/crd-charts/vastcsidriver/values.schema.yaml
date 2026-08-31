@@ -1970,6 +1970,11 @@ spec:
       type: integer
       format: int32
       default: {{ .Values.truncateVolumeName }}
+    truncateSnapshotName:
+      description: Truncate VAST snapshot name if name length is greater than this number. set truncateSnapshotName as null to disable truncation. VMS max is 128.
+      type: integer
+      format: int32
+      default: {{ .Values.truncateSnapshotName }}
     blockHostsAutoPrune:
       description: |-
         (Block driver only) If set to true, the CSI driver will automatically prune (delete) host
@@ -2452,6 +2457,11 @@ specDescriptors:
     path: truncateVolumeName
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:hidden'
+  - description: Truncate VAST snapshot name if name length is greater than this number. set truncateSnapshotName as null to disable truncation. VMS max is 128.
+    displayName: truncateSnapshotName
+    path: truncateSnapshotName
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:hidden'
   - description: |-
       (Block driver only) Automatically prune unused host entries (NQNs) from the VMS when they are no longer
       in use by any PVCs. This prevents host sprawl in dynamic Kubernetes environments with
@@ -2777,6 +2787,7 @@ example:
     operationRetryIntervalStart: {{ .Values.operationRetryIntervalStart }}
     operationTimeout: {{ .Values.operationTimeout }}
     truncateVolumeName: {{ .Values.truncateVolumeName }}
+    truncateSnapshotName: {{ .Values.truncateSnapshotName }}
     blockHostsAutoPrune: {{ .Values.blockHostsAutoPrune }}
     hostNamePrefix: {{ .Values.hostNamePrefix | quote }}
     mountUmountTimeout: {{ .Values.mountUmountTimeout }}
