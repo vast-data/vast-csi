@@ -66,12 +66,25 @@ build_csi:
 
 build_csi_operator:
   stage: build
+  needs:
+    - job: build_csi
+    - job: build_extension_controller
   script: |
     set -x
     docker login -u ${RH_DOCKER_USER} -p ${RH_DOCKER_PASSWORD} registry.redhat.io
     export PIPE=${CI_PIPELINE_ID}
     make operator-build
     make operator-push
+    # Build bundle like update_operators_redhat (digest-pinned, PIPE=null) but keep
+    # IMG_PULL_SECRET so ECR private pulls work (production sets it to null).
+    export PIPE=null
+    export IMG=${DOCKER_REGISTRY}/dev/vast-csi
+    export CSI_PLUGIN_IMG=${IMG}
+    export EXTENSIONS_IMG=${IMG}
+    export OPERATOR_TAG=${CI_PIPELINE_ID}-operator
+    export CSI_TAG=${CI_PIPELINE_ID}
+    export EXTENSIONS_TAG=${CI_PIPELINE_ID}-extensions
+    export OPERATOR_BUNDLE_TAG=${CI_PIPELINE_ID}-operator-bundle
     make operator-bundle-build
     make operator-bundle-push
   tags:
@@ -449,6 +462,10 @@ update_operators_redhat:
     export CSI_PLUGIN_IMG=${RH_REGISTRY}/csi
     CSI_TAG=$(./scripts/img_to_digest.sh "${CSI_PLUGIN_IMG}:${VERSION}") || exit 1
     export CSI_TAG
+
+    # Extensions controller is Docker Hub only (not in Red Hat catalog). Pin digest explicitly.
+    export EXTENSIONS_IMG=docker.io/vastdataorg/csi
+    export EXTENSIONS_TAG='@sha256:f6561aa2270a1acbd8a1cb20a37923304f3eca171819d8d142f7f52585146cff'
     
     if [ -z "$OPERATOR_TAG" ]; then
         echo "Error: OPERATOR_TAG is empty."
@@ -480,9 +497,8 @@ update_operators_redhat:
     echo "Syncing with upstream certified-operators repository..."
     git reset --hard upstream/main
     
-    # Prepare destination directory
-    DEST=operators/vast-csi-operator/v${VERSION}
-    echo "Preparing operator bundle for version ${VERSION}..."
+    DEST=operators/vast-csi-operator/${VERSION}
+    echo "Preparing operator bundle for version ${VERSION} (images: ${IMAGE_TAG})..."
     
     # Remove existing version if it exists and create fresh directory
     rm -rf $DEST && mkdir -p $DEST    
@@ -491,12 +507,12 @@ update_operators_redhat:
     
     # Commit and push changes
     git add .
-    git commit -sam "operator vast-csi-operator (v${VERSION})"    
+    git commit -sam "operator vast-csi-operator (${VERSION})"    
     
     # Force push since we reset to upstream (this is safe since we're the only ones using this fork)
     git push origin main --force
     
-    echo "Successfully pushed VAST CSI Operator v${VERSION} to certified-operators"
+    echo "Successfully pushed VAST CSI Operator ${VERSION} to certified-operators"
   when: manual
   tags:
     - vast-dev-builder
@@ -520,6 +536,9 @@ update_operators_operatorhub:
     
     export OPERATOR_TAG=$(./scripts/img_to_digest.sh "${IMG}:${VERSION}-operator")
     export CSI_TAG=$(./scripts/img_to_digest.sh "${IMG}:${VERSION}")
+    # Extensions controller: pin Docker Hub digest (not resolved dynamically).
+    export EXTENSIONS_IMG=$IMG
+    export EXTENSIONS_TAG='@sha256:f6561aa2270a1acbd8a1cb20a37923304f3eca171819d8d142f7f52585146cff'
     
     if [ -z "$OPERATOR_TAG" ]; then
         echo "Error: OPERATOR_TAG is empty."

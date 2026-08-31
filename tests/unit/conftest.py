@@ -8,9 +8,10 @@ from unittest.mock import  MagicMock, patch
 import pytest
 from plumbum import local
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
+TESTS = Path(__file__).resolve().parent
 # Extend python import path to get vast_csi package from here
-sys.path += [ROOT.as_posix()]
+sys.path += [ROOT.as_posix(), TESTS.as_posix()]
 
 with local.cwd(gettempdir()) as tempdir:
     # Temporary change working directory and create version.info file in order to allow reading

@@ -2,7 +2,7 @@ apiVersion: v2
 name: vastcsi-operator
 description: Helm chart for Vast CSI Operator deployment
 type: application
-version: "2.6.7"
+version: "2.7.0"
 keywords:
   - vast
   - csi

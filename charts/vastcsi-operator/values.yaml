@@ -24,23 +24,23 @@ operatorDocs: "https://support.vastdata.com/s/document-item?bundleId=vast-csi-dr
 
 overrides:
   csiVastPlugin:
-    repository: docker.io/vastdataorg/csi@sha256:0a4af94e3d5e03d7ecd294305b17b379d6fc99183acbf0588bbfecea79a8bff6
+    repository: docker.io/vastdataorg/csi@sha256:0828a97c0a10ba2a0da5b47015b5ddf911104b8a5501b4a753c8e0604d852af5
   csiAttacher:
-    repository: registry.k8s.io/sig-storage/csi-attacher@sha256:b4d611100ece2f9bc980d1cb19c2285b8868da261e3b1ee8f45448ab5512ab94
+    repository: registry.k8s.io/sig-storage/csi-attacher@sha256:d69cc72025f7c40dae112ff989e920a3331583497c8dfb1600c5ae0e37184a29
   csiNodeDriverRegistrar:
-    repository: registry.k8s.io/sig-storage/csi-node-driver-registrar@sha256:f25af73ee708ff9c82595ae99493cdef9295bd96953366cddf36305f82555dac
+    repository: registry.k8s.io/sig-storage/csi-node-driver-registrar@sha256:c53535af8a7f7e3164609838c4b191b42b2d81238d75c1b2a2b582ada62a9780
   csiProvisioner:
-    repository: registry.k8s.io/sig-storage/csi-provisioner@sha256:405a14e1aa702f7ea133cea459e8395fe40a6125c088c55569e696d48e1bd385
+    repository: registry.k8s.io/sig-storage/csi-provisioner@sha256:de79c8bbc271622eb94d2ee8689f189ea7c1cb6adac260a421980fe5eed66708
   csiResizer:
-    repository: registry.k8s.io/sig-storage/csi-resizer@sha256:a541e6cc2d8b011bb21b1d4ffec6b090e85270cce6276ee302d86153eec0af43
+    repository: registry.k8s.io/sig-storage/csi-resizer@sha256:4c148bbdf883153bc72d321be4dc55c33774a6d98b2b3e0c2da6ae389149a9b7
   csiSnapshotter:
     repository: registry.k8s.io/sig-storage/csi-snapshotter@sha256:42af0929bcd60a43499825c078a60ff0534e08af8fbeb283aa391be40feb9f3e
   csiAddonsSidecar:
-    repository: quay.io/csiaddons/k8s-sidecar@sha256:208b4d21b125f4ef9d0ea4082bdf5aeafc9771e0e233e7c60e50e8bf3f5cb3db
+    repository: quay.io/csiaddons/k8s-sidecar@sha256:69092d026323307933fba2bed9c57d864f2a92cfd385d644b478442ded0d2886
   csiAddonsController:
-    repository: quay.io/csiaddons/k8s-controller@sha256:318b6dd286db67bee59f2fc2ee0cc9a21302c9f90a43a8d2bda2fdaf78a1ae5b
+    repository: quay.io/csiaddons/k8s-controller@sha256:412ed46f1f93a49aea6a6cb9c33e3bcb131f96bfe3d015314611c27282f472aa
   vastExtensionController:
-    repository: docker.io/vastdataorg/csi@sha256:4ee38a27ee19d033a6cca47cd442855159eeb4645c83fa659bee8d5d8286dbf2
+    repository: docker.io/vastdataorg/csi@sha256:f6561aa2270a1acbd8a1cb20a37923304f3eca171819d8d142f7f52585146cff
 
 # Disable if you don't have intention to use snapshots (Enabled by default)
 installSnapshotCRDS: true
@@ -57,7 +57,12 @@ olmBuild: false
 maturity: "stable"
 
 # The version that this operator replaces in the upgrade graph.
-# This is required for OLM to understand the operator upgrade path.
-# Example: "2.6.3" will generate "replaces: vast-csi-operator.v2.6.3"
-# Leave empty for the first release or if no replacement is needed.
-replacesVersion: "2.6.5"
+# Example: "2.6.5" will generate "replaces: vast-csi-operator.v2.6.5"
+# Leave empty when expanding OCP support beyond the previous bundle's catalogs;
+# use skipRange instead so check_replaces_availability can pass.
+# 2.7.0 skips 2.6.6..2.6.8 via skipRange (same OCP range v4.18-v4.22).
+replacesVersion: null
+
+# SemVer range of installed versions that can upgrade directly to this release.
+# Cover broken 2.6.6 (image-pin / vipPool), unreleased 2.6.7, and 2.6.8.
+skipRange: ">=2.6.6 <2.7.0"

@@ -55,6 +55,7 @@ from vast_csi.csi_types import (
 )
 from vast_csi.builders import (
     EmptyVolumeBuilder,
+    VolumeFromBucketBuilder,
     VolumeFromSnapshotBuilder,
     VolumeFromVolumeBuilder,
     TestVolumeBuilder,
@@ -189,16 +190,26 @@ class CsiController(ControllerBase, Instrumented):
         parameters=None,
         volume_content_source=None,
         ephemeral_volume_name=None,
+        is_ephemeral=False,
     ):
         volume_capabilities = _validate_capabilities(volume_capabilities)
         parameters = parameters or dict()
+
+        if parameters.get("bucket_name") and not is_ephemeral:
+            raise Abort(
+                INVALID_ARGUMENT,
+                "bucket_name volumes are only supported for inline ephemeral volumes",
+            )
 
         # Take appropriate builder for volume, snapshot or test builder
         if CONF.mock_vast:
             builder_cls = TestVolumeBuilder
         else:
             if not volume_content_source:
-                builder_cls = EmptyVolumeBuilder
+                if parameters.get("bucket_name"):
+                    builder_cls = VolumeFromBucketBuilder
+                else:
+                    builder_cls = EmptyVolumeBuilder
 
             elif volume_content_source.snapshot.snapshot_id:
                 builder_cls = VolumeFromSnapshotBuilder
@@ -369,6 +380,9 @@ class CsiController(ControllerBase, Instrumented):
                 raise Abort(NOT_FOUND, exc.message)
             except VolumeAlreadyExists as exc:
                 raise Abort(ALREADY_EXISTS, exc.message)
+
+        elif volume_context.get("bucket_name"):
+            export_path = volume_context["export_path"]
 
         else:
             root_export = CONF.sanity_test_nfs_export if CONF.mock_vast else local.path(volume_context["root_export"])
@@ -648,12 +662,17 @@ class CsiNode(NodeBase, Instrumented):
 
         target_path.mkdir()
         mount_tmpfs(target_path, timeout=CONF.mount_umount_timeout)
+        meta_extra = {}
+        if mtls_manager.requires_mtls():
+            meta_extra["has_mtls"] = True
+        if bucket_name := volume_context.get("bucket_name"):
+            meta_extra["bucket_name"] = bucket_name
         self._store_meta_file(
             target_path=target_path,
             volume_id=volume_id,
             is_ephemeral=is_ephemeral,
             vms_session=vms_session,
-            extra_data={"has_mtls": True} if mtls_manager.requires_mtls() else None,
+            extra_data=meta_extra or None,
         )
         logger.info(f"created: {target_path}")
 
