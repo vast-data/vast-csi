@@ -120,14 +120,15 @@ transportType: "TCP"
 # This ensures the volume is fully usable and consistent at the time of provisioning, but may add
 # significant latency if the underlying GSS operation is long-running.
 #
-# If false (default), the driver returns as soon as the clone operation is initiated, allowing
-# Kubernetes to proceed while the data stream continues in the background.
-blockingClones: false
+# Unset by default (driver non-blocking). StorageClass parameters are immutable — only set
+# true/false when creating a new StorageClass (or after deleting the existing one).
+# blockingClones: true
 
 # When true, NVMe host NQNs use HMAC-SHA256 instead of the plain node name suffix.
 # Requires host_nqn_seed in the StorageClass controller-publish secret.
 # Use one seed per VAST tenant; existing block hosts keep their NQN until recreated.
-hostNqnObfuscation: false
+# Unset by default (driver plain NQN). SC parameters are immutable — set only on new SC.
+# hostNqnObfuscation: true
 
 ####################
 # VAST CSI SNAPSHOT CLASS OPTIONS

@@ -76,17 +76,19 @@ spec:
         before returning from a volume clone operation.
         This ensures the volume is fully usable and consistent at the time of provisioning, but may add
         significant latency if the underlying GSS operation is long-running.
-        If false (default), the driver returns as soon as the clone operation is initiated, allowing
-        Kubernetes to proceed while the data stream continues in the background.
+        Unset by default (driver non-blocking). StorageClass parameters are immutable — only set
+        when creating a new StorageClass (or after deleting the existing one).
       type: boolean
-      default: false
+      nullable: true
     hostNqnObfuscation:
       description: |-
         When true, NVMe host NQNs use HMAC-SHA256 instead of the plain node name suffix.
         Requires host_nqn_seed in the StorageClass controller-publish secret.
         Use one seed per VAST tenant; existing block hosts keep their NQN until recreated.
+        Unset by default (driver plain NQN). StorageClass parameters are immutable — only set
+        when creating a new StorageClass (or after deleting the existing one).
       type: boolean
-      default: false
+      nullable: true
     hostEncryption:
       description: |-
         Enables encryption using LUKS on the device at the client side.
@@ -312,7 +314,8 @@ specDescriptors:
   - description: >
       If true, the CSI driver will wait for the GSS (global snapshot stream) process to fully complete
       before returning from a volume clone operation. This ensures consistency at provisioning time but
-      may increase latency. If false (default), the clone operation returns immediately after initiation.
+      may increase latency. Unset by default (driver non-blocking). StorageClass parameters are immutable —
+      set only when creating a new StorageClass.
     displayName: Blocking Clones
     path: blockingClones
     x-descriptors:
@@ -320,6 +323,7 @@ specDescriptors:
   - description: >
       When true, NVMe host NQNs use HMAC-SHA256 instead of the plain node name suffix.
       Requires host_nqn_seed in the StorageClass controller-publish secret.
+      Unset by default. StorageClass parameters are immutable — set only when creating a new StorageClass.
     displayName: Host NQN Obfuscation
     path: hostNqnObfuscation
     x-descriptors:
