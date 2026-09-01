@@ -327,12 +327,16 @@ class BucketProvisionBase:
     owner: OwnerSpec = field(default_factory=OwnerSpec)
     remaining_parameters: dict = field(default_factory=dict)
 
-    def _ensure_bucket_user(self):
-        self.vms_session.users.ensure(name=self.name, uid=randint(50000, 60000))
+    def _ensure_bucket_user(self, tenant_id):
+        # Cluster-admin secrets omit tenant:. Pin UDB user to view_policy
+        # tenant so keys resolve on the same tenant as the view.
+        self.vms_session.users.ensure(
+            name=self.name, uid=randint(50000, 60000), tenant_id=tenant_id
+        )
 
     def _resolve_bucket_owner(self, tenant_id) -> str:
         if self.owner.is_managed:
-            self._ensure_bucket_user()
+            self._ensure_bucket_user(tenant_id)
             return self.name
         try:
             return resolve_existing_bucket_owner(self.vms_session, self.owner, tenant_id)
@@ -468,5 +472,5 @@ class CloneBucketBuilder(BucketProvisionBase):
             raise  # keep bucket owner; existing view may already use it
         except Exception:
             if self.owner.is_managed:
-                self.vms_session.users.delete(name=self.name)
+                self.vms_session.users.delete(name=self.name, tenant_id=tenant_id)
             raise
