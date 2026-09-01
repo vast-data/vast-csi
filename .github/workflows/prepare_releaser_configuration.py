@@ -1,9 +1,15 @@
 """
-This script generates the releaser configuration file for the following `Run chart-releaser` step.
-Releases are separated into three categories: beta, hotfix, and stable.
-Beta releases are created from branches with name pattern <version>-beta
-Hotfix releases are created from branches with name pattern <version>-hf<number> (e.g. `2.6.4-hf1`)
-Stable releases are created from branches with a valid version number (e.g. `1.0.0`).
+Generate releaser-config.yml for chart-releaser and remove chart sources outside the
+selected release group.
+
+Release groups:
+  public — vastcsi, vastcosi, vastblock → gh-pages (or gh-pages-beta)
+  gke    — vastcsi-gke → gke-gh-pages
+  common — charts/common only (library); used to strip other sources if chart-releaser
+           is invoked for that group
+
+Beta/hotfix/stable versioning applies to public releases on version branches.
+GKE releases use version.txt. Common is versioned in charts/common/Chart.yaml.
 """
 import argparse
 import os
@@ -14,11 +20,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 CHARTS_ROOT = ROOT / "charts"
-PUBLIC_CHARTS = [
-    CHARTS_ROOT / "vastcsi" / "Chart.yaml",
-    CHARTS_ROOT / "vastcosi" / "Chart.yaml",
-    CHARTS_ROOT / "vastblock" / "Chart.yaml",
-]
+RELEASE_GROUPS = {
+    "public": [
+        CHARTS_ROOT / "vastcsi" / "Chart.yaml",
+        CHARTS_ROOT / "vastcosi" / "Chart.yaml",
+        CHARTS_ROOT / "vastblock" / "Chart.yaml",
+    ],
+    "gke": [
+        CHARTS_ROOT / "vastcsi-gke" / "Chart.yaml",
+    ],
+    "common": [
+        CHARTS_ROOT / "common" / "Chart.yaml",
+    ],
+}
 
 
 def replace_chart_version(chart: Path, version: str) -> None:
@@ -34,62 +48,73 @@ def replace_chart_version(chart: Path, version: str) -> None:
     chart.write_text(updated)
 
 
-def prepare_release() -> None:
-    branch = os.environ["GITHUB_REF_NAME"]
-    sha = os.environ["GITHUB_SHA"][:7]
+def prune_unpublished_charts(release_group: str) -> None:
+    allowed_chart_dirs = {
+        chart.parent.resolve() for chart in RELEASE_GROUPS[release_group]
+    }
+    for chart_file in CHARTS_ROOT.glob("*/Chart.yaml"):
+        chart_dir = chart_file.parent
+        if chart_dir.resolve() not in allowed_chart_dirs:
+            print(f"Removing chart source outside release group: {chart_dir}")
+            shutil.rmtree(chart_dir)
+
+
+def prepare_release(release_group: str) -> None:
+    branch = os.environ.get("GITHUB_REF_NAME", "")
+    sha = os.environ.get("GITHUB_SHA", "0000000")[:7]
     base_version = ROOT.joinpath("version.txt").read_text().strip().lstrip("v")
 
-    if not re.search(r"[0-9]+\.[0-9]+\.?[0-9]*", branch):
+    if release_group == "public" and branch and not re.search(
+        r"[0-9]+\.[0-9]+\.?[0-9]*", branch
+    ):
         sys.stderr.write(
             f"Branch name must contain a valid version number. "
             f"Got: {branch}. Skipping release...\n"
         )
         return
+
     is_beta = "beta" in branch
     is_hotfix = "-hf" in branch
 
     release_name_template = "helm-{{ .Name }}-{{ .Version }}"
-    # Hotfixes go to prod gh-pages (same as stable releases)
-    pages_branch = "gh-pages-beta" if is_beta else "gh-pages"
-    
-    # For hotfixes, use the branch name as version (e.g., 2.6.4-hf1)
-    # For beta, append beta suffix with commit SHA
-    # For stable, use version.txt as-is
-    if is_hotfix:
-        version = branch.lstrip("v")  # Remove 'v' prefix if present
+    pages_branch = (
+        "gke-gh-pages"
+        if release_group == "gke"
+        else ("gh-pages-beta" if is_beta else "gh-pages")
+    )
+
+    if release_group == "common":
+        version = None
+    elif release_group == "gke":
+        version = base_version
+    elif is_hotfix:
+        version = branch.lstrip("v")
     elif is_beta:
         version = f"{base_version}-beta.{sha}"
     else:
         version = base_version
 
-    for chart in PUBLIC_CHARTS:
-        replace_chart_version(chart, version)
+    if version is not None:
+        for chart in RELEASE_GROUPS[release_group]:
+            replace_chart_version(chart, version)
 
     ROOT.joinpath("releaser-config.yml").open("w").write(
         f"""
             pages-branch: {pages_branch}
             release-name-template: {release_name_template}
-        """)
+        """
+    )
 
-
-def prune_unpublished_charts() -> None:
-    public_chart_dirs = {chart.parent.resolve() for chart in PUBLIC_CHARTS}
-    for chart_file in CHARTS_ROOT.glob("*/Chart.yaml"):
-        chart_dir = chart_file.parent
-        if chart_dir.resolve() not in public_chart_dirs:
-            print(f"Removing unpublished chart source: {chart_dir}")
-            shutil.rmtree(chart_dir)
+    prune_unpublished_charts(release_group)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--prune-unpublished-charts",
-        action="store_true",
-        help="Remove top-level charts not listed in PUBLIC_CHARTS",
+        "--release-group",
+        choices=RELEASE_GROUPS,
+        default="public",
+        help="Select the charts and pages branch to release",
     )
     args = parser.parse_args()
-    if args.prune_unpublished_charts:
-        prune_unpublished_charts()
-    else:
-        prepare_release()
+    prepare_release(args.release_group)

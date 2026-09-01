@@ -1,0 +1,7 @@
+{{ include "vast.common.resource.csiDriver" (dict
+  "name" (include "vast.common.csi.driverName" .)
+  "labels" (include "vast.common.labels" .)
+  "attachRequired" .Values.attachRequired
+  "podInfoOnMount" true
+  "volumeLifecycleModes" (list "Persistent" "Ephemeral")
+) }}

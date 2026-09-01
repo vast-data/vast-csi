@@ -1,0 +1,13 @@
+{{- $namespace := include "vast.common.namespace" . -}}
+{{- $labels := include "vast.common.labels" . -}}
+{{- $selectors := include "vast.common.selectorLabels" . -}}
+{{- $name := .Release.Name | replace "." "-" -}}
+{{- if and .Values.node.metrics.enabled .Values.node.metrics.serviceMonitor.enabled }}
+{{- $sm := .Values.node.metrics.serviceMonitor -}}
+{{ include "vast.common.resource.serviceMonitor" (dict "name" (printf "%s-vast-node-metrics" $name) "namespace" $namespace "labels" $labels "selectorLabels" $selectors "role" "node" "interval" $sm.interval "additionalLabels" $sm.labels "relabelings" $sm.relabelings "metricRelabelings" $sm.metricRelabelings) }}
+{{- end }}
+---
+{{ if and .Values.controller.metrics.enabled .Values.controller.metrics.serviceMonitor.enabled -}}
+{{- $sm := .Values.controller.metrics.serviceMonitor -}}
+{{ include "vast.common.resource.serviceMonitor" (dict "name" (printf "%s-vast-controller-metrics" $name) "namespace" $namespace "labels" $labels "selectorLabels" $selectors "role" "controller" "interval" $sm.interval "additionalLabels" $sm.labels "relabelings" $sm.relabelings "metricRelabelings" $sm.metricRelabelings) }}
+{{- end }}

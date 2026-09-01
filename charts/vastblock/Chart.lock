@@ -1,0 +1,6 @@
+dependencies:
+- name: vast-common
+  repository: https://vast-data.github.io/vast-csi
+  version: 1.0.0
+digest: sha256:3eba7b5c60c85b5635b5b3ff618a13c2d2ebf6e381b3bfabf4883acb93bdc772
+generated: "2026-09-01T23:40:01.200444136+03:00"

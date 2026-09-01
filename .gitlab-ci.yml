@@ -413,20 +413,18 @@ update_github [hotfix]:
     - vast-dev-builder
 
 
-# Publish charts/common to the same Helm repository that serves the public charts.
-# The library is versioned independently, so this runs only when charts/common changes and
-# fails if its version is already published.
+# Publish charts/common from the dedicated common_helm_chart branch.
+# Protect this branch in GitLab (Settings → Repository → Protected branches) so
+# GITHUB_KEY is injected — same pattern as update_github on version branches.
 release_common_chart:
   stage: deploy
-  rules:
-    - if: '$CI_COMMIT_BRANCH =~ /^v[\d]+\.[\d]+/'
-      changes:
-        - charts/common/**/*
-      when: manual
+  only:
+    - common_helm_chart
   before_script: *setup_github_access
   script: |
     set -x
     ./scripts/release_common_chart.sh
+  when: manual
   tags:
     - vast-dev-builder
 

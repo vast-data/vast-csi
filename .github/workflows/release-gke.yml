@@ -1,0 +1,40 @@
+name: Release GKE Chart
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Vendor vast-common for GKE chart
+        run: |
+          mkdir -p "${GITHUB_WORKSPACE}/charts/vastcsi-gke/charts"
+          helm package "${GITHUB_WORKSPACE}/charts/common" \
+            --destination "${GITHUB_WORKSPACE}/charts/vastcsi-gke/charts"
+
+      - name: Prepare GKE releaser configuration
+        run: |
+          python3 .github/workflows/prepare_releaser_configuration.py \
+            --release-group gke
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Run chart-releaser
+        uses: helm/chart-releaser-action@v1.6.0
+        with:
+          config: releaser-config.yml
+        env:
+          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          CR_SKIP_EXISTING: "true"

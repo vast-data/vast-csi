@@ -210,8 +210,8 @@ install-replication-crds: ## Install VolumeReplication CRDs and Operator (comple
 ######################
 # PUBLIC HELM CHARTS
 ######################
-CHART_DIRS := charts/common charts/vastcsi charts/vastblock charts/vastcosi
-PUBLIC_CHART_DIRS := charts/vastcsi charts/vastblock charts/vastcosi
+CHART_DIRS := charts/common charts/vastcsi charts/vastblock charts/vastcosi charts/vastcsi-gke
+PUBLIC_CHART_DIRS := charts/vastcsi charts/vastblock charts/vastcosi charts/vastcsi-gke
 CHART_TEMPLATE_ARGS := --set endpoint=render-smoke
 # vast-common is consumed from the published repository, so the index must be cached locally
 # before dependencies can be resolved.

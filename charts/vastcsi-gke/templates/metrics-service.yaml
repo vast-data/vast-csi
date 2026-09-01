@@ -1,0 +1,10 @@
+{{- $namespace := include "vast.common.namespace" . -}}
+{{- $labels := include "vast.common.labels" . -}}
+{{- $selectors := include "vast.common.selectorLabels" . -}}
+{{- if .Values.node.metrics.enabled }}
+{{ include "vast.common.resource.metricsService" (dict "name" (printf "%s-vast-node-metrics" (.Release.Name | replace "." "-")) "namespace" $namespace "labels" $labels "selectorLabels" $selectors "role" "node" "appSelector" "csi-vast-node" "port" .Values.node.metrics.port) }}
+{{- end }}
+---
+{{ if .Values.controller.metrics.enabled -}}
+{{ include "vast.common.resource.metricsService" (dict "name" (printf "%s-vast-controller-metrics" (.Release.Name | replace "." "-")) "namespace" $namespace "labels" $labels "selectorLabels" $selectors "role" "controller" "appSelector" "csi-vast-controller" "port" .Values.controller.metrics.port) }}
+{{- end }}

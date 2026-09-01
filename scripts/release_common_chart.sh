@@ -8,8 +8,9 @@
 #
 # Overridable for testing:
 #   GITHUB_REPO           owner/name used for the GitHub Release (default vast-data/vast-csi)
-#   GIT_REMOTE            push URL of the pages branch
+#   GIT_REMOTE            clone/push URL of the pages branch (default SSH)
 #   PAGES_BRANCH          branch holding index.yaml (default gh-pages)
+#   SSH_IDENTITY_FILE     path to SSH private key (sets GIT_SSH_COMMAND)
 #   RELEASE_ASSET_BASE    base URL of release downloads
 #   SKIP_GITHUB_RELEASE   set to 1 to skip the `gh release` call
 #   DRY_RUN               set to 1 to skip the push
@@ -24,6 +25,11 @@ PAGES_BRANCH="${PAGES_BRANCH:-gh-pages}"
 RELEASE_ASSET_BASE="${RELEASE_ASSET_BASE:-https://github.com/${GITHUB_REPO}/releases/download}"
 SKIP_GITHUB_RELEASE="${SKIP_GITHUB_RELEASE:-0}"
 DRY_RUN="${DRY_RUN:-0}"
+
+if [[ -n "${SSH_IDENTITY_FILE:-}" ]]; then
+  export GIT_SSH_COMMAND="ssh -i ${SSH_IDENTITY_FILE} -o IdentitiesOnly=yes"
+  GIT_REMOTE="git@github.com:${GITHUB_REPO}.git"
+fi
 
 chart_field() {
     awk -v key="$1" '$1 == key":" { print $2; exit }' "${CHART_DIR}/Chart.yaml"
