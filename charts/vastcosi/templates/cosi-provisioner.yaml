@@ -50,6 +50,11 @@ spec:
       - name: objectstorage-provisioner
         image: {{ printf "%s:%s" $csi_images.objectstorageProvisioner.repository $csi_images.objectstorageProvisioner.tag }}
         imagePullPolicy: {{ $csi_images.objectstorageProvisioner.imagePullPolicy | default  "IfNotPresent" }}
+        # v0.2.2 image is USER 65532; plugin creates /var/lib/cosi/cosi.sock as root 0755.
+        # Run sidecar as root so it can dial the shared unix socket (same as pre-v0.2.2 image).
+        securityContext:
+          runAsUser: 0
+          runAsNonRoot: false
         args:
         - "--v=5"
         volumeMounts:
