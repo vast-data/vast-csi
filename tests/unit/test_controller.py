@@ -2,15 +2,35 @@ import uuid
 import pytest
 import contextlib
 from contextlib import ExitStack
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from vast_csi.plugins.nfs import CsiController
 from vast_csi.plugins.block import BlockController
+from vast_csi.builders.nfs import VolumeFromSnapshotBuilder
+from vast_csi.capabilities import Capabilities
 from vast_csi.exceptions import Abort, MissingParameter
 
 import grpc
 import vast_csi.csi_types as types
 from vast_csi.utils import wrap_ipv6
 from easypy.bunch import Bunch
+
+
+def _nfs_delete_session(quota=None, snapshots=None, dont_use_trash_api=False):
+    session = Bunch()
+    session.globalsnapstreams = Bunch(ensure_snapshot_stream_deleted=MagicMock())
+    session.quotas = Bunch(one=MagicMock(return_value=quota), delete_by_id=MagicMock())
+    session.views = Bunch(delete=MagicMock())
+    session.snapshots = Bunch(
+        has_snapshots=MagicMock(
+            return_value=snapshots if snapshots is not None else [Bunch(id=7)]
+        )
+    )
+    session.config = Bunch(dont_use_trash_api=dont_use_trash_api)
+    return session
+
+
+def _nfs_delete_quota():
+    return Bunch(path="/export/pvc-abc", tenant_id=1, id=10)
 
 
 class TestControllerSuite:
@@ -241,6 +261,140 @@ class TestControllerSuite:
         err = ex_context.value
         assert "Volume already exists with different tenancy ownership (test)" in str(err)
 
+    @patch.object(CsiController, "_delete_data_from_storage", MagicMock())
+    def test_nfs_delete_allowed_trash_on_with_snapshots(self, monkeypatch):
+        monkeypatch.setattr("vast_csi.plugins.nfs.CONF.dont_use_trash_api", False)
+        controller = CsiController()
+        session = _nfs_delete_session(quota=_nfs_delete_quota(), snapshots=[Bunch(id=7)])
+
+        resp = controller.DeleteVolume(session, "pvc-abc")
+
+        assert isinstance(resp, types.DeleteResp)
+        session.quotas.one.assert_called_once_with(name="pvc-abc")
+        session.views.delete.assert_called_once_with(path="/export/pvc-abc")
+        session.quotas.delete_by_id.assert_called_once_with(10)
+        session.globalsnapstreams.ensure_snapshot_stream_deleted.assert_called_once_with(
+            name="strm-pvc-abc"
+        )
+
+    @patch.object(CsiController, "_delete_data_from_storage", MagicMock())
+    def test_nfs_delete_trash_off_with_snapshots_unchanged(self, monkeypatch):
+        """Trash OFF never used the snapshot guard; delete still proceeds."""
+        monkeypatch.setattr("vast_csi.plugins.nfs.CONF.dont_use_trash_api", True)
+        controller = CsiController()
+        session = _nfs_delete_session(
+            quota=_nfs_delete_quota(),
+            snapshots=[Bunch(id=7)],
+            dont_use_trash_api=True,
+        )
+
+        resp = controller.DeleteVolume(session, "pvc-abc")
+
+        assert isinstance(resp, types.DeleteResp)
+        session.views.delete.assert_called_once_with(path="/export/pvc-abc")
+        session.quotas.delete_by_id.assert_called_once_with(10)
+
+    def test_nfs_delete_no_quota(self, monkeypatch):
+        monkeypatch.setattr("vast_csi.plugins.nfs.CONF.dont_use_trash_api", False)
+        controller = CsiController()
+        session = _nfs_delete_session(quota=None)
+
+        resp = controller.DeleteVolume(session, "pvc-missing")
+
+        assert isinstance(resp, types.DeleteResp)
+        session.quotas.one.assert_called_once_with(name="pvc-missing")
+        session.views.delete.assert_not_called()
+
+    def test_nfs_delete_gss_cleanup_order(self, monkeypatch):
+        """Stream delete → data/trash delete → view → quota (COSI-aligned)."""
+        monkeypatch.setattr("vast_csi.plugins.nfs.CONF.dont_use_trash_api", False)
+        controller = CsiController()
+        session = _nfs_delete_session(quota=_nfs_delete_quota(), snapshots=[])
+        order = []
+
+        session.globalsnapstreams.ensure_snapshot_stream_deleted = MagicMock(
+            side_effect=lambda **kwargs: order.append("stream")
+        )
+        session.views.delete = MagicMock(side_effect=lambda **kwargs: order.append("view"))
+        session.quotas.delete_by_id = MagicMock(side_effect=lambda *args: order.append("quota"))
+
+        with patch.object(
+            CsiController,
+            "_delete_data_from_storage",
+            side_effect=lambda *args, **kwargs: order.append("data"),
+        ):
+            resp = controller.DeleteVolume(session, "pvc-abc")
+
+        assert isinstance(resp, types.DeleteResp)
+        assert order == ["stream", "data", "view", "quota"]
+
+
+class TestVolumeFromSnapshotRoGssFallback:
+    """RO direct mount vs GSS when source view gone."""
+
+    @staticmethod
+    def _caps(volume_capabilities, mode):
+        return Capabilities(volume_capabilities(mode=mode))
+
+    @staticmethod
+    def _builder(session, caps, name="pvc-restore"):
+        return VolumeFromSnapshotBuilder(
+            vms_session=session,
+            configuration=Bunch(truncate_volume_name=None, name_fmt="csi:{namespace}:{name}:{id}"),
+            name=name,
+            root_export="/k8s",
+            view_policy="default",
+            volume_capabilities=caps,
+            volume_content_source=types.VolumeContentSource(
+                snapshot=types.SnapshotSource(snapshot_id="42")
+            ),
+            capacity_range=Bunch(required_bytes=1024),
+            vip_pool_name="vip",
+            blocking_clones=False,
+            pvc_name="restore",
+            pvc_namespace="ns",
+            volume_name_fmt="csi:{namespace}:{name}:{id}",
+        )
+
+    @staticmethod
+    def _session(*, source_view):
+        snapshot = Bunch(id=42, path="/k8s/pvc-src", name="csi-snapshot-abc", tenant_id=1)
+        session = MagicMock()
+        session.snapshots.get = MagicMock(return_value=snapshot)
+        session.quotas.ensure = MagicMock(return_value=Bunch(id=99, tenant_id=1))
+        session.views.one = MagicMock(return_value=source_view)
+        session.views.ensure = MagicMock(return_value=Bunch(id=88, tenant_id=1))
+        session.globalsnapstreams.ensure = MagicMock(return_value=Bunch(name="strm-pvc-restore"))
+        return session
+
+    def test_ro_direct_mount_when_source_view_exists(self, volume_capabilities):
+        session = self._session(source_view=Bunch(id=2))
+        # Trailing slash on snapshot.path must not force GSS (VMS snap paths often end with /)
+        session.snapshots.get = MagicMock(
+            return_value=Bunch(
+                id=42, path="/k8s/pvc-src/", name="csi-snapshot-abc", tenant_id=1
+            )
+        )
+        caps = self._caps(volume_capabilities, types.AccessModeType.MULTI_NODE_READER_ONLY)
+        volume = self._builder(session, caps).build_volume()
+
+        assert "snapshot_base_path" in volume.volume_context
+        assert "csi-snapshot-abc" in volume.volume_context["snapshot_base_path"]
+        assert "snapshot_stream_name" not in volume.volume_context
+        session.globalsnapstreams.ensure.assert_not_called()
+        session.views.one.assert_called_once_with(path="/k8s/pvc-src", tenant_id=1)
+        session.quotas.one.assert_not_called()
+
+    def test_ro_gss_fallback_when_source_view_missing(self, volume_capabilities):
+        session = self._session(source_view=None)
+        caps = self._caps(volume_capabilities, types.AccessModeType.MULTI_NODE_READER_ONLY)
+        volume = self._builder(session, caps).build_volume()
+
+        assert volume.volume_context.get("snapshot_stream_name") == "strm-pvc-restore"
+        assert "snapshot_base_path" not in volume.volume_context
+        session.globalsnapstreams.ensure.assert_called_once()
+        session.views.one.assert_called_once_with(path="/k8s/pvc-src", tenant_id=1)
+        session.quotas.one.assert_not_called()
 
 class TestBlockControllerCleanup:
 

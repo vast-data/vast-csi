@@ -323,11 +323,7 @@ class CsiController(ControllerBase, Instrumented):
         volume_id = normalize_volume_id(volume_id)
         vms_session.globalsnapstreams.ensure_snapshot_stream_deleted(name=f"strm-{volume_id}")
         if quota := vms_session.quotas.one(name=volume_id):
-            # this is a check we have to do until Vast provides access to orphaned snapshots (ORION-135599)
-            might_use_trash_folder = not CONF.dont_use_trash_api
-            if might_use_trash_folder and (snaps := vms_session.snapshots.has_snapshots(quota.path)):
-                snap_ids = ", ".join(str(s.id) for s in snaps)
-                raise Exception(f"Unable to delete {volume_id} as it holds snapshots: [{snap_ids}]")
+            # Snapshots may remain after trash delete; they stay orphaned on VAST.
             try:
                 self._delete_data_from_storage(vms_session, quota.path, quota.tenant_id)
             except OSError as exc:
@@ -532,11 +528,7 @@ class CsiController(ControllerBase, Instrumented):
                 raise Exception(f"Unable to delete snapshot {snapshot.id!r} with active streams")
 
             vms_session.snapshots.delete_by_id(snapshot_id)
-            if vms_session.quotas.one(path=snapshot.path, tenant_id=snapshot.tenant_id):
-                pass  # quotas still exist
-            elif vms_session.snapshots.has_snapshots(snapshot.path):
-                pass  # other snapshots still exist
-            else:
+            if vms_session.snapshots.should_cleanup_source_dir(snapshot):
                 logger.info(f"last snapshot for {snapshot.path}, and no more quotas - let's delete this directory")
                 self._delete_data_from_storage(vms_session, snapshot.path, snapshot.tenant_id)
 
