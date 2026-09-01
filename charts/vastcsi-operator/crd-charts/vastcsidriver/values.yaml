@@ -325,6 +325,16 @@ node:
     services:
       - statd
       - rpcbind
+    # tlshd.conf and TLS truststore overrides for csi-nfs-services (see vastcsi values).
+    # When configMap and certificates.secretName are both set, tlshd runs in the sidecar only
+    # (mounted ConfigMap/Secret take precedence over host tlshd).
+    # The ConfigMap's [authenticate] keyrings= list must include "vastcsi", the
+    # keyring the driver loads NFS client certs into; the sidecar refuses to start otherwise.
+    tlshd:
+      configMap: ""
+      certificates:
+        secretName: ""
+        mountPath: /etc/vast-tlshd
   # Metrics configuration for CSI node
   metrics:
     # Enable Prometheus metrics endpoint (disabled by default)

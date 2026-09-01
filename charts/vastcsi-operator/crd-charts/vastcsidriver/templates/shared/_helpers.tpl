@@ -144,3 +144,66 @@ Usage:
 - name: X_CSI_FALLBACK_TO_DESER
   value: {{ .Values.fallbackToDeser | quote }}
 {{- end }}
+
+{{/*
+True when node.nfsServices.tlshd ConfigMap and certificates.secretName are both set.
+*/}}
+{{- define "vastcsi.nfsServicesTlshdOverridesEnabled" -}}
+{{- $tlshd := .Values.node.nfsServices.tlshd | default dict -}}
+{{- $certs := $tlshd.certificates | default dict -}}
+{{- if and $tlshd.configMap ($certs.secretName | default "") -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/*
+TLS / tlshd sidecar volumes for csi-nfs-services (NFS-over-TLS / mTLS).
+ConfigMap (tlshd.conf) and Secret (PEM files) must live in the node pod namespace.
+*/}}
+{{- define "vastcsi.nfsServicesTlshdVolumeMounts" -}}
+{{- $tlshd := .Values.node.nfsServices.tlshd | default dict -}}
+{{- $certs := $tlshd.certificates | default dict -}}
+{{- if $tlshd.configMap }}
+- name: tlshd-conf
+  mountPath: /etc/tlshd.conf
+  subPath: tlshd.conf
+  readOnly: true
+{{- else }}
+- name: tlshd-conf
+  mountPath: /etc/tlshd.conf
+  readOnly: true
+{{- end }}
+{{- if $certs.secretName }}
+- name: tlshd-certs
+  mountPath: {{ $certs.mountPath | default "/etc/vast-tlshd" }}
+  readOnly: true
+{{- end }}
+{{- end -}}
+
+{{- define "vastcsi.nfsServicesTlshdVolumes" -}}
+{{- $tlshd := .Values.node.nfsServices.tlshd | default dict -}}
+{{- $certs := $tlshd.certificates | default dict -}}
+{{- if and $tlshd.configMap (not $certs.secretName) }}
+{{- fail "node.nfsServices.tlshd: certificates.secretName is required when configMap is set" }}
+{{- end }}
+{{- if and ($certs.secretName) (not $tlshd.configMap) }}
+{{- fail "node.nfsServices.tlshd: configMap is required when certificates.secretName is set" }}
+{{- end }}
+{{- if $tlshd.configMap }}
+- name: tlshd-conf
+  configMap:
+    name: {{ $tlshd.configMap }}
+    defaultMode: 0444
+{{- else }}
+- name: tlshd-conf
+  hostPath:
+    path: /etc/tlshd.conf
+    type: File
+{{- end }}
+{{- if $certs.secretName }}
+- name: tlshd-certs
+  secret:
+    secretName: {{ $certs.secretName }}
+    defaultMode: 0444
+{{- end }}
+{{- end -}}

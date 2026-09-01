@@ -1605,6 +1605,28 @@ spec:
                   - idmapd
                   - mountd
                   - tlshd
+            tlshd:
+              type: object
+              description: >-
+                Override tlshd.conf and mount TLS truststore files in csi-nfs-services
+                (for NFS-over-TLS / mTLS without host tlshd configuration).
+              properties:
+                configMap:
+                  type: string
+                  description: ConfigMap name for tlshd.conf (node pod namespace). Use key tlshd.conf.
+                  default: {{ .Values.node.nfsServices.tlshd.configMap | quote }}
+                certificates:
+                  type: object
+                  description: PEM truststore / client cert files referenced in tlshd.conf (Secret only).
+                  properties:
+                    secretName:
+                      type: string
+                      description: Secret name for PEM files (node pod namespace).
+                      default: {{ .Values.node.nfsServices.tlshd.certificates.secretName | quote }}
+                    mountPath:
+                      type: string
+                      description: Mount path inside csi-nfs-services for cert files.
+                      default: {{ .Values.node.nfsServices.tlshd.certificates.mountPath | quote }}
         metrics:
           type: object
           description: Metrics configuration for CSI node

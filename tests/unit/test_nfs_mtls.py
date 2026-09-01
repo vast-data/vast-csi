@@ -1,13 +1,19 @@
 """Tests for NFS mTLS functionality using kernel keyring."""
 
+import subprocess
+
 import pytest
 from unittest.mock import patch, MagicMock
 
 from vast_csi.mtls_utils import (
-    get_nfs_keyring_id,
+    ensure_nfs_keyring_id,
     NFS_KEYRING_NAME,
+    NFS_KEYRING_FALLBACK_NAME,
+    _create_nfs_keyring,
+    _link_keyring_to_session,
     pem_to_der,
     load_pem_to_keyring,
+    validate_tlshd_keyrings,
     delete_from_keyring,
     load_mtls_credentials,
     delete_mtls_credentials,
@@ -73,28 +79,102 @@ vD4pmMuRap04Q/i3gnF9tGXGyRKJlqFRnIN+cFjnesz8B5JgpMWYeoxwOmpGHsBh
 -----END PRIVATE KEY-----"""
 
 
-class TestGetNfsKeyringId:
-    """Tests for get_nfs_keyring_id function."""
-    
+def _mock_proc_keys(content: str):
+    return patch(
+        "builtins.open",
+        MagicMock(
+            return_value=MagicMock(
+                __enter__=lambda s: MagicMock(read=lambda: content),
+                __exit__=lambda *a: None,
+            )
+        ),
+    )
+
+
+def _patch_overrides(enabled: bool):
+    return patch(
+        "vast_csi.mtls_utils.Config",
+        return_value=MagicMock(tlshd_overrides=enabled),
+    )
+
+
+class TestEnsureNfsKeyringId:
+    """Tests for ensure_nfs_keyring_id function."""
+
     def test_success_find_nfs_keyring(self):
-        """Test successful retrieval of .nfs: keyring ID from /proc/keys."""
+        """Host path prefers kernel .nfs when present."""
         mock_proc_keys = """0a1b2c3d I--Q---     1 perm 1f3f0000     0     0 keyring   .nfs: 1
 04820d22 I--Q---     6 perm 3f030000  1000  1001 keyring   _ses: 1
 """
-        with patch("builtins.open", MagicMock(return_value=MagicMock(__enter__=lambda s: MagicMock(read=lambda: mock_proc_keys), __exit__=lambda *a: None))), \
+        with _mock_proc_keys(mock_proc_keys), \
+             _patch_overrides(False), \
              patch("vast_csi.mtls_utils.subprocess.run"):
-            # Call __wrapped__ to bypass timecache
-            result = get_nfs_keyring_id.__wrapped__()
+            result = ensure_nfs_keyring_id(wait_timeout=0, create=False)
             assert result == 0x0a1b2c3d
 
-    def test_nfs_keyring_not_found_raises(self):
-        """Test that missing .nfs: keyring raises RuntimeError."""
+    def test_host_path_prefers_nfs_when_both_present(self):
+        """Non-override setups must keep using .nfs even if vastcsi exists."""
+        mock_proc_keys = """0a1b2c3d I--Q---     1 perm 1f3f0000     0     0 keyring   .nfs: 1
+0badcafe I--Q---     1 perm 3f3f0000     0     0 keyring   vastcsi: 2
+"""
+        with _mock_proc_keys(mock_proc_keys), \
+             _patch_overrides(False), \
+             patch("vast_csi.mtls_utils.subprocess.run"):
+            result = ensure_nfs_keyring_id(wait_timeout=0, create=False)
+            assert result == 0x0a1b2c3d
+
+    def test_overrides_use_only_vastcsi_when_both_present(self):
+        """Overrides must not put certs in .nfs while tlshd.conf lists vastcsi."""
+        mock_proc_keys = """0a1b2c3d I--Q---     1 perm 1f3f0000     0     0 keyring   .nfs: 1
+0badcafe I--Q---     1 perm 3f3f0000     0     0 keyring   vastcsi: 2
+"""
+        with _mock_proc_keys(mock_proc_keys), \
+             _patch_overrides(True), \
+             patch("vast_csi.mtls_utils.subprocess.run"):
+            result = ensure_nfs_keyring_id(wait_timeout=0, create=False)
+            assert result == 0x0badcafe
+
+    def test_overrides_ignore_nfs_only_keyring(self):
+        """With overrides, kernel .nfs alone is the wrong ring."""
+        mock_proc_keys = """0a1b2c3d I--Q---     1 perm 1f3f0000     0     0 keyring   .nfs: 1
+"""
+        with _mock_proc_keys(mock_proc_keys), \
+             _patch_overrides(True):
+            result = ensure_nfs_keyring_id(wait_timeout=0, create=False)
+            assert result is None
+
+    def test_finds_vastcsi_fallback_keyring(self):
+        """Use the VAST-owned keyring when the kernel .nfs keyring is absent."""
+        mock_proc_keys = """0badcafe I--Q---     1 perm 3f3f0000     0     0 keyring   vastcsi: 2
+"""
+        with _mock_proc_keys(mock_proc_keys), \
+             _patch_overrides(False), \
+             patch("vast_csi.mtls_utils.subprocess.run"):
+            result = ensure_nfs_keyring_id(wait_timeout=0, create=False)
+            assert result == 0x0badcafe
+
+    def test_missing_keyring_without_create_returns_none(self):
         mock_proc_keys = """04820d22 I--Q---     6 perm 3f030000  1000  1001 keyring   _ses: 1
 """
-        with patch("builtins.open", MagicMock(return_value=MagicMock(__enter__=lambda s: MagicMock(read=lambda: mock_proc_keys), __exit__=lambda *a: None))):
-            # Call __wrapped__ to bypass timecache
-            with pytest.raises(RuntimeError, match="Could not find .nfs: keyring"):
-                get_nfs_keyring_id.__wrapped__()
+        with _mock_proc_keys(mock_proc_keys), \
+             _patch_overrides(False):
+            result = ensure_nfs_keyring_id(wait_timeout=0, create=False)
+            assert result is None
+
+    def test_creates_vastcsi_fallback_keyring(self):
+        """The userspace fallback uses the VAST-owned name."""
+        with patch("vast_csi.mtls_utils.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                MagicMock(stdout="12345\n"),
+                MagicMock(),
+            ]
+
+            assert _create_nfs_keyring() == 12345
+            assert NFS_KEYRING_FALLBACK_NAME == "vastcsi"
+            assert NFS_KEYRING_NAME == ".nfs"
+            assert mock_run.call_args_list[0].args[0] == [
+                "keyctl", "newring", "vastcsi", "@s"
+            ]
 
 
 class TestPemToDer:
@@ -139,7 +219,7 @@ class TestLoadCertToKeyring:
         mock_keyctl_wrapper = MagicMock()
 
         with patch("vast_csi.mtls_utils.search_in_keyring", return_value=None), \
-             patch("vast_csi.mtls_utils.get_nfs_keyring_id", return_value=0x3a2), \
+             patch("vast_csi.mtls_utils.ensure_nfs_keyring_id", return_value=0x3a2), \
              patch("vast_csi.mtls_utils.pem_to_der", return_value=der_content), \
              patch("vast_csi.mtls_utils.subprocess.Popen", return_value=mock_proc), \
              patch("vast_csi.mtls_utils.KeyctlWrapper", return_value=mock_keyctl_wrapper):
@@ -211,6 +291,73 @@ class TestDeleteFromKeyring:
             # Should not raise exception
             delete_from_keyring("nfs-client-cert")
             # No error should be raised, function completes silently
+
+
+class TestValidateTlshdKeyrings:
+    """A mounted tlshd.conf must point tlshd at the ring the driver writes to."""
+
+    TRUSTSTORE_SECTION = (
+        "\n[authenticate.client]\nx509.truststore=/etc/vast-tlshd/nfs-server-ca.pem\n"
+    )
+
+    @staticmethod
+    def _write_conf(tmp_path, body):
+        path = tmp_path / "tlshd.conf"
+        path.write_text(body)
+        return str(path)
+
+    def test_accepts_expected_keyring(self, tmp_path):
+        path = self._write_conf(
+            tmp_path, "[authenticate]\nkeyrings=vastcsi\n" + self.TRUSTSTORE_SECTION
+        )
+        assert validate_tlshd_keyrings(path) is None
+
+    @pytest.mark.parametrize("value", ["vastcsi;other", "other,vastcsi", "other, vastcsi"])
+    def test_accepts_keyring_within_a_list(self, tmp_path, value):
+        path = self._write_conf(tmp_path, f"[authenticate]\nkeyrings={value}\n")
+        assert validate_tlshd_keyrings(path) is None
+
+    def test_rejects_similar_but_different_keyring(self, tmp_path):
+        path = self._write_conf(
+            tmp_path,
+            "[authenticate]\nkeyrings=vastcsi-test\n" + self.TRUSTSTORE_SECTION,
+        )
+        with pytest.raises(RuntimeError, match="vastcsi-test"):
+            validate_tlshd_keyrings(path)
+
+    def test_rejects_missing_keyrings_option(self, tmp_path):
+        path = self._write_conf(tmp_path, "[authenticate]\n" + self.TRUSTSTORE_SECTION)
+        with pytest.raises(RuntimeError, match="does not include"):
+            validate_tlshd_keyrings(path)
+
+    def test_rejects_missing_file(self, tmp_path):
+        with pytest.raises(RuntimeError, match="is missing"):
+            validate_tlshd_keyrings(str(tmp_path / "absent.conf"))
+
+
+class TestLinkKeyringToSession:
+    """A keyring we cannot link is reported, not shrugged off."""
+
+    def test_link_failure_raises(self):
+        with patch("vast_csi.mtls_utils.subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.CalledProcessError(
+                1, "keyctl", stderr="keyctl_link: Permission denied"
+            )
+
+            with pytest.raises(RuntimeError, match="Failed to link NFS keyring"):
+                _link_keyring_to_session(0x3a2)
+
+    def test_setperm_failure_raises(self):
+        with patch("vast_csi.mtls_utils.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                MagicMock(stdout="12345\n"),
+                subprocess.CalledProcessError(
+                    1, "keyctl", stderr="keyctl_setperm: Permission denied"
+                ),
+            ]
+
+            with pytest.raises(RuntimeError, match="Failed to set permissions"):
+                _create_nfs_keyring()
 
 
 class TestDeleteMtlsCredentials:

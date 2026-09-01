@@ -50,6 +50,11 @@ spec:
           securityContext:
             privileged: true
             allowPrivilegeEscalation: true
+{{- if eq (include "vastcsi.nfsServicesTlshdOverridesEnabled" . | trim) "true" }}
+          env:
+            - name: X_CSI_TLSHD_OVERRIDES
+              value: "true"
+{{- end }}
 {{- if or (has "idmapd" .Values.node.nfsServices.services) (has "tlshd" .Values.node.nfsServices.services) }}
           volumeMounts:
 {{- if has "idmapd" .Values.node.nfsServices.services }}
@@ -61,9 +66,7 @@ spec:
               readOnly: true
 {{- end }}
 {{- if has "tlshd" .Values.node.nfsServices.services }}
-            - name: tlshd-conf
-              mountPath: /etc/tlshd.conf
-              readOnly: true
+{{ include "vastcsi.nfsServicesTlshdVolumeMounts" . | nindent 12 }}
 {{- end }}
 {{- end }}
           resources: {{- toYaml .Values.node.resources.nfsServices | nindent 12 }}
@@ -117,6 +120,10 @@ spec:
 {{- if .Values.node.nfsServices.enabled }}
             - name: X_CSI_NFS_SERVICES_WAIT
               value: "{{ join "," .Values.node.nfsServices.services }}"
+{{- if eq (include "vastcsi.nfsServicesTlshdOverridesEnabled" . | trim) "true" }}
+            - name: X_CSI_TLSHD_OVERRIDES
+              value: "true"
+{{- end }}
 {{- end }}
 {{- include "vastcsi.fallbackToDeserEnv" . | nindent 12 }}
 {{- if .Values.node.metrics.enabled }}
@@ -186,22 +193,19 @@ spec:
             type: File
       {{- end }}
       {{- if has "tlshd" .Values.node.nfsServices.services }}
-        - name: tlshd-conf
-          hostPath:
-            path: /etc/tlshd.conf
-            type: File
+{{ include "vastcsi.nfsServicesTlshdVolumes" . | nindent 8 }}
       {{- end }}
+{{- include "vastcsi.vmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}
+{{- include "vastcsi.credSerdeVolume" . | indent 8 }}
+       {{- if .Values.node.propagateHostMountOptions }}
+        - name: host-nfsmount-conf-d
+          hostPath:
+            path: /etc/nfsmount.conf.d
+            type: DirectoryOrCreate
+        {{- end }}
       {{- if .Values.node.metrics.enabled }}
         - name: host
           hostPath:
             path: /
             type: Directory
       {{- end }}
-{{- include "vastcsi.vmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}
-{{- include "vastcsi.credSerdeVolume" . | indent 8 }}
-       {{- if .Values.node.propagateHostMountOptions }}
-        - hostPath:
-            path: /etc/nfsmount.conf.d
-            type: DirectoryOrCreate
-          name: host-nfsmount-conf-d
-        {{- end }}
