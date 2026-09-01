@@ -51,6 +51,11 @@ spec:
           securityContext:
             privileged: true
             allowPrivilegeEscalation: true
+{{- if eq (include "vastcsi.nfsServicesTlshdOverridesEnabled" . | trim) "true" }}
+          env:
+            - name: X_CSI_TLSHD_OVERRIDES
+              value: "true"
+{{- end }}
 {{- if or (has "idmapd" $nfsServices) (has "tlshd" $nfsServices) }}
           volumeMounts:
 {{- if has "idmapd" $nfsServices }}
@@ -62,9 +67,7 @@ spec:
               readOnly: true
 {{- end }}
 {{- if has "tlshd" $nfsServices }}
-            - name: tlshd-conf
-              mountPath: /etc/tlshd.conf
-              readOnly: true
+{{ include "vastcsi.nfsServicesTlshdVolumeMounts" . | nindent 12 }}
 {{- end }}
 {{- end }}
           resources: {{- toYaml .Values.node.resources.nfsServices | nindent 12 }}
@@ -123,6 +126,10 @@ spec:
 {{- if and $is_nfs_driver .Values.node.nfsServices.enabled }}
             - name: X_CSI_NFS_SERVICES_WAIT
               value: "{{ include "vastcsi.nfsServicesArg" . }}"
+{{- if eq (include "vastcsi.nfsServicesTlshdOverridesEnabled" . | trim) "true" }}
+            - name: X_CSI_TLSHD_OVERRIDES
+              value: "true"
+{{- end }}
 {{- end }}
 {{- include "vastcsi.fallbackToDeserEnv" . | nindent 12 }}
 {{- if .Values.node.metrics.enabled }}
@@ -198,10 +205,7 @@ spec:
             type: File
         {{- end }}
         {{- if and $is_nfs_driver (has "tlshd" $nfsServices) }}
-        - name: tlshd-conf
-          hostPath:
-            path: /etc/tlshd.conf
-            type: File
+{{ include "vastcsi.nfsServicesTlshdVolumes" . | nindent 8 }}
         {{- end }}
         {{- if not $is_nfs_driver }}
         - name: sys-dir

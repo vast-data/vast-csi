@@ -717,6 +717,26 @@ node:
     services:
       - statd
       - rpcbind
+    # tlshd.conf and TLS truststore overrides for the csi-nfs-services sidecar.
+    # Use when nodes lack tlshd or you need per-tenant NFS CA trust without
+    # modifying host configuration (e.g. shared VIP + mTLS per StorageClass).
+    # When configMap and certificates.secretName are both set, tlshd always runs
+    # in the sidecar using the mounted ConfigMap/Secret (host tlshd is ignored).
+    tlshd:
+      # ConfigMap name for tlshd.conf (must be in the node pod namespace).
+      # When set, replaces the host /etc/tlshd.conf hostPath mount.
+      # Use key tlshd.conf in the ConfigMap. Requires certificates.secretName.
+      # The [authenticate] keyrings= list must include "vastcsi": that is the
+      # keyring the driver loads NFS client certs into, and tlshd only finds
+      # them there. The sidecar refuses to start if it does not.
+      configMap: ""
+      # PEM files (truststore, client cert/key) referenced in tlshd.conf.
+      # Mounted from a Secret (same namespace as the node pod). Requires configMap.
+      certificates:
+        secretName: ""
+        # Directory where cert files appear inside csi-nfs-services, e.g.
+        # x509.truststore=/etc/vast-tlshd/nfs-server-ca.pem
+        mountPath: /etc/vast-tlshd
   # Metrics configuration for CSI node
   # Usage: see docs/METRICS_GUIDE.md (Prometheus Operator vs manual Prometheus)
   metrics:

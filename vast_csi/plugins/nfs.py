@@ -80,6 +80,7 @@ from vast_csi.plugins.base import (
     META_FILE_NAME,
 )
 from vast_csi.mtls_utils import MtlsManager
+from vast_csi.nfs_services import wait_registered
 
 
 CONF = None
@@ -675,7 +676,14 @@ class CsiNode(NodeBase, Instrumented):
             flags += normalize_mount_options(
                 volume_context.get("mount_options", publish_context.get("mount_options", ""))
             )
-        
+
+        if CONF.nfs_services_wait:
+            if not wait_registered(CONF.nfs_services_wait):
+                logger.warning(
+                    f"{volume_id}: NFS services {CONF.nfs_services_wait} not registered "
+                    "before mount; proceeding (kubelet will retry on failure)"
+                )
+
         # Add mTLS mount flags if enabled
         try:
             flags += mtls_manager.to_mount_flags(volume_id=volume_id)
@@ -685,14 +693,6 @@ class CsiNode(NodeBase, Instrumented):
                 FAILED_PRECONDITION,
                 f"Failed to load mTLS credentials: {e}"
             )
-        
-        if CONF.nfs_services_wait:
-            from vast_csi.nfs_services import wait_registered
-            if not wait_registered(CONF.nfs_services_wait):
-                logger.warning(
-                    f"{volume_id}: NFS services {CONF.nfs_services_wait} not registered "
-                    "before mount; proceeding (kubelet will retry on failure)"
-                )
 
         try:
             mount(

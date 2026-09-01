@@ -22,6 +22,7 @@
 * COSI: BucketAccessClass `credentialsSecretName` / `credentialsSecretNamespace` installs externally managed S3 keys from a Kubernetes input Secret on the bucket VAST local user (VCSI-326). Requires VAST ≥ 5.4. To rotate keys, update the input Secret and delete/recreate the BucketAccess
 * COSI: optional existing VMS/AD user as S3 bucket owner via BucketClass parameters `bucket_owner` / `bucket_owner_context` (Helm `bucketOwner` / `bucketOwnerContext`); grant/revoke target the owner user; bucket delete skips removal of external owners (VCSI-328)
 * NFS: inline CSI volumes with `volumeAttributes.bucket_name` mount an existing S3 bucket view over NFS (VCSI-146).
+* NFS: `csi-nfs-services` sidecar can mount a ConfigMap for `tlshd.conf` and a Secret for TLS truststore/client PEM files (`node.nfsServices.tlshd`), enabling NFS mTLS with per-tenant CA without host `tlshd` configuration; when both are set, tlshd always runs in the sidecar using the mounted overrides even if host `tlshd` is present. With those overrides, client certs are loaded into the `vastcsi` keyring only (matching `keyrings=vastcsi`); host/non-override setups still prefer kernel `.nfs`
 
 ## Version 2.6.6-hf3
 * Refreshed CSI base and CI container images and updated Python 3.12 packaging to remediate Trivy HIGH severity findings in the main CSI image
@@ -37,7 +38,6 @@
 * Snapshot `size_bytes` is now populated from the source volume size (block) or quota hard limit (NFS) instead of reporting unspecified, enabling CDI `restoreSize` support
 
 ## Version 2.6.6
-
 * Added `ReadOnlyMany` (ROX) access mode support for the block CSI driver
 * Changed default node pod `priorityClass` to `system-node-critical` to ensure node workloads are not evicted under resource pressure (VCSI-358)
 * Added `ReadWriteOncePod` access mode support (VCSI-464)

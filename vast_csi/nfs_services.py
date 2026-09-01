@@ -5,6 +5,10 @@ runs with hostNetwork, so daemons started here are reachable by the host kernel
 (e.g. lockd -> rpc.statd for NFSv3 locking). Each service is started only if the
 host does not already provide it, so enabling the sidecar is safe anywhere.
 
+When node.nfsServices.tlshd ConfigMap and Secret overrides are configured
+(X_CSI_TLSHD_OVERRIDES), tlshd always runs in this sidecar so mounted tlshd.conf
+and truststore files are used, even when a host tlshd process is detected.
+
 Which daemons run is configurable via --services (default: statd,rpcbind).
 Readiness differs per daemon: RPC-registered ones (rpcbind, statd, mountd) are
 probed via rpcinfo; non-RPC ones (idmapd, tlshd) are considered ready once the
@@ -21,6 +25,7 @@ from easypy.sync import wait, TimeoutException
 from plumbum import local
 
 from vast_csi.logging import logger
+from vast_csi.mtls_utils import ensure_nfs_keyring_id, validate_tlshd_keyrings
 
 LOOPBACK = "127.0.0.1"
 STATE_DIRS = ("/var/lib/nfs/sm", "/var/lib/nfs/sm.bak", "/run")
@@ -139,7 +144,26 @@ def wait_registered(names, timeout: int = READY_TIMEOUT) -> bool:
     for locking (rpcbind/statd) to be up. Non-RPC daemons are ignored (nothing
     to probe). Returns True if all became registered within `timeout`, else
     False (caller decides whether to proceed).
+
+    When `tlshd` is listed, also waits for the NFS keyring used for certs
+    (kernel `.nfs` on the host path, or `vastcsi` with tlshd overrides)
+    without creating it.
     """
+    if "tlshd" in names:
+        # This gate also runs for plain NFS mounts, so report a broken keyring
+        # as "not ready" instead of raising: an mTLS mount then fails loudly of
+        # its own accord when it tries to load credentials.
+        try:
+            keyring_id = ensure_nfs_keyring_id(wait_timeout=timeout, create=False)
+        except Exception as e:
+            logger.error("tlshd: NFS keyring is unusable: %s", e)
+            return False
+        if keyring_id is None:
+            logger.warning(
+                "tlshd: NFS keyring not available within %ss", timeout
+            )
+            return False
+
     services = [
         SERVICE_REGISTRY[n] for n in names
         if n in SERVICE_REGISTRY and SERVICE_REGISTRY[n].rpc_program
@@ -193,7 +217,25 @@ def _terminate(procs: list) -> None:
             proc.kill()
 
 
-def _start_services(names) -> list:
+def _host_provides_service(service: NfsService, name: str, tlshd_overrides: bool) -> bool:
+    """True when an existing host daemon makes starting this service unnecessary."""
+    if name == "tlshd" and tlshd_overrides:
+        if service.running():
+            logger.info(
+                "%s: host daemon found but forcing sidecar tlshd due to "
+                "node.nfsServices.tlshd ConfigMap/Secret overrides",
+                name,
+            )
+        else:
+            logger.info(
+                "%s: overrides configured, starting in sidecar",
+                name,
+            )
+        return False
+    return service.running()
+
+
+def _start_services(names, *, tlshd_overrides: bool = False) -> list:
     """Start each selected service the host does not already provide.
 
     Returns a list of (service, proc) for self-started daemons.
@@ -201,10 +243,20 @@ def _start_services(names) -> list:
     """
     _ensure_state_dirs()
 
+    if "tlshd" in names:
+        # Only the mounted ConfigMap is ours to validate; a host tlshd.conf
+        # legitimately uses the kernel .nfs ring instead.
+        if tlshd_overrides:
+            validate_tlshd_keyrings()
+        # Ensure the NFS cert keyring exists before starting tlshd so it can
+        # link it.
+        keyring_id = ensure_nfs_keyring_id(wait_timeout=0)
+        logger.info("tlshd: NFS keyring ready (%s)", hex(keyring_id))
+
     procs: list = []
     for name in names:
         service = SERVICE_REGISTRY[name]
-        if service.running():
+        if _host_provides_service(service, name, tlshd_overrides):
             logger.info("%s: already provided by host, skipping", name)
             continue
         if service.setup:
@@ -245,9 +297,9 @@ def _supervise(procs: list) -> None:
     _terminate(procs)
 
 
-def run_nfs_services(names) -> None:
+def run_nfs_services(names, *, tlshd_overrides: bool = False) -> None:
     """Start missing NFS client services and supervise them until termination."""
-    procs = _start_services(names)
+    procs = _start_services(names, tlshd_overrides=tlshd_overrides)
     if not procs:
         logger.info("all selected NFS services already provided by host; idling")
     else:
@@ -280,5 +332,6 @@ def run(args) -> None:
     from vast_csi.configuration import Config
     from vast_csi.logging import init_logging
 
-    init_logging(level=Config().log_level)
-    run_nfs_services(args.services)
+    config = Config()
+    init_logging(level=config.log_level)
+    run_nfs_services(args.services, tlshd_overrides=config.tlshd_overrides)
