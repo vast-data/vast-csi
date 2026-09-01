@@ -325,6 +325,62 @@ class VolumeFromVolumeBuilder(FileSystemProvisionBase):
 class VolumeFromSnapshotBuilder(FileSystemProvisionBase):
     """VolumeBuilder based on snapshot."""
 
+    def _source_path_intact(self, snapshot) -> bool:
+        """True when source view still exists (direct RO .snapshot/ mount is safe).
+
+        View is enough: DeleteVolume removes the view before the quota, and RO
+        mount only needs the NFS export — not the quota.
+        """
+        # Snapshot.path often has a trailing slash; view paths usually do not.
+        path = snapshot.path.rstrip("/") or "/"
+        return bool(self.vms_session.views.one(path=path, tenant_id=snapshot.tenant_id))
+
+    def _provision_via_gss(self, snapshot, volume_context) -> int:
+        """Clone snapshot into a new view/quota via global snapshot stream (default path)."""
+        tenant_id = snapshot.tenant_id
+        volume_name = self.build_volume_name()
+        requested_capacity = self.get_requested_capacity()
+        volume_context["volume_name"] = volume_name
+
+        snapshot_stream_name = f"strm-{self.name}"
+        snapshot_stream = self.vms_session.globalsnapstreams.ensure(
+            name=snapshot_stream_name,
+            snapshot_id=snapshot.id,
+            destination_path=self.view_path,
+            tenant_id=tenant_id,
+            wait=self.blocking_clones,
+        )
+        view = self.vms_session.views.ensure(
+            path=self.view_path,
+            protocols=[self.mount_protocol],
+            view_policy=self.view_policy,
+            qos_policy=self.qos_policy,
+            qos_policy_id=self.qos_policy_id,
+        )
+        quota = self.vms_session.quotas.ensure(
+            volume_id=volume_name,
+            view_path=self.view_path,
+            tenant_id=view.tenant_id,
+            requested_capacity=requested_capacity
+        )
+        volume_context.update(
+            quota_id=str(quota.id),
+            view_id=str(view.id),
+            tenant_id=str(tenant_id),
+            snapshot_stream_name=snapshot_stream.name
+        )
+        return requested_capacity
+
+    def _provision_direct_ro(self, snapshot, volume_context) -> int:
+        """Fast RO mount of source/.snapshot/<name> while source view exists."""
+        snapshot_path = local.path(snapshot.path)
+        # root_export from snapshot path — used by ControllerPublishVolume for mount
+        self.root_export = snapshot_path.parent
+        path = snapshot_path / ".snapshot" / snapshot.name
+        snapshot_base_path = str(path.relative_to(self.root_export))
+        volume_context.update(snapshot_base_path=snapshot_base_path, root_export=self.root_export)
+        return 0  # read-only volumes from snapshots have no capacity
+
     def build_volume(self) -> types.Volume:
         source_snapshot_id = self.volume_content_source.snapshot.snapshot_id
         # source snapshot id without metadata
@@ -333,55 +389,12 @@ class VolumeFromSnapshotBuilder(FileSystemProvisionBase):
             raise SourceNotFound(f"Unknown snapshot: {orig_source_snapshot_id}")
         volume_context = self.volume_context
 
-        if self.volume_capabilities.rw_mode:
-            # Create volume from snapshot for READ_WRITE modes.
-            #   quota and view will be created.
-            #   The contents of the source snapshot will be replicated to view folder
-            #   using an intermediate global snapshot stream.
-            tenant_id = snapshot.tenant_id
-            volume_name = self.build_volume_name()
-            requested_capacity = self.get_requested_capacity()
-            volume_context["volume_name"] = volume_name
-
-            snapshot_stream_name = f"strm-{self.name}"
-            snapshot_stream = self.vms_session.globalsnapstreams.ensure(
-                name=snapshot_stream_name,
-                snapshot_id=snapshot.id,
-                destination_path=self.view_path,
-                tenant_id=tenant_id,
-                wait=self.blocking_clones,
-            )
-            view = self.vms_session.views.ensure(
-                path=self.view_path,
-                protocols=[self.mount_protocol],
-                view_policy=self.view_policy,
-                qos_policy=self.qos_policy,
-                qos_policy_id=self.qos_policy_id,
-            )
-            quota = self.vms_session.quotas.ensure(
-                volume_id=volume_name,
-                view_path=self.view_path,
-                tenant_id=view.tenant_id,
-                requested_capacity=requested_capacity
-            )
-            volume_context.update(
-                quota_id=str(quota.id),
-                view_id=str(view.id),
-                tenant_id=str(tenant_id),
-                snapshot_stream_name=snapshot_stream.name
-            )
+        # GSS is the default clone path (RW always; RO after trash deletes source).
+        # Direct .snapshot/ mount is the fast path only when RO and source still intact.
+        if not self.volume_capabilities.rw_mode and self._source_path_intact(snapshot):
+            requested_capacity = self._provision_direct_ro(snapshot, volume_context)
         else:
-            # Create volume from snapshot for READ_ONLY modes.
-            #   Such volume has no quota and view representation on VAST.
-            #   Volume within pod will be directly mounted to snapshot source folder.
-            requested_capacity = 0  # read-only volumes from snapshots have no capacity.
-            snapshot_path = local.path(snapshot.path)
-            # Compute root_export from snapshot path. This value should be passed as context for appropriate
-            # mounting within 'ControllerPublishVolume' endpoint
-            self.root_export = snapshot_path.parent
-            path = snapshot_path / ".snapshot" / snapshot.name
-            snapshot_base_path = str(path.relative_to(self.root_export))
-            volume_context.update(snapshot_base_path=snapshot_base_path, root_export=self.root_export)
+            requested_capacity = self._provision_via_gss(snapshot, volume_context)
 
         return types.Volume(
             capacity_bytes=requested_capacity,
