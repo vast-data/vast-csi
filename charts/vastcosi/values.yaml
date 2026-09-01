@@ -44,9 +44,8 @@ bucketClassDefaults:
   # Name of VAST VIP pool to use. Must specify either vipPool or vipPoolFQDN.
   vipPool: ""
   # The FQDN of the VIP pool to use. Must specify either vipPool or vipPoolFQDN.
+  # COSI always embeds this bare FQDN in the S3 endpoint (no random DNS prefix).
   vipPoolFQDN: ""
-  # When true, prepend a random prefix to vipPoolFQDN for per-bucket VIP distribution.
-  vipPoolFQDNRandomPrefix: true
   # Per-BucketClass VMS auth secret (may be tenant-admin or cluster-admin).
   # Differs from chart-level secretName only in that this one is scoped per BucketClass.
   # secretNamespace defaults to the Helm release namespace when secretName is set.

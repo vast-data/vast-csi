@@ -1891,6 +1891,27 @@ class TestVipPoolCacheSuite:
         assert mock_get.call_count == 2
 
 
+class TestVipPoolGetVip:
+    """Direct coverage of VipPool.get_vip."""
+
+    @staticmethod
+    def _vippools():
+        from vast_csi.session.resources import VipPool
+
+        return VipPool(session=MagicMock())
+
+    def test_get_vip_by_name(self):
+        vippools = self._vippools()
+        pool = Bunch(ip_ranges=[["10.1.2.3", "10.1.2.3"]], tenant_id=7)
+        with (
+            patch.object(vippools, "one", return_value=pool) as mock_one,
+            patch("vast_csi.session.resources.generate_ip_range", return_value=["10.1.2.3"]),
+            patch("vast_csi.session.resources.shuffled", side_effect=lambda xs: xs),
+        ):
+            assert vippools.get_vip(vip_pool_name="pool-a", tenant_id=7) == "10.1.2.3"
+        mock_one.assert_called_once_with(name="pool-a", fail_if_missing=True)
+
+
 class TestSnapshotShouldCleanupSourceDir:
 
     @staticmethod

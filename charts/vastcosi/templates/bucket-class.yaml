@@ -13,7 +13,6 @@
 {{- $view_policy :=  pluck "viewPolicy" $options $.Values.bucketClassDefaults | first | quote -}}
 {{- $vip_pool_name := pluck "vipPool" $options $.Values.bucketClassDefaults | first | quote -}}
 {{- $vip_pool_fqdn := pluck "vipPoolFQDN" $options $.Values.bucketClassDefaults | first | quote -}}
-{{- $vip_pool_fqdn_random_prefix := pluck "vipPoolFQDNRandomPrefix" $options $.Values.bucketClassDefaults | first | quote -}}
 {{- $secret_name := pluck "secretName" $options $.Values.bucketClassDefaults | first | quote -}}
 {{- $secret_namespace := pluck "secretNamespace" $options $.Values.bucketClassDefaults | first | default $.Release.Namespace | quote -}}
 {{- $secret_namespace_explicit := pluck "secretNamespace" $options $.Values.bucketClassDefaults | first | quote -}}
@@ -73,11 +72,6 @@ parameters:
   "bucket_owner" $bucket_owner
   "bucket_owner_context" $bucket_owner_context
 )) | indent 2 }}
-{{- if ne $vip_pool_fqdn ( quote "" ) }}
-{{- include "vastcosi.dictToBoolParams" (list (dict
-  "vip_pool_fqdn_random_prefix" $vip_pool_fqdn_random_prefix
-)) | indent 2 }}
-{{- end }}
 {{- if $lifecycle_rules }}
 {{ include "vastcosi.dictToJsonStringParam" (list $lifecycle_rules "lifecycle_rules") | indent 2 }}
 {{- end }}

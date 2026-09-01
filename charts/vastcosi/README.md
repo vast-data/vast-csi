@@ -151,9 +151,10 @@ Bucket placement still comes from BucketClass `view_policy` (that VMS policy’s
 ### BucketClass parameters
 
 In Helm `bucketClasses`, set `secretName` and optionally `secretNamespace`
-(defaults to the release namespace). Choose **either** `vipPool` (VMS resolves a VIP)
-**or** `vipPoolFQDN` (DNS endpoint; skips the VIP lookup). Use
-`vipPoolFQDNRandomPrefix: true` to prepend a random subdomain per bucket.
+(defaults to the release namespace). Choose **either** `vipPool` (VMS picks a
+random VIP IP once at bucket create) **or** `vipPoolFQDN` (bare FQDN in the
+S3 endpoint; client DNS). COSI does not support NFS-style random FQDN prefixes
+(VAST S3 would treat the left hostname label as a virtual-hosted bucket name).
 
 ```yaml
 bucketClasses:
