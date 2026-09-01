@@ -1,14 +1,7 @@
-{{/* Vast csi driver which defines the behaviour rules for all downstream PVS while attachement */}}
-
-apiVersion: storage.k8s.io/v1
-kind: CSIDriver
-metadata:
-  name: {{ include "vastcsi.csiDriver" . }}
-  labels:
-    {{- include "vastcsi.labels" . | nindent 4 }}
-spec:
-  attachRequired: {{ .Values.attachRequired }}
-  podInfoOnMount: true
-  volumeLifecycleModes:
-    - Persistent
-    - Ephemeral
+{{ include "vast.common.resource.csiDriver" (dict
+  "name" (include "vast.common.csi.driverName" .)
+  "labels" (include "vast.common.labels" .)
+  "attachRequired" .Values.attachRequired
+  "podInfoOnMount" true
+  "volumeLifecycleModes" (list "Persistent" "Ephemeral")
+) }}

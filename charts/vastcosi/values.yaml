@@ -112,6 +112,13 @@ bucketAccessClasses: {}
 # The number of worker threads the COSI plugin use to serve requests simultaneously.
 numWorkers: 10
 
+# klog verbosity (--v) passed to the objectstorage-provisioner sidecar container.
+logLevel: 5
+
+# Log level of the VAST COSI plugin itself (X_CSI_LOG_LEVEL).
+# One of: debug, info, warning, error, critical.
+pluginLogLevel: info
+
 # Disable sending usage statistics to VAST cluster.
 # When set to true, the COSI driver will not report plugin usage metrics to VMS.
 disableUsageStats: false
@@ -125,7 +132,7 @@ cacheMaxAgeSeconds: 0
 
 # The name of the COSI driver registered with Kubernetes.
 # This value is used to identify the driver in COSI objects like BucketClasses etc.
-cosiDriverName: csi.vastdata.com
+csiDriverName: csi.vastdata.com
 
 ####################
 # VAST COSI PLUGIN OPTIONS

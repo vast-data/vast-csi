@@ -57,15 +57,15 @@ kind: BucketClass
 apiVersion: objectstorage.k8s.io/v1alpha1
 metadata:
   name: {{ required "A BucketClass name must be not empty" $name }}
-  namespace: {{ include "vastcosinamespace" $ }}
+  namespace: {{ include "vast.common.namespace" $ }}
   labels:
-{{- include "vastcosilabels" $ | nindent 4 }}
-driverName: {{ include "vastcosi.csiDriver" $ }}
+{{- include "vast.common.labels" $ | nindent 4 }}
+driverName: {{ include "vast.common.csi.driverName" $ }}
 deletionPolicy: {{ $deletion_policy }}
 parameters:
   root_export: {{ $storage_path }}
   scheme: {{ $scheme }}
-{{- include "vastcosi.dictToKeyValParams" (list (dict
+{{- include "vast.common.params.keyValue" (dict "values" (dict
   "vip_pool_name" $vip_pool_name
   "vip_pool_fqdn" $vip_pool_fqdn
   "view_policy" $view_policy
@@ -74,12 +74,12 @@ parameters:
   "bucket_owner_context" $bucket_owner_context
 )) | indent 2 }}
 {{- if ne $vip_pool_fqdn ( quote "" ) }}
-{{- include "vastcosi.dictToBoolParams" (list (dict
+{{- include "vast.common.params.bool" (dict "values" (dict
   "vip_pool_fqdn_random_prefix" $vip_pool_fqdn_random_prefix
 )) | indent 2 }}
 {{- end }}
 {{- if $lifecycle_rules }}
-{{ include "vastcosi.dictToJsonStringParam" (list $lifecycle_rules "lifecycle_rules") | indent 2 }}
+{{ include "vast.common.params.json" (dict "value" $lifecycle_rules "key" "lifecycle_rules") | indent 2 }}
 {{- end }}
 {{- if ne $secret_name ( quote "" ) }}
   vastdata.com/secret-name: {{ $secret_name }}

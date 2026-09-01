@@ -1,0 +1,11 @@
+apiVersion: v2
+description: Shared Helm template library for VAST Data public charts
+home: https://support.vastdata.com
+icon: https://uploads.vastdata.com/2020/04/vast-white-1.svg
+keywords:
+- vast
+- library
+- helm
+name: vast-common
+type: library
+version: 1.0.0

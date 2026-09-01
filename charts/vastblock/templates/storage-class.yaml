@@ -46,18 +46,18 @@
 
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
-provisioner: {{ include "vastcsi.csiDriver" $ }}
+provisioner: {{ include "vast.common.csi.driverName" $ }}
 metadata:
   name: {{ required "A StorageClass name must be not empty" $name }}
-  namespace: {{ include "vastcsi.namespace" $ }}
+  namespace: {{ include "vast.common.namespace" $ }}
   annotations:
     storageclass.kubernetes.io/is-default-class: {{ $is_default_class }}
   labels:
-  {{- include "vastcsi.labels" $ | nindent 4 }}
+  {{- include "vast.common.labels" $ | nindent 4 }}
 reclaimPolicy: {{ $reclaim_policy }}
 parameters:
 
-{{- include "vastcsi.dictToKeyValParams" (list (dict
+{{- include "vast.common.params.keyValue" (dict "values" (dict
   "subsystem" $subsystem
   "vip_pool_name" $vip_pool_name
   "vip_pool_fqdn" $vip_pool_fqdn
@@ -68,14 +68,14 @@ parameters:
   "qos_policy" $qos_policy
 )) | indent 2 }}
 
-{{- include "vastcsi.dictToBoolParams" (list (dict
+{{- include "vast.common.params.bool" (dict "values" (dict
   "vip_pool_fqdn_random_prefix" $vip_pool_fqdn_random_prefix
   "blocking_clones" $blocking_clones
   "host_nqn_obfuscation" $host_nqn_obfuscation
 )) | indent 2 }}
 
 {{- if $host_encryption }}
-{{ include "vastcsi.dictToJsonStringParam" (list $host_encryption "host_encryption") | indent 2 }}
+{{ include "vast.common.params.json" (dict "value" $host_encryption "key" "host_encryption") | indent 2 }}
 {{- end }}
 
 {{-  if ne $storage_class_secret ( quote "" ) }}

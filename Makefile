@@ -207,6 +207,49 @@ install-cosi-crds: ## Install COSI CRDs and controller
 install-replication-crds: ## Install VolumeReplication CRDs and Operator (complete stack)
 	@$(CURDIR)/scripts/install_replication_stack.sh
 
+######################
+# PUBLIC HELM CHARTS
+######################
+CHART_DIRS := charts/common charts/vastcsi charts/vastblock charts/vastcosi
+PUBLIC_CHART_DIRS := charts/vastcsi charts/vastblock charts/vastcosi
+CHART_TEMPLATE_ARGS := --set endpoint=render-smoke
+# vast-common is consumed from the published repository, so the index must be cached locally
+# before dependencies can be resolved.
+HELM_REPO_NAME := vast
+HELM_REPO_URL := https://vast-data.github.io/vast-csi
+
+.PHONY: chart-repo chart-deps chart-deps-update chart-lint chart-template render-smoke
+chart-repo: ## Register the published VAST Helm repository used to resolve vast-common
+	helm repo add $(HELM_REPO_NAME) $(HELM_REPO_URL) --force-update
+	helm repo update $(HELM_REPO_NAME)
+
+chart-deps: chart-repo ## Build dependencies for public Helm charts
+	@set -e; for chart in $(CHART_DIRS); do \
+		echo "Building Helm dependencies for $$chart"; \
+		helm dependency build --skip-refresh "$(CURDIR)/$$chart"; \
+	done
+
+chart-deps-update: chart-repo ## Refresh locks and dependencies after chart version changes
+	@set -e; for chart in $(CHART_DIRS); do \
+		echo "Updating Helm dependencies for $$chart"; \
+		helm dependency update --skip-refresh "$(CURDIR)/$$chart"; \
+	done
+
+chart-lint: chart-deps ## Lint common and public Helm charts
+	@set -e; for chart in $(CHART_DIRS); do \
+		echo "Linting $$chart"; \
+		helm lint "$(CURDIR)/$$chart"; \
+	done
+
+chart-template: chart-deps ## Render public Helm charts as a smoke test
+	@set -e; for chart in $(PUBLIC_CHART_DIRS); do \
+		release=$${chart##*/}; \
+		echo "Rendering $$chart"; \
+		helm template "$$release" "$(CURDIR)/$$chart" $(CHART_TEMPLATE_ARGS) >/dev/null; \
+	done
+
+render-smoke: chart-template ## Alias for chart-template
+
 start-minikube: ## Start Minikube cluster
 	@$(call check_required_env,MINIKUBE_DRIVER)
 	@$(CURDIR)/scripts/start-minikube.sh

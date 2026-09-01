@@ -91,6 +91,15 @@ build_csi_operator:
     - vast-dev-builder
 
 
+validate_public_charts:
+  stage: test
+  needs: []
+  script:
+    - make chart-lint render-smoke
+  tags:
+    - vast-dev-builder
+
+
 # Security scanning jobs
 secrets_scan:
   stage: security
@@ -400,6 +409,24 @@ update_github [hotfix]:
     
     echo "Successfully published hotfix ${VERSION}"
   when: manual
+  tags:
+    - vast-dev-builder
+
+
+# Publish charts/common to the same Helm repository that serves the public charts.
+# The library is versioned independently, so this runs only when charts/common changes and
+# fails if its version is already published.
+release_common_chart:
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^v[\d]+\.[\d]+/'
+      changes:
+        - charts/common/**/*
+      when: manual
+  before_script: *setup_github_access
+  script: |
+    set -x
+    ./scripts/release_common_chart.sh
   tags:
     - vast-dev-builder
 

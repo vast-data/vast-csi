@@ -752,5 +752,8 @@ rbac: true
 # ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 # - name: "image-pull-secret"
 imagePullSecrets: []
-# Log level of CSI plugin
+# klog verbosity (--v) passed to the Kubernetes CSI sidecar containers
 logLevel: 5
+# Log level of the VAST CSI plugin itself (X_CSI_LOG_LEVEL).
+# One of: debug, info, warning, error, critical.
+pluginLogLevel: info

@@ -1,56 +1,14 @@
-{{- $wh := .Values.extensions.webhook -}}
-{{- $ns := include "vastcosinamespace" . | trimAll "\"" }}
-{{- $svcName := printf "%s-cosi-extensions-webhook" .Release.Name }}
-{{- $secretName := printf "%s-tls" $svcName }}
-{{- $cn := printf "%s.%s.svc" $svcName $ns }}
-{{- $altNames := list $cn (printf "%s.%s.svc.cluster.local" $svcName $ns) }}
-{{- $existingSecret := lookup "v1" "Secret" $ns $secretName }}
-{{- $tlsCrt := "" }}
-{{- $tlsKey := "" }}
-{{- $caCrt  := "" }}
-{{- if $existingSecret }}
-  {{- $tlsCrt = index $existingSecret.data "tls.crt" }}
-  {{- $tlsKey = index $existingSecret.data "tls.key" }}
-  {{- $caCrt  = index $existingSecret.data "ca.crt"  }}
-{{- else }}
-  {{- $ca   := genCA "vast-cosi-cosi-webhook-ca" 3650 }}
-  {{- $cert := genSignedCert $cn nil $altNames 3650 $ca }}
-  {{- $tlsCrt = $cert.Cert | b64enc }}
-  {{- $tlsKey = $cert.Key  | b64enc }}
-  {{- $caCrt  = $ca.Cert   | b64enc }}
-{{- end }}
-apiVersion: v1
-kind: Secret
-metadata:
-  name: {{ $secretName }}
-  namespace: {{ $ns }}
-  labels:
-  {{- include "vastcosilabels" . | nindent 4 }}
-type: kubernetes.io/tls
-data:
-  tls.crt: {{ $tlsCrt }}
-  tls.key: {{ $tlsKey }}
-  ca.crt:  {{ $caCrt }}
----
-apiVersion: admissionregistration.k8s.io/v1
-kind: MutatingWebhookConfiguration
-metadata:
-  name: {{ $svcName }}
-  labels:
-  {{- include "vastcosilabels" . | nindent 4 }}
-webhooks:
-  - name: bucket-params-injector.vastdata.com
-    admissionReviewVersions: ["v1"]
-    sideEffects: None
-    failurePolicy: {{ $wh.failurePolicy | default "Fail" }}
-    clientConfig:
-      service:
-        name: {{ $svcName }}
-        namespace: {{ $ns }}
-        path: /mutate-bucket-parameters
-      caBundle: {{ $caCrt }}
-    rules:
-      - apiGroups: ["objectstorage.k8s.io"]
-        apiVersions: ["v1alpha1"]
-        operations: ["CREATE"]
-        resources: ["buckets"]
+{{- $webhook := .Values.extensions.webhook -}}
+{{- $webhooks := list (dict
+  "name" "bucket-params-injector.vastdata.com"
+  "failurePolicy" ($webhook.failurePolicy | default "Fail")
+  "path" "/mutate-bucket-parameters"
+  "rules" (list (dict "apiGroups" (list "objectstorage.k8s.io") "apiVersions" (list "v1alpha1") "operations" (list "CREATE") "resources" (list "buckets")))
+) -}}
+{{ include "vast.common.resource.webhookCertificate" (dict
+  "name" (printf "%s-cosi-extensions-webhook" .Release.Name)
+  "namespace" (include "vast.common.namespace" . | trimAll "\"")
+  "caName" "vast-cosi-cosi-webhook-ca"
+  "labels" (include "vast.common.labels" .)
+  "webhooks" $webhooks
+) }}

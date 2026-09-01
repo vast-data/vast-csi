@@ -169,6 +169,11 @@ __pycache__/*
 /bundle/
 /artifacts/
 
+# Fetched from the published Helm repo on `make chart-deps`; Chart.lock files remain tracked.
+/charts/vastcsi/charts/vast-common-*.tgz
+/charts/vastblock/charts/vast-common-*.tgz
+/charts/vastcosi/charts/vast-common-*.tgz
+
 .cursor/*
 
 # Local test scripts (not for repo)

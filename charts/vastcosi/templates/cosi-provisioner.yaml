@@ -1,5 +1,4 @@
 {{- $csi_images := .Values.image -}}
-{{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
 {{- $wh := .Values.extensions.webhook -}}
 {{- $ext := .Values.extensions -}}
 
@@ -9,29 +8,26 @@ metadata:
   name: cosi-vast-provisioner
   labels:
     app.kubernetes.io/csi-role: "cosi-provisioner"
-{{- include "vastcosilabels" . | nindent 4 }}
+{{- include "vast.common.labels" . | nindent 4 }}
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: cosi-provisioner
-{{- include "vastcosiselectorLabels" . | nindent 6 }}
+{{- include "vast.common.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
         app: cosi-provisioner
-{{- include "vastcosilabels" . | nindent 8 }}
+{{- include "vast.common.labels" . | nindent 8 }}
     spec:
-{{- if .Values.imagePullSecrets }}
-      imagePullSecrets:
-{{ toYaml .Values.imagePullSecrets | indent 8 }}
-      {{- end }}
+{{- include "vast.common.imagePullSecrets" (dict "secrets" .Values.imagePullSecrets) | nindent 6 }}
       affinity:
 {{ toYaml .Values.cosiplugin.affinity | indent 8 }}
       serviceAccountName: {{ .Release.Name }}-objectstorage-provisioner-sa
       containers:
       - name: cosi-vast-plugin
-        image: {{ printf "%s:%s" $csi_images.csiVastPlugin.repository $csi_images.csiVastPlugin.tag }}
+        image: {{ include "vast.common.image" (dict "root" $ "image" $csi_images.csiVastPlugin) }}
         args: ["serve", "--plugin", "cosi"]
         imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default  "IfNotPresent" }}
         env:
@@ -41,23 +37,23 @@ spec:
           - name: X_CSI_EXTENSIONS_GRPC_ADDRESS
             value: unix:///var/run/vast-extensions/extensions.sock
         volumeMounts:
-{{- include "vastcosivmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 10 }}
+{{- include "vast.common.vmsAuth.volumeMounts" . | indent 10 }}
           - mountPath: /var/lib/cosi
             name: socket-dir
           - name: extensions-dir
             mountPath: /var/run/vast-extensions
         resources: {{- toYaml .Values.cosiplugin.resources.cosiVastPlugin | nindent 10 }}
       - name: objectstorage-provisioner
-        image: {{ printf "%s:%s" $csi_images.objectstorageProvisioner.repository $csi_images.objectstorageProvisioner.tag }}
+        image: {{ include "vast.common.image" (dict "root" $ "image" $csi_images.objectstorageProvisioner) }}
         imagePullPolicy: {{ $csi_images.objectstorageProvisioner.imagePullPolicy | default  "IfNotPresent" }}
         args:
-        - "--v=5"
+{{- include "vast.common.csi.verbosityArg" . | nindent 8 }}
         volumeMounts:
         - mountPath: /var/lib/cosi
           name: socket-dir
         resources: {{- toYaml .Values.cosiplugin.resources.objectstorageProvisioner | nindent 10 }}
       - name: extensions-manager
-        image: {{ include "vastcosi.vastExtensionControllerImage" . }}
+        image: {{ include "vast.common.image" (dict "root" $ "image" $csi_images.vastExtensionController) }}
         imagePullPolicy: {{ $csi_images.vastExtensionController.imagePullPolicy | default "IfNotPresent" }}
         args:
         - --health-probe-bind-address=:8081
@@ -70,7 +66,7 @@ spec:
         - --extensions-grpc-bind-address=/var/run/vast-extensions/extensions.sock
         - webhook
         - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
-        - --csi-driver-name={{ .Values.cosiDriverName }}
+        - --csi-driver-name={{ include "vast.common.csi.driverName" . }}
         - cosi
         securityContext:
           allowPrivilegeEscalation: false
@@ -118,4 +114,4 @@ spec:
         - name: webhook-tls
           secret:
             secretName: {{ .Release.Name }}-cosi-extensions-webhook-tls
-{{- include "vastcosivmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}
+{{- include "vast.common.vmsAuth.volumes" . | indent 8 }}

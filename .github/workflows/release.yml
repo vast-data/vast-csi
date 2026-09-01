@@ -23,7 +23,15 @@ jobs:
 
       - name: Prepare releaser configuration
         run: |
-          python .github/workflows/prepare_releaser_configuration.py
+          python3 .github/workflows/prepare_releaser_configuration.py
+
+      - name: Build public chart dependencies
+        if: ${{ hashFiles('releaser-config.yml') != '' }}
+        run: make chart-deps-update
+
+      - name: Exclude unpublished chart sources
+        if: ${{ hashFiles('releaser-config.yml') != '' }}
+        run: python3 .github/workflows/prepare_releaser_configuration.py --prune-unpublished-charts
 
       - name: Configure Git
         if: ${{ hashFiles('releaser-config.yml') != '' }}

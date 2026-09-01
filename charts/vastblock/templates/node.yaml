@@ -2,36 +2,32 @@
 
 {{- $csi_images := .Values.image -}}
 {{- $kubelet_path := .Values.kubeletPath | default "/var/lib/kubelet" | trimSuffix "/" }}
-{{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
-{{- $driver_name := include "vastcsi.csiDriver" . -}}
+{{- $driver_name := include "vast.common.csi.driverName" . -}}
 {{- $csi_sock := printf "%s.sock" ($driver_name | lower | replace "." "-" | replace "_" "-" | trimSuffix "-" | trimPrefix "-") -}}
 
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: block-vast-node
-  namespace: {{ include "vastcsi.namespace" . }}
+  namespace: {{ include "vast.common.namespace" . }}
   labels:
-{{- include "vastcsi.labels" . | nindent 4 }}
+{{- include "vast.common.labels" . | nindent 4 }}
     app.kubernetes.io/csi-role: "node"
 spec:
   selector:
     matchLabels:
       app: "csi-vast-node"
-{{- include "vastcsi.selectorLabels" . | nindent 6 }}
+{{- include "vast.common.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
         app: csi-vast-node
         role: csi-vast
-{{- include "vastcsi.labels" . | nindent 8 }}
+{{- include "vast.common.labels" . | nindent 8 }}
       annotations:
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
     spec:
-{{- if .Values.imagePullSecrets }}
-      imagePullSecrets:
-{{ toYaml .Values.imagePullSecrets | indent 8 }}
-      {{- end }}
+{{- include "vast.common.imagePullSecrets" (dict "secrets" .Values.imagePullSecrets) | nindent 6 }}
       affinity:
         podAffinity:
           {{- toYaml .Values.node.podAffinity | nindent 10 }}
@@ -42,9 +38,9 @@ spec:
       hostIPC: true
       containers:
         - name: csi-node-driver-registrar
-          image: {{ printf "%s:%s" $csi_images.csiNodeDriverRegistrar.repository (toString $csi_images.csiNodeDriverRegistrar.tag) }}
+          image: {{ include "vast.common.image" (dict "root" $ "image" $csi_images.csiNodeDriverRegistrar) }}
           args:
-{{- include "vastcsi.commonArgs" . | nindent 12 }}
+{{- include "vast.common.csi.args" . | nindent 12 }}
             - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
           imagePullPolicy: {{ $csi_images.csiNodeDriverRegistrar.imagePullPolicy | default  "IfNotPresent" }}
           lifecycle:
@@ -67,7 +63,7 @@ spec:
               mountPath: /registration/
           resources: {{- toYaml .Values.node.resources.nodeDriverRegistrar | nindent 12 }}
         - name: csi-vast-plugin
-          image: {{ printf "%s:%s" $csi_images.csiVastPlugin.repository (toString $csi_images.csiVastPlugin.tag) }}
+          image: {{ include "vast.common.image" (dict "root" $ "image" $csi_images.csiVastPlugin) }}
           args: ["serve", "--plugin", "block"]
           imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default  "IfNotPresent" }}
           env:
@@ -87,7 +83,6 @@ spec:
               value: "{{ .Values.node.metrics.port }}"
             - name: X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS
               value: "{{ .Values.node.hostBinarySearchDirs }}"
-{{- include "vastcsi.fallbackToDeserEnv" . | nindent 12 }}
 {{- if .Values.node.metrics.enabled }}
           ports:
             - name: metrics
@@ -112,8 +107,8 @@ spec:
             - name: host
               mountPath: /host
               mountPropagation: "Bidirectional"
-{{- include "vastcsi.vmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 12 }}
-{{- include "vastcsi.credSerdeVolumeMount" . | indent 12 }}
+{{- include "vast.common.vmsAuth.volumeMounts" . | indent 12 }}
+{{- include "vast.common.credSerde.volumeMount" . | indent 12 }}
           resources: {{- toYaml .Values.node.resources.csiVastPlugin | nindent 12 }}
       hostNetwork: true
       hostPID: true
@@ -147,5 +142,5 @@ spec:
           hostPath:
             path: /
             type: Directory
-  {{- include "vastcsi.vmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}
-{{- include "vastcsi.credSerdeVolume" . | indent 8 }}
+  {{- include "vast.common.vmsAuth.volumes" . | indent 8 }}
+{{- include "vast.common.credSerde.volume" . | indent 8 }}

@@ -11,6 +11,9 @@ from lib.k8s._base import KubernetesResource
 from lib.logging import logger
 
 
+_VAST_HELM_REPO_NAME = "vast"
+_VAST_HELM_REPO_URL = "https://vast-data.github.io/vast-csi"
+
 _CHART_POD_LABELS = {
     "vastcsi":   (["csi-vast-controller", "csi-vast-node"], "nfs"),
     "vastblock": (["csi-vast-controller", "csi-vast-node"], "block"),
@@ -43,6 +46,23 @@ class HelmValues(KubernetesResource):
             self.condition_running_labels = condition_running_labels
 
         def install(self):
+            logger.info(f"helm dependency build --skip-refresh {self.chart_dir}")
+            dependency_cmd = self.k8s.helm[
+                "dependency", "build", "--skip-refresh", str(self.chart_dir),
+            ]
+            rc, stdout, stderr = dependency_cmd.run(retcode=None)
+            if stdout:
+                print(stdout)
+            if stderr:
+                print(stderr, flush=True)
+            if rc != 0:
+                output = (stdout + "\n" + stderr).strip()
+                raise RuntimeError(
+                    f"helm dependency build for chart {self.name!r} failed (exit {rc}).\n"
+                    f"Command: helm dependency build --skip-refresh {self.chart_dir}\n"
+                    f"Output:\n{output}"
+                )
+
             overlay = self.k8s._next_object_yaml_path(self.k8s.helmvalues.resource_type)
             overlay.write(yaml.safe_dump(self.memoized_values, sort_keys=False))
             logger.info(f"helm upgrade --install {self.name} {self.chart_dir} -n {self.namespace}")
@@ -100,6 +120,7 @@ class HelmValues(KubernetesResource):
         subst_values_by_chart: dict[str, dict] | None = None,
         charts: list[str] | None = None,
     ):
+        self._ensure_chart_repo()
         path_to_charts = local.path(str(charts_dir or CHARTS_DIR))
         chart_names = charts or list(_CHART_POD_LABELS)
         for chart_name in chart_names:
@@ -124,6 +145,14 @@ class HelmValues(KubernetesResource):
 
         for chart in self.installed_charts.values():
             chart.wait()
+
+    def _ensure_chart_repo(self):
+        """Cache the published repo index so charts can resolve their vast-common dependency."""
+        logger.info(f"helm repo add {_VAST_HELM_REPO_NAME} {_VAST_HELM_REPO_URL}")
+        self.k8s.helm[
+            "repo", "add", _VAST_HELM_REPO_NAME, _VAST_HELM_REPO_URL, "--force-update",
+        ] & FG
+        self.k8s.helm["repo", "update", _VAST_HELM_REPO_NAME] & FG
 
     def wait(self, *_, **__):
         raise NotImplementedError("Call wait() on individual Chart objects.")
