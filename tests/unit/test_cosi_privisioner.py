@@ -4,7 +4,11 @@ import grpc
 from unittest.mock import MagicMock, patch
 from easypy.bunch import Bunch
 from vast_csi.exceptions import Abort, ApiError, MissingParameter
-from vast_csi.builders.cosi import parse_create_bucket_params, parse_lifecycle_rules
+from vast_csi.builders.cosi import (
+    parse_create_bucket_params,
+    parse_lifecycle_rules,
+    resolve_vip_pool_endpoint,
+)
 from vast_csi.plugins.cosi import (
     SECRET_NAME_PARAM,
     SECRET_NAMESPACE_PARAM,
@@ -133,6 +137,22 @@ class TestCosiResolveSecrets:
 
     def test_empty_without_refs(self):
         assert CosiProvisioner().resolve_secrets({"parameters": {}}) == {}
+
+
+class TestResolveVipPoolEndpoint:
+    def test_vip_pool_name_uses_get_vip(self):
+        session = MagicMock()
+        session.vippools.get_vip.return_value = "10.1.2.3"
+        assert resolve_vip_pool_endpoint(session, vip_pool_name="pool-a", tenant_id=7) == "10.1.2.3"
+        session.vippools.get_vip.assert_called_once_with(vip_pool_name="pool-a", tenant_id=7)
+
+    def test_bare_fqdn_unchanged(self):
+        session = MagicMock()
+        assert (
+            resolve_vip_pool_endpoint(session, vip_pool_fqdn="s3.example.com")
+            == "s3.example.com"
+        )
+        session.vippools.get_vip.assert_not_called()
 
 
 class TestParseCreateBucketParamsNamespaced:

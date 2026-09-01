@@ -21,7 +21,6 @@ metadata:
 parameters:
   view_policy: s3-policy-team-a
   vip_pool_fqdn: s3-team-a.example.com
-  vip_pool_fqdn_random_prefix: "true"
   root_export: /cosi/team-a
   scheme: https
   vastdata.com/secret-name: team-a-vast-auth
