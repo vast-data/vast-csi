@@ -30,11 +30,54 @@ class UdbGrantTarget:
     user: object
     tenant_id: object
 
+    def delete_key(self, vms_session, account_id: str) -> None:
+        vms_session.users.delete_access_key(
+            self.user.id, account_id, tenant_id=self.tenant_id
+        )
+
+    def generate_key(self, vms_session, tenant_id: str):
+        return vms_session.users.generate_access_key(self.user.id, tenant_id=tenant_id)
+
+    def install_external(
+        self, vms_session, *, tenant_id: str, endpoint: str, parameters: dict
+    ):
+        return _install_external_credentials(
+            vms_session,
+            user=self.user,
+            tenant_id=tenant_id,
+            endpoint=endpoint,
+            parameters=parameters,
+        )
+
 
 @dataclass(frozen=True)
 class NonLocalGrantTarget:
     username: str
     tenant_id: object
+
+    def delete_key(self, vms_session, account_id: str) -> None:
+        vms_session.users.delete_non_local_access_key(
+            username=self.username,
+            tenant_id=self.tenant_id,
+            access_key=account_id,
+            context="aggregated",
+        )
+
+    def generate_key(self, vms_session, tenant_id: str):
+        # Non-local keys always use the owner tenant from the view/target.
+        return vms_session.users.generate_non_local_access_key(
+            username=self.username,
+            tenant_id=self.tenant_id,
+            context="aggregated",
+        )
+
+    def install_external(
+        self, vms_session, *, tenant_id: str, endpoint: str, parameters: dict
+    ):
+        raise Abort(
+            FAILED_PRECONDITION,
+            "external credentials not supported for external bucket owner",
+        )
 
 
 def _validate_s3_key_pair(access_key: str, secret_key: str) -> None:
@@ -153,32 +196,39 @@ def _install_external_credentials(
     return credential_response(access_key, secret_key, endpoint)
 
 
+def _target_for_owner(
+    vms_session, owner_name: str, tenant_id, *, bucket_name: str
+) -> UdbGrantTarget | NonLocalGrantTarget | None:
+    if user := vms_session.users.one(name=owner_name, tenant_id=tenant_id):
+        return UdbGrantTarget(user=user, tenant_id=tenant_id)
+    if owner_name != bucket_name:
+        return NonLocalGrantTarget(username=owner_name, tenant_id=tenant_id)
+    return None
+
+
 def _resolve_grant_target(
     vms_session, bucket_name
 ) -> UdbGrantTarget | NonLocalGrantTarget:
     view = vms_session.views.one(bucket=bucket_name, fail_if_missing=True)
     owner_name = view.bucket_owner or bucket_name
-    if user := vms_session.users.one(name=owner_name, tenant_id=view.tenant_id):
-        return UdbGrantTarget(user=user, tenant_id=view.tenant_id)
-    if owner_name != bucket_name:
-        return NonLocalGrantTarget(username=owner_name, tenant_id=view.tenant_id)
-    raise LookupFieldError(field=f"user {owner_name!r}")
+    target = _target_for_owner(
+        vms_session, owner_name, view.tenant_id, bucket_name=bucket_name
+    )
+    if target is None:
+        raise LookupFieldError(field=f"user {owner_name!r}")
+    return target
 
 
 def _delete_granted_key(
     vms_session, target: UdbGrantTarget | NonLocalGrantTarget, account_id
 ):
-    if isinstance(target, UdbGrantTarget):
-        vms_session.users.delete_access_key(
-            target.user.id, account_id, tenant_id=target.tenant_id
-        )
-        return
-    vms_session.users.delete_non_local_access_key(
-        username=target.username,
-        tenant_id=target.tenant_id,
-        access_key=account_id,
-        context="aggregated",
-    )
+    try:
+        target.delete_key(vms_session, account_id)
+    except (HTTPError, ApiError) as exc:
+        response = getattr(exc, "response", None)
+        if response is not None and response.status_code == 404:
+            return
+        raise
 
 
 def _wants_external_credentials(parameters: dict) -> bool:
@@ -203,34 +253,44 @@ def grant_bucket_access(
     """
     parameters = dict(parameters or {})
     target = _resolve_grant_target(vms_session, bucket_name)
-    external = _wants_external_credentials(parameters)
-
-    if isinstance(target, NonLocalGrantTarget):
-        if external:
-            raise Abort(
-                FAILED_PRECONDITION,
-                "external credentials not supported for external bucket owner",
-            )
-        creds = vms_session.users.generate_non_local_access_key(
-            username=target.username,
-            tenant_id=target.tenant_id,
-            context="aggregated",
-        )
-        return credential_response(creds.access_key, creds.secret_key, endpoint)
-
-    if external:
-        return _install_external_credentials(
+    if _wants_external_credentials(parameters):
+        return target.install_external(
             vms_session,
-            user=target.user,
             tenant_id=tenant_id,
             endpoint=endpoint,
             parameters=parameters,
         )
-    creds = vms_session.users.generate_access_key(target.user.id, tenant_id=tenant_id)
+    creds = target.generate_key(vms_session, tenant_id)
     return credential_response(creds.access_key, creds.secret_key, endpoint)
 
 
-def revoke_bucket_access(vms_session, *, bucket_name: str, account_id: str):
-    target = _resolve_grant_target(vms_session, bucket_name)
+def revoke_bucket_access(
+    vms_session,
+    *,
+    bucket_name: str,
+    account_id: str,
+    tenant_id: str,
+):
+    """Revoke a granted S3 access key.
+
+    Does not require the bucket view to still exist: when the view is gone,
+    fall back to the managed owner (``bucket_name`` + ``tenant_id`` from COSI
+    ``bucket_id``). Idempotent when the user or key is already gone.
+
+    External owners still need a live view; without it this path cannot resolve
+    the owner name and treats a missing managed user as success.
+    """
+    view = vms_session.views.one(bucket=bucket_name, fail_if_missing=False)
+    if view:
+        owner_name = view.bucket_owner or bucket_name
+        effective_tenant = view.tenant_id
+    else:
+        owner_name = bucket_name
+        effective_tenant = tenant_id
+    target = _target_for_owner(
+        vms_session, owner_name, effective_tenant, bucket_name=bucket_name
+    )
+    if target is None:
+        return types.DriverRevokeBucketAccessResp()
     _delete_granted_key(vms_session, target, account_id)
     return types.DriverRevokeBucketAccessResp()
