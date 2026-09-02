@@ -29,6 +29,7 @@ from vast_csi.utils import (
     get_volume_mount,
     normalize_mount_options,
     normalize_volume_id,
+    build_snapshot_name,
     string_to_proto_timestamp,
     get_random_fqdn_prefix,
     wrap_ipv6,
@@ -482,10 +483,13 @@ class CsiController(ControllerBase, Instrumented):
                 "csi.storage.k8s.io/volumesnapshot/namespace"
             ]
             snapshot_name_fmt = parameters.get("snapshot_name_fmt", CONF.name_fmt)
-            snapshot_name = snapshot_name_fmt.format(
-                namespace=snapshot_namespace, name=snapshot_name, id=name
+            snapshot_name = build_snapshot_name(
+                name_fmt=snapshot_name_fmt,
+                namespace=snapshot_namespace,
+                name=snapshot_name,
+                snap_id=name,
+                truncate_to=CONF.truncate_snapshot_name,
             )
-            snapshot_name = snapshot_name.replace(":", "-").replace("/", "-")
             try:
                 snap = vms_session.snapshots.ensure(name=snapshot_name, path=path, tenant_id=tenant_id)
             except ApiError as exc:

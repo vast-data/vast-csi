@@ -6,6 +6,7 @@ from vast_csi.utils import (
     is_ver_nfs4_present,
     generate_ip_range,
     normalize_volume_id,
+    build_snapshot_name,
     wrap_ipv6,
     string_to_static_uuid,
     parse_string_parameters,
@@ -672,3 +673,73 @@ def test_replace_path_prefix_edge_cases():
     result = replace_path_prefix(base, replacement)
     # Empty segments are filtered out
     assert result == "/zoo/bar/biz"
+
+
+@pytest.mark.parametrize(
+    "name_fmt, namespace, name, snap_id, truncate_to, expected",
+    [
+        (
+            "csi:{id}:{namespace}:{name}",
+            "ns",
+            "snap",
+            "id-1",
+            None,
+            "csi-id-1-ns-snap",
+        ),
+        (
+            "csi:{id}/{namespace}/{name}",
+            "ns",
+            "snap",
+            "id-1",
+            None,
+            "csi-id-1-ns-snap",
+        ),
+        (
+            "csi:{id}:{namespace}:{name}",
+            "ns",
+            "snap",
+            "id-1",
+            128,
+            "csi-id-1-ns-snap",
+        ),
+        (
+            "csi:{id}:{namespace}:{name}",
+            "n" * 50,
+            "s" * 50,
+            "snapcontent-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            128,
+            (
+                "csi-snapcontent-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee-"
+                + "n" * 50
+                + "-"
+                + "s" * 50
+            )[:128],
+        ),
+    ],
+)
+def test_build_snapshot_name(
+    name_fmt, namespace, name, snap_id, truncate_to, expected
+):
+    assert (
+        build_snapshot_name(
+            name_fmt=name_fmt,
+            namespace=namespace,
+            name=name,
+            snap_id=snap_id,
+            truncate_to=truncate_to,
+        )
+        == expected
+    )
+
+
+def test_build_snapshot_name_preserves_leading_id_when_truncated():
+    snap_id = "snapcontent-11111111-2222-3333-4444-555555555555"
+    result = build_snapshot_name(
+        name_fmt="csi:{id}:{namespace}:{name}",
+        namespace="n" * 60,
+        name="s" * 60,
+        snap_id=snap_id,
+        truncate_to=128,
+    )
+    assert len(result) == 128
+    assert result.startswith(f"csi-{snap_id}-")

@@ -231,6 +231,68 @@ def test_nfs_snapshot_restore(system, k8s):
         assert isinstance(dt, datetime)
 
 
+
+@pytest.mark.nfs
+def test_nfs_long_snapshot_name_truncates(system, k8s):
+    """Long project + snapshot names must still create a VMS snap (name <= 128)."""
+    suffix = random_nice_name(max_length=8)
+    ns = ("e2e-long-snap-" + "n" * 50)[:63]
+    snap_name = ("long-snap-" + "s" * 60)[:63]
+    vol_name = f"vol-long-{suffix}"
+    storage_class_name = nfs_storage_class()
+    snap_class = SNAPSHOT_CLASS
+
+    # Formatted default name csi:{id}:{namespace}:{name} would exceed VMS 128-char limit.
+    assert len(ns) + len(snap_name) + len("csi-") + 36 + 2 > 128
+
+    k8s.namespaces.ensure(ns)
+    k8s.namespaces.allow_privileged(ns)
+
+    k8s.pvcs.create(
+        PVCBuilder.new(
+            name=vol_name,
+            access_modes=["ReadWriteOnce"],
+            storage_class_name=storage_class_name,
+            storage="1Gi",
+        ).with_namespace(ns)
+    )
+    sts_name = f"app-long-{suffix}"
+    k8s.sts.create(
+        StatefulSetBuilder.new(name=sts_name, pvc=vol_name, replicas=1).with_namespace(ns)
+    )
+    expected_pod_name = f"{sts_name}-0"
+    k8s.pods.wait(
+        timeout=90,
+        name=expected_pod_name,
+        namespace=ns,
+        error_msg=f"the pod {expected_pod_name!r} was not moved to the running state within the allotted period",
+    )
+
+    k8s.volumesnapshots.create(
+        VolumeSnapshotBuilder.new(
+            name=snap_name, pvc_name=vol_name, snapshot_class_name=snap_class,
+        ).with_namespace(ns)
+    )
+    with logger.indented("waiting for long-named snapshot"):
+        uid = k8s.volumesnapshots.wait(
+            timeout=5 * MINUTE,
+            name=snap_name,
+            namespace=ns,
+            error_msg=f"no '{snap_name}'",
+        )["metadata"]["uid"]
+        vms_snap = wait(
+            5 * MINUTE,
+            lambda: system.snapshots.single(lambda s: uid in s.name),
+            message=f"no snapshot for {uid}",
+        )
+
+    assert vms_snap is not None
+    assert len(vms_snap.name) <= 128, (
+        f"VMS snapshot name length {len(vms_snap.name)} exceeds 128: {vms_snap.name!r}"
+    )
+
+
+
 @pytest.mark.e2e
 @pytest.mark.nfs
 def test_nfs_retain_policy(k8s):
