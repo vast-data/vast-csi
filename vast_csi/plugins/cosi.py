@@ -145,12 +145,14 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented):
     def DriverRevokeBucketAccess(
         self, vms_session, bucket_id, account_id, revoke_access_context=None
     ):
-        # revoke_access_context: COSI request field; unused by this driver
+        # revoke_access_context: COSI request field; unused (no proven sidecar
+        # owner echo). Managed revoke uses bucket_id when the view is gone.
         parsed = BucketId.parse(bucket_id)
         return revoke_bucket_access(
             vms_session,
             bucket_name=parsed.name,
             account_id=account_id,
+            tenant_id=parsed.tenant_id,
         )
 
 
