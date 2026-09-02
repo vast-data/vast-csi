@@ -171,7 +171,8 @@ def _install_external_credentials(
 
     Deletes existing keys then installs the forced pair (VMS cannot compare secret
     keys). Not atomic: if install fails after deletes, the user may have zero keys
-    until Grant is retried.
+    until Grant is retried. Other live BucketAccess Secrets for the same owner
+    keep the old access key and become stale after this wipe/install.
     """
     access_key, secret_key = _read_external_credentials(parameters)
     _validate_s3_key_pair(access_key, secret_key)
