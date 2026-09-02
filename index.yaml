@@ -2,9 +2,9 @@ apiVersion: v1
 entries:
   vast-common:
   - apiVersion: v2
-    created: "2026-09-01T22:27:27.90512735+03:00"
+    created: "2026-09-02T03:13:39.312455942+03:00"
     description: Shared Helm template library for VAST Data public charts
-    digest: a54503e95bb4ec3492e04fd0cc499731e7263591015e237090974bdf010dc21c
+    digest: 6080db7e1ae0cd2fde073835c53e97c884c028af37d1b185f5fc19439f2531e8
     home: https://support.vastdata.com
     icon: https://uploads.vastdata.com/2020/04/vast-white-1.svg
     keywords:
@@ -1145,4 +1145,4 @@ entries:
     urls:
     - https://github.com/vast-data/vast-csi/releases/download/helm-vastcsi-operator-2.5.0/vastcsi-operator-2.5.0.tgz
     version: 2.5.0
-generated: "2026-09-01T22:27:27.90471775+03:00"
+generated: "2026-09-02T03:13:39.3121305+03:00"
