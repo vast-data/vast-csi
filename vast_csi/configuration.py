@@ -43,6 +43,7 @@ class Config(TypedEnv):
 
     ssl_verify = TypedEnv.Bool("X_CSI_ENABLE_VMS_SSL_VERIFICATION", default=False)
     truncate_volume_name = TypedEnv.Int("X_CSI_TRUNCATE_VOLUME_NAME", default=None)
+    truncate_snapshot_name = TypedEnv.Int("X_CSI_TRUNCATE_SNAPSHOT_NAME", default=None)
     worker_threads = TypedEnv.Int("X_CSI_WORKER_THREADS", default=10)
 
     metrics_port = TypedEnv.Int("X_CSI_METRICS_PORT", default=9090)

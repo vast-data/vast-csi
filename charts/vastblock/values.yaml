@@ -481,6 +481,10 @@ operationRetryIntervalStart: 10
 # Maximum interval between attempts.
 operationRetryIntervalMax: 60
 
+# Truncate VAST snapshot name if name length is greater than this number.
+# null disables. VMS max is 128.
+truncateSnapshotName: 128
+
 # indicates this CSI driver requires an attach operation as it implements the `ControllerPublishVolume`
 # if set to false, the driver will perform `ControllerPublishVolume` as a part of NodePublishVolume op
 # which might speed up the volume attach operation significantly but not appropriate for workload nodes where
