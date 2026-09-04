@@ -155,7 +155,6 @@ NFS_SKIP_PATTERNS = (
     "(ntfs)",
     "(xfs)",
     "[slow]",
-    "ephemeral-volume",
     "mount options",
 )
 
@@ -164,25 +163,31 @@ BLOCK_KEYWORDS = (
     "persistence",
     "should store data",
     "volumemode",
+    "csi ephemeral-volume",
+    "generic ephemeral-volume",
+    "snapshot",
+    "pvc data source",
+    "controller expansion",
+    "volume-expand",
+    "rox mode",
 )
+# Only skip what we do not advertise / cannot run via external YAML.
+# Snapshot, clone, expansion, ROX, CSI EV, generic EV, mount options are supported.
 BLOCK_SKIP_PATTERNS = (
     "topology",
     "volume limits",
-    "node expansion",
     "single node volume",
     "[feature:windows]",
     "[slow]",
-    "ephemeral-volume",
-    "mount options",
-    "snapshot",
-    "clone",
-    "rox mode",
-    "volume-expand",
-    "allowexpansion",
+    # In-tree InlineVolume VolType — external YAML never supports it.
+    "inline-volume",
+    # External YAML has no PreprovisionedPV API.
+    "pre-provisioned",
+    # Upstream hard-skip for raw block volmode.
+    "mount multiple pv",
+    # Not advertised in DriverInfo.
     "fsgroup",
-    "pvc data source",
     "capacity",
-    "(default fs)",
 )
 
 
@@ -777,7 +782,13 @@ def ensure_csi_resources(cfg: RunnerConfig) -> None:
         )
         # Snapshot restore of a 15Gi+ golden image exceeds the chart default 15s gRPC timeout.
         .with_operation_timeout(300)
+        # Global VMS secret: required for CSI InlineVolumes (OpenShift external suite
+        # cannot pass nodePublishSecretRef in InlineVolumes YAML).
+        .with_global_secret(secret_name=cluster_name, endpoint=endpoint)
     )
+    if cfg.profile == "block":
+        # Enforce OS-level ro mounts for ReadOnlyMany block filesystem volumes.
+        driver = driver.with_allow_ro_many_block_fs_mode(True)
     if cfg.profile == "nfs":
         driver = driver.with_deletion_resources(cfg.vast_vip_pool, cfg.vast_view_policy)
     k8s.vastclusters.apply([cluster.result()])

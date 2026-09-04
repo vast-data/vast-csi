@@ -1253,7 +1253,7 @@ class KubeVirtStorageCheckup:
             _print("[OK] All components ready — golden image should be discovered")
         else:
             _print("[FAIL] Golden image will NOT be discovered by kubevirt-storage-checkup")
-            _print("       Run: python3 tests/certification/redhat-e2e/run_kubevirt.py")
+            _print("       Run: python3 tests/certification/redhat-e2e/run_certification.py kubevirt")
         return ready
 
     def verify_golden_image(self) -> None:

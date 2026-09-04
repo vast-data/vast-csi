@@ -28,6 +28,19 @@ class VastCSIDriverBuilder(Builder):
         self._body.setdefault("spec", {})["operationTimeout"] = seconds
         return self
 
+    def with_global_secret(self, secret_name: str, endpoint: str = "") -> "VastCSIDriverBuilder":
+        """Mount VMS credentials for CSI inline ephemeral volumes (no nodePublishSecretRef)."""
+        spec = self._body.setdefault("spec", {})
+        spec["secretName"] = secret_name
+        if endpoint:
+            spec["endpoint"] = endpoint
+        return self
+
+    def with_allow_ro_many_block_fs_mode(self, enabled: bool = True) -> "VastCSIDriverBuilder":
+        """Allow ReadOnlyMany mounts of the same block filesystem volume across nodes."""
+        self._body.setdefault("spec", {})["allowROManyBlockFsMode"] = enabled
+        return self
+
     def with_deletion_resources(self, vip_pool: str, view_policy: str) -> "VastCSIDriverBuilder":
         """Fallback for volume delete when Trash API is unavailable (matches helm e2e defaults)."""
         self._body.setdefault("spec", {}).update({

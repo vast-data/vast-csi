@@ -3,24 +3,28 @@
 This suite is intentionally isolated from normal pytest tests.
 Run it explicitly as a standalone certification workflow.
 
-It mirrors the Orion OpenShift operator certification flow under
-`orion/pysrc/tests/csi/openshift/scripts/redhat-e2e/`.
+**Single entry point:** `run_certification.py` — run **one** suite at a time (`nfs`, `block`, or `kubevirt`).
 
 ## Suites
 
-| Suite | Entry point | Output folder |
-|-------|-------------|---------------|
-| NFS CSI | `run_csi.py --profile nfs` | `output/nfs/<timestamp>/` |
-| Block CSI | `run_csi.py --profile block` | `output/block/<timestamp>/` |
-| KubeVirt | `run_kubevirt.py` | `output/kubevirt/<timestamp>/` |
-
-Use the orchestrator to run one or all suites:
+| Suite | Command | Output folder |
+|-------|---------|---------------|
+| NFS CSI | `run_certification.py nfs` | `output/nfs/<timestamp>/` |
+| Block CSI | `run_certification.py block` | `output/block/<timestamp>/` |
+| KubeVirt | `run_certification.py kubevirt` | `output/kubevirt/<timestamp>/` |
 
 ```bash
-python3 tests/certification/redhat-e2e/run_certification.py nfs
-python3 tests/certification/redhat-e2e/run_certification.py block
-python3 tests/certification/redhat-e2e/run_certification.py kubevirt
-python3 tests/certification/redhat-e2e/run_certification.py all
+python3 tests/certification/redhat-e2e/run_certification.py nfs --vast-endpoint <vast-mgmt>
+python3 tests/certification/redhat-e2e/run_certification.py block --vast-endpoint <vast-mgmt>
+python3 tests/certification/redhat-e2e/run_certification.py kubevirt --vast-endpoint <vast-mgmt>
+```
+
+Or via Make:
+
+```bash
+make -C tests cert-nfs VAST_ENDPOINT=<vast-mgmt>
+make -C tests cert-block VAST_ENDPOINT=<vast-mgmt>
+make -C tests cert-kubevirt VAST_ENDPOINT=<vast-mgmt>
 ```
 
 ## What each suite does
@@ -41,47 +45,32 @@ python3 tests/certification/redhat-e2e/run_certification.py all
 - NFS trash folder: `clusters.ensure_trash_state(True)` so DeleteVolume uses Trash API (same as e2e `system` fixture)
 - NFS `VastCSIDriver`: sets `deletionVipPool` / `deletionViewPolicy` (fallback when Trash API is unavailable)
 - All profiles set `blockingClones: true` on `VastStorage` so volume clones wait for GSS completion before provisioning returns (NFS, block, and KubeVirt via shared `ensure_profile_stack()`)
+- Block sets `allowROManyBlockFsMode: true` on `VastCSIDriver` so ReadOnlyMany block filesystem mounts are enforced read-only at the OS level
 
 ### KubeVirt
 
-- Runs the Red Hat-required KubeVirt storage checkup in Python via `run_kubevirt.py` and `kubevirt_checkup.py` (uses `tests/lib` `make_k8s`, namespaces, StorageClasses, and generic apply)
+- Runs the Red Hat-required KubeVirt storage checkup (`kubevirt_checkup.py`)
 - Collects the checkup ConfigMap, logs, and cluster metadata
-- Ensures the same VAST CR stack as NFS CSI via shared `ensure_profile_stack()` (whichever suite runs first creates `vastdata-filesystem`)
-- **Golden image:** Fedora CoreOS qemu image via HTTP (15Gi PVC) plus DataImportCron. `cloneStrategy: snapshot` so CDI clones via CSI VolumeSnapshots.
-- Makes `vastdata-filesystem` the unique default StorageClass and clears `storageclass.kubernetes.io/is-default-class` on every other class (CRC's `crc-csi-hostpath-provisioner` included).
+- Ensures the same VAST CR stack as NFS CSI via shared `ensure_profile_stack()`
+- **Golden image:** Alpine (or configured) image via HTTP plus DataImportCron. `cloneStrategy: snapshot` so CDI clones via CSI VolumeSnapshots.
+- Makes `vastdata-filesystem` the unique default StorageClass and clears `storageclass.kubernetes.io/is-default-class` on every other class
 
-## Run examples
-
-NFS CSI:
+## Useful flags
 
 ```bash
-python3 tests/certification/redhat-e2e/run_csi.py --profile nfs --vast-endpoint <vast-mgmt-ip-or-fqdn>
+# CSI: list selected tests without running
+python3 tests/certification/redhat-e2e/run_certification.py nfs --list-only --vast-endpoint <vast-mgmt>
+
+# KubeVirt: cleanup previous job/VMs (keeps golden image)
+python3 tests/certification/redhat-e2e/run_certification.py kubevirt --cleanup-first --vast-endpoint <vast-mgmt>
+
+# KubeVirt: force golden-image reimport
+python3 tests/certification/redhat-e2e/run_certification.py kubevirt --reimport-golden-image --vast-endpoint <vast-mgmt>
 ```
 
-Block CSI:
+Default VAST credentials are `admin` / `123456`.
 
-```bash
-python3 tests/certification/redhat-e2e/run_csi.py --profile block \
-  --vast-endpoint <vast-mgmt-ip-or-fqdn>
-```
-
-Default VAST credentials are hardcoded as `admin` / `123456`.
-
-KubeVirt on NFS (`vastdata-filesystem`):
-
-```bash
-python3 tests/certification/redhat-e2e/run_kubevirt.py
-```
-
-List-only mode for CSI:
-
-```bash
-python3 tests/certification/redhat-e2e/run_csi.py --profile nfs --list-only
-```
-
-## Endpoint setup
-
-Preferred:
+Preferred endpoint setup:
 
 ```bash
 export VAST_ENDPOINT=<vast-mgmt-ip-or-fqdn>
@@ -92,8 +81,21 @@ Every run applies the CSI CR stack (`VastCluster` / `VastStorage` / `VastCSIDriv
 
 ## Manifests
 
-- NFS: `manifest-nfs.yaml` (uses `vers=4.1` mount option)
-- Block: `manifest-block.yaml`
+- NFS: `manifest-nfs.yaml` (uses `vers=4.1` mount option; `capReadOnlyMany: true` for ROX snapshot restore)
+- Block: `manifest-block.yaml` (ext3/ext4/xfs; CSI EV; snapshot/clone/expansion/ROX enabled; `allowROManyBlockFsMode`)
+
+### Tests that cannot be enabled via external YAML
+
+OpenShift’s external storage harness hard-skips these regardless of driver support:
+
+- **Block multi-PV same storage (block volmode)** — upstream skip for raw block mode
+- **Pre-provisioned PV** — external YAML driver definition has no PreprovisionedPV API
+- **Inline-volume (*)** — in-tree `InlineVolume` VolType; not the same as CSI EV. Use **CSI Ephemeral-volume** instead (enabled via `InlineVolumes` in the manifest)
+- **NFS Dynamic Snapshot × ephemeral / Ephemeral Snapshot × persistent** — framework pattern mismatches (matching variants already run)
+
+The cert runner filters unenableable patterns out of block selection so they do not appear as `skipped` in `summary.json`.
+
+CSI InlineVolumes require `VastCSIDriver.spec.secretName` (wired automatically to the VastCluster secret); the OpenShift suite cannot pass `nodePublishSecretRef` in the manifest.
 
 ## Output policy
 
@@ -121,10 +123,11 @@ When a new run starts for a profile, previous results in that profile folder are
 - For block: NVMe-oF subsystem `myblock` is created on the VAST cluster automatically via VMS API before applying CRs (see `tests/lib/constants.py`: `BLOCK_SUBSYSTEM`)
 - For KubeVirt: nested virtualization or emulation enabled on the CRC host (`virtctl` is **not** required)
 
-## KubeVirt helpers
+## Layout
 
-- `python3 tests/certification/redhat-e2e/run_kubevirt.py` — NFS storage checkup (reuses a Bound golden image; does not re-download or re-convert)
-- `python3 tests/certification/redhat-e2e/run_kubevirt.py --cleanup-first` — delete previous checkup job/VMs only; keeps the golden image
-- `python3 tests/certification/redhat-e2e/run_kubevirt.py --reimport-golden-image` — force download/convert again
-- `python3 tests/certification/redhat-e2e/cleanup_kubevirt.py` — delete checkup job/VMs and golden-image resources (add `--keep-golden-image` to keep the converted image)
-- `python3 tests/certification/redhat-e2e/verify_golden_image.py` — verify DataSource, Bound PVC, and DataImportCron UpToDate
+| File | Role |
+|------|------|
+| `run_certification.py` | **Only** CLI entry point |
+| `csi_runner.py` | Shared NFS/block CSI suite logic |
+| `kubevirt_checkup.py` | KubeVirt storage checkup implementation |
+| `manifest-*.yaml` | OpenShift external-storage driver definitions |

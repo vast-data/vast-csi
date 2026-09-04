@@ -5,6 +5,14 @@ StorageClass:
 SnapshotClass:
   FromExistingClassName: vastdata-block
 
+InlineVolumes:
+- Attributes:
+    size: "1Gi"
+    subsystem: "myblock"
+    vip_pool_name: "vippool-1"
+  Shared: false
+  ReadOnly: false
+
 Timeouts:
   Poll: "2s"
   PodStart: "5m"
@@ -36,18 +44,20 @@ DriverInfo:
   SupportedFsType:
     xfs: {}
     ext4: {}
+    ext3: {}
   SupportedMountOption:
     noatime: {}
   Capabilities:
     persistence: true
     fsGroup: false
     block: true
-    exec: false
+    exec: true
     volumeLimits: false
-    controllerExpansion: false
-    nodeExpansion: false
+    controllerExpansion: true
+    nodeExpansion: true
     singleNodeVolume: false
     RWX: false
+    capReadOnlyMany: true
     topology: false
-    snapshotDataSource: false
-    pvcDataSource: false
+    snapshotDataSource: true
+    pvcDataSource: true
