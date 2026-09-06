@@ -286,9 +286,12 @@ class TestReplicationRole:
         assert not ReplicationRole.NA.is_transitional()
         assert not ReplicationRole.UNKNOWN.is_transitional()
         
-        # All BECOMING_* states should be transitional
+        # All BECOMING_* / GRACEFULLY_BECOMING_* states should be transitional
+        assert ReplicationRole.BECOMING_SOURCE.is_transitional()
         assert ReplicationRole.BECOMING_STANDALONE.is_transitional()
         assert ReplicationRole.BECOMING_DESTINATION.is_transitional()
+        assert ReplicationRole.GRACEFULLY_BECOMING_SOURCE.is_transitional()
+        assert ReplicationRole.GRACEFULLY_BECOMING_DESTINATION.is_transitional()
         assert ReplicationRole.BECOMING_SOURCE_ASK_FOR_SOURCE.is_transitional()
         assert ReplicationRole.BECOMING_SOURCE_ATTACHING_MEMBERS.is_transitional()
         assert ReplicationRole.BECOMING_SOURCE_FAILING_OVER_STANDBY_PEERS.is_transitional()
