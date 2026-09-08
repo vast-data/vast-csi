@@ -1,6 +1,8 @@
 # COSI S3 lifecycle rules on BucketClass (VCSI-327).
 # Wire key lifecycle_rules is a JSON string (Helm uses lifecycleRules list → same JSON).
 # Rules apply at bucket create; removed on bucket delete. BucketClass is immutable.
+# Use day-based actions (expiration_days, …). Do not use expiration_date: VMS REST
+# create rejects date-only rules (HTTP 400).
 #
 # Prerequisites: VAST S3 lifecycle API available on the cluster.
 apiVersion: objectstorage.k8s.io/v1alpha1
