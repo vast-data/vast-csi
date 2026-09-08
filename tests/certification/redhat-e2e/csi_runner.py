@@ -145,7 +145,11 @@ NFS_KEYWORDS = (
     "controller expansion",
     "snapshot",
 )
-NFS_SKIP_PATTERNS = (
+# Skip rules: a str matches as substring; a tuple means ALL parts must match (AND).
+# Use AND rules for upstream matrix mismatches so we do not drop the passing half.
+SkipRule = str | tuple[str, ...]
+
+NFS_SKIP_PATTERNS: tuple[SkipRule, ...] = (
     "block",
     "topology",
     "volume limits",
@@ -156,6 +160,11 @@ NFS_SKIP_PATTERNS = (
     "(xfs)",
     "[slow]",
     "mount options",
+    # Upstream snapshottable.go VolType matrix: ephemeral It only for GenericEphemeralVolume,
+    # persistent It only for non-ephemeral. Matching halves still run and pass.
+    ("Dynamic Snapshot", "check deletion (ephemeral)"),
+    ("Pre-provisioned Snapshot", "check deletion (ephemeral)"),
+    ("Ephemeral Snapshot", "check deletion (persistent)"),
 )
 
 BLOCK_KEYWORDS = (
@@ -173,7 +182,7 @@ BLOCK_KEYWORDS = (
 )
 # Only skip what we do not advertise / cannot run via external YAML.
 # Snapshot, clone, expansion, ROX, CSI EV, generic EV, mount options are supported.
-BLOCK_SKIP_PATTERNS = (
+BLOCK_SKIP_PATTERNS: tuple[SkipRule, ...] = (
     "topology",
     "volume limits",
     "single node volume",
@@ -188,6 +197,10 @@ BLOCK_SKIP_PATTERNS = (
     # Not advertised in DriverInfo.
     "fsgroup",
     "capacity",
+    # Upstream suite hard-skips (never meaningful for this pattern/volmode).
+    ("CSI Ephemeral-volume", "should support expansion of pvcs created for ephemeral pvcs"),
+    ("block volmode", "should provision storage with mount options"),
+    ("block volmode", "filesystem size when restoring snapshot"),
 )
 
 
@@ -197,7 +210,7 @@ class ProfileDefaults:
     manifest: str
     output_subdir: str
     keywords: tuple[str, ...]
-    skip_patterns: tuple[str, ...]
+    skip_patterns: tuple[SkipRule, ...]
     vast_cluster_name: str
     vast_storage_name: str
     vast_csi_driver_name: str
@@ -248,7 +261,7 @@ class RunnerConfig:
     image: str
     suite: str
     keywords: tuple[str, ...]
-    skip_patterns: tuple[str, ...]
+    skip_patterns: tuple[SkipRule, ...]
     max_tests: int
     list_only: bool
     csi_namespace: str
@@ -356,11 +369,27 @@ def _contains_any(text: str, words: Iterable[str]) -> bool:
     return any(word.lower() in lower for word in words)
 
 
-def select_tests(candidates: list[str], keywords: tuple[str, ...], skip_patterns: tuple[str, ...], max_tests: int) -> list[str]:
+def _matches_skip_rule(text: str, rule: SkipRule) -> bool:
+    lower = text.lower()
+    if isinstance(rule, tuple):
+        return all(part.lower() in lower for part in rule)
+    return rule.lower() in lower
+
+
+def _matches_any_skip(text: str, rules: Iterable[SkipRule]) -> bool:
+    return any(_matches_skip_rule(text, rule) for rule in rules)
+
+
+def select_tests(
+    candidates: list[str],
+    keywords: tuple[str, ...],
+    skip_patterns: tuple[SkipRule, ...],
+    max_tests: int,
+) -> list[str]:
     filtered = [
         test
         for test in candidates
-        if _contains_any(test, keywords) and not _contains_any(test, skip_patterns)
+        if _contains_any(test, keywords) and not _matches_any_skip(test, skip_patterns)
     ]
     return filtered[:max_tests]
 
