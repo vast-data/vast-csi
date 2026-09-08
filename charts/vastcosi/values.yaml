@@ -73,6 +73,10 @@ bucketClasses: {}
 #     # One rule per list element on the bucket's view; removed on bucket delete.
 #     # Rules apply at create only (BucketClass is immutable).
 #     # Rule names must be unique. Unknown keys are rejected.
+#     # Use day-based actions (expiration_days, noncurrent_days,
+#     # abort_mpu_days_after_initiation, expired_obj_delete_marker).
+#     # Do not use expiration_date: VMS REST create rejects date-only rules
+#     # with HTTP 400 "Please provide at least one expiration rule".
 #     lifecycleRules:
 #       - name: expire-logs
 #         expiration_days: 30
