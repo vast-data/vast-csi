@@ -57,6 +57,30 @@ class XprtsecValidationError(Abort):
         return self._message
 
 
+class BlockHostNqnConflict(Abort):
+    """Existing VMS block host NQN does not match the NQN required for publish."""
+
+    def __init__(self, name: str, tenant_name: str, existing_nqn: str, required_nqn: str):
+        self.name = name
+        self.tenant_name = tenant_name
+        self.existing_nqn = existing_nqn
+        self.required_nqn = required_nqn
+
+    @property
+    def code(self):
+        return grpc.StatusCode.FAILED_PRECONDITION
+
+    @property
+    def message(self):
+        return (
+            f"Block host {self.name!r} (tenant {self.tenant_name!r}) already "
+            f"exists with NQN {self.existing_nqn!r}, but publish requires "
+            f"{self.required_nqn!r}. Unpublish volumes for this node/tenant, "
+            f"delete or auto-prune the VMS block host, then republish so the "
+            f"required NQN can be registered."
+        )
+
+
 class MountFailed(TException):
     template = "Mounting {src} failed"
 

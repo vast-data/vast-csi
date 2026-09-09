@@ -229,3 +229,114 @@ def test_publish_rejects_obfuscation_without_seed(
         )
     assert "host_nqn_seed is missing" in exc.value.message
     publish_session.blockhosts.ensure.assert_not_called()
+
+
+def test_publish_surfaces_blockhost_nqn_conflict(
+    publish_session, publish_conf, volume_capabilities
+):
+    from vast_csi.block_utils import compute_block_host_nqn
+    from vast_csi.exceptions import BlockHostNqnConflict
+
+    expected = compute_block_host_nqn(
+        prefix=NQN_PREFIX, tenant_name=NQN_TENANT, block_host_name=NQN_HOST, seed=NQN_SEED
+    )
+    legacy = f"{NQN_PREFIX}{NQN_TENANT}:{NQN_HOST}"
+    publish_session.blockhosts.ensure = MagicMock(
+        side_effect=BlockHostNqnConflict(
+            name=NQN_HOST,
+            tenant_name=NQN_TENANT,
+            existing_nqn=legacy,
+            required_nqn=expected,
+        )
+    )
+    caps = volume_capabilities(
+        mode=types.AccessModeType.SINGLE_NODE_WRITER, access_type="block"
+    )
+    with pytest.raises(BlockHostNqnConflict) as exc:
+        BlockController().ControllerPublishVolume(
+            vms_session=publish_session,
+            node_id=NQN_HOST,
+            volume_id="vol-1",
+            volume_capability=caps[0],
+            exit_stack=ExitStack(),
+            volume_context=_publish_volume_context(host_nqn_obfuscation="true"),
+            secrets={"host_nqn_seed": NQN_SEED},
+        )
+    assert legacy in exc.value.message
+    assert expected in exc.value.message
+    publish_session.blockhostmappings.ensure_map_exclusive.assert_not_called()
+
+
+def _blockhost_resource(sw_version="5.3.0"):
+    from easypy.semver import SemVer
+    from vast_csi.session.resources import BlockHost
+
+    session = MagicMock()
+    session.versions.get_sw_version.return_value = SemVer.loads_fuzzy(sw_version)
+    return BlockHost(session), session
+
+
+def test_blockhost_ensure_rejects_existing_nqn_mismatch():
+    from vast_csi.exceptions import BlockHostNqnConflict
+    from vast_csi.csi_types import FAILED_PRECONDITION
+
+    resource, session = _blockhost_resource()
+    legacy = f"{NQN_PREFIX}{NQN_TENANT}:{NQN_HOST}"
+    required = f"{NQN_PREFIX}{NQN_TENANT}:deadbeefcafebabe0123456789abcdef"
+    resource.one = MagicMock(return_value=Bunch(id=2, nqn=legacy))
+
+    with pytest.raises(BlockHostNqnConflict) as exc:
+        resource.ensure(
+            node_id=NQN_HOST,
+            transport_type="TCP",
+            tenant_name=NQN_TENANT,
+            subsystem="mysub",
+            nqn=required,
+        )
+    assert exc.value.code == FAILED_PRECONDITION
+    assert legacy in exc.value.message
+    assert required in exc.value.message
+    session.post.assert_not_called()
+
+
+def test_blockhost_ensure_returns_existing_when_nqn_matches():
+    resource, _session = _blockhost_resource()
+    nqn = f"{NQN_PREFIX}{NQN_TENANT}:{NQN_HOST}"
+    existing = Bunch(id=2, nqn=nqn)
+    resource.one = MagicMock(return_value=existing)
+
+    got = resource.ensure(
+        node_id=NQN_HOST,
+        transport_type="TCP",
+        tenant_name=NQN_TENANT,
+        subsystem="mysub",
+        nqn=nqn,
+    )
+    assert got is existing
+
+
+def test_blockhost_ensure_rejects_nqn_mismatch_on_create_race():
+    from vast_csi.exceptions import ApiError, BlockHostNqnConflict
+
+    resource, session = _blockhost_resource()
+    legacy = f"{NQN_PREFIX}{NQN_TENANT}:{NQN_HOST}"
+    required = f"{NQN_PREFIX}{NQN_TENANT}:deadbeefcafebabe0123456789abcdef"
+    resource.one = MagicMock(
+        side_effect=[None, Bunch(id=2, nqn=legacy)]
+    )
+    session.views.get_subsystem.return_value = Bunch(tenant_id=1)
+    response = MagicMock()
+    response.status_code = 400
+    response.text = "unique_block_host_name_per_tenant"
+    resource.create = MagicMock(side_effect=ApiError(response=response))
+
+    with pytest.raises(BlockHostNqnConflict) as exc:
+        resource.ensure(
+            node_id=NQN_HOST,
+            transport_type="TCP",
+            tenant_name=NQN_TENANT,
+            subsystem="mysub",
+            nqn=required,
+        )
+    assert legacy in exc.value.message
+    assert required in exc.value.message
