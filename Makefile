@@ -210,8 +210,8 @@ install-replication-crds: ## Install VolumeReplication CRDs and Operator (comple
 ######################
 # PUBLIC HELM CHARTS
 ######################
-CHART_DIRS := charts/common charts/vastcsi charts/vastblock charts/vastcosi
-PUBLIC_CHART_DIRS := charts/vastcsi charts/vastblock charts/vastcosi
+CHART_DIRS := charts/common charts/vastcsi charts/vastblock charts/vastcosi charts/vastcsi-gke
+PUBLIC_CHART_DIRS := charts/vastcsi charts/vastblock charts/vastcosi charts/vastcsi-gke
 CHART_TEMPLATE_ARGS := --set endpoint=render-smoke
 
 .PHONY: chart-deps chart-deps-update chart-lint chart-template render-smoke

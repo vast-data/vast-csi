@@ -4,12 +4,13 @@ selected release group.
 
 Release groups:
   public — vastcsi, vastcosi, vastblock → gh-pages (or gh-pages-beta)
+  gke    — vastcsi-gke → gke-gh-pages
 
-Public charts vendor charts/common via file://../common before this script runs.
+Public/GKE charts vendor charts/common via file://../common before this script runs.
 Pruning that library afterwards is required so chart-releaser does not publish it.
-The common chart is a library dependency only and is never released on its own.
 
 Beta/hotfix/stable versioning applies to public releases on version branches.
+GKE releases use version.txt. The library version lives in charts/common/Chart.yaml.
 """
 import argparse
 import os
@@ -25,6 +26,9 @@ RELEASE_GROUPS = {
         CHARTS_ROOT / "vastcsi" / "Chart.yaml",
         CHARTS_ROOT / "vastcosi" / "Chart.yaml",
         CHARTS_ROOT / "vastblock" / "Chart.yaml",
+    ],
+    "gke": [
+        CHARTS_ROOT / "vastcsi-gke" / "Chart.yaml",
     ],
 }
 
@@ -71,9 +75,15 @@ def prepare_release(release_group: str) -> None:
     is_hotfix = "-hf" in branch
 
     release_name_template = "helm-{{ .Name }}-{{ .Version }}"
-    pages_branch = "gh-pages-beta" if is_beta else "gh-pages"
+    pages_branch = (
+        "gke-gh-pages"
+        if release_group == "gke"
+        else ("gh-pages-beta" if is_beta else "gh-pages")
+    )
 
-    if is_hotfix:
+    if release_group == "gke":
+        version = base_version
+    elif is_hotfix:
         version = branch.lstrip("v")
     elif is_beta:
         version = f"{base_version}-beta.{sha}"
