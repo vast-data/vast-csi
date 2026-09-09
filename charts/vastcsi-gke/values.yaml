@@ -388,7 +388,7 @@ controller:
     # https://github.com/kubernetes-csi/external-resizer#recommended-optional-arguments
     csiResizer: []
   # priorityClassName is the name of priority class to be used for the pod.
-  priorityClassName: system-cluster-critical
+  priorityClassName: ""
   # Metrics configuration for CSI controller
   # Usage: see docs/METRICS_GUIDE.md (Prometheus Operator vs manual Prometheus)
   metrics:
@@ -451,8 +451,8 @@ node:
       requests:
         cpu: 10m
         memory: 64Mi
-  # See controller.priorityClassName section for details
-  priorityClassName: system-node-critical
+  # priorityClassName is the name of priority class to be used for the pod.
+  priorityClassName: ""
   # Runs NFS client daemons in-container for NFS locking/idmap on node OSes
   # that lack them (e.g. VKS, NKP). Safe to enable anywhere: each daemon is
   # started only if the host does not already provide it.
