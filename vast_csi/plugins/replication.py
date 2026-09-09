@@ -101,7 +101,8 @@ class ReplicationRole(StrEnum):
         return self == ReplicationRole.DESTINATION
 
     def is_transitional(self) -> bool:
-        return self.value.startswith("BECOMING_")
+        # Covers BECOMING_* and GRACEFULLY_BECOMING_*.
+        return "BECOMING" in self.value
 
     def is_standalone(self) -> bool:
         return self == ReplicationRole.STANDALONE
@@ -476,8 +477,8 @@ class BaseReplicationController(replication_pb2_grpc.ControllerServicer):
         switching roles; ungraceful switches immediately.
 
         For graceful failover the method raises ``ABORTED`` when the role has
-        not yet settled
-        allowing the CSI controller to retry until the transition completes.
+        not yet settled, allowing the CSI controller to retry until the
+        transition completes.
 
         For ungraceful failover the flow spans two retry rounds:
 
@@ -511,6 +512,15 @@ class BaseReplicationController(replication_pb2_grpc.ControllerServicer):
             f"{self.volume_type}: {vms_session!r} - "
             f"protected path {ppath_name!r}, current role: {current_role.value!r}"
         )
+
+        # Already mid-failover - retry.
+        if current_role.is_transitional():
+            raise Abort(
+                types.ABORTED,
+                f"{vms_session} - protected path {ppath_name!r} "
+                f"failover transition is still in progress. "
+                f"Current role: {current_role.value!r}. Waiting...",
+            )
 
         if current_role.is_destination():
             with locked.with_message(
@@ -633,6 +643,17 @@ class BaseReplicationController(replication_pb2_grpc.ControllerServicer):
         ppath = vms_session.protectedpaths.wait(name=ppath_name)
 
         current_role = ReplicationRole.from_string(ppath.get("role"))
+
+        # Failover may still be in flight (csi-addons Resync on old SOURCE races
+        # Promote). Abort/wait rather than no-op ready=True or calling replicate_now.
+        if current_role.is_transitional():
+            raise Abort(
+                types.ABORTED,
+                f"{vms_session} - protected path {ppath_name!r} "
+                f"failover transition is still in progress. "
+                f"Current role: {current_role.value!r}. Waiting...",
+            )
+
         if not current_role.is_source():
             logger.info(
                 f"{self.volume_type}: Local cluster {vms_session!r} is not SOURCE "
@@ -653,11 +674,12 @@ class BaseReplicationController(replication_pb2_grpc.ControllerServicer):
             )
 
         time_expires_local, time_expires_target = _parse_policy_timestamps(ppolicy)
-        vms_session.protectedpaths.replicate_now(
-            protected_path_id=ppath.id,
-            time_expires_local=time_expires_local,
-            time_expires_target=time_expires_target,
-        )
+        with to_abort():
+            vms_session.protectedpaths.replicate_now(
+                protected_path_id=ppath.id,
+                time_expires_local=time_expires_local,
+                time_expires_target=time_expires_target,
+            )
         logger.info(
             f"{self.volume_type}: Resync triggered for protected path {ppath_name!r}"
         )
