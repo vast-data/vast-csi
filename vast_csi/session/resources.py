@@ -357,6 +357,32 @@ class S3LifecycleRule(VastResource):
 class View(VastResource):
     resource_name = "views"
 
+    @staticmethod
+    def bucket_path(root_export, bucket_name: str) -> str:
+        """Build VMS view path for a COSI bucket under root_export."""
+        root = str(root_export or "").strip().strip("/")
+        return f"/{root}/{bucket_name}" if root else f"/{bucket_name}"
+
+    def delete_by_id(self, _id, force_if_not_empty=False, **params):
+        """Delete view by id.
+
+        When ``force_if_not_empty`` is True (COSI bucket delete), retry with
+        ``force=True`` on HTTP 409 not-empty. Default False so NFS / temp views
+        keep failing closed on conflict.
+        """
+        try:
+            return super().delete_by_id(_id=_id, **params)
+        except HTTPError as exc:
+            body = (getattr(exc.response, "text", None) or "").lower()
+            if (
+                force_if_not_empty
+                and exc.response.status_code == 409
+                and "not empty" in body
+            ):
+                logger.warning(f"View {_id} is not empty, retrying delete with force=True.")
+                return super().delete_by_id(_id=_id, params={"force": True}, **params)
+            raise
+
     def ensure(self, path, protocols, view_policy, qos_policy, create_dir=True, qos_policy_id=None):
         if not (view := self.one(path=str(path), policy__name=view_policy)):
             view_policy = self.session.viewpolicies.one(name=view_policy, fail_if_missing=True)
@@ -403,8 +429,7 @@ class View(VastResource):
             tenant_id = view_policy.tenant_id
         else:
             kwargs.pop("view_policy", None)
-        root_export = root_export.strip("/")
-        path = f"/{root_export}/{bucket_name}" if root_export else f"/{bucket_name}"
+        path = self.bucket_path(root_export, bucket_name)
 
         if "SMB" in protocols:
             kwargs["share"] = os.path.basename(path)

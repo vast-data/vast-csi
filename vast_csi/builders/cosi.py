@@ -17,6 +17,7 @@ from vast_csi.cosi_owner import (
 from vast_csi.csi_types import ALREADY_EXISTS, INVALID_ARGUMENT, NOT_FOUND
 from vast_csi.exceptions import Abort, ApiError, MissingParameter
 from vast_csi.quantity import parse_quantity
+from vast_csi.session.resources import View
 from vast_csi.session.vms_session import VmsSession
 
 _VMS_NAME_MAX_LEN = 64
@@ -408,8 +409,7 @@ class CloneBucketBuilder(BucketProvisionBase):
 
     @property
     def dest_path(self) -> str:
-        root_export = self.root_export.strip("/")
-        return f"/{root_export}/{self.name}" if root_export else f"/{self.name}"
+        return View.bucket_path(self.root_export, self.name)
 
     def build(self):
         source_view = self.vms_session.views.one(bucket=self.source_bucket)
