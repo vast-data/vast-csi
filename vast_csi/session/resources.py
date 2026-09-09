@@ -25,7 +25,7 @@ from easypy.semver import SemVer
 from easypy.collections import listify
 
 from ..logging import logger
-from ..exceptions import NoRecordsFound, ApiError, WaitResourceFailed
+from ..exceptions import NoRecordsFound, ApiError, WaitResourceFailed, BlockHostNqnConflict
 from ..utils import generate_ip_range, parse_string_parameters
 from ..lru_cache import cache_on_arguments
 from .base import apiver, requisite, CannotUseTrashAPI
@@ -743,10 +743,20 @@ class Volume(VastResource):
 class BlockHost(VastResource):
     resource_name = "blockhosts"
 
+    def _require_matching_nqn(self, blockhost, nqn, node_id, tenant_name):
+        if blockhost.nqn != nqn:
+            raise BlockHostNqnConflict(
+                name=node_id,
+                tenant_name=tenant_name,
+                existing_nqn=blockhost.nqn,
+                required_nqn=nqn,
+            )
+        return blockhost
+
     @requisite(semver="5.3.0")
     def ensure(self, node_id, transport_type, tenant_name, subsystem, nqn, **params):
         if blockhost := self.one(name=node_id, tenant_name=tenant_name):
-            return blockhost
+            return self._require_matching_nqn(blockhost, nqn, node_id, tenant_name)
         # Need to determine the tenant_id from the subsystem
         view = self.session.views.get_subsystem(
             subsystem=subsystem,
@@ -772,6 +782,9 @@ class BlockHost(VastResource):
                 )
             )
             if is_duplicate and (blockhost := self.one(name=node_id, tenant_name=tenant_name)):
+                blockhost = self._require_matching_nqn(
+                    blockhost, nqn, node_id, tenant_name
+                )
                 logger.info(
                     "Block host %r (tenant=%r) already exists; using existing entry",
                     node_id,
