@@ -38,26 +38,6 @@ spec:
         nodeAffinity:
           {{- toYaml .Values.controller.nodeAffinity | nindent 10 }}
       containers:
-        - name: csi-provisioner
-          image: {{ include "vast.common.image" (dict "root" $ "image" $csi_images.csiProvisioner) }}
-          args:
-{{- include "vast.common.csi.args" . | nindent 12 }}
-            - "--extra-create-metadata"
-            - "--timeout={{ .Values.operationTimeout }}s"
-            - "--worker-threads={{ .Values.numWorkers }}"
-            - "--retry-interval-start={{ .Values.operationRetryIntervalStart }}s"
-            - "--retry-interval-max={{ .Values.operationRetryIntervalMax }}s"
-            {{- range .Values.controller.extraArgs.csiProvisioner }}
-            - "--{{ . }}"
-            {{- end }}
-          env:
-            - name: ADDRESS
-              value: {{ $plugin_proxy_sock }}
-          imagePullPolicy: {{ $csi_images.csiProvisioner.imagePullPolicy | default  "IfNotPresent" }}
-          volumeMounts:
-            - name: socket-dir
-              mountPath: {{ $plugin_proxy_sock_path }}
-          resources: {{- toYaml .Values.controller.resources.csiProvisioner | nindent 12 }}
         - name: csi-attacher
           image: {{ include "vast.common.image" (dict "root" $ "image" $csi_images.csiAttacher) }}
           args:
@@ -98,26 +78,6 @@ spec:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
           resources: {{- toYaml .Values.controller.resources.csiSnapshotter | nindent 12 }}
-        - name: csi-resizer
-          image: {{ include "vast.common.image" (dict "root" $ "image" $csi_images.csiResizer) }}
-          args:
-{{- include "vast.common.csi.args" . | nindent 12 }}
-            - "--timeout={{ .Values.operationTimeout }}s"
-            - "--workers={{ .Values.numWorkers }}"
-            - "--retry-interval-start={{ .Values.operationRetryIntervalStart }}s"
-            - "--retry-interval-max={{ .Values.operationRetryIntervalMax }}s"
-            - "--handle-volume-inuse-error=false"
-            {{- range .Values.controller.extraArgs.csiResizer }}
-            - "--{{ . }}"
-            {{- end }}
-          env:
-            - name: ADDRESS
-              value: {{ $plugin_proxy_sock }}
-          imagePullPolicy: {{ $csi_images.csiResizer.imagePullPolicy | default  "IfNotPresent" }}
-          volumeMounts:
-            - name: socket-dir
-              mountPath: {{ $plugin_proxy_sock_path }}
-          resources: {{- toYaml .Values.controller.resources.csiResizer | nindent 12 }}
         - name: csi-vast-plugin
           image: {{ include "vast.common.image" (dict "root" $ "image" $csi_images.csiVastPlugin) }}
           args:

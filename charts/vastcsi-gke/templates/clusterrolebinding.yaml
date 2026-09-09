@@ -3,21 +3,6 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ .Release.Name }}-vast-provisioner-binding
-  labels:
-    {{- include "vast.common.labels" . | nindent 4 }}
-subjects:
-  - kind: ServiceAccount
-    name: {{ .Release.Name }}-vast-controller-sa
-    namespace: {{ include "vast.common.namespace" . }}
-roleRef:
-  kind: ClusterRole
-  name: {{ .Release.Name }}-vast-provisioner-role
-  apiGroup: rbac.authorization.k8s.io
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
   name: {{ .Release.Name }}-vast-attacher-binding
   labels:
     {{- include "vast.common.labels" . | nindent 4 }}
@@ -33,7 +18,7 @@ roleRef:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ .Release.Name }}-resizer-role
+  name: {{ .Release.Name }}-vast-snapshotter-binding
   labels:
     {{- include "vast.common.labels" . | nindent 4 }}
 subjects:
@@ -42,7 +27,7 @@ subjects:
     namespace: {{ include "vast.common.namespace" . }}
 roleRef:
   kind: ClusterRole
-  name: {{ .Release.Name }}-external-resizer-runner
+  name: {{ .Release.Name }}-vast-snapshotter-role
   apiGroup: rbac.authorization.k8s.io
 ---
 {{- end -}}

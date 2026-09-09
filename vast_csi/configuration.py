@@ -58,6 +58,7 @@ class Config(TypedEnv):
     dont_use_trash_api = TypedEnv.Bool("X_CSI_DONT_USE_TRASH_API", default=False)
     use_local_ip_for_mount = TypedEnv.Str("X_CSI_USE_LOCALIP_FOR_MOUNT", default="")
     attach_required = TypedEnv.Bool("X_CSI_ATTACH_REQUIRED", default=True)
+    _provisioning_mode = TypedEnv.Str("X_CSI_PROVISIONING_MODE", default="dynamic")
     block_hosts_auto_prune = TypedEnv.Bool("X_CSI_BLOCK_HOSTS_AUTO_PRUNE", default=False)
     force_lazy_umount_on_timeout = TypedEnv.Bool("X_CSI_FORCE_LAZY_UMOUNT_ON_TIMEOUT", default=False)
     disable_usage_stats = TypedEnv.Bool("X_CSI_DISABLE_USAGE_STATS", default=False)
@@ -148,6 +149,17 @@ class Config(TypedEnv):
     @property
     def nfs_services_wait(self):
         return [p.strip() for p in self._nfs_services_wait.split(',') if p.strip()]
+
+    @property
+    def provisioning_mode(self):
+        mode = self._provisioning_mode.strip().lower()
+        if mode not in {"dynamic", "static"}:
+            raise ValueError(f"invalid provisioning mode: {mode}")
+        return mode
+
+    @property
+    def static_provisioning(self):
+        return self.provisioning_mode == "static"
 
     unmount_attempts = TypedEnv.Int("X_CSI_UNMOUNT_ATTEMPTS", default=10)
     fallback_to_deser = TypedEnv.Bool("X_CSI_FALLBACK_TO_DESER", default=False)

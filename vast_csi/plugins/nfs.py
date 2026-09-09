@@ -363,6 +363,11 @@ class CsiController(ControllerBase, Instrumented):
             name = string_to_static_uuid(volume_id)
             create_view = yesno_to_bool(volume_context.get("static_pv_create_views", "no"))
             create_quota = yesno_to_bool(volume_context.get("static_pv_create_quotas", "no"))
+            if CONF.static_provisioning and (create_view or create_quota):
+                raise Abort(
+                    INVALID_ARGUMENT,
+                    "Static provisioning mode cannot create VAST views or quotas",
+                )
             builder = StaticVolumeBuilder.from_parameters(
                 conf=CONF,
                 vms_session=vms_session,
@@ -582,6 +587,11 @@ class CsiNode(NodeBase, Instrumented):
             is_ephemeral := volume_context
             and volume_context.get("csi.storage.k8s.io/ephemeral") == "true"
         ):
+            if CONF.static_provisioning:
+                raise Abort(
+                    FAILED_PRECONDITION,
+                    "Ephemeral volumes are disabled when provisioningMode is static",
+                )
             if not vms_session:
                 raise Abort(
                     FAILED_PRECONDITION,
@@ -800,7 +810,8 @@ def serve(server: grpc.Server, conf: Config):
     vast_csi.plugins.base.CONF = CONF = conf
     identity = CsiIdentity()
     csi_grpc.add_IdentityServicer_to_server(identity, server)
-    identity.capabilities.append(types.ExpansionType.ONLINE)
+    if not conf.static_provisioning:
+        identity.capabilities.append(types.ExpansionType.ONLINE)
 
     if conf.mode in {CONTROLLER, CONTROLLER_AND_NODE}:
         identity.controller = CsiController()

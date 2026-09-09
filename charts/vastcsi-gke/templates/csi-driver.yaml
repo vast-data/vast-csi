@@ -3,5 +3,5 @@
   "labels" (include "vast.common.labels" .)
   "attachRequired" .Values.attachRequired
   "podInfoOnMount" true
-  "volumeLifecycleModes" (list "Persistent" "Ephemeral")
+  "volumeLifecycleModes" (list "Persistent")
 ) }}

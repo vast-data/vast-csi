@@ -13,6 +13,8 @@
   "cacheMaxAge" $root.Values.cacheMaxAgeSeconds
   "disableUsageStats" $root.Values.disableUsageStats
 ) }}
+- name: X_CSI_PROVISIONING_MODE
+  value: "static"
 - name: X_CSI_DELETION_VIP_POOL_NAME
   value: {{ $root.Values.deletionVipPool | quote }}
 - name: X_CSI_DELETION_VIEW_POLICY

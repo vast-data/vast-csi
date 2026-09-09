@@ -1,14 +1,5 @@
 {{/* Generate one or more snapshot classes from 'snapshotClasses' section.  */}}
 
-{{/* Check if .Values.secretName is not empty */}}
-{{- if not (empty .Values.secretName) }}
-
-{{/* If .Values.snapshotClasses is empty, set a default value */}}
-{{- if empty .Values.snapshotClasses }}
-{{- $_ := set .Values "snapshotClasses" (dict "vastdata-snapshot" (dict)) }}
-{{- end -}}
-{{- end -}}
-
 {{/* Iterate over SnapshotClasses from manifest */}}
 {{- range $name, $options := .Values.snapshotClasses }}
 
