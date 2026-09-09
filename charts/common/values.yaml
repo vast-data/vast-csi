@@ -1,0 +1,2 @@
+# Library chart: no configurable values. Application charts own their values.yaml.
+# This file exists so helm lint does not report a missing values.yaml.

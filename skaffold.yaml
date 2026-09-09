@@ -28,6 +28,10 @@ build:
 deploy:
   statusCheckDeadlineSeconds: 1800
   helm:
+    hooks:
+      before:
+        - host:
+            command: ["make", "chart-deps"]
     releases:
       - name: vastcsi
         chartPath: charts/vastcsi

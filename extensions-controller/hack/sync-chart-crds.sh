@@ -199,11 +199,11 @@ EOF
 
 write_full_replication_yaml() {
     local dest="$1"
-    local if_helper="$2"
+    local if_condition="$2"
     local header_note="$3"
     local setup_file="$4"
-    local csi_addons_if='{{- if include "'"${if_helper}"'" . }}'
-    local vast_if='{{- if include "'"${if_helper}"'" . }}'
+    local csi_addons_if='{{- if '"${if_condition}"' }}'
+    local vast_if='{{- if '"${if_condition}"' }}'
 
     {
         cat <<EOF
@@ -241,13 +241,13 @@ EOF
 
 write_full_replication_yaml \
     "../charts/vastblock/templates/replication.yaml" \
-    "vastcsi.extension-enabled" \
+    ".Values.extensions.enabled" \
     "Replication stack installed when extensions are enabled." \
     "${TMPDIR}/setup-controller.yaml"
 
 write_full_replication_yaml \
     "../charts/vastcsi/templates/replication.yaml" \
-    "vastcsi.extension-enabled" \
+    ".Values.extensions.enabled" \
     "Replication stack installed when extensions are enabled." \
     "${TMPDIR}/setup-controller.yaml"
 

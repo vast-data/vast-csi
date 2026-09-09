@@ -3,9 +3,9 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Release.Name }}-objectstorage-provisioner-role
-  namespace: {{ include "vastcosinamespace" . }}
+  namespace: {{ include "vast.common.namespace" . }}
   labels:
-    {{- include "vastcosilabels" . | nindent 4 }}
+    {{- include "vast.common.labels" . | nindent 4 }}
 rules:
 - apiGroups: ["objectstorage.k8s.io"]
   resources: ["buckets", "bucketaccesses", "bucketclaims", "bucketaccessclasses", "buckets/status", "bucketaccesses/status", "bucketclaims/status", "bucketaccessclasses/status"]
@@ -33,13 +33,13 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Release.Name }}-objectstorage-provisioner-role-binding
-  namespace: {{ include "vastcosinamespace" . }}
+  namespace: {{ include "vast.common.namespace" . }}
   labels:
-    {{- include "vastcosilabels" . | nindent 4 }}
+    {{- include "vast.common.labels" . | nindent 4 }}
 subjects:
   - kind: ServiceAccount
     name: {{ .Release.Name }}-objectstorage-provisioner-sa
-    namespace: {{ include "vastcosinamespace" . }}
+    namespace: {{ include "vast.common.namespace" . }}
 roleRef:
   kind: ClusterRole
   name: {{ .Release.Name }}-objectstorage-provisioner-role
@@ -47,12 +47,10 @@ roleRef:
 
 ---
 
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: {{ .Release.Name }}-objectstorage-provisioner-sa
-  namespace: {{ include "vastcosinamespace" . }}
-  labels:
-    {{- include "vastcosilabels" . | nindent 4 }}
+{{ include "vast.common.resource.serviceAccount" (dict
+  "name" (printf "%s-objectstorage-provisioner-sa" .Release.Name)
+  "namespace" (include "vast.common.namespace" .)
+  "labels" (include "vast.common.labels" .)
+) }}
 
 ---

@@ -91,6 +91,15 @@ build_csi_operator:
     - vast-dev-builder
 
 
+validate_public_charts:
+  stage: test
+  needs: []
+  script:
+    - make chart-lint render-smoke
+  tags:
+    - vast-dev-builder
+
+
 # Security scanning jobs
 secrets_scan:
   stage: security

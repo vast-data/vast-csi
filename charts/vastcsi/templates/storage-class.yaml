@@ -48,19 +48,19 @@
 
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
-provisioner: {{ include "vastcsi.csiDriver" $ }}
+provisioner: {{ include "vast.common.csi.driverName" $ }}
 metadata:
   name: {{ required "A StorageClass name must be not empty" $name }}
-  namespace: {{ include "vastcsi.namespace" $ }}
+  namespace: {{ include "vast.common.namespace" $ }}
   annotations:
     storageclass.kubernetes.io/is-default-class: {{ $is_default_class }}
   labels:
-  {{- include "vastcsi.labels" $ | nindent 4 }}
+  {{- include "vast.common.labels" $ | nindent 4 }}
 reclaimPolicy: {{ $reclaim_policy }}
 parameters:
   lb_strategy: "roundrobin" # deprecated; this is here for backwards compatibility, so users don't have to delete their helm deployment and reinstall (since StorageClass is immutable)
 
-{{- include "vastcsi.dictToKeyValParams" (list (dict
+{{- include "vast.common.params.keyValue" (dict "values" (dict
   "root_export" $storage_path
   "view_policy" $view_policy
   "volume_name_fmt" $volume_name_fmt
@@ -70,7 +70,7 @@ parameters:
   "qos_policy" $qos_policy
 )) | indent 2 }}
 
-{{- include "vastcsi.dictToBoolParams" (list (dict
+{{- include "vast.common.params.bool" (dict "values" (dict
   "vip_pool_fqdn_random_prefix" $vip_pool_fqdn_random_prefix
   "blocking_clones" $blocking_clones
 )) | indent 2 }}
