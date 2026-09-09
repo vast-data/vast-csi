@@ -10,4 +10,7 @@ const (
 	LabelBucketAccessUID = "cosi.vastdata.com/bucketaccess-uid"
 	// BucketInfoKey is the COSI credentials Secret data key holding BucketInfo JSON.
 	BucketInfoKey = "BucketInfo"
+	// SecretProtectionFinalizer is the stock objectstorage-sidecar finalizer on
+	// credentials Secrets. Must be cleared or Delete stalls in Terminating.
+	SecretProtectionFinalizer = "cosi.objectstorage.k8s.io/secret-protection"
 )
