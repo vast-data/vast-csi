@@ -91,6 +91,11 @@ const (
 	// reached an active state; the controller will requeue and retry.
 	ReasonPpathNotReady = "PpathNotReady"
 
+	// ReasonPeerTargetPathCleared is emitted when an empty leftover peer
+	// target_exported_dir was deleted after VAST rejected stream/ppath create
+	// with "path on peer exists". The controller requeues to retry create.
+	ReasonPeerTargetPathCleared = "PeerTargetPathCleared"
+
 	// ReasonReconcileFailed is emitted when the reconcile loop encounters a
 	// hard (non-transient) error, such as a missing VAST view or a failed
 	// protection policy.  The controller will keep retrying with backoff.

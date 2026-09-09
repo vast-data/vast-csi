@@ -212,7 +212,7 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 					return ctrl.Result{}, err
 				}
 			} else {
-				if !isPermanentError(err) {
+				if !isPermanentError(err) && !emit.HasWarned() {
 					emit.Normal(events.ReasonPpathNotReady, err.Error())
 				}
 				return ctrl.Result{}, err
@@ -230,10 +230,11 @@ func (r *VastVolumeReplicationReconciler) Reconcile(ctx context.Context, req ctr
 		}
 
 		ppathName, err = vmsrest.EnsureConstellationPpath(
-			restByStorageClass, policyPairs, vvr.Spec.PrimaryStorageClass, vvr.Name, vvr.Status.PpathDirMapping, log,
+			restByStorageClass, policyPairs, vvr.Spec.PrimaryStorageClass, vvr.Name, vvr.Status.PpathDirMapping, emit,
+			!k8sclient.IsBlockStorageClass(scByStorageClass[vvr.Spec.PrimaryStorageClass]),
 		)
 		if err != nil {
-			if !isPermanentError(err) {
+			if !isPermanentError(err) && !emit.HasWarned() {
 				emit.Normal(events.ReasonPpathNotReady, err.Error())
 			}
 			return ctrl.Result{}, err

@@ -1,6 +1,8 @@
 package vmsrest
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -11,6 +13,7 @@ import (
 	"github.com/vast-data/go-vast-client/core"
 	"github.com/vast-data/go-vast-client/resources/typed"
 	cerrors "github.com/vast-data/vast-csi/extensions-controller/internal/common/errors"
+	"github.com/vast-data/vast-csi/extensions-controller/internal/common/events"
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -240,16 +243,18 @@ func waitForPpath(
 // must be added only after the primary cluster's corresponding stream reaches
 // "Waiting for a standby stream" state.
 func AddReplicationStream(
-	rest *vast_client.TypedVMSRest,
+	rest, remoteRest *vast_client.TypedVMSRest,
 	streamName string,
 	ppathId int64,
-	sourceDir string,
+	targetExportedDir string,
 	pair ReplicationLink,
 	isStandby bool,
+	emit *events.BoundReporter,
+	allowPeerDirCleanup bool,
 ) error {
 	params := core.Params{
 		"name":                 streamName,
-		"target_exported_dir":  sourceDir,
+		"target_exported_dir":  targetExportedDir,
 		"protection_policy_id": pair.PolicyId,
 		"remote_tenant_guid":   pair.Edge.RemoteTenant.Guid,
 		"capabilities":         ppathCapabilities,
@@ -258,9 +263,100 @@ func AddReplicationStream(
 		params["is_standby"] = true
 	}
 	if _, err := rest.Untyped.ProtectedPaths.ProtectedPathAddStream_PATCH(ppathId, params); err != nil {
+		if isPathOnPeerExistsErr(err) {
+			return fmt.Errorf("add replication stream %q: %w", streamName,
+				handlePathOnPeerExists(remoteRest, targetExportedDir, pair.Edge.RemoteTenant.Id, emit, allowPeerDirCleanup))
+		}
 		return fmt.Errorf("failed to add replication stream %q: %w", streamName, err)
 	}
 	return nil
+}
+
+func isPathOnPeerExistsErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "path on peer exists")
+}
+
+func loggerFromEmit(emit *events.BoundReporter) *zap.Logger {
+	if emit == nil {
+		return zap.NewNop()
+	}
+	return emit.Logger()
+}
+
+// handlePathOnPeerExists reacts to VAST rejecting ppath/stream create because
+// target_exported_dir already exists on the peer.
+//
+// VAST requires the destination directory to be absent so replication can create
+// it; teardown leaves the directory behind. We only delete when the path is an
+// empty directory (children == 0). A non-empty path is treated as a permanent
+// configuration / data conflict and is never deleted.
+func handlePathOnPeerExists(
+	remoteRest *vast_client.TypedVMSRest,
+	targetPath string,
+	tenantId int64,
+	emit *events.BoundReporter,
+	allowPeerDirCleanup bool,
+) error {
+	log := loggerFromEmit(emit)
+	if !allowPeerDirCleanup {
+		return fmt.Errorf(
+			"peer target path %q already exists on the destination cluster; "+
+				"block replication requires the destination subsystem/path to be absent so VAST can create it. "+
+				"Delete the destination subsystem on the peer cluster manually, then retry "+
+				"(automatic folder cleanup is only supported for file replication)",
+			targetPath,
+		)
+	}
+
+	stat, err := StatPath(context.Background(), remoteRest, targetPath, tenantId)
+	if err != nil {
+		return fmt.Errorf("stat peer target path %q after \"path on peer exists\": %w", targetPath, err)
+	}
+	if stat == nil {
+		// Path already absent — create should succeed on the next reconcile.
+		msg := fmt.Sprintf(
+			"VAST reported \"path on peer exists\" for %q but the path is now absent on the peer; retrying",
+			targetPath,
+		)
+        emit.Warning(events.ReasonPeerTargetPathCleared, msg)
+		return cerrors.NewRetryAfterError(errors.New(msg), 15*time.Second)
+	}
+	if !stat.IsDirectory {
+		return fmt.Errorf(
+			"peer target path %q already exists and is not a directory; "+
+				"VAST replication requires this path to be absent so it can create the destination. "+
+				"Remove or rename the path on the peer cluster (or correct the StorageClass path), then retry",
+			targetPath,
+		)
+	}
+	if stat.Children > 0 {
+		return fmt.Errorf(
+			"peer target path %q already exists and is not empty (children=%d); "+
+				"VAST replication requires the destination directory to be absent so it can create it. "+
+				"This may be leftover data from a previous replication or a misconfigured target path. "+
+				"Remove or empty the path on the peer cluster (or correct the StorageClass path), then retry",
+			targetPath, stat.Children,
+		)
+	}
+
+	log.Info("removing empty leftover peer target directory after path-on-peer-exists failure",
+		zap.String("path", targetPath),
+		zap.Int64("tenant_id", tenantId),
+	)
+	if err := DeleteFolder(context.Background(), remoteRest, targetPath, tenantId); err != nil {
+		return fmt.Errorf("delete empty peer target path %q after \"path on peer exists\": %w", targetPath, err)
+	}
+
+	msg := fmt.Sprintf(
+		"removed empty leftover peer target path %q after VAST reported \"path on peer exists\"; will retry create",
+		targetPath,
+	)
+	emit.Warning(events.ReasonPeerTargetPathCleared, msg)
+
+	return cerrors.NewRetryAfterError(errors.New(msg), 15 * time.Second)
 }
 
 // EnsurePpath idempotently creates the VAST protected path for the primary
@@ -270,13 +366,15 @@ func AddReplicationStream(
 // Returns the ppath name and ID once active.  Callers are responsible for
 // adding extra streams via EnsureConstellationPpath.
 func EnsurePpath(
-	rest *vast_client.TypedVMSRest,
+	rest, remoteRest *vast_client.TypedVMSRest,
 	ownerName string,
 	sourceDir string,
 	targetExportedDir string,
 	first ReplicationLink,
-	log *zap.Logger,
+	emit *events.BoundReporter,
+	allowPeerDirCleanup bool,
 ) (ppathName string, ppathId int64, err error) {
+	log := loggerFromEmit(emit)
 	record, err := rest.Untyped.ProtectedPaths.Get(core.Params{
 		"name":   ownerName,
 		"fields": ppathFields,
@@ -307,6 +405,10 @@ func EnsurePpath(
 			"enabled":              true,
 		})
 		if err != nil {
+			if isPathOnPeerExistsErr(err) {
+				return "", 0, fmt.Errorf("failed to create protected path: %w",
+					handlePathOnPeerExists(remoteRest, targetExportedDir, remoteTenant.Id, emit, allowPeerDirCleanup))
+			}
 			return "", 0, fmt.Errorf("failed to create protected path: %w", err)
 		}
 		time.Sleep(20 * time.Second)
@@ -357,8 +459,10 @@ func EnsureConstellationPpath(
 	primarySC string,
 	ownerName string,
 	ppathDirByStorageClass map[string]string,
-	log *zap.Logger,
+	emit *events.BoundReporter,
+	allowPeerDirCleanup bool,
 ) (ppathName string, err error) {
+	log := loggerFromEmit(emit)
 	primaryPairs := pairs[primarySC]
 	if len(primaryPairs) == 0 {
 		return "", fmt.Errorf("no primary replication links for StorageClass %q", primarySC)
@@ -369,8 +473,12 @@ func EnsureConstellationPpath(
 	// Ensure ppath with first embedded stream and wait for active.
 	// source_dir  = primary cluster's path
 	// target_exported_dir = first destination cluster's path
-	firstTargetDir := ppathDirByStorageClass[primaryPairs[0].Edge.SideB]
-	ppathName, ppathId, err := EnsurePpath(primaryRest, ownerName, primarySourceDir, firstTargetDir, primaryPairs[0], log)
+	firstTargetSC := primaryPairs[0].Edge.SideB
+	firstTargetDir := ppathDirByStorageClass[firstTargetSC]
+	firstRemoteRest := restByStorageClass[firstTargetSC]
+	ppathName, ppathId, err := EnsurePpath(
+		primaryRest, firstRemoteRest, ownerName, primarySourceDir, firstTargetDir, primaryPairs[0], emit, allowPeerDirCleanup,
+	)
 	if err != nil {
 		return ppathName, fmt.Errorf("primary ppath: %w", err)
 	}
@@ -394,7 +502,10 @@ func EnsureConstellationPpath(
 					zap.String("source_cluster", primaryPair.Edge.SideA),
 					zap.String("destination_cluster", primaryPair.Edge.SideB))
 				targetDir := ppathDirByStorageClass[primaryPair.Edge.SideB]
-				if ferr := AddReplicationStream(primaryRest, primaryStreamName, ppathId, targetDir, primaryPair, false); ferr != nil {
+				remoteRest := restByStorageClass[primaryPair.Edge.SideB]
+				if ferr := AddReplicationStream(
+					primaryRest, remoteRest, primaryStreamName, ppathId, targetDir, primaryPair, false, emit, allowPeerDirCleanup,
+				); ferr != nil {
 					return ppathName, fmt.Errorf("add primary stream %q: %w", primaryStreamName, ferr)
 				}
 				log.Info("primary replication stream added successfully",
@@ -437,7 +548,10 @@ func EnsureConstellationPpath(
 						zap.String("source_cluster", crossPair.Edge.SideA),
 						zap.String("destination_cluster", crossPair.Edge.SideB))
 					crossTargetDir := ppathDirByStorageClass[crossPair.Edge.SideB]
-					if ferr := AddReplicationStream(crossRest, crossStreamName, crossPpathId, crossTargetDir, crossPair, true); ferr != nil {
+					crossRemoteRest := restByStorageClass[crossPair.Edge.SideB]
+					if ferr := AddReplicationStream(
+						crossRest, crossRemoteRest, crossStreamName, crossPpathId, crossTargetDir, crossPair, true, emit, allowPeerDirCleanup,
+					); ferr != nil {
 						return ppathName, fmt.Errorf("SC %s: standby stream %q: %w", sc, crossStreamName, ferr)
 					}
 					log.Info("standby replication stream added successfully",
