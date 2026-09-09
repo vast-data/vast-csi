@@ -340,33 +340,33 @@ controller:
   resources:
     csiProvisioner:
       limits:
-        memory: 400Mi
+        memory: 200Mi
       requests:
         cpu: 10m
         memory: 20Mi
     csiSnapshotter:
       limits:
-        memory: 200Mi
+        memory: 100Mi
       requests:
         cpu: 10m
         memory: 20Mi
     csiAttacher:
       limits:
-        memory: 200Mi
+        memory: 100Mi
       requests:
         cpu: 10m
         memory: 20Mi
     csiResizer:
       limits:
-        memory: 300Mi
+        memory: 100Mi
       requests:
         cpu: 10m
         memory: 20Mi
     csiVastPlugin:
       limits:
-        memory: 500Mi
+        memory: 256Mi
       requests:
-        cpu: 100m
+        cpu: 10m
         memory: 50Mi
   extraArgs:
     # For further options, check
@@ -439,18 +439,18 @@ node:
         memory: 20Mi
     csiVastPlugin:
       limits:
-        memory: 500Mi
+        memory: 256Mi
       requests:
-        cpu: 200m
-        memory: 300Mi
+        cpu: 10m
+        memory: 50Mi
     # Lightweight NFS client daemons (rpcbind/statd/idmapd/...) sidecar
     nfsServices:
       limits:
-        cpu: 100m
-        memory: 128Mi
+        cpu: 50m
+        memory: 64Mi
       requests:
         cpu: 10m
-        memory: 64Mi
+        memory: 20Mi
   # priorityClassName is the name of priority class to be used for the pod.
   priorityClassName: ""
   # Runs NFS client daemons in-container for NFS locking/idmap on node OSes
