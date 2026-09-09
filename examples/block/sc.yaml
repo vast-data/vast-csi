@@ -22,3 +22,6 @@ provisioner: block.csi.vastdata.com
 # kubectl create secret generic vast-mgmt \
 #   --from-literal=username='...' --from-literal=password='...' --from-literal=endpoint='...' \
 #   --from-literal=host_nqn_seed='$(openssl rand -hex 32)'
+# If a VMS block host already exists for the node/tenant with a different NQN,
+# publish fails with FailedPrecondition until that host is unpublished and
+# deleted/pruned, then republished.
