@@ -116,9 +116,17 @@ class VastResource(ABC):
         for entry in entries:
             self.delete_by_id(entry.id, api_ver=api_ver)
 
-    def delete_by_id(self, _id, api_ver=None, **params):
-        """Delete entry by id"""
-        return self.session.delete(f"{self.resource_name}/{_id}", api_ver=api_ver, **params)
+    def delete_by_id(self, _id, fail_if_missing=False, api_ver=None, **params):
+        """
+        Delete entry by id."""
+        try:
+            return self.session.delete(f"{self.resource_name}/{_id}", api_ver=api_ver, **params)
+        except HTTPError as exc:
+            if exc.response is not None and exc.response.status_code == 404 and not fail_if_missing:
+                resource = self.__class__.__name__.lower()
+                logger.info(f"{resource} {_id} already deleted, skipping")
+                return
+            raise
 
     def one(self, fail_if_missing=False, api_ver=None, **params):
         """
@@ -649,15 +657,7 @@ class GlobalSnapshotStream(VastResource):
                 logger.debug(f"Stopping snapshot stream {snapshot_stream.id} in state {state}")
                 task = self.stop_snapshot_stream(snapshot_stream.id)
                 self.session.wait_task(task)
-            try:
-                self.delete_by_id(_id=snapshot_stream.id, data={"remove_dir": True})
-            except HTTPError as e:
-                if e.response.status_code == 404:
-                    # Ignore 404 error if snapshot stream is already deleted
-                    # because it might happen if the stream was deleted by another process (csi worker)
-                    logger.warning(f"Snapshot stream {snapshot_stream.id} already deleted")
-                else:
-                    raise
+            self.delete_by_id(_id=snapshot_stream.id, data={"remove_dir": True})
 
 
 class User(VastResource):
@@ -983,8 +983,12 @@ class ProtectedPath(VastResource):
             logger.info(f"Force failover task completed for protected path {protected_path_id}")
         return response
 
-    def delete_by_id(self, _id, api_ver=None, **params):
-        task = super().delete_by_id(_id=_id, api_ver=api_ver, **params)
+    def delete_by_id(self, _id, fail_if_missing=True, api_ver=None, **params):
+        task = super().delete_by_id(
+            _id=_id, fail_if_missing=fail_if_missing, api_ver=api_ver, **params
+        )
+        if task is None:
+            return None
         return self.session.wait_task(task)
 
 
