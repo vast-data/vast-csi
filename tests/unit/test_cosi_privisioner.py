@@ -764,10 +764,10 @@ class TestCosiProvisionerSuite:
         )
 
         session.s3lifecyclerules.delete_many.assert_called_once_with(view__id=42)
-        session.views.delete_by_id.assert_called_once_with(42)
+        session.views.delete_by_id.assert_called_once_with(42, force_if_not_empty=True)
         session.quotas.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
         session.users.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
-        assert order == ["user", "rules", "folders", "view"]
+        assert order == ["user", "rules", "view", "folders"]
 
     def test_delete_bucket_ok_when_lifecycle_rules_already_gone(
         self, vms_session_with_mocked_resources_factory
@@ -793,7 +793,7 @@ class TestCosiProvisionerSuite:
 
         session.s3lifecyclerules.delete_many.assert_called_once_with(view__id=42)
         session.folders.delete.assert_called_once_with("/buckets/test-bucket", 1)
-        session.views.delete_by_id.assert_called_once_with(42)
+        session.views.delete_by_id.assert_called_once_with(42, force_if_not_empty=True)
         session.quotas.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
         session.users.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
 
@@ -809,7 +809,7 @@ class TestCosiProvisionerSuite:
 
         session.s3lifecyclerules.delete_many.assert_called_once_with(view__id=view.id)
         session.folders.delete.assert_called_once_with(view.path, view.tenant_id)
-        session.views.delete_by_id.assert_called_once_with(view.id)
+        session.views.delete_by_id.assert_called_once_with(view.id, force_if_not_empty=True)
         session.quotas.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
         session.users.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
 
@@ -823,7 +823,7 @@ class TestCosiProvisionerSuite:
             view=view,
         )
 
-        session.views.delete_by_id.assert_called_once_with(view.id)
+        session.views.delete_by_id.assert_called_once_with(view.id, force_if_not_empty=True)
         session.quotas.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
         session.users.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
 
@@ -872,8 +872,25 @@ class TestCosiProvisionerSuite:
             },
         )
 
-        session.views.delete_by_id.assert_called_once_with(view.id)
+        session.views.delete_by_id.assert_called_once_with(view.id, force_if_not_empty=True)
         session.users.delete.assert_not_called()
+
+    def test_delete_bucket_view_gone_still_trashes_via_root_export(
+        self, vms_session_with_mocked_resources_factory
+    ):
+        """Retry after view removed: still trash path from delete_context.root_export."""
+        bucket_id = "test-bucket@1@http://172.0.0.1:80"
+        _, session = self._delete_bucket(
+            bucket_id=bucket_id,
+            vms_factory=vms_session_with_mocked_resources_factory,
+            view=None,
+            delete_context={"root_export": "/cosi", "s3_versioning": "true"},
+        )
+
+        session.views.delete_by_id.assert_not_called()
+        session.folders.delete.assert_called_once_with("/cosi/test-bucket", "1")
+        session.quotas.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
+        session.users.delete.assert_called_once_with(name="test-bucket", tenant_id="1")
 
     def test_delete_bucket_view_gone_skips_external_owner_from_delete_context(
         self, vms_session_with_mocked_resources_factory

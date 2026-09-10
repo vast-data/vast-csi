@@ -69,6 +69,15 @@ bucketClasses: {}
 #     vipPoolFQDN: s3.example.com
 #     secretName: team-a-vast-auth
 #     secretNamespace: app-team
+#     # Optional: enable VMS S3 object versioning on the bucket view.
+#     # Pass-through BucketClass / remaining Helm key → VMS s3_versioning.
+#     # Supported: create versioned buckets, S3 versioned IO, noncurrent_*
+#     # lifecycle rules, and bucket delete (view remove then trash; force on
+#     # not-empty; retry still trashes via root_export).
+#     # Not supported (VMS): disable/suspend versioning after enable;
+#     # S3 trash DeleteBucket header alone on versioned buckets.
+#     # See examples/cosi/s3-versioning.yaml.
+#     s3_versioning: "true"
 #     # Optional: VMS S3 lifecycle rules applied at bucket create.
 #     # One rule per list element on the bucket's view; removed on bucket delete.
 #     # Rules apply at create only (BucketClass is immutable).

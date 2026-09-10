@@ -3,6 +3,8 @@
 # Rules apply at bucket create; removed on bucket delete. BucketClass is immutable.
 # Use day-based actions (expiration_days, …). Do not use expiration_date: VMS REST
 # create rejects date-only rules (HTTP 400).
+# For noncurrent_* / expired_obj_delete_marker rules, also set s3_versioning: "true"
+# (see examples/cosi/s3-versioning.yaml).
 #
 # Prerequisites: VAST S3 lifecycle API available on the cluster.
 apiVersion: objectstorage.k8s.io/v1alpha1
