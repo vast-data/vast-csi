@@ -125,10 +125,22 @@ class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented):
         ctx = delete_context or {}
         if not str(ctx.get("bucket_owner", "")).strip():
             vms_session.users.delete(name=parsed.name, tenant_id=parsed.tenant_id)
-        if view := vms_session.views.one(bucket=parsed.name):
+        # Trash delete_folder fails with 503 while an s3_versioning view still
+        # exists on the path — remove the view first (force only here, on 409
+        # not-empty). If the view is already gone (retry), still trash using
+        # root_export from delete_context.
+        view = vms_session.views.one(bucket=parsed.name)
+        if view:
             vms_session.s3lifecyclerules.delete_many(view__id=view.id)
-            vms_session.folders.delete(view.path, view.tenant_id)
-            vms_session.views.delete_by_id(view.id)
+            vms_session.views.delete_by_id(view.id, force_if_not_empty=True)
+            trash_path, trash_tenant = view.path, view.tenant_id
+        elif "root_export" in ctx:
+            trash_path = vms_session.views.bucket_path(ctx.get("root_export"), parsed.name)
+            trash_tenant = parsed.tenant_id
+        else:
+            trash_path = None
+        if trash_path is not None:
+            vms_session.folders.delete(trash_path, trash_tenant)
         vms_session.quotas.delete(name=parsed.name, tenant_id=parsed.tenant_id)
         return types.DriverDeleteBucketResp()
 
