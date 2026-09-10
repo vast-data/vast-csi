@@ -379,9 +379,11 @@ class TestVastResourceIterMethod:
                 raise AssertionError("Unexpected call to session.get()")
         
         def mock_request(method, path, **kwargs):
-            # The iterator passes "v5/views/?page=2" to request().
-            # Verify the version prefix is present in the path.
-            assert 'v5' in path, f"Expected v5 in path, got: {path}"
+            # Iterator passes path-only + params; version comes via api_ver.
+            assert "?" not in path, f"query must not be embedded in path: {path}"
+            assert path.strip("/") == "views"
+            assert kwargs.get("api_ver") == "v5"
+            assert kwargs.get("params", {}).get("page") == "2"
             return page2
         
         mock_session.get = MagicMock(side_effect=mock_get)
@@ -590,6 +592,56 @@ class TestIteratorForcesPaginationByDefault:
         assert [v.id for v in all_views] == [1, 2, 3, 4]
         first_params = mock_session.get.call_args.kwargs.get("params", {})
         assert first_params.get("page_size") == DEFAULT_PAGE_SIZE
+
+    def test_pagination_next_passes_query_via_params(self, mock_session):
+        """Follow-up pages must keep filters in params=, not embedded in the path.
+
+        Regression: embedding next's query in api_method let request() append '/'
+        onto path__startswith (/bright-flea → /bright-flea/), so page 3 queried
+        /bright-flea//, returned count=0, and list() stopped at 2000 of 10000.
+        """
+        from vast_csi.session import VastResource
+
+        class View(VastResource):
+            resource_name = "views"
+            TARGET_STATE = "READY"
+            FAILED_STATES = []
+            RUNNING_STATES = []
+
+        page1 = Bunch(
+            results=[Bunch(path=f"/bright-flea/pvc-{i}") for i in range(2)],
+            count=4,
+            next=(
+                "https://vms.example.com/api/v1/views/"
+                "?fields=path&page=2&page_size=1000&path__startswith=%2Fbright-flea"
+            ),
+            previous=None,
+        )
+        page2 = Bunch(
+            results=[Bunch(path=f"/bright-flea/pvc-{i}") for i in range(2, 4)],
+            count=4,
+            next=None,
+            previous=None,
+        )
+        mock_session.get.return_value = page1
+        mock_session.request.return_value = page2
+
+        views = View(session=mock_session).list(
+            path__startswith="/bright-flea", fields="path", page_size=2
+        )
+        assert len(views) == 4
+
+        mock_session.request.assert_called_once()
+        args, kwargs = mock_session.request.call_args
+        assert args[0] == "GET"
+        assert "?" not in args[1]
+        assert args[1].strip("/") == "views"
+        assert kwargs.get("api_ver") == "v1"
+        params = kwargs.get("params") or {}
+        assert params.get("path__startswith") == "/bright-flea"
+        assert params.get("page") == "2"
+        assert params.get("page_size") == "1000"
+        assert params.get("fields") == "path"
 
 
 class TestSessionRequestApiVersionDedup:
