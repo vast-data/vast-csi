@@ -44,6 +44,9 @@ const (
 	resyncAnnotationMaxAge = time.Minute
 	resyncPathWaitTimeout  = 30 * time.Second
 	resyncPathWaitSleep    = 2 * time.Second
+	// Protection policies may sync rarely; requeue infrequently
+	// while waiting for a newly added volume's path to appear on the destination.
+	pathNotReplicatedRetryAfter = 5 * time.Minute
 )
 
 // FileProvisioner creates Views and Quotas on the VAST cluster.
@@ -363,7 +366,11 @@ func (f *FileProvisioner) ensureView(
 		f.emit.Normalf(events.ReasonProvisionSkipped,
 			"destination path %s not yet replicated, view creation deferred (StorageClass %s)",
 			targetPath, sc.Name)
-		return nil, nil
+		// Requeue until the path appears.
+		return nil, cerrors.NewRetryAfterError(
+			fmt.Errorf("destination path %s not yet replicated", targetPath),
+			pathNotReplicatedRetryAfter,
+		)
 	}
 
 	view, err := rest.Views.Create(viewBody)
