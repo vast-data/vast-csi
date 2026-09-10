@@ -197,7 +197,7 @@ func TestReconcile_Create(t *testing.T) {
 	if string(sec.Data["AWS_SECRET_ACCESS_KEY"]) != "secret" {
 		t.Fatalf("secret key: %q", sec.Data["AWS_SECRET_ACCESS_KEY"])
 	}
-	if !isOwnedBy(sec, ba) {
+	if !cosi.IsOwnedByBucketAccess(sec, ba) {
 		t.Fatal("secret missing ownerRef")
 	}
 
@@ -209,7 +209,7 @@ func TestReconcile_Create(t *testing.T) {
 		cm.Data["BUCKET_PORT"] != "80" || cm.Data["BUCKET_ENDPOINT"] != "http://172.0.0.1:80" {
 		t.Fatalf("cm data: %#v", cm.Data)
 	}
-	if !isOwnedBy(cm, ba) {
+	if !cosi.IsOwnedByBucketAccess(cm, ba) {
 		t.Fatal("cm missing ownerRef")
 	}
 }

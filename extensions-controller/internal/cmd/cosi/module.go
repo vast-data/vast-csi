@@ -27,5 +27,12 @@ func configure(cmd *cobra.Command, sharedMgr *manager.SharedManager) {
 		if err := controller.SetupCredentialsFlattenerController(mgr); err != nil {
 			panic(err)
 		}
+		k8s, err := sharedMgr.GetK8sClient()
+		if err != nil {
+			panic(err)
+		}
+		if err := controller.SetupBucketAccessSecretResyncController(mgr, k8s); err != nil {
+			panic(err)
+		}
 	}
 }

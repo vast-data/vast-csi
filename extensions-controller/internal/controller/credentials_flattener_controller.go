@@ -76,7 +76,7 @@ func (r *CredentialsFlattenerReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 
 	if !cosi.WantFlatten(ba.GetAnnotations()) {
-		if err := r.deleteOwnedFlatPair(ctx, ba, ""); err != nil {
+		if err := cosi.DeleteOwnedFlatPair(ctx, r.Client, ba, ""); err != nil {
 			return ctrl.Result{}, err
 		}
 		r.clearEventOnce(ba)
@@ -91,7 +91,7 @@ func (r *CredentialsFlattenerReconciler) Reconcile(ctx context.Context, req ctrl
 	flatName := cosi.FlatName(credName)
 
 	// Rename cleanup: drop owned -flat siblings that are not the current flat name.
-	if err := r.deleteOwnedFlatPair(ctx, ba, flatName); err != nil {
+	if err := cosi.DeleteOwnedFlatPair(ctx, r.Client, ba, flatName); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -172,15 +172,6 @@ func (r *CredentialsFlattenerReconciler) reconcileForeignClash(ba *objectstorage
 	return ctrl.Result{RequeueAfter: requeueAfter}
 }
 
-func isOwnedBy(obj metav1.Object, ba *objectstoragev1alpha1.BucketAccess) bool {
-	for _, ref := range obj.GetOwnerReferences() {
-		if ref.UID == ba.UID && ref.Controller != nil && *ref.Controller {
-			return true
-		}
-	}
-	return false
-}
-
 // ensureFlatPair writes the *-flat Secret and ConfigMap together. On ConfigMap
 // failure after Secret success, rolls back the owned flat Secret so clients never
 // see credentials without matching BUCKET_* env vars.
@@ -205,52 +196,11 @@ func (r *CredentialsFlattenerReconciler) rollbackFlatSecret(ctx context.Context,
 		}
 		return err
 	}
-	if !isOwnedBy(sec, ba) {
+	if !cosi.IsOwnedByBucketAccess(sec, ba) {
 		return nil
 	}
 	if err := r.Delete(ctx, sec); err != nil && !apierrors.IsNotFound(err) {
 		return err
-	}
-	return nil
-}
-
-// deleteOwnedFlatPair deletes Secrets/ConfigMaps labeled for this BA.
-// If keepName is non-empty, that name is preserved.
-func (r *CredentialsFlattenerReconciler) deleteOwnedFlatPair(ctx context.Context, ba *objectstoragev1alpha1.BucketAccess, keepName string) error {
-	sel := client.MatchingLabels{cosi.LabelBucketAccessUID: string(ba.UID)}
-
-	secList := &corev1.SecretList{}
-	if err := r.List(ctx, secList, client.InNamespace(ba.Namespace), sel); err != nil {
-		return err
-	}
-	for i := range secList.Items {
-		sec := &secList.Items[i]
-		if !isOwnedBy(sec, ba) {
-			continue
-		}
-		if keepName != "" && sec.Name == keepName {
-			continue
-		}
-		if err := r.Delete(ctx, sec); err != nil && !apierrors.IsNotFound(err) {
-			return err
-		}
-	}
-
-	cmList := &corev1.ConfigMapList{}
-	if err := r.List(ctx, cmList, client.InNamespace(ba.Namespace), sel); err != nil {
-		return err
-	}
-	for i := range cmList.Items {
-		cm := &cmList.Items[i]
-		if !isOwnedBy(cm, ba) {
-			continue
-		}
-		if keepName != "" && cm.Name == keepName {
-			continue
-		}
-		if err := r.Delete(ctx, cm); err != nil && !apierrors.IsNotFound(err) {
-			return err
-		}
 	}
 	return nil
 }
@@ -262,7 +212,7 @@ func (r *CredentialsFlattenerReconciler) ensureFlatSecret(ctx context.Context, b
 		// controller owner. SetControllerReference would then *adopt* it and we
 		// would overwrite its data — design says never adopt/overwrite foreign.
 		// UID != "" means the object already existed when CreateOrUpdate loaded it.
-		if sec.UID != "" && !isOwnedBy(sec, ba) {
+		if sec.UID != "" && !cosi.IsOwnedByBucketAccess(sec, ba) {
 			return errForeignFlat
 		}
 		if err := controllerutil.SetControllerReference(ba, sec, r.Scheme); err != nil {
@@ -282,7 +232,7 @@ func (r *CredentialsFlattenerReconciler) ensureFlatConfigMap(ctx context.Context
 	cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: flatName, Namespace: ba.Namespace}}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, cm, func() error {
 		// Same TOCTOU guard as ensureFlatSecret (see comment there).
-		if cm.UID != "" && !isOwnedBy(cm, ba) {
+		if cm.UID != "" && !cosi.IsOwnedByBucketAccess(cm, ba) {
 			return errForeignFlat
 		}
 		if err := controllerutil.SetControllerReference(ba, cm, r.Scheme); err != nil {
