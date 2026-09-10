@@ -363,10 +363,6 @@ func (f *FileProvisioner) ensureView(
 		}
 	}
 	if !exists {
-		f.emit.Normalf(events.ReasonProvisionSkipped,
-			"destination path %s not yet replicated, view creation deferred (StorageClass %s)",
-			targetPath, sc.Name)
-		// Requeue until the path appears.
 		return nil, cerrors.NewRetryAfterError(
 			fmt.Errorf("destination path %s not yet replicated", targetPath),
 			pathNotReplicatedRetryAfter,
