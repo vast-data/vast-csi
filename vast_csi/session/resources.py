@@ -25,7 +25,8 @@ from easypy.semver import SemVer
 from easypy.collections import listify
 
 from ..logging import logger
-from ..exceptions import NoRecordsFound, ApiError, WaitResourceFailed, BlockHostNqnConflict
+from ..exceptions import NoRecordsFound, ApiError, WaitResourceFailed, BlockHostNqnConflict, Abort
+from ..csi_types import ABORTED
 from ..utils import generate_ip_range, parse_string_parameters
 from ..lru_cache import cache_on_arguments
 from .base import apiver, requisite, CannotUseTrashAPI
@@ -670,19 +671,59 @@ class GlobalSnapshotStream(VastResource):
         snapshot_stream = self.one(loanee_root_path__startswith=loanee_root_path, fail_if_missing=True)
         self._wait_for_state(snapshot_stream.id)
 
+    @staticmethod
+    def _status_state(snapshot_stream) -> str:
+        status = snapshot_stream.status or {}
+        return str(status.get("state", "") or "").lower()
+
     @requisite(semver="4.6.0", ignore=True)
     def ensure_snapshot_stream_deleted(self, **params):
         """
         Stop global snapshot stream in case it is not finished.
         Snapshots with expiration time will be deleted as soon as snapshot stream is stopped.
+
+        Idempotent for DeleteVolume retries: missing stream is success; if stop_gss fails
+        but the stream is already gone, treat as success. If the stream is still present
+        (deleting / stop failed), raise Abort so the CSI/COSI caller retries without
+        holding a gRPC worker for a long poll.
         """
-        if snapshot_stream := self.one(**params):
-            state = snapshot_stream.status.get("state", "").lower()
-            if state != "finished":
-                logger.debug(f"Stopping snapshot stream {snapshot_stream.id} in state {state}")
-                task = self.stop_snapshot_stream(snapshot_stream.id)
-                self.session.wait_task(task)
-            self.delete_by_id(_id=snapshot_stream.id, data={"remove_dir": True})
+        stream = self.one(**params)
+        if not stream:
+            return
+
+        state = self._status_state(stream)
+        if state == "deleting":
+            raise Abort(
+                ABORTED,
+                f"Snapshot stream {stream.id} still deleting; retry when gone",
+            )
+
+        if state == "finished":
+            self.delete_by_id(_id=stream.id, data={"remove_dir": True})
+            return
+
+        logger.debug("Stopping snapshot stream %s in state %s", stream.id, state)
+        try:
+            task = self.stop_snapshot_stream(stream.id)
+            self.session.wait_task(task)
+        except Exception as exc:
+            if not self.one(**params):
+                logger.info(
+                    "Snapshot stream %s gone after stop failure; treating as deleted",
+                    stream.id,
+                )
+                return
+            logger.warning(
+                "stop_gss failed for snapshot stream %s; caller should retry: %s",
+                stream.id,
+                exc,
+            )
+            raise Abort(
+                ABORTED,
+                f"stop_gss failed for snapshot stream {stream.id}; retry when gone",
+            ) from exc
+
+        self.delete_by_id(_id=stream.id, data={"remove_dir": True})
 
 
 class User(VastResource):
