@@ -140,9 +140,9 @@ storageClassDefaults:
   # If true, sets Vast CSI as the cluster-wide storage class default
   setDefaultStorageClass: false
   # String template for CSI-provisioned volume names, within VAST
-  volumeNameFormat: "csi:{id}:{namespace}:{name}"
+  volumeNameFormat: "csi:{namespace}:{name}:{id}"
   # String template for CSI-provisioned ephemeral volumes, within VAST
-  ephemeralVolumeNameFormat: "csi:{id}:{namespace}:{name}"
+  ephemeralVolumeNameFormat: "csi:{namespace}:{name}:{id}"
   # Add any extra mount NFS options here.
   # For NFS transport security (TLS/mTLS), add "xprtsec=tls" or "xprtsec=mtls".
   # NFSv3 + xprtsec also needs "mountproto=tcp" (TLS requires TCP; driver does not inject it).
