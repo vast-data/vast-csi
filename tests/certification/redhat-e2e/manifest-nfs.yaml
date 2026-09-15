@@ -32,6 +32,7 @@ DriverInfo:
     nodeExpansion: false
     singleNodeVolume: false
     RWX: true
+    capReadOnlyMany: true
     topology: false
     snapshotDataSource: true
     pvcDataSource: true

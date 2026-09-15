@@ -16,7 +16,7 @@
 #     make e2e-nfs 10.205.0.233
 #     make cert-kubevirt 10.205.0.233
 #     make cert-nfs 10.205.0.233 --list-only
-#     make cert-all 10.205.0.233 --kubeconfig ~/.kube/config
+#     make cert-kubevirt 10.205.0.233 --kubeconfig ~/.kube/config
 
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
@@ -42,7 +42,7 @@ PYTEST_E2E = cd "$(REPO_ROOT)" && VAST_ENDPOINT="$(VAST_ENDPOINT)" "$(PYTHON)" -
 
 # Capture everything after the target so `make cert-nfs 10.205.0.233 --list-only`
 # does not fail with "No rule to make target".
-ENDPOINT_TARGETS := e2e e2e-nfs e2e-mtls e2e-block e2e-cosi cert-nfs cert-block cert-kubevirt cert-all
+ENDPOINT_TARGETS := e2e e2e-nfs e2e-mtls e2e-block e2e-cosi cert-nfs cert-block cert-kubevirt
 ARG_TARGETS := unit $(ENDPOINT_TARGETS)
 
 ifneq ($(filter $(CURRENT_TARGET),$(ARG_TARGETS)),)
@@ -65,7 +65,7 @@ define need_endpoint
 	fi
 endef
 
-.PHONY: help unit e2e e2e-nfs e2e-mtls e2e-block e2e-cosi cert-nfs cert-block cert-kubevirt cert-all
+.PHONY: help unit e2e e2e-nfs e2e-mtls e2e-block e2e-cosi cert-nfs cert-block cert-kubevirt
 
 help: ## Show this help
 	@echo "vast-csi tests"
@@ -82,7 +82,6 @@ help: ## Show this help
 	@echo "  make cert-nfs <vast_endpoint>"
 	@echo "  make cert-block <vast_endpoint>"
 	@echo "  make cert-kubevirt <vast_endpoint>"
-	@echo "  make cert-all <vast_endpoint>"
 	@echo
 	@echo "Extra arguments after the endpoint are forwarded to pytest or the cert scripts."
 	@echo "If they start with '-', put '--' before them so make does not eat the flags:"
@@ -138,9 +137,4 @@ cert-block: ## OpenShift CSI certification (block)
 cert-kubevirt: ## KubeVirt storage checkup on NFS
 	$(need_endpoint)
 	cd "$(REPO_ROOT)" && "$(PYTHON)" "$(CERT_DIR)/run_certification.py" kubevirt \
-		--vast-endpoint "$(VAST_ENDPOINT)" $(EXTRA_ARGS)
-
-cert-all: ## NFS + block + KubeVirt certification
-	$(need_endpoint)
-	cd "$(REPO_ROOT)" && "$(PYTHON)" "$(CERT_DIR)/run_certification.py" all \
 		--vast-endpoint "$(VAST_ENDPOINT)" $(EXTRA_ARGS)

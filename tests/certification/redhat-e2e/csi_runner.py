@@ -145,7 +145,11 @@ NFS_KEYWORDS = (
     "controller expansion",
     "snapshot",
 )
-NFS_SKIP_PATTERNS = (
+# Skip rules: a str matches as substring; a tuple means ALL parts must match (AND).
+# Use AND rules for upstream matrix mismatches so we do not drop the passing half.
+SkipRule = str | tuple[str, ...]
+
+NFS_SKIP_PATTERNS: tuple[SkipRule, ...] = (
     "block",
     "topology",
     "volume limits",
@@ -155,8 +159,12 @@ NFS_SKIP_PATTERNS = (
     "(ntfs)",
     "(xfs)",
     "[slow]",
-    "ephemeral-volume",
     "mount options",
+    # Upstream snapshottable.go VolType matrix: ephemeral It only for GenericEphemeralVolume,
+    # persistent It only for non-ephemeral. Matching halves still run and pass.
+    ("Dynamic Snapshot", "check deletion (ephemeral)"),
+    ("Pre-provisioned Snapshot", "check deletion (ephemeral)"),
+    ("Ephemeral Snapshot", "check deletion (persistent)"),
 )
 
 BLOCK_KEYWORDS = (
@@ -164,25 +172,35 @@ BLOCK_KEYWORDS = (
     "persistence",
     "should store data",
     "volumemode",
+    "csi ephemeral-volume",
+    "generic ephemeral-volume",
+    "snapshot",
+    "pvc data source",
+    "controller expansion",
+    "volume-expand",
+    "rox mode",
 )
-BLOCK_SKIP_PATTERNS = (
+# Only skip what we do not advertise / cannot run via external YAML.
+# Snapshot, clone, expansion, ROX, CSI EV, generic EV, mount options are supported.
+BLOCK_SKIP_PATTERNS: tuple[SkipRule, ...] = (
     "topology",
     "volume limits",
-    "node expansion",
     "single node volume",
     "[feature:windows]",
     "[slow]",
-    "ephemeral-volume",
-    "mount options",
-    "snapshot",
-    "clone",
-    "rox mode",
-    "volume-expand",
-    "allowexpansion",
+    # In-tree InlineVolume VolType — external YAML never supports it.
+    "inline-volume",
+    # External YAML has no PreprovisionedPV API.
+    "pre-provisioned",
+    # Upstream hard-skip for raw block volmode.
+    "mount multiple pv",
+    # Not advertised in DriverInfo.
     "fsgroup",
-    "pvc data source",
     "capacity",
-    "(default fs)",
+    # Upstream suite hard-skips (never meaningful for this pattern/volmode).
+    ("CSI Ephemeral-volume", "should support expansion of pvcs created for ephemeral pvcs"),
+    ("block volmode", "should provision storage with mount options"),
+    ("block volmode", "filesystem size when restoring snapshot"),
 )
 
 
@@ -192,7 +210,7 @@ class ProfileDefaults:
     manifest: str
     output_subdir: str
     keywords: tuple[str, ...]
-    skip_patterns: tuple[str, ...]
+    skip_patterns: tuple[SkipRule, ...]
     vast_cluster_name: str
     vast_storage_name: str
     vast_csi_driver_name: str
@@ -243,7 +261,7 @@ class RunnerConfig:
     image: str
     suite: str
     keywords: tuple[str, ...]
-    skip_patterns: tuple[str, ...]
+    skip_patterns: tuple[SkipRule, ...]
     max_tests: int
     list_only: bool
     csi_namespace: str
@@ -351,11 +369,27 @@ def _contains_any(text: str, words: Iterable[str]) -> bool:
     return any(word.lower() in lower for word in words)
 
 
-def select_tests(candidates: list[str], keywords: tuple[str, ...], skip_patterns: tuple[str, ...], max_tests: int) -> list[str]:
+def _matches_skip_rule(text: str, rule: SkipRule) -> bool:
+    lower = text.lower()
+    if isinstance(rule, tuple):
+        return all(part.lower() in lower for part in rule)
+    return rule.lower() in lower
+
+
+def _matches_any_skip(text: str, rules: Iterable[SkipRule]) -> bool:
+    return any(_matches_skip_rule(text, rule) for rule in rules)
+
+
+def select_tests(
+    candidates: list[str],
+    keywords: tuple[str, ...],
+    skip_patterns: tuple[SkipRule, ...],
+    max_tests: int,
+) -> list[str]:
     filtered = [
         test
         for test in candidates
-        if _contains_any(test, keywords) and not _contains_any(test, skip_patterns)
+        if _contains_any(test, keywords) and not _matches_any_skip(test, skip_patterns)
     ]
     return filtered[:max_tests]
 
@@ -777,7 +811,13 @@ def ensure_csi_resources(cfg: RunnerConfig) -> None:
         )
         # Snapshot restore of a 15Gi+ golden image exceeds the chart default 15s gRPC timeout.
         .with_operation_timeout(300)
+        # Global VMS secret: required for CSI InlineVolumes (OpenShift external suite
+        # cannot pass nodePublishSecretRef in InlineVolumes YAML).
+        .with_global_secret(secret_name=cluster_name, endpoint=endpoint)
     )
+    if cfg.profile == "block":
+        # Enforce OS-level ro mounts for ReadOnlyMany block filesystem volumes.
+        driver = driver.with_allow_ro_many_block_fs_mode(True)
     if cfg.profile == "nfs":
         driver = driver.with_deletion_resources(cfg.vast_vip_pool, cfg.vast_view_policy)
     k8s.vastclusters.apply([cluster.result()])
