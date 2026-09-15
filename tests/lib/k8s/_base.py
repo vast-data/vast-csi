@@ -73,7 +73,13 @@ class KubernetesResource:
             raise ValueError("resource_type is required")
 
     def _namespace_from_manifest(self, manifest) -> Optional[str]:
-        if self.resource_type in ("storageclass", "pv", "namespace"):
+        if self.resource_type in (
+            "storageclass",
+            "pv",
+            "namespace",
+            "bucketclass",
+            "bucketaccessclass",
+        ):
             return None
         return manifest.metadata.get("namespace", "default")
 
@@ -437,6 +443,11 @@ class K8S:
     def helmvalues(self):
         from lib.k8s.helm import HelmValues
         return HelmValues(self)
+
+    @cached_property
+    def bucketclasses(self):
+        from lib.k8s.cosi import BucketClass
+        return BucketClass(self)
 
     @cached_property
     def bucketclaims(self):
