@@ -775,6 +775,11 @@ class BlockNode(NodeBase, Instrumented):
         is_ephemeral = volume_context.get("csi.storage.k8s.io/ephemeral") == "true"
         logger.info(f"Volume type: {'Ephemeral' if is_ephemeral else 'Persistent'}")
         if is_ephemeral:
+            if CONF.static_provisioning:
+                raise Abort(
+                    FAILED_PRECONDITION,
+                    "Ephemeral volumes are disabled when provisioningMode is static",
+                )
             if not vms_session:
                 raise Exception(
                     "Ephemeral Volume provisioning requires "
@@ -1037,7 +1042,8 @@ def serve(server: grpc.Server, conf: Config):
     vast_csi.plugins.base.CONF = CONF = conf
     identity = BlockIdentity()
     csi_grpc.add_IdentityServicer_to_server(identity, server)
-    identity.capabilities.append(types.ExpansionType.ONLINE)
+    if not conf.static_provisioning:
+        identity.capabilities.append(types.ExpansionType.ONLINE)
 
     if conf.mode in {CONTROLLER, CONTROLLER_AND_NODE}:
         identity.controller = BlockController()

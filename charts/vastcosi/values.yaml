@@ -82,10 +82,6 @@ bucketClasses: {}
 #     # One rule per list element on the bucket's view; removed on bucket delete.
 #     # Rules apply at create only (BucketClass is immutable).
 #     # Rule names must be unique. Unknown keys are rejected.
-#     # Use day-based actions (expiration_days, noncurrent_days,
-#     # abort_mpu_days_after_initiation, expired_obj_delete_marker).
-#     # Do not use expiration_date: VMS REST create rejects date-only rules
-#     # with HTTP 400 "Please provide at least one expiration rule".
 #     lifecycleRules:
 #       - name: expire-logs
 #         expiration_days: 30
@@ -124,6 +120,13 @@ bucketAccessClasses: {}
 # The number of worker threads the COSI plugin use to serve requests simultaneously.
 numWorkers: 10
 
+# klog verbosity (--v) passed to the objectstorage-provisioner sidecar container.
+logLevel: 5
+
+# Log level of the VAST COSI plugin itself (X_CSI_LOG_LEVEL).
+# One of: debug, info, warning, error, critical.
+pluginLogLevel: info
+
 # Disable sending usage statistics to VAST cluster.
 # When set to true, the COSI driver will not report plugin usage metrics to VMS.
 disableUsageStats: false
@@ -137,7 +140,7 @@ cacheMaxAgeSeconds: 0
 
 # The name of the COSI driver registered with Kubernetes.
 # This value is used to identify the driver in COSI objects like BucketClasses etc.
-cosiDriverName: csi.vastdata.com
+csiDriverName: csi.vastdata.com
 
 ####################
 # VAST COSI PLUGIN OPTIONS

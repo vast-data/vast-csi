@@ -112,7 +112,9 @@ spec:
         {{- if .Values.controller.nodeSelector }}
         {{ toYaml .Values.controller.nodeSelector | indent 8 }}
         {{- end }}
-      priorityClassName: {{ .Values.controller.priorityClassName }}
+{{- with .Values.controller.priorityClassName }}
+      priorityClassName: {{ . }}
+{{- end }}
       serviceAccountName: {{ .Release.Name }}-vast-controller-sa
       tolerations:
         {{ toYaml .Values.controller.tolerations | indent 8 }}

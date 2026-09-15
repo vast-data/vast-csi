@@ -174,7 +174,9 @@ spec:
       dnsPolicy: {{ .Values.node.dnsPolicy }}
       nodeSelector:
 {{ toYaml .Values.node.nodeSelector | indent 8 }}
-      priorityClassName: {{ .Values.node.priorityClassName }}
+{{- with .Values.node.priorityClassName }}
+      priorityClassName: {{ . }}
+{{- end }}
       serviceAccountName: {{ .Release.Name }}-vast-node-sa
       tolerations:
 {{ toYaml .Values.node.tolerations | indent 8 }}

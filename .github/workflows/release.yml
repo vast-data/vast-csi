@@ -21,9 +21,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Vendor file://../common before prepare_releaser_configuration.py prunes charts/common.
+      - name: Build public chart dependencies
+        run: make chart-deps
+
       - name: Prepare releaser configuration
         run: |
-          python .github/workflows/prepare_releaser_configuration.py
+          python3 .github/workflows/prepare_releaser_configuration.py \
+            --release-group public
 
       - name: Configure Git
         if: ${{ hashFiles('releaser-config.yml') != '' }}

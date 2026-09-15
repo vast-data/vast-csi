@@ -1,118 +1,40 @@
-{{- $rc := .Values.extensions -}}
-{{- $wh := $rc.webhook -}}
-{{- $filterConfig := $wh.filterConfig -}}
-{{- $csiDriverName := tpl ($filterConfig.csiDriverName | default "") . -}}
-{{- /* Cert + MutatingWebhookConfiguration are created whenever extensions.enabled is true.
-       disablePvcLabelsWebhook only controls whether the pvc-label-injector webhook entry
-       is included — it is also forwarded as --enable-pvc-label-webhook to the process. */}}
-{{- $pvcWebhookEnabled := and $rc.enabled (not $wh.disablePvcLabelsWebhook) -}}
-{{- $vscrWebhookEnabled := and $rc.enabled (not $wh.disableVscrValidationWebhook) -}}
-{{- $vvrWebhookEnabled := and $rc.enabled (not $wh.disableVvrValidationWebhook) -}}
-{{- if $rc.enabled }}
-{{- if not $wh.certManager.enabled }}
-{{- $ns := include "vastcsi.namespace" . | trimAll "\"" }}
-{{- $svcName := printf "%s-vast-extension-controller-webhook" .Release.Name }}
-{{- $secretName := printf "%s-tls" $svcName }}
-{{- $cn := printf "%s.%s.svc" $svcName $ns }}
-{{- $altNames := list $cn (printf "%s.%s.svc.cluster.local" $svcName $ns) }}
-{{- /*
-  Reuse existing TLS certs when upgrading so that the caBundle in the
-  MutatingWebhookConfiguration stays in sync with the cert the pod is serving.
-  Only generate a new CA+cert on the first install (when the Secret is absent).
-*/}}
-{{- $existingSecret := lookup "v1" "Secret" $ns $secretName }}
-{{- $tlsCrt := "" }}
-{{- $tlsKey := "" }}
-{{- $caCrt  := "" }}
-{{- if $existingSecret }}
-  {{- $tlsCrt = index $existingSecret.data "tls.crt" }}
-  {{- $tlsKey = index $existingSecret.data "tls.key" }}
-  {{- $caCrt  = index $existingSecret.data "ca.crt"  }}
-{{- else }}
-  {{- $ca   := genCA "vast-csi-webhook-ca" 3650 }}
-  {{- $cert := genSignedCert $cn nil $altNames 3650 $ca }}
-  {{- $tlsCrt = $cert.Cert | b64enc }}
-  {{- $tlsKey = $cert.Key  | b64enc }}
-  {{- $caCrt  = $ca.Cert   | b64enc }}
-{{- end }}
-apiVersion: v1
-kind: Secret
-metadata:
-  name: {{ $secretName }}
-  namespace: {{ include "vastcsi.namespace" . }}
-  labels:
-  {{- include "vastcsi.labels" . | nindent 4 }}
-type: kubernetes.io/tls
-data:
-  tls.crt: {{ $tlsCrt }}
-  tls.key: {{ $tlsKey }}
-  ca.crt:  {{ $caCrt }}
----
-apiVersion: admissionregistration.k8s.io/v1
-kind: MutatingWebhookConfiguration
-metadata:
-  name: {{ $svcName }}
-  labels:
-  {{- include "vastcsi.labels" . | nindent 4 }}
-webhooks:
-{{- if $pvcWebhookEnabled }}
-  - name: pvc-label-injector.vastdata.com
-    admissionReviewVersions: ["v1"]
-    sideEffects: None
-    failurePolicy: {{ $wh.failurePolicy | default "Fail" }}
-    timeoutSeconds: {{ $wh.timeoutSeconds | default 30 }}
-    clientConfig:
-      service:
-        name: {{ $svcName }}
-        namespace: {{ $ns }}
-        path: /mutate-pvc
-      caBundle: {{ $caCrt }}
-    rules:
-      - apiGroups: [""]
-        apiVersions: ["v1"]
-        operations: ["CREATE"]
-        resources: ["persistentvolumeclaims"]
-    namespaceSelector:
-      matchExpressions:
-        - key: kubernetes.io/metadata.name
-          operator: NotIn
-          values: ["kube-system", "kube-public"]
-{{- end }}
-{{- if $vscrWebhookEnabled }}
-  - name: vaststorageclassreplication.vastdata.com
-    admissionReviewVersions: ["v1"]
-    sideEffects: None
-    failurePolicy: {{ $wh.failurePolicy | default "Fail" }}
-    timeoutSeconds: {{ $wh.timeoutSeconds | default 30 }}
-    clientConfig:
-      service:
-        name: {{ $svcName }}
-        namespace: {{ $ns }}
-        path: /validate-vastdata-com-v1alpha1-vaststorageclassreplication
-      caBundle: {{ $caCrt }}
-    rules:
-      - apiGroups: ["vastdata.com"]
-        apiVersions: ["v1alpha1"]
-        operations: ["CREATE", "UPDATE"]
-        resources: ["vaststorageclassreplications"]
-{{- end }}
-{{- if $vvrWebhookEnabled }}
-  - name: vastvolumereplication.vastdata.com
-    admissionReviewVersions: ["v1"]
-    sideEffects: None
-    failurePolicy: {{ $wh.failurePolicy | default "Fail" }}
-    timeoutSeconds: {{ $wh.timeoutSeconds | default 30 }}
-    clientConfig:
-      service:
-        name: {{ $svcName }}
-        namespace: {{ $ns }}
-        path: /validate-vastdata-com-v1alpha1-vastvolumereplication
-      caBundle: {{ $caCrt }}
-    rules:
-      - apiGroups: ["vastdata.com"]
-        apiVersions: ["v1alpha1"]
-        operations: ["CREATE", "UPDATE"]
-        resources: ["vastvolumereplications"]
-{{- end }}
-{{- end }}
+{{- $extensions := .Values.extensions -}}
+{{- $webhook := $extensions.webhook -}}
+{{- if and $extensions.enabled (not $webhook.certManager.enabled) -}}
+{{- $webhooks := list -}}
+{{- if not $webhook.disablePvcLabelsWebhook -}}
+{{- $webhooks = append $webhooks (dict
+  "name" "pvc-label-injector.vastdata.com"
+  "failurePolicy" ($webhook.failurePolicy | default "Fail")
+  "timeoutSeconds" ($webhook.timeoutSeconds | default 30)
+  "path" "/mutate-pvc"
+  "rules" (list (dict "apiGroups" (list "") "apiVersions" (list "v1") "operations" (list "CREATE") "resources" (list "persistentvolumeclaims")))
+  "namespaceSelector" (dict "matchExpressions" (list (dict "key" "kubernetes.io/metadata.name" "operator" "NotIn" "values" (list "kube-system" "kube-public"))))
+) -}}
+{{- end -}}
+{{- if not $webhook.disableVscrValidationWebhook -}}
+{{- $webhooks = append $webhooks (dict
+  "name" "vaststorageclassreplication.vastdata.com"
+  "failurePolicy" ($webhook.failurePolicy | default "Fail")
+  "timeoutSeconds" ($webhook.timeoutSeconds | default 30)
+  "path" "/validate-vastdata-com-v1alpha1-vaststorageclassreplication"
+  "rules" (list (dict "apiGroups" (list "vastdata.com") "apiVersions" (list "v1alpha1") "operations" (list "CREATE" "UPDATE") "resources" (list "vaststorageclassreplications")))
+) -}}
+{{- end -}}
+{{- if not $webhook.disableVvrValidationWebhook -}}
+{{- $webhooks = append $webhooks (dict
+  "name" "vastvolumereplication.vastdata.com"
+  "failurePolicy" ($webhook.failurePolicy | default "Fail")
+  "timeoutSeconds" ($webhook.timeoutSeconds | default 30)
+  "path" "/validate-vastdata-com-v1alpha1-vastvolumereplication"
+  "rules" (list (dict "apiGroups" (list "vastdata.com") "apiVersions" (list "v1alpha1") "operations" (list "CREATE" "UPDATE") "resources" (list "vastvolumereplications")))
+) -}}
+{{- end -}}
+{{ include "vast.common.resource.webhookCertificate" (dict
+  "name" (printf "%s-vast-extension-controller-webhook" .Release.Name)
+  "namespace" (include "vast.common.namespace" . | trimAll "\"")
+  "caName" "vast-csi-webhook-ca"
+  "labels" (include "vast.common.labels" .)
+  "webhooks" $webhooks
+) }}
 {{- end }}

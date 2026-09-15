@@ -43,6 +43,23 @@ class HelmValues(KubernetesResource):
             self.condition_running_labels = condition_running_labels
 
         def install(self):
+            logger.info(f"helm dependency build --skip-refresh {self.chart_dir}")
+            dependency_cmd = self.k8s.helm[
+                "dependency", "build", "--skip-refresh", str(self.chart_dir),
+            ]
+            rc, stdout, stderr = dependency_cmd.run(retcode=None)
+            if stdout:
+                print(stdout)
+            if stderr:
+                print(stderr, flush=True)
+            if rc != 0:
+                output = (stdout + "\n" + stderr).strip()
+                raise RuntimeError(
+                    f"helm dependency build for chart {self.name!r} failed (exit {rc}).\n"
+                    f"Command: helm dependency build --skip-refresh {self.chart_dir}\n"
+                    f"Output:\n{output}"
+                )
+
             overlay = self.k8s._next_object_yaml_path(self.k8s.helmvalues.resource_type)
             overlay.write(yaml.safe_dump(self.memoized_values, sort_keys=False))
             logger.info(f"helm upgrade --install {self.name} {self.chart_dir} -n {self.namespace}")

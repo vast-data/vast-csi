@@ -36,6 +36,7 @@ from vast_csi.csi_types import (
     FAILED_PRECONDITION,
     INTERNAL,
     INVALID_ARGUMENT,
+    UNIMPLEMENTED,
     UNKNOWN,
 )
 from vast_csi.utils import stringify_dict
@@ -70,6 +71,12 @@ def _get_next_uid():
 class Instrumented:
 
     SILENCED = ["Probe", "NodeGetCapabilities"]
+    DYNAMIC_PROVISIONING_METHODS = {
+        "CreateVolume",
+        "DeleteVolume",
+        "ControllerExpandVolume",
+        "NodeExpandVolume",
+    }
 
     def resolve_secrets(self, params):
         """Load VMS credentials for this RPC. Default: CSI sidecar-injected secrets map."""
@@ -93,6 +100,11 @@ class Instrumented:
         def wrapper(self, request, context):
             uid = _get_next_uid()
             peer = context.peer()
+            if CONF.static_provisioning and method in self.DYNAMIC_PROVISIONING_METHODS:
+                context.abort(
+                    UNIMPLEMENTED,
+                    f"{method} is disabled when provisioningMode is static",
+                )
             params = {fld.name: value for fld, value in request.ListFields()}
             # secrets are not logged and not the part of function signature.
             secrets = self.resolve_secrets(params)
@@ -383,11 +395,25 @@ class ControllerBase(csi_grpc.ControllerServicer):
 
     CAPABILITIES = NotImplemented
 
+    # Static provisioning only removes volume lifecycle RPCs; snapshots stay available.
+    STATIC_PROVISIONING_CAPABILITIES = {
+        types.CtrlCapabilityType.PUBLISH_UNPUBLISH_VOLUME,
+        types.CtrlCapabilityType.CREATE_DELETE_SNAPSHOT,
+        types.CtrlCapabilityType.LIST_SNAPSHOTS,
+    }
+
     def ControllerGetCapabilities(self):
+        capabilities = self.CAPABILITIES
+        if CONF.static_provisioning:
+            capabilities = [
+                capability
+                for capability in capabilities
+                if capability in self.STATIC_PROVISIONING_CAPABILITIES
+            ]
         return types.CtrlCapabilityResp(
             capabilities=[
                 types.CtrlCapability(rpc=types.CtrlCapability.RPC(type=rpc))
-                for rpc in self.CAPABILITIES
+                for rpc in capabilities
             ]
         )
 
@@ -408,10 +434,17 @@ class NodeBase(csi_grpc.NodeServicer):
 
     def NodeGetCapabilities(self):
         """Retrieve the node's capabilities."""
+        capabilities = self.CAPABILITIES
+        if CONF.static_provisioning:
+            capabilities = [
+                capability
+                for capability in capabilities
+                if capability != types.NodeCapabilityType.EXPAND_VOLUME
+            ]
         return types.NodeCapabilityResp(
             capabilities=[
                 types.NodeCapability(rpc=types.NodeCapability.RPC(type=rpc))
-                for rpc in self.CAPABILITIES
+                for rpc in capabilities
             ]
         )
 

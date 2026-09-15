@@ -207,6 +207,41 @@ install-cosi-crds: ## Install COSI CRDs and controller
 install-replication-crds: ## Install VolumeReplication CRDs and Operator (complete stack)
 	@$(CURDIR)/scripts/install_replication_stack.sh
 
+######################
+# PUBLIC HELM CHARTS
+######################
+CHART_DIRS := charts/common charts/vastcsi charts/vastblock charts/vastcosi charts/vastcsi-gke
+PUBLIC_CHART_DIRS := charts/vastcsi charts/vastblock charts/vastcosi charts/vastcsi-gke
+CHART_TEMPLATE_ARGS := --set endpoint=render-smoke
+
+.PHONY: chart-deps chart-deps-update chart-lint chart-template render-smoke
+chart-deps: ## Vendor vast-common from charts/common into public Helm charts
+	@set -e; for chart in $(PUBLIC_CHART_DIRS); do \
+		echo "Building Helm dependencies for $$chart"; \
+		helm dependency build --skip-refresh "$(CURDIR)/$$chart"; \
+	done
+
+chart-deps-update: ## Refresh locks after changing the vast-common version pin
+	@set -e; for chart in $(PUBLIC_CHART_DIRS); do \
+		echo "Updating Helm dependencies for $$chart"; \
+		helm dependency update --skip-refresh "$(CURDIR)/$$chart"; \
+	done
+
+chart-lint: chart-deps ## Lint common and public Helm charts
+	@set -e; for chart in $(CHART_DIRS); do \
+		echo "Linting $$chart"; \
+		helm lint "$(CURDIR)/$$chart"; \
+	done
+
+chart-template: chart-deps ## Render public Helm charts as a smoke test
+	@set -e; for chart in $(PUBLIC_CHART_DIRS); do \
+		release=$${chart##*/}; \
+		echo "Rendering $$chart"; \
+		helm template "$$release" "$(CURDIR)/$$chart" $(CHART_TEMPLATE_ARGS) >/dev/null; \
+	done
+
+render-smoke: chart-template ## Alias for chart-template
+
 start-minikube: ## Start Minikube cluster
 	@$(call check_required_env,MINIKUBE_DRIVER)
 	@$(CURDIR)/scripts/start-minikube.sh
