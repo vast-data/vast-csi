@@ -77,6 +77,22 @@ class PodBuilder(Builder):
             self._body["spec"]["containers"][0]["args"] = args
         return self
 
+    def with_env_from(
+        self,
+        *,
+        secret_name: Optional[str] = None,
+        config_map_name: Optional[str] = None,
+    ) -> "PodBuilder":
+        """Mount env vars from a Secret and/or ConfigMap (COSI flat credentials)."""
+        env_from: list[dict] = []
+        if secret_name:
+            env_from.append({"secretRef": {"name": secret_name}})
+        if config_map_name:
+            env_from.append({"configMapRef": {"name": config_map_name}})
+        if env_from:
+            self._body["spec"]["containers"][0]["envFrom"] = env_from
+        return self
+
 
 class DeploymentBuilder(Builder):
     """Fluent builder for a Deployment manifest."""

@@ -335,7 +335,7 @@ def test_block_snapshot_restore(system, k8s):
 @pytest.mark.block
 def test_block_long_snapshot_name_truncates(system, k8s):
     """Long project + snapshot names must still create a VMS snap (name <= 128)."""
-    suffix = random_nice_name(max_length=8)
+    suffix = random_nice_name(max_length=16)
     ns = ("e2e-blk-long-snap-" + "n" * 50)[:63]
     snap_name = ("blk-long-snap-" + "s" * 60)[:63]
     src_pvc = f"snap-src-ext4-{suffix}"

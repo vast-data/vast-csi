@@ -14,7 +14,13 @@ K8S_CLEANUP_MAX_WORKERS = 8
 if TYPE_CHECKING:
     from lib.k8s._base import K8S, KubernetesResource
 
-_CLUSTER_SCOPED = frozenset({"storageclass", "pv", "namespace"})
+_CLUSTER_SCOPED = frozenset({
+    "storageclass",
+    "pv",
+    "namespace",
+    "bucketclass",
+    "bucketaccessclass",
+})
 
 
 def _is_protected(entry: RecordedCreation) -> bool:
@@ -65,6 +71,7 @@ class CreationRecorder:
             "namespace": "namespaces",
             "secret": "secrets",
             "bucketclaim": "bucketclaims",
+            "bucketclass": "bucketclasses",
             "bucketaccessclass": "bucketaccessclasses",
             "bucketaccess": "bucketaccesses",
             "vastcsidrivers": "vastcsidrivers",
