@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## Version 2.6.6-hf2
+* COSI: republished Helm chart without the broken `objectstorage-provisioner` startupProbe (`test -S` is missing in the sidecar image), so the provisioner pod can become Ready (VCSI-609)
 * CSI inline ephemeral volume (EV) credentials are now stored on a tmpfs overlay. New publishes always use tmpfs and JSON metadata; set `credSerializationSecret` to encrypt with AES-GCM
 * Added `fallbackToDeser` (`X_CSI_FALLBACK_TO_DESER`) to unpublish EV volumes that still use the old on-disk pickle serializer. Defaults to `false`; set `true` only while old-format EVs remain mounted, then set `false` again after they unpublish
 
