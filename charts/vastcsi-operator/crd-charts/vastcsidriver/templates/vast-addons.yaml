@@ -1,0 +1,123 @@
+{{/* VAST replication addons — separate pod without hostNetwork so
+     multiple drivers can all use the default port 9070 on the same node. */}}
+{{- if .Values.replicationEnabled }}
+
+{{- $csi_images := .Values.image -}}
+{{- $plugin_proxy_sock_path := "/var/lib/csi/sockets/pluginproxy/" -}}
+{{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
+{{- $is_nfs_driver := (eq .Values.driverType "nfs") }}
+{{- $name_prefix := $is_nfs_driver | ternary "csi" "block" }}
+{{- $sc := .Values.csiAddonsSidecar -}}
+{{- $csiaddons_sock := "csiaddons.sock" -}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name_prefix }}-vast-addons
+  namespace: {{ include "vastcsi.namespace" . }}
+  labels:
+    {{- include "vastcsi.labels" . | nindent 4 }}
+    app.kubernetes.io/csi-role: vast-addons
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $name_prefix }}-vast-addons
+      {{- include "vastcsi.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: {{ $name_prefix }}-vast-addons
+        {{- include "vastcsi.labels" . | nindent 8 }}
+    spec:
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{ toYaml .Values.imagePullSecrets | indent 8 }}
+      {{- end }}
+      affinity:
+        podAffinity:
+          {{- toYaml .Values.controller.podAffinity | nindent 10 }}
+        podAntiAffinity:
+          {{- toYaml .Values.controller.podAntiAffinity | nindent 10 }}
+        nodeAffinity:
+          {{- toYaml .Values.controller.nodeAffinity | nindent 10 }}
+      containers:
+        - name: csi-addons-manager
+          image: {{ $csi_images.csiAddonsSidecar.repository | default $csi_images.csiAddonsSidecar.defaultRepository }}
+          args:
+            - "--node-id=$(NODE_ID)"
+            - "--csi-addons-address={{ printf "%s%s" $plugin_proxy_sock_path $csiaddons_sock }}"
+            - "--controller-port=9070"
+            - "--pod=$(POD_NAME)"
+            - "--namespace=$(POD_NAMESPACE)"
+            - "--pod-uid=$(POD_UID)"
+            - "--stagingpath={{ .Values.kubeletPath }}/plugins/kubernetes.io/csi/"
+            - "--v={{ .Values.logLevel | default 5 }}"
+            - "--timeout={{ $sc.operationTimeout | default 120 }}s"
+          env:
+            - name: NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+          imagePullPolicy: {{ $csi_images.csiAddonsSidecar.imagePullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: 9070
+              name: csi-addons
+              protocol: TCP
+          volumeMounts:
+            - name: socket-dir
+              mountPath: {{ $plugin_proxy_sock_path }}
+          resources: {{- toYaml $sc.resources.csiAddonsSidecar | nindent 12 }}
+        - name: replication-vast-plugin
+          image: {{ $csi_images.csiVastPlugin.repository | default $csi_images.csiVastPlugin.defaultRepository }}
+          args:
+            - "serve"
+            - "--addons={{ include "vastcsi.addons-list" (dict "type" .Values.driverType) }}"
+          env:
+            {{- include "vastcsi.commonEnv" . | indent 12 }}
+            - name: X_CSI_VMS_TIMEOUT
+              value: {{ $sc.operationTimeout | default 120 | quote }}
+            - name: X_CSI_EXTENSIONS_GRPC_ADDRESS
+              value: "extensions-manager-grpc:9090"
+            - name: CSI_ENDPOINT
+              value: unix://{{ printf "%s%s" $plugin_proxy_sock_path $csiaddons_sock }}
+            - name: X_CSI_MODE
+              value: controller
+          imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default "IfNotPresent" }}
+          volumeMounts:
+            - name: socket-dir
+              mountPath: {{ $plugin_proxy_sock_path }}
+          {{- include "vastcsi.vmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 12 }}
+          resources: {{- toYaml $sc.resources.csiVastPlugin | nindent 12 }}
+      dnsPolicy: ClusterFirst
+      nodeSelector:
+        {{- if .Values.controller.runOnMaster }}
+        node-role.kubernetes.io/master: ""
+        {{- end }}
+        {{- if .Values.controller.runOnControlPlane }}
+        node-role.kubernetes.io/control-plane: ""
+        {{- end }}
+        {{- if .Values.controller.nodeSelector }}
+        {{ toYaml .Values.controller.nodeSelector | indent 8 }}
+        {{- end }}
+      priorityClassName: {{ .Values.controller.priorityClassName }}
+      serviceAccountName: {{ .Release.Name }}-vast-controller-sa
+      tolerations:
+        {{ toYaml .Values.controller.tolerations | indent 8 }}
+      volumes:
+        - name: socket-dir
+          emptyDir: {}
+        {{- include "vastcsi.vmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}
+{{- end }}

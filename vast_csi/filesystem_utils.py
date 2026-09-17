@@ -10,7 +10,7 @@ from tempfile import TemporaryDirectory
 from easypy.units import MINUTE
 from easypy.timing import timing
 from requests.exceptions import HTTPError  # noqa
-from plumbum import local, cmd, ProcessExecutionError
+from plumbum import local, cmd, ProcessExecutionError, FG
 from plumbum.commands.processes import ProcessTimedOut
 from vast_csi.logging import logger
 from vast_csi.exceptions import Abort, FilesystemIntegrityError, MountFailed, UmountTimedOut
@@ -24,6 +24,66 @@ XFS_DB_TIMEOUT = 30
 # Supports:
 # - NVMe devices (e.g., /nvme0n1 or nvme1n2)
 DEVICE_NAME_RGX = re.compile(r"^/?nvme\d+n\d+$")
+
+# Cap for the meta overlay tmpfs written before the volume mount.
+# Holds a single .vast-csi-meta JSON file (volume id plus optional AES-GCM
+# encrypted VMS session / LUKS manager). Typical payload is a few KB even
+# with a PEM cert; 64K covers that after page-size rounding (4K x86 / 64K ARM).
+META_TMPFS_SIZE = "64K"
+
+DEFAULT_HOST_BINARY_DIRS = (
+    "/usr/sbin",
+    "/usr/bin",
+    "/sbin",
+    "/bin",
+    "/usr/local/sbin",
+    "/usr/local/bin",
+)
+
+
+def parse_host_binary_search_dirs(raw: str, defaults: tuple[str, ...]) -> tuple[str, ...]:
+    """Parse comma-separated host directory paths; empty raw => defaults only."""
+    if not raw.strip():
+        return defaults
+    extra = []
+    for item in raw.split(","):
+        path = item.strip().rstrip("/")
+        if not path:
+            continue
+        if not path.startswith("/"):
+            raise ValueError(f"host binary search dir must be absolute: {path!r}")
+        extra.append(path)
+    if not extra:
+        return defaults
+    seen = set()
+    merged = []
+    for path in (*defaults, *extra):
+        if path not in seen:
+            seen.add(path)
+            merged.append(path)
+    return tuple(merged)
+
+
+def resolve_host_binary_path(
+    candidate_paths: tuple[str, ...],
+    host_mount=None,
+) -> str | None:
+    if host_mount is None:
+        host_mount = HostCommandAdapter.HOST_MOUNT
+    if not host_mount.exists():
+        return None
+
+    host_root = os.path.realpath(str(host_mount))
+    for host_path in candidate_paths:
+        candidate = host_mount / host_path.lstrip("/")
+        if not candidate.exists():
+            continue
+        real = os.path.realpath(str(candidate))
+        if not (real == host_root or real.startswith(host_root + os.sep)):
+            continue
+        if os.access(real, os.X_OK):
+            return "/" + os.path.relpath(real, host_root)
+    return None
 
 
 # Default formatting flags
@@ -44,69 +104,204 @@ MKFS_ARGS = {
 }
 
 
-class HostCommand:
-    """
-    A utility for executing commands in the context of the Docker engine host's filesystem.
-    This class uses a `chroot` environment to execute commands as if they were running directly
-    on the Docker engine host. Commands are executed within a minimal environment to closely
-    emulate the host system, ensuring compatibility and isolation.
-    """
-    HOST_MOUNT = local.path("/host")
+def run_executable(
+    executable,
+    *,
+    argv: list[str],
+    timeout=None,
+    pipe: bool = False,
+    pipe_prefix: str | None = None,
+    fg: bool = False,
+    thread_timeout: bool = False,
+) -> str:
+    """Run a plumbum executable; raise on non-zero exit or timeout."""
+    cmd_line = " ".join(argv)
+    try:
+        if fg:
+            executable & FG
+            return ""
+        if pipe:
+            prefix = pipe_prefix if pipe_prefix is not None else f"{argv[0]}: "
+            retcode, stdout, stderr = executable.run(retcode=None, timeout=timeout)
+            for line in stdout.splitlines():
+                logger.info("%s%s", prefix, line)
+            for line in stderr.splitlines():
+                logger.info("%s%s", prefix, line)
+        else:
 
-    def __init__(self, base_cmd=None):
-        self.base_cmd = base_cmd
+            def _run():
+                return executable.run(retcode=None)
 
-    def __getattr__(self, item):
-        """Dynamically sets the base command when accessing a non-existent attribute."""
-        if not self.HOST_MOUNT.exists():
-            raise Exception(f"Could not find Docker engine host's filesystem at expected location: {self.HOST_MOUNT}")
-        self.base_cmd = item
-        return self.__class__(base_cmd=item)
+            if timeout is not None and thread_timeout:
+                try:
+                    retcode, stdout, stderr = run_with_timeout(_run, timeout)
+                except TimeoutError:
+                    raise ProcessTimedOut(
+                        f"Command timed out after {timeout}s: {cmd_line}", None
+                    )
+            elif timeout is not None:
+                retcode, stdout, stderr = executable.run(retcode=None, timeout=timeout)
+            else:
+                retcode, stdout, stderr = _run()
+    except ProcessTimedOut:
+        raise ProcessTimedOut(
+            f"Command timed out after {timeout}s: {cmd_line}", None
+        )
 
-    def _get_cmd_chain(self, *args):
-        assert self.base_cmd is not None, "Base command not set"
-        return f"{self.base_cmd} {' '.join(map(str, args))}"
+    if retcode != 0:
+        raise ProcessExecutionError(
+            retcode=retcode, stdout=stdout, stderr=stderr, argv=argv
+        )
+    return stdout
+
+
+class HostToolRunner:
+    """Callable runner for one host binary via chroot to a resolved absolute path."""
+
+    def __init__(
+        self,
+        adapter: "HostCommandAdapter",
+        tool: str,
+        *,
+        pipe_prefix: str | None = None,
+        not_found_hint: str = "",
+    ):
+        self._adapter = adapter
+        self._tool = tool
+        self._pipe_prefix = pipe_prefix if pipe_prefix is not None else f"{tool}: "
+        self._not_found_hint = not_found_hint
+
+    def resolve_path(self) -> str:
+        return self._adapter._resolve_tool(
+            self._tool,
+            self._adapter.candidate_paths_for(self._tool),
+            not_found_hint=self._not_found_hint,
+        )
 
     def get_executable(self, *args):
-        return cmd.bash[
-            "-c", (
-            f"exec chroot {self.HOST_MOUNT} /usr/bin/env -i "
-            f"PATH=/sbin:/bin:/usr/bin:/usr/sbin {self._get_cmd_chain(*args)}"
-            )
+        return cmd.chroot[
+            str(self._adapter.HOST_MOUNT), self.resolve_path(), *map(str, args)
         ]
 
-    def __call__(self, *args, timeout=None):
-        """
-        Executes the base command with the given arguments in the Docker host's chroot environment.
-        Args:
-            *args: Positional arguments to pass to the command.
-            timeout (float or None, optional): Timeout for the command execution in seconds. Defaults to None.
-        """
+    def __call__(self, *args, timeout=None, pipe=False, stdin=None, fg=False):
+        executable = self.get_executable(*args)
+        if stdin is not None:
+            executable = cmd.echo["-n", stdin] | executable
+        return run_executable(
+            executable,
+            argv=[self._tool, *map(str, args)],
+            timeout=timeout,
+            pipe=pipe,
+            pipe_prefix=self._pipe_prefix,
+            fg=fg,
+            thread_timeout=timeout is not None and not pipe,
+        )
 
-        def _execute_command():
-            return self.get_executable(*args).run(retcode=None)
 
-        if timeout is not None:
-            try:
-                retcode, stdout, stderr = run_with_timeout(_execute_command, timeout)
-            except TimeoutError:
-                cmd_str = self._get_cmd_chain(*args)
-                raise ProcessTimedOut(f"Command timed out after {timeout}s: {cmd_str}", None)
-        else:
-            retcode, stdout, stderr = _execute_command()
+class HostCommandAdapter:
+    """
+  Execute utilities on the Docker/Kubernetes node host via chroot into /host.
 
-        if retcode != 0:
-            # Avoid using cmd.formulate() or any kind of cmd resolving within docker system context.
-            # Because such commands as 'nvme' are available only on the host system.
-            # .formulate causes 'which' execution which leads to AttributeError.
+  Resolves each tool once by scanning configured base directories (defaults cover
+  common Linux layouts). Resolved paths are memoized per tool. Commands use
+  chroot to the absolute binary path so host /usr/bin/env is not required
+  (Talos and other minimal nodes).
+    """
+
+    HOST_MOUNT = local.path("/host")
+
+    def __init__(self):
+        self._lock = RLock()
+        self._resolved: dict[str, str] = {}
+        self._resolved_for: dict[str, tuple[str, ...]] = {}
+        self._runners: dict[str, HostToolRunner] = {}
+
+    def search_dirs(self) -> tuple[str, ...]:
+        from vast_csi.configuration import Config
+
+        return parse_host_binary_search_dirs(
+            Config().block_host_binary_search_dirs,
+            DEFAULT_HOST_BINARY_DIRS,
+        )
+
+    def candidate_paths_for(self, tool: str) -> tuple[str, ...]:
+        dirs = self.search_dirs()
+        return tuple(f"{d}/{tool}" for d in dirs)
+
+    def _resolve_tool(
+        self,
+        tool: str,
+        candidates: tuple[str, ...],
+        *,
+        not_found_hint: str = "",
+    ) -> str:
+        with self._lock:
+            if self._resolved.get(tool) and self._resolved_for.get(tool) == candidates:
+                return self._resolved[tool]
+
+        if not self.HOST_MOUNT.exists():
             raise ProcessExecutionError(
-                retcode=retcode, stdout=stdout, stderr=stderr, argv=self._get_cmd_chain(*args).split()
+                retcode=127,
+                stdout="",
+                stderr=f"host root not mounted at {self.HOST_MOUNT}",
+                argv=[tool],
             )
-        return stdout
+
+        resolved = resolve_host_binary_path(candidates, self.HOST_MOUNT)
+        if resolved is None:
+            hint = f". {not_found_hint}" if not_found_hint else ""
+            raise ProcessExecutionError(
+                retcode=127,
+                stdout="",
+                stderr=f"host {tool} not found; searched: {', '.join(candidates)}{hint}",
+                argv=[tool],
+            )
+
+        with self._lock:
+            self._resolved[tool] = resolved
+            self._resolved_for[tool] = candidates
+        logger.info("host %s: using %s", tool, resolved)
+        return resolved
+
+    def reset_cache(self, tool: str | None = None) -> None:
+        with self._lock:
+            if tool is None:
+                self._resolved.clear()
+                self._resolved_for.clear()
+            else:
+                self._resolved.pop(tool, None)
+                self._resolved_for.pop(tool, None)
+
+    def tool(
+        self,
+        name: str,
+        *,
+        pipe_prefix: str | None = None,
+        not_found_hint: str = "",
+    ) -> HostToolRunner:
+        key = (name, pipe_prefix, not_found_hint)
+        if key not in self._runners:
+            self._runners[key] = HostToolRunner(
+                self,
+                name,
+                pipe_prefix=pipe_prefix,
+                not_found_hint=not_found_hint,
+            )
+        return self._runners[key]
+
+    def __getattr__(self, item: str) -> HostToolRunner:
+        if item.startswith("_"):
+            raise AttributeError(item)
+        return self.tool(item)
 
 
-hostcmd = HostCommand()
-realpath_cmd = HostCommand("realpath")
+host_commands = HostCommandAdapter()
+hostnvme = host_commands.tool(
+    "nvme",
+    not_found_hint="Install nvme-cli on the node (Talos: nvme-cli system extension).",
+    pipe_prefix="nvme: ",
+)
+realpath_cmd = host_commands.realpath
 
 def get_host_realpath(path):
     """
@@ -204,23 +399,39 @@ class MountInfo:
             return [MountInfo(line) for line in f if line.strip()]
 
     @classmethod
-    def get_mount_by_destination(cls, dest_path, resolve_symlink=False):
-        """Return the source device for a path.
-        The source of a mounted path will either be the mount source of the
-        mount point or the root if it's a bind mount.
-        
-        Args:
-            dest_path: Path to search for in mount points
-            resolve_symlink: If True, resolve symlinks via get_host_realpath (slower).
-                           If False (default), use paths as-is for better performance.
-        """
+    def _mount_at_destination(cls, dest_path, resolve_symlink=False, fstypes=None, skip_fstypes=None):
         dest_path_resolved = get_host_realpath(dest_path) if resolve_symlink else dest_path
-        mount_info = cls.from_host()
-        for mount in mount_info:
+        allow = set(fstypes) if fstypes else None
+        skip = set(skip_fstypes or ())
+        found = None
+        for mount in cls.from_host():
+            if allow is not None and mount.fs_type not in allow:
+                continue
+            if mount.fs_type in skip:
+                continue
             mount_point_resolved = get_host_realpath(mount.mount_point) if resolve_symlink else mount.mount_point
             if mount_point_resolved == dest_path_resolved:
-                return mount
-        return None
+                found = mount
+        return found
+
+    @classmethod
+    def get_mount_by_destination(cls, dest_path, resolve_symlink=False):
+        """Return the topmost mount for a path (any fstype, including tmpfs)."""
+        return cls._mount_at_destination(dest_path, resolve_symlink=resolve_symlink)
+
+    @classmethod
+    def get_volume_mount_by_destination(cls, dest_path, resolve_symlink=False):
+        """Published volume at dest_path. Never the tmpfs meta overlay."""
+        return cls._mount_at_destination(
+            dest_path, resolve_symlink=resolve_symlink, skip_fstypes=("tmpfs",)
+        )
+
+    @classmethod
+    def get_tmpfs_mount_by_destination(cls, dest_path, resolve_symlink=False):
+        """Meta-overlay tmpfs at dest_path. Never the published volume."""
+        return cls._mount_at_destination(
+            dest_path, resolve_symlink=resolve_symlink, fstypes=("tmpfs",)
+        )
 
     @classmethod
     def get_mounts_by_source(cls, src, resolve_symlink=False):
@@ -367,12 +578,41 @@ def mount(
     logger.info(f"Mount succeeded in {timer.elapsed}: {src!r} -> {tgt!r}")
 
 
-def umount(path, ignore_not_mounted=False, lazy=False, metrics_registry=None, metrics_operation="block_mount", timeout=None):
+def mount_tmpfs(tgt, size=META_TMPFS_SIZE, mode="0700", timeout=None):
+    """Mount an empty tmpfs at tgt for storing .vast-csi-meta before the volume mount."""
+    flags = f"size={size},mode={mode}"
+    mount(
+        src="tmpfs",
+        tgt=tgt,
+        fs_type="tmpfs",
+        flags=flags,
+        timeout=timeout,
+    )
+
+
+def umount_tmpfs(path, ignore_not_mounted=True, lazy=False, timeout=None):
+    """Unmount the tmpfs meta overlay only (`umount -t tmpfs`). Never the volume."""
+    return umount(
+        path,
+        ignore_not_mounted=ignore_not_mounted,
+        lazy=lazy,
+        timeout=timeout,
+        fs_type="tmpfs",
+    )
+
+
+def umount(path, ignore_not_mounted=False, lazy=False, metrics_registry=None, metrics_operation="block_mount", timeout=None, fs_type=None):
     """Unmount a path with run_with_timeout when timeout is set."""
-    logger.info(f"Unmounting {path!r}" + (f" with timeout: {timeout}s" if timeout else ""))
+    logger.info(
+        f"Unmounting {path!r}"
+        + (f" (fs_type={fs_type})" if fs_type else "")
+        + (f" with timeout: {timeout}s" if timeout else "")
+    )
 
     def do_umount():
         flags = ["-v"]
+        if fs_type:
+            flags.extend(["-t", fs_type])
         if lazy:
             flags.append("-l")
         return cmd.umount[flags + [path]].run()
@@ -391,7 +631,9 @@ def umount(path, ignore_not_mounted=False, lazy=False, metrics_registry=None, me
         except TimeoutError:
             raise UmountTimedOut(f"umount timed out after {timeout}s for path: {path}")
         except ProcessExecutionError as exc:
-            if "not mounted" in exc.stderr:
+            stderr = exc.stderr or ""
+            # `umount -t tmpfs PATH` prints "no mount point specified" when no tmpfs is there.
+            if "not mounted" in stderr or "no mount point specified" in stderr:
                 if ignore_not_mounted:
                     logger.info(f"Umount: {path!r} is not mounted (ignored)")
                     return False
@@ -474,7 +716,7 @@ def get_device_size(device: str):
 def _check_ext_integrity(device: str):
     """ext3/ext4: run fsck before mount on re-attached or cloned volumes."""
     try:
-        hostcmd.e2fsck.get_executable("-a", device) & logger.pipe_info("e2fsck: ")
+        host_commands.e2fsck.get_executable("-a", device) & logger.pipe_info("e2fsck: ")
     except ProcessExecutionError as exc:
         # fsck returns 1 if it finds and fixes issues
         if exc.retcode == 1:
@@ -596,7 +838,7 @@ def ext_resize(device: str):
                 f"resize2fs requires e2fsck on {device} (snapshot of live fs detected) — "
                 f"running e2fsck -f with 5-minute timeout"
             )
-            hostcmd.e2fsck.get_executable("-f", "-y", device).run(timeout=5 * 60, retcode=None)
+            host_commands.e2fsck.get_executable("-f", "-y", device).run(timeout=5 * 60, retcode=None)
             cmd.resize2fs[device] & logger.pipe_info("resize2fs: ")
         else:
             raise

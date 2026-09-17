@@ -1,11 +1,15 @@
 import os.path
+import os
+import stat
 from threading import Thread, Event
 from unittest.mock import MagicMock, patch, mock_open
 import pytest
 from pathlib import Path
+from plumbum import local, ProcessExecutionError
 from vast_csi.filesystem_utils import (
     MountInfo,
-    hostcmd,
+    hostnvme,
+    host_commands,
     resource_locked,
     ResourceLockedError,
     get_ext_size,
@@ -14,6 +18,9 @@ from vast_csi.filesystem_utils import (
     umount,
     temporary_mount,
     _normalize_mount_flags,
+    DEFAULT_HOST_BINARY_DIRS,
+    HostCommandAdapter,
+    parse_host_binary_search_dirs,
 )
 from vast_csi.exceptions import MountFailed, UmountTimedOut
 from plumbum import cmd
@@ -576,3 +583,111 @@ class TestTemporaryMount:
             ignore_not_mounted=True,
             timeout=15,
         )
+
+
+def test_run_executable_pipe_preserves_stderr_on_failure():
+    from plumbum import ProcessExecutionError
+    from vast_csi.filesystem_utils import run_executable
+
+    executable = MagicMock()
+    executable.run.return_value = (1, "", "connect failed")
+
+    with pytest.raises(ProcessExecutionError) as exc_info:
+        run_executable(
+            executable,
+            argv=["nvme", "connect-all"],
+            pipe=True,
+            pipe_prefix="nvme: ",
+        )
+
+    assert exc_info.value.stderr == "connect failed"
+
+
+def _make_executable(path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("#!/bin/sh\n")
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
+def test_parse_host_binary_search_dirs_empty_uses_defaults():
+    assert parse_host_binary_search_dirs("", DEFAULT_HOST_BINARY_DIRS) == DEFAULT_HOST_BINARY_DIRS
+    assert parse_host_binary_search_dirs("  ", DEFAULT_HOST_BINARY_DIRS) == DEFAULT_HOST_BINARY_DIRS
+
+
+def test_parse_host_binary_search_dirs_appends_extra_dirs():
+    result = parse_host_binary_search_dirs("/opt/bin", DEFAULT_HOST_BINARY_DIRS)
+    assert result == (*DEFAULT_HOST_BINARY_DIRS, "/opt/bin")
+
+
+def test_parse_host_binary_search_dirs_rejects_relative():
+    with pytest.raises(ValueError, match="absolute"):
+        parse_host_binary_search_dirs("usr/bin", DEFAULT_HOST_BINARY_DIRS)
+
+
+def test_resolve_host_nvme_path_finds_binary_in_standard_path(tmp_path, monkeypatch):
+    host_commands.reset_cache("nvme")
+    host_root = tmp_path / "host"
+    _make_executable(host_root / "usr" / "bin" / "nvme")
+
+    monkeypatch.setattr(HostCommandAdapter, "HOST_MOUNT", local.path(host_root))
+    monkeypatch.setenv("X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS", "")
+
+    assert hostnvme.resolve_path() == "/usr/bin/nvme"
+
+
+def test_resolve_host_nvme_path_finds_binary_in_usr_local_sbin(tmp_path, monkeypatch):
+    host_commands.reset_cache("nvme")
+    host_root = tmp_path / "host"
+    _make_executable(host_root / "usr" / "local" / "sbin" / "nvme")
+
+    monkeypatch.setattr(HostCommandAdapter, "HOST_MOUNT", local.path(host_root))
+    monkeypatch.setenv("X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS", "")
+
+    assert hostnvme.resolve_path() == "/usr/local/sbin/nvme"
+
+
+def test_resolve_host_nvme_path_honors_extra_search_dirs(tmp_path, monkeypatch):
+    host_commands.reset_cache("nvme")
+    host_root = tmp_path / "host"
+    _make_executable(host_root / "opt" / "nvme" / "bin" / "nvme")
+
+    monkeypatch.setattr(HostCommandAdapter, "HOST_MOUNT", local.path(host_root))
+    monkeypatch.setenv("X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS", "/opt/nvme/bin")
+
+    assert hostnvme.resolve_path() == "/opt/nvme/bin/nvme"
+
+
+def test_resolve_host_nvme_path_rejects_symlink_outside_chroot(tmp_path, monkeypatch):
+    host_commands.reset_cache("nvme")
+    host_root = tmp_path / "host"
+    outside = tmp_path / "outside-nvme"
+    _make_executable(outside)
+    link = host_root / "usr" / "bin" / "nvme"
+    link.parent.mkdir(parents=True, exist_ok=True)
+    os.symlink(outside, link)
+
+    monkeypatch.setattr(HostCommandAdapter, "HOST_MOUNT", local.path(host_root))
+    monkeypatch.setenv("X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS", "")
+
+    with pytest.raises(ProcessExecutionError, match="host nvme not found"):
+        hostnvme.resolve_path()
+
+
+def test_resolve_host_nvme_path_missing_binary(tmp_path, monkeypatch):
+    host_commands.reset_cache("nvme")
+    host_root = tmp_path / "host"
+    host_root.mkdir()
+
+    monkeypatch.setattr(HostCommandAdapter, "HOST_MOUNT", local.path(host_root))
+    monkeypatch.setenv("X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS", "/usr/bin")
+
+    with pytest.raises(ProcessExecutionError, match="host nvme not found"):
+        hostnvme.resolve_path()
+
+
+def test_resolve_host_nvme_path_rejects_invalid_search_dirs(monkeypatch):
+    host_commands.reset_cache("nvme")
+    monkeypatch.setenv("X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS", "usr/bin")
+
+    with pytest.raises(ValueError, match="absolute"):
+        hostnvme.resolve_path()

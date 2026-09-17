@@ -1,0 +1,32 @@
+# Deployment that mounts the replicated PVC.
+# After a failover (primaryStorageClass changes to vastdata-filesystem2),
+# the pvcRemap feature patches this Deployment's pod-template volumes so that
+# the mirror PVC (myapp-data-repl-<cluster-ip>) is used instead.
+# Kubernetes then rolls out a new pod automatically.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+        - name: app
+          image: busybox
+          command: ["sh", "-c", "while true; do echo $(date) >> /data/log.txt; sleep 5; done"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: myapp-data

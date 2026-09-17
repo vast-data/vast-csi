@@ -31,9 +31,10 @@ from easypy.bunch import Bunch
 from vast_csi.proto import csi_pb2_grpc as csi_grpc
 from vast_csi.proto import addons_identity_pb2, addons_identity_pb2_grpc
 from vast_csi import csi_types as types
-from vast_csi.csi_types import FAILED_PRECONDITION
+from vast_csi.csi_types import FAILED_PRECONDITION, INTERNAL
 
 from vast_csi.utils import stringify_dict
+from vast_csi.filesystem_utils import umount_tmpfs
 from vast_csi.csi_types import INVALID_ARGUMENT, UNKNOWN
 from vast_csi.builders import  parse_volume_id
 from vast_csi.exceptions import Abort, LookupFieldError
@@ -45,6 +46,7 @@ from vast_csi.quantity import parse_quantity
 from vast_csi.logging import logger
 
 CONF = None
+META_FILE_NAME = ".vast-csi-meta"
 
 
 # Request ID counter for unique request tracking
@@ -465,11 +467,22 @@ class NodeBase(csi_grpc.NodeServicer):
             capacity_range = Bunch(required_bytes=required_bytes)
         else:
             capacity_range = None
+        # CSI inline EV has no PV/StorageClass mountOptions. Kubelet leaves
+        # volume_capability.mount.mount_flags empty; copy volumeAttributes.mount_options
+        # onto a capability so CreateVolume / ControllerPublish parse them as usual.
+        ev_capability = types.VolumeCapability()
+        if volume_capability:
+            ev_capability.CopyFrom(volume_capability)
+        ev_capability.mount.ClearField("mount_flags")
+        for opt in (volume_context.get("mount_options") or "").replace(",", " ").split():
+            opt = opt.strip()
+            if opt:
+                ev_capability.mount.mount_flags.append(opt)
         resp = self.controller.CreateVolume.__wrapped__(
             self.controller,
             vms_session=vms_session,
             name=volume_id,
-            volume_capabilities=[],
+            volume_capabilities=[ev_capability],
             capacity_range=capacity_range,
             parameters=volume_context,
             **create_vol_kwargs
@@ -480,7 +493,7 @@ class NodeBase(csi_grpc.NodeServicer):
             vms_session=vms_session,
             node_id=CONF.node_id,
             volume_id=volume_id,
-            volume_capability=volume_capability,
+            volume_capability=ev_capability,
             volume_context=volume_context,
             exit_stack=exit_stack,
         )
@@ -509,10 +522,18 @@ class NodeBase(csi_grpc.NodeServicer):
         )
         return resp.publish_context
 
+    def _cleanup_publish_meta_tmpfs(self, target_path):
+        meta_file = target_path[META_FILE_NAME]
+        meta_file.delete()
+        umount_tmpfs(
+            target_path,
+            ignore_not_mounted=True,
+            timeout=CONF.mount_umount_timeout,
+        )
 
     def _store_meta_file(
             self,
-            meta_file,
+            target_path,
             volume_id,
             is_ephemeral,
             vms_session,
@@ -534,27 +555,30 @@ class NodeBase(csi_grpc.NodeServicer):
         if extra_data:
             payload.update(extra_data)
 
-        if is_ephemeral:
-            payload["vms_session"] = vms_session.serialize(salt=volume_id)
-            if luks_manager:
-                payload["luks_manager"] = luks_manager.serialize(salt=volume_id)
+        cred_key = CONF.cred_serialization_key
 
+        if is_ephemeral:
+            payload["vms_session"] = vms_session.serialize(volume_id, cred_key=cred_key)
+            if luks_manager:
+                payload["luks_manager"] = luks_manager.serialize(volume_id, cred_key=cred_key)
+
+        meta_file = target_path[META_FILE_NAME]
         with meta_file.open("w") as f:
             json.dump(payload, f)
         os.chmod(meta_file, 0o600)
 
 
-    def _read_and_process_meta_file(self, meta_file, volume_id, vms_session):
-        """
-        Reads and processes a volume's metadata file, cleaning up resources for
-        ephemeral volumes and removing the metadata file.
-        """
-        with meta_file.open("r") as f:
-            meta = json.load(f)
+    def _process_meta(self, meta, volume_id, vms_session, exit_stack):
+        cred_key = CONF.cred_serialization_key
+        fallback = CONF.fallback_to_deser
+
         if meta.get("is_ephemeral"):
             if vms_session_data := meta.get("vms_session"):
                 vms_session = VmsSession.deserialize(
-                    salt=volume_id, encrypted_blob=vms_session_data
+                    volume_id,
+                    vms_session_data,
+                    cred_key=cred_key,
+                    fallback_to_deser=fallback,
                 )
             elif not vms_session:
                 raise Abort(
@@ -564,12 +588,33 @@ class NodeBase(csi_grpc.NodeServicer):
                 )
             if luks_manager_data := meta.get("luks_manager"):
                 luks_manager = LuksManager.deserialize(
-                    salt=volume_id, encrypted_blob=luks_manager_data
+                    volume_id,
+                    luks_manager_data,
+                    cred_key=cred_key,
+                    fallback_to_deser=fallback,
                 )
                 luks_manager.luks_close_device()
 
+            # Inline EV never gets ControllerUnpublishVolume from kubelet.
+            # Mirror NodePublish (CreateVolume + ControllerPublish) with unpublish + delete.
+            self.controller.ControllerUnpublishVolume.__wrapped__(
+                self.controller,
+                vms_session=vms_session,
+                node_id=CONF.node_id,
+                volume_id=meta["volume_id"],
+                exit_stack=exit_stack,
+            )
             self.controller.DeleteVolume.__wrapped__(
                 self.controller, vms_session=vms_session, volume_id=meta["volume_id"]
             )
 
         return meta
+
+    def _read_and_process_meta_file(self, meta_file, volume_id, vms_session, exit_stack):
+        """
+        Reads and processes a volume's metadata file, cleaning up resources for
+        ephemeral volumes and removing the metadata file.
+        """
+        with meta_file.open("r") as f:
+            meta = json.load(f)
+        return self._process_meta(meta, volume_id, vms_session, exit_stack=exit_stack)

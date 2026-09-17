@@ -207,8 +207,13 @@ spec:
                 type: integer
               volumeName:
                 description: |-
-                  VolumeName is the name of the PVC (in the same namespace) that should be
-                  replicated across the listed StorageClasses.
+                  VolumeName is the name of the PVC that should be replicated across the
+                  listed StorageClasses.
+                type: string
+              volumeNamespace:
+                description: |-
+                  VolumeNamespace is the namespace of the PVC. When empty, the PVC is
+                  looked up in this VastVolumeReplication's namespace.
                 type: string
             required:
             - destVolReclaimPolicy

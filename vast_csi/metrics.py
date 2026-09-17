@@ -94,7 +94,7 @@ from vast_csi.csi_types import (
     INTERNAL,
     UNKNOWN,
 )
-from vast_csi.filesystem_utils import MountInfo, hostcmd
+from vast_csi.filesystem_utils import MountInfo, host_commands
 from vast_csi.block_utils import get_hostnqn_from_sysfs, list_nvme_sessions, NVME_CLASS_PATH
 
 # ================================================================
@@ -639,14 +639,14 @@ def get_metrics_registry(params, hostname, driver_name):
 
 
 def _read_file_safe(path, timeout=1):
-    """Read sysfs file safely using hostcmd.cat with timeout."""
+    """Read sysfs file safely using host_commands.cat with timeout."""
 
     try:
         p = Path(path)
         if not p.exists():
             return None
 
-        content = hostcmd.cat(str(p), timeout=timeout)
+        content = host_commands.cat(str(p), timeout=timeout)
         # strip trailing whitespace and null bytes
         content = content.strip().rstrip('\x00').strip()
         return content if content else None
@@ -1054,7 +1054,7 @@ def _count_nfs_mounts_per_destination():
             if not mount.fs_type.startswith("nfs") or not mount.server_ip:
                 continue
             # Skip /host/ prefix duplicates
-            if mount.mount_point.startswith(str(hostcmd.HOST_MOUNT)):
+            if mount.mount_point.startswith(str(host_commands.HOST_MOUNT)):
                 continue
             # Only count CSI-managed mounts, not manual or non-CSI NFS mounts
             if _CSI_MOUNT_MARKER not in mount.mount_point:

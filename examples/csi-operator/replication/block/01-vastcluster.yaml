@@ -1,0 +1,22 @@
+# VMS credentials for the two-site block replication demo.
+# VastCluster creates a Secret with the same name; VastStorage references it via clusterName.
+---
+apiVersion: storage.vastdata.com/v1
+kind: VastCluster
+metadata:
+  name: vast-mgmt
+  namespace: vast-csi
+spec:
+  endpoint: 10.205.0.233
+  username: admin
+  password: "123456"
+---
+apiVersion: storage.vastdata.com/v1
+kind: VastCluster
+metadata:
+  name: vast-mgmt2
+  namespace: vast-csi
+spec:
+  endpoint: "16.0.0.2"
+  username: admin
+  password: "123456"
