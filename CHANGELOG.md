@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## Version 2.6.6-hf3
+* COSI: republished Helm chart without the broken `objectstorage-provisioner` startupProbe (`test -S` is missing in the sidecar image), so the provisioner pod can become Ready (VCSI-609)
 * Updated CSI operator and extensions-controller images to address Trivy HIGH/CVE findings.
 
 ## Version 2.6.6-hf2
