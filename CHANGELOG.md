@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## Version 2.6.6
+* COSI: republished Helm chart without the broken `objectstorage-provisioner` startupProbe (`test -S` is missing in the sidecar image), so the provisioner pod can become Ready (VCSI-609)
 * Added `ReadOnlyMany` (ROX) access mode support for the block CSI driver
 * Changed default node pod `priorityClass` to `system-node-critical` to ensure node workloads are not evicted under resource pressure (VCSI-358)
 * Added `ReadWriteOncePod` access mode support (VCSI-464)
