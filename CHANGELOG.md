@@ -26,6 +26,9 @@
 * NFS: inline CSI volumes with `volumeAttributes.bucket_name` mount an existing S3 bucket view over NFS (VCSI-146).
 * NFS: `csi-nfs-services` sidecar can mount a ConfigMap for `tlshd.conf` and a Secret for TLS truststore/client PEM files (`node.nfsServices.tlshd`), enabling NFS mTLS with per-tenant CA without host `tlshd` configuration; when both are set, tlshd always runs in the sidecar using the mounted overrides even if host `tlshd` is present. With those overrides, client certs are loaded into the `vastcsi` keyring only (matching `keyrings=vastcsi`); host/non-override setups still prefer kernel `.nfs`
 
+## Version 2.6.8
+* Alias of 2.6.6-hf3 to align GitHub tags, Helm charts, and Docker Hub images with the OpenShift Operator Hub version 2.6.8. No functional changes.
+
 ## Version 2.6.6-hf3
 * Refreshed CSI base and CI container images and updated Python 3.12 packaging to remediate Trivy HIGH severity findings in the main CSI image
 * Bumped extensions-controller Go module dependencies (including gRPC and golang.org/x/*) to patched versions

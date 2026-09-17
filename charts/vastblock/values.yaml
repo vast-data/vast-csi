@@ -489,6 +489,11 @@ truncateSnapshotName: 128
 # http/https ports are not open.
 attachRequired: true
 
+# Let kubelet pass an SELinux mount context to the block plugin instead of
+# recursively relabeling volume contents. Enable on SELinux-enforcing clusters
+# such as OpenShift so read-only filesystem volumes can be mounted.
+seLinuxMount: false
+
 # The name of the CSI driver registered with Kubernetes.
 # This value is used to identify the driver in CSI objects like VolumeAttachments and CSINodes.
 csiDriverName: block.csi.vastdata.com

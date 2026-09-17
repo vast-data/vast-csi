@@ -26,6 +26,9 @@ metadata:
 spec:
   attachRequired: {{ .attachRequired }}
   podInfoOnMount: {{ $podInfoOnMount }}
+{{- if hasKey . "seLinuxMount" }}
+  seLinuxMount: {{ .seLinuxMount }}
+{{- end }}
   volumeLifecycleModes:
 {{ toYaml $volumeLifecycleModes | nindent 4 }}
 {{- end -}}

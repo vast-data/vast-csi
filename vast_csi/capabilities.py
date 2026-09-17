@@ -1,4 +1,3 @@
-import re
 import json
 from itertools import chain
 
@@ -7,6 +6,7 @@ from easypy.collections import iterable, listify
 
 from vast_csi.csi_types import AccessModeType as access_modes
 from vast_csi.exceptions import CapValidationError
+from vast_csi.filesystem_utils import split_mount_flags
 
 SUPPORTED_FS_TYPES = ["ext4", "ext3", "xfs"]
 DEFAULT_FS_TYPE = "ext4"
@@ -248,11 +248,10 @@ class Capability:
         self.is_filesystem = capability.HasField("mount")
         self.access_mode = capability.access_mode.mode
         mount_flags = capability.mount.mount_flags
-        if iterable(mount_flags):
-            mount_flags = ",".join(mount_flags)
-
-        context_mount_flags = volume_context.get("mount_options", publish_context.get("mount_options", "")).split()
-        capability_mount_flags = re.sub(r"[\[\]]", "", mount_flags).replace(",", " ").split()
+        capability_mount_flags = split_mount_flags(mount_flags)
+        context_mount_flags = split_mount_flags(
+            volume_context.get("mount_options", publish_context.get("mount_options", ""))
+        )
         # Common aggregated mount flags.
         self.mount_flags = sorted(
             {op.strip() for op in chain.from_iterable([context_mount_flags, capability_mount_flags]) if op}
