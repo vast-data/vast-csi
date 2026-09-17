@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## Version 2.6.8
+* Alias of 2.6.6-hf3 to align GitHub tags, Helm charts, and Docker Hub images with the OpenShift Operator Hub version 2.6.8. No functional changes.
+
 ## Version 2.6.6-hf3
 * Updated CSI operator and extensions-controller images to address Trivy HIGH/CVE findings.
 
