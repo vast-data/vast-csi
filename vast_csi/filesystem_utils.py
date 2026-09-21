@@ -487,7 +487,7 @@ class MountInfo:
 
 def get_filesystem_type(path: str):
     """Determine the filesystem type of given path using the `blkid` command."""
-    retcode, stdout, stderr = cmd.blkid[path, "-s", "TYPE", "-o", "value"].run(retcode=None, timeout=30)
+    retcode, stdout, stderr = cmd.blkid[path, "-s", "TYPE", "-o", "value"].run(retcode=None, timeout=10)
     if retcode not in (0, 2):
         # Disk device is unformatted.
         # For `blkid`, if the specified token (TYPE/PTTYPE, etc) was
@@ -497,55 +497,12 @@ def get_filesystem_type(path: str):
     return stdout.strip() if retcode == 0 else None
 
 
-def split_mount_flags(flags):
-    """Normalize mount flags from a string, CSI MountFlags list, or None.
-
-    Quote-aware so kubelet's ``context="system_u:...:s0:c1,c2"`` stays one flag;
-    StorageClass-style ``vers=4,nolock`` still expands to separate options.
-    """
+def _normalize_mount_flags(flags):
     if not flags:
         return []
-    if isinstance(flags, (str, bytes)):
-        items = [flags]
-    else:
-        items = list(flags)
-
-    result = []
-    for item in items:
-        if not item:
-            continue
-        text = re.sub(r"[\[\]]", "", str(item))
-        buf = []
-        in_quotes = False
-        for c in text:
-            if c == '"':
-                in_quotes = not in_quotes
-                buf.append(c)
-            elif not in_quotes and (c == "," or c.isspace()):
-                if buf:
-                    token = "".join(buf).strip()
-                    if token:
-                        result.append(token)
-                    buf = []
-            else:
-                buf.append(c)
-        if buf:
-            token = "".join(buf).strip()
-            if token:
-                result.append(token)
-    return result
-
-
-def join_mount_flags(flags):
-    """Join flags into a ``mount -o`` string; quote ``key=value`` when value has commas."""
-    formatted = []
-    for flag in flags:
-        if "," in flag and "=" in flag and '"' not in flag:
-            key, _, value = flag.partition("=")
-            formatted.append(f'{key}="{value}"')
-        else:
-            formatted.append(flag)
-    return ",".join(formatted)
+    if isinstance(flags, str):
+        return [f.strip() for f in flags.split(",") if f.strip()]
+    return list(flags)
 
 
 def mount(
@@ -564,7 +521,7 @@ def mount(
 
     Used by block (bind / filesystem), NFS, staging probes, and temporary_mount.
     """
-    flags = split_mount_flags(flags)
+    flags = _normalize_mount_flags(flags)
     if enforce_ro and "ro" not in flags:
         flags.append("ro")
 
@@ -574,17 +531,17 @@ def mount(
         bind_flags = [f for f in flags if f != "ro"]
         executable = cmd.mount["--bind"]
         if bind_flags:
-            executable = executable["-o", join_mount_flags(bind_flags)]
+            executable = executable["-o", ",".join(bind_flags)]
     elif fs_type:
         executable = cmd.mount["-t", fs_type]
         if flags:
-            executable = executable["-o", join_mount_flags(flags)]
+            executable = executable["-o", ",".join(flags)]
     else:
         executable = cmd.mount
         if flags:
-            executable = executable["-o", join_mount_flags(flags)]
+            executable = executable["-o", ",".join(flags)]
 
-    flags_str = join_mount_flags(flags) if flags else "(none)"
+    flags_str = ",".join(flags) if flags else "(none)"
     mount_type = "bind" if bind else (f"fs_type={fs_type}" if fs_type else "default")
     logger.info(
         f"Mounting {src!r} -> {tgt!r} ({mount_type}) with flags: {flags_str}"

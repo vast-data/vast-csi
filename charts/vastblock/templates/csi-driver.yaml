@@ -3,6 +3,5 @@
   "labels" (include "vast.common.labels" .)
   "attachRequired" .Values.attachRequired
   "podInfoOnMount" true
-  "seLinuxMount" .Values.seLinuxMount
   "volumeLifecycleModes" (list "Persistent" "Ephemeral")
 ) }}
