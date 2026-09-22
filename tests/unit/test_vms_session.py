@@ -1910,35 +1910,3 @@ class TestVipPoolGetVip:
         ):
             assert vippools.get_vip(vip_pool_name="pool-a", tenant_id=7) == "10.1.2.3"
         mock_one.assert_called_once_with(name="pool-a", fail_if_missing=True)
-
-
-class TestSnapshotShouldCleanupSourceDir:
-
-    @staticmethod
-    def _snapshot_resource(quota=None, other_snaps=None):
-        from vast_csi.session.resources import Snapshot
-
-        session = Bunch(
-            quotas=Bunch(one=MagicMock(return_value=quota)),
-        )
-        snap = Snapshot(session=session)
-        snap.has_snapshots = MagicMock(return_value=other_snaps if other_snaps is not None else [])
-        return snap
-
-    def test_should_cleanup_false_when_quota_exists(self):
-        snap_res = self._snapshot_resource(quota=Bunch(id=1))
-        snapshot = Bunch(path="/k8s/pvc-1", tenant_id=1)
-        assert snap_res.should_cleanup_source_dir(snapshot) is False
-        snap_res.has_snapshots.assert_not_called()
-
-    def test_should_cleanup_false_when_other_snapshots_remain(self):
-        snap_res = self._snapshot_resource(quota=None, other_snaps=[Bunch(id=99)])
-        snapshot = Bunch(path="/k8s/pvc-1", tenant_id=1)
-        assert snap_res.should_cleanup_source_dir(snapshot) is False
-        snap_res.has_snapshots.assert_called_once_with("/k8s/pvc-1")
-
-    def test_should_cleanup_true_when_last_snap_and_no_quota(self):
-        snap_res = self._snapshot_resource(quota=None, other_snaps=[])
-        snapshot = Bunch(path="/k8s/pvc-1", tenant_id=1)
-        assert snap_res.should_cleanup_source_dir(snapshot) is True
-

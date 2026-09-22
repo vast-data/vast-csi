@@ -584,13 +584,6 @@ class Quota(VastResource):
 class Snapshot(VastResource):
     resource_name = "snapshots"
 
-    def should_cleanup_source_dir(self, snapshot):
-        if self.session.quotas.one(path=snapshot.path, tenant_id=snapshot.tenant_id):
-            return False
-        if self.has_snapshots(snapshot.path):
-            return False
-        return True
-
     def has_snapshots(self, path):
         # we intentionally limit the number of results
         ret = self.list(path__contains=path.rstrip("/"), page_size=10)
