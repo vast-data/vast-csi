@@ -16,7 +16,6 @@
 # - tenant: Set only for tenant-admin username/password (driver sends X-Tenant-Name).
 #   Omit for cluster-admin (user/pass or Api-Token). Always omit with Api-Token
 #   (Api-Token + tenant can make VMS return HTTP 400).
-# - host_nqn_seed: Random key material for obfuscated NVMe host NQNs when hostNqnObfuscation is enabled.
 secretName: ""
 
 # Set true to enable certificate validity test
@@ -193,11 +192,6 @@ storageClassDefaults:
   # significant latency if the underlying GSS operation is long-running.
   # When null, the driver defaults to non-blocking.
   blockingClones: null
-  # When true, NVMe host NQNs use HMAC-SHA256 instead of the plain node name suffix.
-  # Requires host_nqn_seed in the StorageClass controller-publish secret (see secretName docs).
-  # Use one seed per VAST tenant; existing block hosts keep their NQN until recreated.
-  # When null, the driver uses a plain NQN.
-  hostNqnObfuscation: null
 
 # Default storage class to use with CSI DRIVER.
 # The only required value is 'vipPool' name where user should provide name of existing vip pool on
