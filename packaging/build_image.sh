@@ -10,6 +10,7 @@ log() { echo -e "\033[93m$(date) >> $@\033[0m" 1>&2; }
 
 # Optional environment variables with defaults
 BASE_IMAGE_NAME=${BASE_IMAGE_NAME:-""}
+OPERATOR_BASE_IMAGE_NAME=${OPERATOR_BASE_IMAGE_NAME:-""}
 PLATFORMS=${PLATFORMS:-""}  # Default to empty if not provided
 CACHE_FROM=${CACHE_FROM:-""} # Default to empty if not provided
 PUSH_ON_SUCCESS=${PUSH_ON_SUCCESS:-"false"}  # Default to "false" if not provided
@@ -66,6 +67,7 @@ if [ -n "$PLATFORMS" ]; then
         --build-arg=VERSION="$VERSION" \
         --build-arg=CI_PIPELINE_ID="${CI_PIPELINE_ID:-local}" \
         --build-arg=BASE_IMAGE_NAME="$BASE_IMAGE_NAME" \
+        --build-arg=OPERATOR_BASE_IMAGE_NAME="$OPERATOR_BASE_IMAGE_NAME" \
         -f "$DOCKERFILE_PATH" \
         --push \
         "$BUILD_CONTEXT"; then
@@ -81,6 +83,7 @@ else
         --build-arg=VERSION="$VERSION" \
         --build-arg=CI_PIPELINE_ID="${CI_PIPELINE_ID:-local}" \
         --build-arg=BASE_IMAGE_NAME="$BASE_IMAGE_NAME" \
+        --build-arg=OPERATOR_BASE_IMAGE_NAME="$OPERATOR_BASE_IMAGE_NAME" \
         -f "$DOCKERFILE_PATH" \
         "$BUILD_CONTEXT"; then
         log "ERROR" "Docker build failed." && exit 1

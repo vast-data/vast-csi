@@ -93,8 +93,10 @@ endef
 # CSI OPERATOR
 ######################
 operator-build: ## Build operator docker image
-	@$(call check_required_env,IMG OPERATOR_TAG OPERATOR_VERSION)
-	docker build --build-arg VERSION=$(OPERATOR_VERSION) -t "${IMG}:${OPERATOR_TAG}" -f $(CURDIR)/packaging/operator.Dockerfile .
+	@$(call check_required_env,IMG OPERATOR_TAG OPERATOR_VERSION OPERATOR_BASE_IMAGE_NAME)
+	docker build --build-arg VERSION=$(OPERATOR_VERSION) \
+		--build-arg OPERATOR_BASE_IMAGE_NAME=$(OPERATOR_BASE_IMAGE_NAME) \
+		-t "${IMG}:${OPERATOR_TAG}" -f $(CURDIR)/packaging/operator.Dockerfile .
 	docker tag "${IMG}:${OPERATOR_TAG}" "${IMG}:latest-csi-operator"
 
 operator-push: ## Push operator docker image to docker repository (specified in defaults)

@@ -3,11 +3,19 @@ build_extension_controller:
   script: |
     set -x
     VERSION=$(cat version.txt)
+    LATEST=${DOCKER_REGISTRY}/dev/vast-csi:latest-extensions
+    if docker pull "$LATEST"; then
+      docker tag "$LATEST" vast-csi:latest-extensions  # the cache-source for our subsequent build
+      export CACHE_FROM=vast-csi:latest-extensions
+    fi
+    export PLATFORMS=""  # reset global variable (we don't need multi-arch for internal ECR repository)
     export IMAGE_TAG=${IMAGE_NAME}-extensions
     export DOCKERFILE=extensions-controller/Dockerfile
     export GIT_TAG=${VERSION}
-    export PUSH_ON_SUCCESS=true
     make build_image
+    docker tag "$IMAGE_TAG" "$LATEST"
+    docker push "$IMAGE_TAG"
+    docker push "$LATEST"
     echo "pushed ${IMAGE_TAG}"
   tags:
     - vast-dev-builder
