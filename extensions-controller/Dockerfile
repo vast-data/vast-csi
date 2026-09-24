@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.25 AS builder
+FROM golang:1.26.6 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 ARG GIT_TAG
@@ -24,7 +24,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
 
 # Red Hat certification requires a UBI-based runtime image (preflight rejects distroless).
 # ubi-micro is the minimal UBI variant — suitable for static Go binaries.
-FROM registry.access.redhat.com/ubi9/ubi-micro:9.8
+FROM registry.access.redhat.com/ubi10/ubi-micro:10.0
 
 ARG VERSION
 
