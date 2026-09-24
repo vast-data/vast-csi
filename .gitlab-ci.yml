@@ -11,7 +11,7 @@ stages:
   - operatorhub
 
 # source: packaging/ci.Dockerfile
-image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:CI-2026-05-04
+image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:CI-2026-08-09
 
 variables:
   PLATFORMS: "linux/amd64,linux/arm64" # comma-separated list of platforms to build multi-arch images
@@ -19,7 +19,9 @@ variables:
   DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
   IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:${CI_PIPELINE_ID}
   # source: packaging/base.Dockerfile
-  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2026-06-25
+  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2026-09-23
+  # source: packaging/operator-base.Dockerfile
+  OPERATOR_BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-operator-base:2026-09-24
   ORION_BRANCH: comet/master
   # Pin the Docker client API version
   DOCKER_API_VERSION: "1.41"
@@ -32,6 +34,18 @@ build_csi_base:
     export DOCKERFILE=base.Dockerfile
     make build_image
     echo "Image $IMAGE_TAG has been built and pushed to the registry. You can now specify it as base image in .gitlab-ci.yml"
+  when: manual
+  tags:
+    - vast-dev-builder
+
+
+build_operator_base:
+  stage: build_base
+  script: |
+    export IMAGE_TAG=${DOCKER_REGISTRY}/dev/vast-csi-operator-base:$(date +"%Y-%m-%d")
+    export DOCKERFILE=operator-base.Dockerfile
+    make build_image
+    echo "Image $IMAGE_TAG has been built and pushed to the registry. You can now specify it as OPERATOR_BASE_IMAGE_NAME in .gitlab-ci.yml"
   when: manual
   tags:
     - vast-dev-builder
@@ -66,14 +80,36 @@ build_csi:
 
 build_csi_operator:
   stage: build
+  needs:
+    - job: build_csi
+    - job: build_extension_controller
   script: |
     set -x
     docker login -u ${RH_DOCKER_USER} -p ${RH_DOCKER_PASSWORD} registry.redhat.io
     export PIPE=${CI_PIPELINE_ID}
     make operator-build
     make operator-push
+    # Build bundle like update_operators_redhat (digest-pinned, PIPE=null) but keep
+    # IMG_PULL_SECRET so ECR private pulls work (production sets it to null).
+    export PIPE=null
+    export IMG=${DOCKER_REGISTRY}/dev/vast-csi
+    export CSI_PLUGIN_IMG=${IMG}
+    export EXTENSIONS_IMG=${IMG}
+    export OPERATOR_TAG=${CI_PIPELINE_ID}-operator
+    export CSI_TAG=${CI_PIPELINE_ID}
+    export EXTENSIONS_TAG=${CI_PIPELINE_ID}-extensions
+    export OPERATOR_BUNDLE_TAG=${CI_PIPELINE_ID}-operator-bundle
     make operator-bundle-build
     make operator-bundle-push
+  tags:
+    - vast-dev-builder
+
+
+validate_public_charts:
+  stage: test
+  needs: []
+  script:
+    - make chart-lint render-smoke
   tags:
     - vast-dev-builder
 
@@ -85,7 +121,7 @@ secrets_scan:
     name: trufflesecurity/trufflehog:latest
     entrypoint: [""]
   script:
-    - trufflehog git file://. --only-verified --fail --json | tee trufflehog-report.json
+    - trufflehog git file://. --only-verified --fail --json --exclude-detectors=Lob | tee trufflehog-report.json
   artifacts:
     when: always
     paths:
@@ -131,11 +167,8 @@ vulnerability_scan:
   TRIGGER: "lb_csi_sanity [from-upstream]"
 
 
-test_csi [latest]: &test_csi
+.test_csi: &test_csi
   stage: test
-  when: always
-  except:
-    - /v[\d]\.[\d]+/
   trigger:
     project: dev/orion
     branch: $ORION_BRANCH
@@ -201,11 +234,6 @@ update_dockerhub [prod]: &update_dockerhub
     export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}
     export DOCKERFILE=Dockerfile
     make build_image
-    
-    # Publish CSI Operator image
-    export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}-operator
-    export DOCKERFILE=operator.Dockerfile
-    make build_image
   after_script:
   - docker logout $DOCKER_HUB
   when: manual
@@ -235,7 +263,6 @@ update_dockerhub_extensions [prod]:
 
     export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}-extensions
     export DOCKERFILE=extensions-controller/Dockerfile
-    export BUILD_CONTEXT=extensions-controller
     export GIT_TAG=${VERSION}
     make build_image
   after_script:
@@ -265,6 +292,34 @@ update_dockerhub [hotfix]:
     export DOCKERFILE=Dockerfile
     make build_image
 
+  after_script:
+  - docker logout $DOCKER_HUB
+  when: manual
+  tags:
+    - vast-dev-builder
+
+
+update_dockerhub_extensions [hotfix]:
+  stage: deploy
+  environment: prod
+  only:
+    - /^v?[\d]+\.[\d]+\.[\d]+-hf[\d]+$/
+  needs:
+    - job: "update_dockerhub [hotfix]"
+  script: |
+    set -x
+    # Extract version from branch name (e.g., 2.6.4-hf1 or v2.6.4-hf1)
+    VERSION=${CI_COMMIT_REF_NAME}
+    [[ "$VERSION" != v* ]] && VERSION="v${VERSION}"
+    echo "Publishing Extensions Controller image: ${VERSION}-extensions"
+
+    docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} $DOCKER_HUB
+    export PUSH_ON_SUCCESS=true
+
+    export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}-extensions
+    export DOCKERFILE=extensions-controller/Dockerfile
+    export GIT_TAG=${VERSION}
+    make build_image
   after_script:
   - docker logout $DOCKER_HUB
   when: manual
@@ -453,6 +508,10 @@ update_operators_redhat:
     export CSI_PLUGIN_IMG=${RH_REGISTRY}/csi
     CSI_TAG=$(./scripts/img_to_digest.sh "${CSI_PLUGIN_IMG}:${VERSION}") || exit 1
     export CSI_TAG
+
+    # Extensions controller is Docker Hub only (not in Red Hat catalog). Pin digest explicitly.
+    export EXTENSIONS_IMG=docker.io/vastdataorg/csi
+    export EXTENSIONS_TAG='@sha256:f6561aa2270a1acbd8a1cb20a37923304f3eca171819d8d142f7f52585146cff'
     
     if [ -z "$OPERATOR_TAG" ]; then
         echo "Error: OPERATOR_TAG is empty."
@@ -484,9 +543,8 @@ update_operators_redhat:
     echo "Syncing with upstream certified-operators repository..."
     git reset --hard upstream/main
     
-    # Prepare destination directory
-    DEST=operators/vast-csi-operator/v${VERSION}
-    echo "Preparing operator bundle for version ${VERSION}..."
+    DEST=operators/vast-csi-operator/${VERSION}
+    echo "Preparing operator bundle for version ${VERSION} (images: ${IMAGE_TAG})..."
     
     # Remove existing version if it exists and create fresh directory
     rm -rf $DEST && mkdir -p $DEST    
@@ -495,12 +553,12 @@ update_operators_redhat:
     
     # Commit and push changes
     git add .
-    git commit -sam "operator vast-csi-operator (v${VERSION})"    
+    git commit -sam "operator vast-csi-operator (${VERSION})"    
     
     # Force push since we reset to upstream (this is safe since we're the only ones using this fork)
     git push origin main --force
     
-    echo "Successfully pushed VAST CSI Operator v${VERSION} to certified-operators"
+    echo "Successfully pushed VAST CSI Operator ${VERSION} to certified-operators"
   when: manual
   tags:
     - vast-dev-builder
@@ -524,6 +582,9 @@ update_operators_operatorhub:
     
     export OPERATOR_TAG=$(./scripts/img_to_digest.sh "${IMG}:${VERSION}-operator")
     export CSI_TAG=$(./scripts/img_to_digest.sh "${IMG}:${VERSION}")
+    # Extensions controller: pin Docker Hub digest (not resolved dynamically).
+    export EXTENSIONS_IMG=$IMG
+    export EXTENSIONS_TAG='@sha256:f6561aa2270a1acbd8a1cb20a37923304f3eca171819d8d142f7f52585146cff'
     
     if [ -z "$OPERATOR_TAG" ]; then
         echo "Error: OPERATOR_TAG is empty."

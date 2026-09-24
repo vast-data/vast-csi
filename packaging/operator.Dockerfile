@@ -1,4 +1,5 @@
-FROM registry.redhat.io/openshift4/ose-helm-operator:v4.15
+ARG OPERATOR_BASE_IMAGE_NAME
+FROM $OPERATOR_BASE_IMAGE_NAME
 
 ARG VERSION
 # Required OpenShift Labels
@@ -18,10 +19,13 @@ LABEL name="VAST CSI Operator" \
 # Required Licenses
 COPY LICENSE /licenses/LICENSE
 
+USER root
 ENV HOME=/opt/helm
 COPY charts/vastcsi-operator/watches.yaml ${HOME}/watches.yaml
 COPY charts/vastcsi-operator/crd-charts ${HOME}/helm-charts
 
 # Update chart versions
-RUN find ${HOME}/helm-charts -name "Chart.yaml" -exec sed -i.bak "s/^version: .*/version: $VERSION/" {} \;
+RUN find ${HOME}/helm-charts -name "Chart.yaml" -exec sed -i.bak "s/^version: .*/version: $VERSION/" {} \; \
+    && chown -R 1001:0 ${HOME}
 WORKDIR ${HOME}
+USER 1001

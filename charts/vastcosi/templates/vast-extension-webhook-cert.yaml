@@ -1,0 +1,14 @@
+{{- $webhook := .Values.extensions.webhook -}}
+{{- $webhooks := list (dict
+  "name" "bucket-params-injector.vastdata.com"
+  "failurePolicy" ($webhook.failurePolicy | default "Fail")
+  "path" "/mutate-bucket-parameters"
+  "rules" (list (dict "apiGroups" (list "objectstorage.k8s.io") "apiVersions" (list "v1alpha1") "operations" (list "CREATE") "resources" (list "buckets")))
+) -}}
+{{ include "vast.common.resource.webhookCertificate" (dict
+  "name" (printf "%s-cosi-extensions-webhook" .Release.Name)
+  "namespace" (include "vast.common.namespace" . | trimAll "\"")
+  "caName" "vast-cosi-cosi-webhook-ca"
+  "labels" (include "vast.common.labels" .)
+  "webhooks" $webhooks
+) }}

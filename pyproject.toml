@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "vast-data-csi-driver"
-version = "2.5.0"
+version = "2.6.0"
 description = "VAST CSI Driver allows container orchestration frameworks such as Kubernetes to dynamically provision storage volumes on a VAST cluster."
 authors = ["Ofer Koren <ofer.koren@vastdata.com>", "Volodymyr Boiko <volodymyr.boiko@vastdata.com>"]
 license = "Apache-2.0"
@@ -29,7 +29,7 @@ real-easypy = "0.5.0"
 psutil = "6.1.1"
 requests = ">=2.33.0"
 urllib3 = ">=2.7.0"
-cryptography = ">=48.0.1"
+cryptography = ">=50.0.0"
 idna = ">=3.15"
 pyyaml = "6.0.2"
 setuptools = "78.1.1"
@@ -43,6 +43,7 @@ keyctl = "^0.5"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "9.0.3"
+python-dotenv = ">=1.0.0"
 
 [build-system]
 requires = ["poetry-core>=1.2.0"]
@@ -50,4 +51,13 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
 minversion = "6.0"
+testpaths = ["tests/unit"]
+pythonpath = [".", "tests"]
 python_files = ["test_*.py", "*_test.py", "utest_*.py"]
+markers = [
+    "e2e: real Kubernetes cluster end-to-end tests",
+    "nfs: NFS / vastcsi chart tests",
+    "mtls: NFS mTLS / xprtsec=mtls tests (vastcsi)",
+    "block: block / vastblock chart tests",
+    "cosi: COSI chart tests",
+]

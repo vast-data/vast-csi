@@ -1,5 +1,44 @@
 # CHANGELOG
 
+## Version 2.7.0
+* NFS/Block: truncate VMS snapshot names via `truncateSnapshotName` (default 128) so OpenShift long project/snapshot names do not exceed the VMS 128-char limit (VCSI-553)
+* COSI: bump objectstorage-sidecar to `registry.k8s.io/sig-storage/objectstorage-sidecar:v0.2.2` so BucketAccess grant runs on Update as well as Add (fixes intermittent missing credentials Secret; VCSI-520). Sidecar container runs as root so it can dial the plugin unix socket (image defaults to non-root). Follow-ups not in this release: non-root sidecar via shared socket perms/`fsGroup` (for Restricted PSS); air-gap must mirror `registry.k8s.io/sig-storage/objectstorage-sidecar:v0.2.2`.
+* NFS `xprtsec` (TLS/mTLS): for NFSv3, set `mountproto=tcp` in StorageClass `mountOptions`; omit `mountproto` for NFSv4 (VCSI-602)
+* Docs: VMS Secret `tenant:` is for tenant-admin username/password only — omit for cluster-admin (user/pass or Api-Token) and omit with any Api-Token (Api-Token + `tenant:` can make VMS return HTTP 400; VCSI-633)
+* Block: treat missing nvme_core multipath sysfs as enabled when iopolicy is present (RHEL 10); keep fail-closed when both are absent (VCSI-634)
+* COSI: dropped `truncateVolumeName`; reject bucket names longer than 63 characters instead of truncating (VCSI-533, VCSI-532)
+* COSI: optional BucketClass `lifecycleRules` (Helm values list) creates VMS S3 lifecycle rules on bucket create and deletes them on bucket delete (VCSI-327)
+* COSI: optional BucketClass parameter `max_size` (Helm `maxSize`) creates a VAST path quota with `hard_limit` on the bucket view path (VCSI-261). The quota applies to all protocols on that view (S3, NFS, SMB), not S3 object count alone. Changing `max_size` on a BucketClass does not resize buckets already provisioned from it.
+* COSI: optional per-bucket quota via BucketClaim annotation `cosi.vastdata.com/maxSize` (VCSI-499). Claim annotation overrides BucketClass `max_size`; merged by the permanent bucket-params webhook into `Bucket.spec.parameters`.
+* **Breaking:** extensions-controller container entrypoints renamed: `pvc-label-webhook` → `webhook`; replication sidecar now invokes `replication` and `server` subcommands. Helm charts are updated; custom manifests pinning the old args must be updated on upgrade (VCSI-447)
+* COSI: writable bucket clones via BucketClaim annotation `cosi.vastdata.com/sourceBucket` (optional `cosi.vastdata.com/blockingClones`). Permanent extensions-manager bucket-params webhook merges full annotation keys into `Bucket.spec.parameters`; CreateBucket validates. Backed by VAST snapshot and Global Snapshot Stream (VCSI-325)
+* Added COSI credentials flattener (`cosi` extensions-controller namespace), permanent with the COSI chart. Annotated `BucketAccess` resources get sibling `*-flat` Secret and ConfigMap with Rook-style `AWS_*` and `BUCKET_*` env keys. Runs as the `extensions-manager` sidecar in the COSI provisioner pod via the extensions-controller image (`{csi-tag}-extensions`) (VCSI-447)
+* COSI: per-BucketClass VMS credentials via `vastdata.com/secret-name` / `vastdata.com/secret-namespace` on BucketClass (VCSI-310)
+* COSI: secret lookup via extensions-controller `ResolveSecret` gRPC (MR 535) instead of in-driver Kubernetes API access
+* COSI: `ResolveCOSIBucketAuth` gRPC resolves per-BucketClass VMS credentials from persisted `Bucket.spec.parameters` for delete, grant, and revoke when the sidecar sends no secret params; buckets without secret refs fall back to chart-mounted `/opt/vms-auth` (VCSI-310)
+* COSI: `vipPoolFQDN` and `vipPoolFQDNRandomPrefix` BucketClass parameters for DNS-based bucket endpoints (VCSI-310)
+* COSI: optional global `secretName` Helm value for legacy single-tenant installs (create and lifecycle fallback when Bucket has no secret refs)
+* COSI: BucketAccessClass `credentialsSecretName` / `credentialsSecretNamespace` installs externally managed S3 keys from a Kubernetes input Secret on the bucket VAST local user (VCSI-326). Requires VAST ≥ 5.4. To rotate keys, update the input Secret and delete/recreate the BucketAccess
+* COSI: optional existing VMS/AD user as S3 bucket owner via BucketClass parameters `bucket_owner` / `bucket_owner_context` (Helm `bucketOwner` / `bucketOwnerContext`); grant/revoke target the owner user; bucket delete skips removal of external owners (VCSI-328)
+* NFS: inline CSI volumes with `volumeAttributes.bucket_name` mount an existing S3 bucket view over NFS (VCSI-146).
+* NFS: `csi-nfs-services` sidecar can mount a ConfigMap for `tlshd.conf` and a Secret for TLS truststore/client PEM files (`node.nfsServices.tlshd`), enabling NFS mTLS with per-tenant CA without host `tlshd` configuration; when both are set, tlshd always runs in the sidecar using the mounted overrides even if host `tlshd` is present. With those overrides, client certs are loaded into the `vastcsi` keyring only (matching `keyrings=vastcsi`); host/non-override setups still prefer kernel `.nfs`
+
+## Version 2.6.8
+* Alias of 2.6.6-hf3 to align GitHub tags, Helm charts, and Docker Hub images with the OpenShift Operator Hub version 2.6.8. No functional changes.
+
+## Version 2.6.6-hf3
+* Refreshed CSI base and CI container images and updated Python 3.12 packaging to remediate Trivy HIGH severity findings in the main CSI image
+* Bumped extensions-controller Go module dependencies (including gRPC and golang.org/x/*) to patched versions
+
+## Version 2.6.6-hf2
+* CSI inline ephemeral volume (EV) credentials are now stored on a tmpfs overlay. New publishes always use tmpfs and JSON metadata; set `credSerializationSecret` to encrypt with AES-GCM
+* Added `fallbackToDeser` (`X_CSI_FALLBACK_TO_DESER`) to unpublish EV volumes that still use the old on-disk pickle serializer. Defaults to `false`; set `true` only while old-format EVs remain mounted, then set `false` again after they unpublish
+
+## Version 2.6.6-hf1
+* Fixed block node startup crash on minimal OSes (e.g. Talos Linux) when `nvme-tcp` is preloaded but `modprobe` is unavailable. The driver now checks sysfs before attempting host `modprobe`, and resolves host `nvme`/`cryptsetup` via direct `chroot` without requiring host `/usr/bin/env` (VCSI-599)
+* Added `hostBinarySearchDirs` (`X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS`) configuration option to customize host directories searched for block tools (`nvme`, `cryptsetup`, `e2fsck`, etc.)
+* Snapshot `size_bytes` is now populated from the source volume size (block) or quota hard limit (NFS) instead of reporting unspecified, enabling CDI `restoreSize` support
+
 ## Version 2.6.6
 * Added `ReadOnlyMany` (ROX) access mode support for the block CSI driver
 * Changed default node pod `priorityClass` to `system-node-critical` to ensure node workloads are not evicted under resource pressure (VCSI-358)

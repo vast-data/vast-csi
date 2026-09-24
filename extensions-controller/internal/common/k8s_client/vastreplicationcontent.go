@@ -196,15 +196,15 @@ func (k *K8sClient) touchVRCsForStorageClasses(
 	var touched []string
 	for _, scName := range storageClasses {
 		vrcName := vscr.Name + "-" + scName
-		vrc, err := k.GetVastReplicationContent(ctx, vrcName, vscr.Namespace)
+		vrc, err := k.GetVastReplicationContent(ctx, vrcName, vscr.PVCNamespace())
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				continue // not yet provisioned — skip silently
 			}
-			return touched, fmt.Errorf("get VRC %s/%s: %w", vscr.Namespace, vrcName, err)
+			return touched, fmt.Errorf("get VRC %s/%s: %w", vscr.PVCNamespace(), vrcName, err)
 		}
 		if err := k.SetAnnotationAndUpdate(ctx, vrc, annotationKey, ts); err != nil {
-			return touched, fmt.Errorf("touch VRC %s/%s: %w", vscr.Namespace, vrcName, err)
+			return touched, fmt.Errorf("touch VRC %s/%s: %w", vscr.PVCNamespace(), vrcName, err)
 		}
 		touched = append(touched, vrcName)
 	}

@@ -12,16 +12,52 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-from random import randint
+from dataclasses import dataclass
+
 import grpc
 from vast_csi.proto import cosi_pb2_grpc as cosi_grpc
 from vast_csi import csi_types as types
-from vast_csi.exceptions import MissingParameter
+from vast_csi.builders.cosi import (
+    apply_bucket_post_provision,
+    build_bucket_endpoint_id,
+    cosi_clone_snap_name,
+    cosi_clone_stream_name,
+    parse_create_bucket_params,
+    provision_bucket_view,
+)
+from vast_csi.csi_types import GRPC_TO_CSI, INTERNAL, INVALID_ARGUMENT
+from vast_csi.exceptions import Abort
+from vast_csi.extensions_client import resolve_cosi_bucket_auth, resolve_secret
 from vast_csi.plugins.base import Instrumented
 from vast_csi.configuration import Config
+from vast_csi.cosi_credentials import grant_bucket_access, revoke_bucket_access
 
 
 CONF = None
+
+SECRET_NAME_PARAM = "vastdata.com/secret-name"
+SECRET_NAMESPACE_PARAM = "vastdata.com/secret-namespace"
+
+
+def _abort_from_rpc(exc: grpc.RpcError) -> Abort:
+    code = GRPC_TO_CSI.get(exc.code(), INTERNAL)
+    return Abort(code, exc.details() or str(exc))
+
+
+@dataclass(frozen=True)
+class BucketId:
+    """COSI bucket_id: name@tenant@endpoint."""
+
+    name: str
+    tenant_id: str
+    endpoint: str
+
+    @classmethod
+    def parse(cls, bucket_id: str) -> "BucketId":
+        parts = bucket_id.split("@", 2)
+        if len(parts) != 3:
+            raise Abort(INVALID_ARGUMENT, f"invalid bucket_id format: {bucket_id!r}")
+        return cls(parts[0], parts[1], parts[2])
 
 
 class CosiIdentity(cosi_grpc.IdentityServicer, Instrumented):
@@ -32,60 +68,104 @@ class CosiIdentity(cosi_grpc.IdentityServicer, Instrumented):
 
 class CosiProvisioner(cosi_grpc.ProvisionerServicer, Instrumented):
 
+    def resolve_secrets(self, params):
+        # Prefer secret refs from parameters (cheaper ResolveSecret) when present —
+        # DeleteBucket can carry both bucket_id and parameters. Fall back to
+        # ResolveCOSIBucketAuth(bucket_id) when refs are absent (grant/revoke, or
+        # legacy buckets without secret params → empty → /opt/vms-auth).
+        parameters = params.get("parameters") or {}
+        secret_name = parameters.get(SECRET_NAME_PARAM)
+        secret_namespace = parameters.get(SECRET_NAMESPACE_PARAM)
+        if secret_name or secret_namespace:
+            if not secret_name or not secret_namespace:
+                raise Abort(
+                    INVALID_ARGUMENT,
+                    f"{SECRET_NAME_PARAM} and {SECRET_NAMESPACE_PARAM} must both be set",
+                )
+            try:
+                return resolve_secret(secret_name, secret_namespace)
+            except grpc.RpcError as exc:
+                raise _abort_from_rpc(exc) from exc
+
+        if bucket_id := params.get("bucket_id"):
+            try:
+                return resolve_cosi_bucket_auth(bucket_id)
+            except grpc.RpcError as exc:
+                raise _abort_from_rpc(exc) from exc
+
+        return {}
+
     def DriverCreateBucket(self, vms_session, name, parameters):
-        if (root_export := parameters.pop("root_export", None)) is None:
-            raise MissingParameter(param="root_export")
-        if not (vip_pool_name := parameters.pop("vip_pool_name", None)):
-            raise MissingParameter(param="vip_pool_name")
-        scheme = parameters.pop("scheme", "http")
-
-        if CONF.truncate_volume_name:
-            name = name[:CONF.truncate_volume_name]  # crop to Vast's max-length
-
-        uid = randint(50000, 60000)
-        vms_session.users.ensure(name=name, uid=uid)
-        view = vms_session.views.ensure_s3view(bucket_name=name, root_export=root_export, **parameters)
-        port = 443 if scheme == "https" else 80
-        vip = vms_session.vippools.get_vip(vip_pool_name=vip_pool_name, tenant_id=view.tenant_id)
-        # bucket_id contains bucket name and endpoint
-        # should be smth like test-bucket-caf9e0d0-0b9a-4b5e-8b0a-9b0brb0b4c0c@1@https://172.0.0.1:443
+        params = parse_create_bucket_params(name, parameters)
+        view = provision_bucket_view(vms_session, name, params)
+        apply_bucket_post_provision(vms_session, name, view, params)
+        bucket_id = build_bucket_endpoint_id(vms_session, name, view, params)
         return types.DriverCreateBucketResp(
-            bucket_id=f"{name}@{view.tenant_id}@{scheme}://{vip}:{port}",
+            bucket_id=bucket_id,
             bucket_info=types.Protocol(
                 s3=types.S3(
                     region="N/A",
-                    signature_version=types.S3SignatureVersion.UnknownSignature
+                    signature_version=types.S3SignatureVersion.UnknownSignature,
                 )
-            )
+            ),
         )
 
     def DriverDeleteBucket(self, vms_session, bucket_id, delete_context):
-        bucket_id, _, _ = bucket_id.split('@')
-        if view := vms_session.views.one(bucket=bucket_id):
-            vms_session.folders.delete(view.path, view.tenant_id)
-            vms_session.views.delete_by_id(view.id)
-        vms_session.users.delete(name=bucket_id)
+        parsed = BucketId.parse(bucket_id)
+        vms_session.globalsnapstreams.ensure_snapshot_stream_deleted(
+            name=cosi_clone_stream_name(parsed.name)
+        )
+        vms_session.snapshots.delete(
+            name=cosi_clone_snap_name(parsed.name),
+            tenant_id=parsed.tenant_id,
+        )
+        # delete_context carries BucketClass params on every delete (incl. retries).
+        # No bucket_owner → we created a managed user named like the bucket → delete it.
+        # bucket_owner set → external user → do not delete.
+        ctx = delete_context or {}
+        if not str(ctx.get("bucket_owner", "")).strip():
+            vms_session.users.delete(name=parsed.name, tenant_id=parsed.tenant_id)
+        # Trash delete_folder fails with 503 while an s3_versioning view still
+        # exists on the path — remove the view first (force only here, on 409
+        # not-empty). If the view is already gone (retry), still trash using
+        # root_export from delete_context.
+        view = vms_session.views.one(bucket=parsed.name)
+        if view:
+            vms_session.s3lifecyclerules.delete_many(view__id=view.id)
+            vms_session.views.delete_by_id(view.id, force_if_not_empty=True)
+            trash_path, trash_tenant = view.path, view.tenant_id
+        elif "root_export" in ctx:
+            trash_path = vms_session.views.bucket_path(ctx.get("root_export"), parsed.name)
+            trash_tenant = parsed.tenant_id
+        else:
+            trash_path = None
+        if trash_path is not None:
+            vms_session.folders.delete(trash_path, trash_tenant)
+        vms_session.quotas.delete(name=parsed.name, tenant_id=parsed.tenant_id)
         return types.DriverDeleteBucketResp()
 
-    def DriverGrantBucketAccess(self, vms_session, bucket_id, name):
-        bucket_id, _, endpoint = bucket_id.split('@')
-        user = vms_session.users.one(name=bucket_id)
-        creds = vms_session.users.generate_access_key(user.id)
-        credentials = dict(
-            s3=types.CredentialDetails(
-                secrets={"accessKeyID": creds.access_key, "accessSecretKey": creds.secret_key, "endpoint": endpoint}
-            )
-        )
-        return types.DriverGrantBucketAccessResp(
-            account_id=creds.access_key,
-            credentials=credentials
+    def DriverGrantBucketAccess(self, vms_session, bucket_id, name, parameters=None):
+        parsed = BucketId.parse(bucket_id)
+        return grant_bucket_access(
+            vms_session,
+            bucket_name=parsed.name,
+            tenant_id=parsed.tenant_id,
+            endpoint=parsed.endpoint,
+            parameters=dict(parameters or {}),
         )
 
-    def DriverRevokeBucketAccess(self, vms_session, bucket_id, account_id):
-        bucket_id, _, _ = bucket_id.split('@')
-        if user := vms_session.users.one(name=bucket_id):
-            vms_session.users.delete_access_key(user.id, account_id)
-        return types.DriverRevokeBucketAccessResp()
+    def DriverRevokeBucketAccess(
+        self, vms_session, bucket_id, account_id, revoke_access_context=None
+    ):
+        # revoke_access_context: COSI request field; unused (no proven sidecar
+        # owner echo). Managed revoke uses bucket_id when the view is gone.
+        parsed = BucketId.parse(bucket_id)
+        return revoke_bucket_access(
+            vms_session,
+            bucket_name=parsed.name,
+            account_id=account_id,
+            tenant_id=parsed.tenant_id,
+        )
 
 
 def serve(server: grpc.Server, conf: Config):

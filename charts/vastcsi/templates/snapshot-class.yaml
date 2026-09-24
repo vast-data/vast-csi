@@ -31,12 +31,12 @@ apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotClass
 metadata:
   name: {{ required "snapshotClassName must be non empty string" $name }}
-  namespace: {{ include "vastcsi.namespace" $ }}
+  namespace: {{ include "vast.common.namespace" $ }}
   annotations:
     snapshot.storage.kubernetes.io/is-default-class: {{ $is_default_class }}
   labels:
-    {{- include "vastcsi.labels" $ | nindent 4 }}
-driver: {{ include "vastcsi.csiDriver" $ }}
+    {{- include "vast.common.labels" $ | nindent 4 }}
+driver: {{ include "vast.common.csi.driverName" $ }}
 deletionPolicy: {{ $deletion_policy }}
 parameters:
   snapshot_name_fmt: {{ $snapshot_name_fmt }}

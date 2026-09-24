@@ -14,7 +14,9 @@
 #     --from-literal=endpoint=< VAST endpoint >
 # Optionally, you can include:
 # - ssl_cert: SSL certificate for secure communication
-# - tenant: The tenant name for tenant scoped authentication (tenant admin).
+# - tenant: Set only for tenant-admin username/password (driver sends X-Tenant-Name).
+#   Omit for cluster-admin (user/pass or Api-Token). Always omit with Api-Token
+#   (Api-Token + tenant can make VMS return HTTP 400).
 secretName: ""
 
 # API endpoint of VAST appliance - must be provided by user
@@ -39,21 +41,77 @@ sslCertsSecretName: ""
 bucketClassDefaults:
   # Where buckets will be located on VAST - must be provided by user
   storagePath: ""
-  # Name of VAST VIP pool to use - must be provided by user
+  # Name of VAST VIP pool to use. Must specify either vipPool or vipPoolFQDN.
   vipPool: ""
+  # The FQDN of the VIP pool to use. Must specify either vipPool or vipPoolFQDN.
+  # COSI always embeds this bare FQDN in the S3 endpoint (no random DNS prefix).
+  vipPoolFQDN: ""
+  # Per-BucketClass VMS auth secret (may be tenant-admin or cluster-admin).
+  # Differs from chart-level secretName only in that this one is scoped per BucketClass.
+  # secretNamespace defaults to the Helm release namespace when secretName is set.
+  secretName: ""
+  secretNamespace: ""
   # Name of S3 policy to create bucket - must be provided by user
   viewPolicy: ""
   # On bucket delete behavior. By default, Vast Cluster bucket will be removed.
   deletionPolicy: "Delete"
   # Scheme utilized for creating bucket endpoint. Must be one of: http, https
   scheme: "http"
+  # Optional bucket size limit (Kubernetes quantity, e.g. 30Gi). Omit for no quota.
+  maxSize: ""
 
 bucketClasses: {}
 # bucketClasses:
-#   BucketClass name. This field must be unique across all bucket classes.
+#   BucketClass name. Must be unique and at most 63-36=27 characters (COSI appends a
+#   36-char BucketClaim UID; S3/VAST bucket names are limited to 63 characters).
 #   vastdata-bucket:
 #     vipPool: vippool-1
+#     vipPoolFQDN: s3.example.com
+#     secretName: team-a-vast-auth
+#     secretNamespace: app-team
+#     # Optional: enable VMS S3 object versioning on the bucket view.
+#     # Pass-through BucketClass / remaining Helm key → VMS s3_versioning.
+#     # Supported: create versioned buckets, S3 versioned IO, noncurrent_*
+#     # lifecycle rules, and bucket delete (view remove then trash; force on
+#     # not-empty; retry still trashes via root_export).
+#     # Not supported (VMS): disable/suspend versioning after enable;
+#     # S3 trash DeleteBucket header alone on versioned buckets.
+#     # See examples/cosi/s3-versioning.yaml.
+#     s3_versioning: "true"
+#     # Optional: VMS S3 lifecycle rules applied at bucket create.
+#     # One rule per list element on the bucket's view; removed on bucket delete.
+#     # Rules apply at create only (BucketClass is immutable).
+#     # Rule names must be unique. Unknown keys are rejected.
+#     lifecycleRules:
+#       - name: expire-logs
+#         expiration_days: 30
+#         prefix: logs/
+#       - name: expire-tmp
+#         expiration_days: 7
+#         prefix: tmp/
+#         abort_mpu_days_after_initiation: 1
 #     viewPolicy: s3_policy
+#
+#   # Optional: existing VMS/AD user as S3 bucket owner (Helm camelCase only →
+#   # BucketClass parameters bucket_owner / bucket_owner_context). Do not put
+#   # snake_case keys in values — chart fails. Set both or omit both; omit both
+#   # = managed mode (driver creates a local user named after the bucket).
+#   vastdata-bucket-ad-owned:
+#     storagePath: /cosi
+#     viewPolicy: s3_default_policy
+#     vipPool: vippool-1
+#     bucketOwner: corp-s3-service-account@corp.local
+#     bucketOwnerContext: AD   # required with bucketOwner; use local on lab without AD
+#
+# Grant notes (BucketAccessClass parameters — see examples/cosi/):
+#   - VMS enforces a 2 access-key limit per user per tenant; shared service
+#     accounts cannot rely on generate for many BucketAccess objects.
+#   - credentialsSecretName + credentialsSecretNamespace install keys from a
+#     K8s Secret onto local owners only (POST /users/{id}/access_keys/).
+#     External LDAP/AD owners must use generated keys (non_local_keys API)
+#     until VMS adds external-key install on non_local_keys.
+
+bucketAccessClasses: {}
 
 ####################
 # COSI PLUGIN RUNTIME PARAMETERS
@@ -61,6 +119,13 @@ bucketClasses: {}
 
 # The number of worker threads the COSI plugin use to serve requests simultaneously.
 numWorkers: 10
+
+# klog verbosity (--v) passed to the objectstorage-provisioner sidecar container.
+logLevel: 5
+
+# Log level of the VAST COSI plugin itself (X_CSI_LOG_LEVEL).
+# One of: debug, info, warning, error, critical.
+pluginLogLevel: info
 
 # Disable sending usage statistics to VAST cluster.
 # When set to true, the COSI driver will not report plugin usage metrics to VMS.
@@ -73,13 +138,9 @@ disableUsageStats: false
 # Set to 0 to disable caching (default).
 cacheMaxAgeSeconds: 0
 
-# Truncate VAST bucket name if name length is greater than this number.
-# set `truncateVolumeName: null` to disable truncation.
-truncateVolumeName: 64
-
 # The name of the COSI driver registered with Kubernetes.
 # This value is used to identify the driver in COSI objects like BucketClasses etc.
-cosiDriverName: csi.vastdata.com
+csiDriverName: csi.vastdata.com
 
 ####################
 # VAST COSI PLUGIN OPTIONS
@@ -88,12 +149,32 @@ cosiDriverName: csi.vastdata.com
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.6.6  # the version of the Vast COSI driver
+    tag: v2.7.0  # the version of the Vast COSI driver
     imagePullPolicy: IfNotPresent
   objectstorageProvisioner:
-    repository: gcr.io/k8s-staging-sig-storage/objectstorage-sidecar/objectstorage-sidecar
-    tag: v20230130-v0.1.0-24-gc0cf995
+    # v0.2.2: Update path calls Add/Grant. Nested staging path is obsolete.
+    repository: registry.k8s.io/sig-storage/objectstorage-sidecar
+    tag: v0.2.2
     imagePullPolicy: IfNotPresent
+  # Extensions-controller image (COSI credentials flattener and other K8s-native addons).
+  vastExtensionController:
+    repository: '{{ .Values.image.csiVastPlugin.repository }}'
+    tag: '{{ .Values.image.csiVastPlugin.tag }}-extensions'
+    imagePullPolicy: IfNotPresent
+
+####################
+# EXTENSIONS (always-on with the COSI driver)
+####################
+extensions:
+  # Human-readable console logging (colored levels, caller, ISO-8601 timestamps).
+  devLogging: true
+  # Bucket-params mutating webhook + TLS (merges cosi.vastdata.com/* claim annotations).
+  # Helm generates a self-signed serving cert (no cert-manager path yet).
+  webhook:
+    port: 9443
+    failurePolicy: Fail
+  # Credentials flattener metrics bind (pod-local). Use "0" to disable.
+  metricsBindAddress: "0"
 
 ####################
 # VAST COSI PLUGIN BEHAVIOR
@@ -132,6 +213,12 @@ cosiplugin:
       requests:
         cpu: 100m
         memory: 50Mi
+    extensionsManager:
+      limits:
+        memory: 256Mi
+      requests:
+        cpu: 10m
+        memory: 64Mi
   # priorityClassName is the name of priority class to be used for the pod.
   priorityClassName: system-node-critical
 

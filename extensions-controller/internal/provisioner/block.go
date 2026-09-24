@@ -187,8 +187,8 @@ func (b *BlockProvisioner) syncBlockObjects(
 	if len(toEnsure) > 0 {
 		// Fetch the subsystem once for all PVCs in this group.
 		subsystem, err := sibRest.Views.Get(&typed.ViewSearchParams{
-			Name:     expr.S(subsystemName),
-			TenantId: expr.I(ppath.TenantId),
+			Name:     expr.Str(subsystemName),
+			TenantId: expr.Int(ppath.TenantId),
 			RawData:  vast_client.Params{"fields": "id,name,path,tenant_id"},
 		})
 		if err != nil {

@@ -45,6 +45,16 @@ class VastExtensionsStub(object):
                 request_serializer=vast__extensions__pb2.GetReplicationInfoRequest.SerializeToString,
                 response_deserializer=vast__extensions__pb2.GetReplicationInfoResponse.FromString,
                 _registered_method=True)
+        self.ResolveSecret = channel.unary_unary(
+                '/vastextensions.v1.VastExtensions/ResolveSecret',
+                request_serializer=vast__extensions__pb2.ResolveSecretRequest.SerializeToString,
+                response_deserializer=vast__extensions__pb2.ResolveSecretResponse.FromString,
+                _registered_method=True)
+        self.ResolveCOSIBucketAuth = channel.unary_unary(
+                '/vastextensions.v1.VastExtensions/ResolveCOSIBucketAuth',
+                request_serializer=vast__extensions__pb2.ResolveCOSIBucketAuthRequest.SerializeToString,
+                response_deserializer=vast__extensions__pb2.ResolveSecretResponse.FromString,
+                _registered_method=True)
 
 
 class VastExtensionsServicer(object):
@@ -68,6 +78,23 @@ class VastExtensionsServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ResolveSecret(self, request, context):
+        """ResolveSecret fetches a Kubernetes Secret and returns its data as a
+        key/value map, matching CSI CreateVolumeRequest.secrets as populated by
+        the external-provisioner sidecar.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ResolveCOSIBucketAuth(self, request, context):
+        """ResolveCOSIBucketAuth resolves VMS credentials for a COSI bucket_id by
+        looking up the Bucket CR and resolving vastdata.com/secret-* parameters.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_VastExtensionsServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -80,6 +107,16 @@ def add_VastExtensionsServicer_to_server(servicer, server):
                     servicer.GetReplicationInfo,
                     request_deserializer=vast__extensions__pb2.GetReplicationInfoRequest.FromString,
                     response_serializer=vast__extensions__pb2.GetReplicationInfoResponse.SerializeToString,
+            ),
+            'ResolveSecret': grpc.unary_unary_rpc_method_handler(
+                    servicer.ResolveSecret,
+                    request_deserializer=vast__extensions__pb2.ResolveSecretRequest.FromString,
+                    response_serializer=vast__extensions__pb2.ResolveSecretResponse.SerializeToString,
+            ),
+            'ResolveCOSIBucketAuth': grpc.unary_unary_rpc_method_handler(
+                    servicer.ResolveCOSIBucketAuth,
+                    request_deserializer=vast__extensions__pb2.ResolveCOSIBucketAuthRequest.FromString,
+                    response_serializer=vast__extensions__pb2.ResolveSecretResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -137,6 +174,60 @@ class VastExtensions(object):
             '/vastextensions.v1.VastExtensions/GetReplicationInfo',
             vast__extensions__pb2.GetReplicationInfoRequest.SerializeToString,
             vast__extensions__pb2.GetReplicationInfoResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ResolveSecret(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/vastextensions.v1.VastExtensions/ResolveSecret',
+            vast__extensions__pb2.ResolveSecretRequest.SerializeToString,
+            vast__extensions__pb2.ResolveSecretResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ResolveCOSIBucketAuth(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/vastextensions.v1.VastExtensions/ResolveCOSIBucketAuth',
+            vast__extensions__pb2.ResolveCOSIBucketAuthRequest.SerializeToString,
+            vast__extensions__pb2.ResolveSecretResponse.FromString,
             options,
             channel_credentials,
             insecure,

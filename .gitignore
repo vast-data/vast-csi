@@ -14,7 +14,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/lib/
 lib64/
 parts/
 sdist/
@@ -163,14 +163,24 @@ cython_debug/
 .history/
 .lh/
 .DS_Store
-/tests/*
 .idea/*
 .pytest_cache
 __pycache__/*
 /bundle/
 /artifacts/
 
+# Vendored from charts/common on `make chart-deps`; Chart.lock files remain tracked.
+/charts/vastcsi/charts/vast-common-*.tgz
+/charts/vastblock/charts/vast-common-*.tgz
+/charts/vastcosi/charts/vast-common-*.tgz
+/charts/vastcsi-gke/charts/vast-common-*.tgz
+
 .cursor/*
 
 # Local test scripts (not for repo)
 local_tests/
+
+# Certification run logs
+tests/certification/**/output/
+# Multipass e2e cluster (local)
+/kubeconfig.yaml

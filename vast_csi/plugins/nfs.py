@@ -26,16 +26,23 @@ from easypy.humanize import yesno_to_bool
 
 from vast_csi.logging import logger
 from vast_csi.utils import (
-    get_mount,
+    get_volume_mount,
     normalize_mount_options,
     normalize_volume_id,
+    build_snapshot_name,
     string_to_proto_timestamp,
     get_random_fqdn_prefix,
     wrap_ipv6,
     string_to_static_uuid,
     path_exists,
 )
-from vast_csi.filesystem_utils import resource_locked, mount as _mount, umount as _umount
+from vast_csi.filesystem_utils import (
+    resource_locked,
+    mount as _mount,
+    umount as _umount,
+    mount_tmpfs,
+    umount_tmpfs,
+)
 from vast_csi.proto import csi_pb2_grpc as csi_grpc
 from vast_csi import csi_types as types
 from vast_csi.csi_types import (
@@ -49,6 +56,7 @@ from vast_csi.csi_types import (
 )
 from vast_csi.builders import (
     EmptyVolumeBuilder,
+    VolumeFromBucketBuilder,
     VolumeFromSnapshotBuilder,
     VolumeFromVolumeBuilder,
     TestVolumeBuilder,
@@ -70,8 +78,10 @@ from vast_csi.plugins.base import (
     ControllerBase,
     NodeBase,
     Instrumented,
+    META_FILE_NAME,
 )
 from vast_csi.mtls_utils import MtlsManager
+from vast_csi.nfs_services import wait_registered
 
 
 CONF = None
@@ -109,7 +119,6 @@ def umount(path, ignore_not_mounted=False, lazy=False, metrics_registry=None):
         metrics_operation="nfs",
         timeout=CONF.mount_umount_timeout,
     )
-
 
 
 def _validate_capabilities(capabilities):
@@ -183,16 +192,26 @@ class CsiController(ControllerBase, Instrumented):
         parameters=None,
         volume_content_source=None,
         ephemeral_volume_name=None,
+        is_ephemeral=False,
     ):
         volume_capabilities = _validate_capabilities(volume_capabilities)
         parameters = parameters or dict()
+
+        if parameters.get("bucket_name") and not is_ephemeral:
+            raise Abort(
+                INVALID_ARGUMENT,
+                "bucket_name volumes are only supported for inline ephemeral volumes",
+            )
 
         # Take appropriate builder for volume, snapshot or test builder
         if CONF.mock_vast:
             builder_cls = TestVolumeBuilder
         else:
             if not volume_content_source:
-                builder_cls = EmptyVolumeBuilder
+                if parameters.get("bucket_name"):
+                    builder_cls = VolumeFromBucketBuilder
+                else:
+                    builder_cls = EmptyVolumeBuilder
 
             elif volume_content_source.snapshot.snapshot_id:
                 builder_cls = VolumeFromSnapshotBuilder
@@ -348,6 +367,11 @@ class CsiController(ControllerBase, Instrumented):
             name = string_to_static_uuid(volume_id)
             create_view = yesno_to_bool(volume_context.get("static_pv_create_views", "no"))
             create_quota = yesno_to_bool(volume_context.get("static_pv_create_quotas", "no"))
+            if CONF.static_provisioning and (create_view or create_quota):
+                raise Abort(
+                    INVALID_ARGUMENT,
+                    "Static provisioning mode cannot create VAST views or quotas",
+                )
             builder = StaticVolumeBuilder.from_parameters(
                 conf=CONF,
                 vms_session=vms_session,
@@ -363,6 +387,9 @@ class CsiController(ControllerBase, Instrumented):
                 raise Abort(NOT_FOUND, exc.message)
             except VolumeAlreadyExists as exc:
                 raise Abort(ALREADY_EXISTS, exc.message)
+
+        elif volume_context.get("bucket_name"):
+            export_path = volume_context["export_path"]
 
         else:
             root_export = CONF.sanity_test_nfs_export if CONF.mock_vast else local.path(volume_context["root_export"])
@@ -401,7 +428,7 @@ class CsiController(ControllerBase, Instrumented):
             )
         )
 
-    def ControllerUnpublishVolume(self, node_id, volume_id):
+    def ControllerUnpublishVolume(self, vms_session, node_id, volume_id, exit_stack):
         return types.CtrlUnpublishResp()
 
     def ControllerExpandVolume(self, vms_session, volume_id, capacity_range):
@@ -448,7 +475,7 @@ class CsiController(ControllerBase, Instrumented):
                 ts = types.Timestamp()
                 ts.FromDatetime(datetime.utcnow())
                 snp = types.Snapshot(
-                    size_bytes=0,  # indicates 'unspecified'
+                    size_bytes=quota.hard_limit,
                     snapshot_id=name,
                     source_volume_id=volume_id,
                     creation_time=ts,
@@ -465,10 +492,13 @@ class CsiController(ControllerBase, Instrumented):
                 "csi.storage.k8s.io/volumesnapshot/namespace"
             ]
             snapshot_name_fmt = parameters.get("snapshot_name_fmt", CONF.name_fmt)
-            snapshot_name = snapshot_name_fmt.format(
-                namespace=snapshot_namespace, name=snapshot_name, id=name
+            snapshot_name = build_snapshot_name(
+                name_fmt=snapshot_name_fmt,
+                namespace=snapshot_namespace,
+                name=snapshot_name,
+                snap_id=name,
+                truncate_to=CONF.truncate_snapshot_name,
             )
-            snapshot_name = snapshot_name.replace(":", "-").replace("/", "-")
             try:
                 snap = vms_session.snapshots.ensure(name=snapshot_name, path=path, tenant_id=tenant_id)
             except ApiError as exc:
@@ -492,7 +522,7 @@ class CsiController(ControllerBase, Instrumented):
                     raise Abort(INVALID_ARGUMENT, str(exc))
 
             snp = types.Snapshot(
-                size_bytes=0,  # indicates 'unspecified'
+                size_bytes=quota.hard_limit,
                 snapshot_id=to_volume_id_with_metadata(snap.id, cluster_name),
                 source_volume_id=to_volume_id_with_metadata(source_volume_id, cluster_name),
                 creation_time=string_to_proto_timestamp(snap.created),
@@ -565,6 +595,11 @@ class CsiNode(NodeBase, Instrumented):
             is_ephemeral := volume_context
             and volume_context.get("csi.storage.k8s.io/ephemeral") == "true"
         ):
+            if CONF.static_provisioning:
+                raise Abort(
+                    FAILED_PRECONDITION,
+                    "Ephemeral volumes are disabled when provisioningMode is static",
+                )
             if not vms_session:
                 raise Abort(
                     FAILED_PRECONDITION,
@@ -613,7 +648,7 @@ class CsiNode(NodeBase, Instrumented):
 
         if not target_path.is_dir():
             pass
-        elif found_mount := get_mount(target_path):
+        elif found_mount := get_volume_mount(target_path):
             opts = set(found_mount.opts.split(","))
             is_readonly = "ro" in opts
             if found_mount.device != mount_spec:
@@ -641,13 +676,18 @@ class CsiNode(NodeBase, Instrumented):
                 return types.NodePublishResp()
 
         target_path.mkdir()
-        meta_file = target_path[".vast-csi-meta"]
+        mount_tmpfs(target_path, timeout=CONF.mount_umount_timeout)
+        meta_extra = {}
+        if mtls_manager.requires_mtls():
+            meta_extra["has_mtls"] = True
+        if bucket_name := volume_context.get("bucket_name"):
+            meta_extra["bucket_name"] = bucket_name
         self._store_meta_file(
-            meta_file=meta_file,
+            target_path=target_path,
             volume_id=volume_id,
             is_ephemeral=is_ephemeral,
             vms_session=vms_session,
-            extra_data={"has_mtls": True} if mtls_manager.requires_mtls() else None,
+            extra_data=meta_extra or None,
         )
         logger.info(f"created: {target_path}")
 
@@ -658,24 +698,23 @@ class CsiNode(NodeBase, Instrumented):
             flags += normalize_mount_options(
                 volume_context.get("mount_options", publish_context.get("mount_options", ""))
             )
-        
-        # Add mTLS mount flags if enabled
-        try:
-            flags += mtls_manager.to_mount_flags(volume_id=volume_id)
-        except Exception as e:
-            meta_file.delete()
-            raise Abort(
-                FAILED_PRECONDITION,
-                f"Failed to load mTLS credentials: {e}"
-            )
-        
+
         if CONF.nfs_services_wait:
-            from vast_csi.nfs_services import wait_registered
             if not wait_registered(CONF.nfs_services_wait):
                 logger.warning(
                     f"{volume_id}: NFS services {CONF.nfs_services_wait} not registered "
                     "before mount; proceeding (kubelet will retry on failure)"
                 )
+
+        # Add mTLS mount flags if enabled
+        try:
+            flags += mtls_manager.to_mount_flags(volume_id=volume_id)
+        except Exception as e:
+            self._cleanup_publish_meta_tmpfs(target_path)
+            raise Abort(
+                FAILED_PRECONDITION,
+                f"Failed to load mTLS credentials: {e}"
+            )
 
         try:
             mount(
@@ -686,7 +725,7 @@ class CsiNode(NodeBase, Instrumented):
             )
             logger.info(f"mounted: {target_path} flags: {flags}")
         except Exception:
-            meta_file.delete()
+            self._cleanup_publish_meta_tmpfs(target_path)
             # Clean up mTLS credentials on mount failure
             if mtls_manager.requires_mtls():
                 mtls_manager.delete_credentials(volume_id)
@@ -705,14 +744,13 @@ class CsiNode(NodeBase, Instrumented):
     ):
         exit_stack.enter_context(resource_locked(volume_id, abort_on_error=True))
         target_path = local.path(target_path)
-        meta_file = target_path[".vast-csi-meta"]
 
         if not path_exists(target_path, timeout=CONF.mount_umount_timeout):
             logger.info(f"{target_path} does not exist - no need to remove")
         else:
             # make sure we're really unmounted before we delete anything
             for i in range(CONF.unmount_attempts):
-                mount_info = get_mount(target_path, timeout=CONF.mount_umount_timeout)
+                mount_info = get_volume_mount(target_path, timeout=CONF.mount_umount_timeout)
                 if not mount_info:
                     logger.info(f"{target_path} is not mounted")
                     break
@@ -733,14 +771,17 @@ class CsiNode(NodeBase, Instrumented):
                     f"Stuck in unmount loop of {target_path} too many times ({CONF.unmount_attempts})",
                 )
             has_mtls = False
+            meta_file = target_path[META_FILE_NAME]
             if meta_file.exists():
                 meta = self._read_and_process_meta_file(
                     meta_file=meta_file,
                     volume_id=volume_id,
                     vms_session=vms_session,
+                    exit_stack=exit_stack,
                 )
                 has_mtls = meta.get("has_mtls", False)
                 os.remove(meta_file)
+            umount_tmpfs(target_path, timeout=CONF.mount_umount_timeout)
             if has_mtls:
                 MtlsManager.delete_credentials(volume_id)
             logger.info(f"Deleting {target_path}")
@@ -777,7 +818,8 @@ def serve(server: grpc.Server, conf: Config):
     vast_csi.plugins.base.CONF = CONF = conf
     identity = CsiIdentity()
     csi_grpc.add_IdentityServicer_to_server(identity, server)
-    identity.capabilities.append(types.ExpansionType.ONLINE)
+    if not conf.static_provisioning:
+        identity.capabilities.append(types.ExpansionType.ONLINE)
 
     if conf.mode in {CONTROLLER, CONTROLLER_AND_NODE}:
         identity.controller = CsiController()

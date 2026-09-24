@@ -1,20 +1,10 @@
-{{- $rc := .Values.extensions -}}
-{{- $wh := $rc.webhook -}}
-{{- if $rc.enabled }}
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ .Release.Name }}-vast-extension-controller-webhook
-  namespace: {{ include "vastcsi.namespace" . }}
-  labels:
-  {{- include "vastcsi.labels" . | nindent 4 }}
-spec:
-  ports:
-    - port: 443
-      targetPort: {{ $wh.port | default 9443 }}
-      protocol: TCP
-      name: webhook
-  selector:
-    app: vast-extension-controller
-{{- include "vastcsi.selectorLabels" . | nindent 4 }}
+{{- if .Values.extensions.enabled }}
+{{ include "vast.common.resource.webhookService" (dict
+  "name" (printf "%s-vast-extension-controller-webhook" .Release.Name)
+  "namespace" (include "vast.common.namespace" .)
+  "labels" (include "vast.common.labels" .)
+  "targetPort" .Values.extensions.webhook.port
+  "appSelector" "vast-extension-controller"
+  "selectorLabels" (include "vast.common.selectorLabels" .)
+) }}
 {{- end }}

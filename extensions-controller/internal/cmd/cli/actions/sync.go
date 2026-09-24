@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/cli"
+	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/cli/client"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/cmd/manager"
 )
 
@@ -43,13 +43,13 @@ Examples:
 			if vvrName != "" {
 				kind, name = "vvr", vvrName
 			}
-			fmt.Printf("%s Requesting resync on %s/%s ...\n", cli.Cyan("→"), kind, cli.Bold(name))
+			fmt.Printf("%s Requesting resync on %s/%s ...\n", client.Cyan("→"), kind, client.Bold(name))
 
-			if err := cli.PatchReplicationResync(context.Background(), k8s, vscrName, vvrName, namespace); err != nil {
+			if err := client.PatchReplicationResync(context.Background(), k8s, vscrName, vvrName, namespace); err != nil {
 				return fmt.Errorf("sync failed: %w", err)
 			}
 
-			fmt.Printf("%s Resync action set on %s/%s\n", cli.Green("✓"), kind, cli.Bold(name))
+			fmt.Printf("%s Resync action set on %s/%s\n", client.Green("✓"), kind, client.Bold(name))
 			return nil
 		},
 	}

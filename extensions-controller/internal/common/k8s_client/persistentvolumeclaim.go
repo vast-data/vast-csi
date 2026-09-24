@@ -123,8 +123,9 @@ func (k *K8sClient) PatchPVCLabels(ctx context.Context, pvc *corev1.PersistentVo
 // vscrSCs is the full list of StorageClass names that belong to the VSCR.  It
 // is used to emit diagnostic messages for PVCs whose volume lives in the
 // replicated path but whose StorageClass is not scName:
-//   - SC in vscrSCs (secondary) → Info: will be backfilled after failover to that SC.
-//   - SC not in vscrSCs          → Warn: shares path but is outside replication scope.
+//   - SC in vscrSCs (secondary), labels missing → will be backfilled when that SC is primary.
+//   - SC in vscrSCs (secondary), labels present  → skipped silently (already backfilled).
+//   - SC not in vscrSCs, labels missing          → Warn: shares path but is outside replication scope.
 func (k *K8sClient) ApplyExistingPVCs(
 	ctx context.Context,
 	scName string,
@@ -175,9 +176,14 @@ func (k *K8sClient) ApplyExistingPVCs(
 		}
 
 		// PV lives in the replicated path but belongs to a different StorageClass.
+		// Those PVCs are backfilled when their own StorageClass becomes primary;
+		// once labeled, skip them on subsequent failovers.
 		if pvcSC != scName {
+			if k.HasLabel(pvc, common.LabelStorageClass) {
+				continue
+			}
 			if _, inVSCR := vscrSCSet[pvcSC]; inVSCR {
-				log.Info("PVC is in the replication path but owned by a secondary StorageClass; it will be backfilled after failover to that StorageClass",
+				log.Debug("PVC is in the replication path but owned by a secondary StorageClass; labels will be backfilled when that StorageClass becomes primary",
 					zap.String("pvc", pvc.Namespace+"/"+pvc.Name),
 					zap.String("sc", pvcSC))
 			} else {

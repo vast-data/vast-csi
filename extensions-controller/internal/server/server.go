@@ -20,18 +20,23 @@ limitations under the License.
 //
 // Usage:
 //
-//	srv := server.New("/var/run/vast-extensions/extensions.sock", logger)
+//	srv := server.New(":9090", kubeClient, logger) // TCP — TLS + TokenReview
+//	srv := server.New(server.ExtensionsSocketPath, nil, logger) // unix — co-located sidecar
 //	srv.RegisterService(discovery.NewService(k8sClient, logger))
 //	if err := mgr.Add(srv); err != nil { ... }
 package server
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"os"
+	"strings"
 
+	"github.com/vast-data/vast-csi/extensions-controller/internal/server/auth"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"k8s.io/client-go/kubernetes"
 )
 
 // Service is implemented by any gRPC service that wants to register itself
@@ -42,25 +47,38 @@ type Service interface {
 }
 
 const (
-	// ExtensionsSocketPath is the unix socket path of the extensions gRPC server.
-	// It must match the mountPath in the Helm chart and EXTENSIONS_SOCKET in
-	// the Python extensions_client module.
+	// ExtensionsSocketPath is the default unix socket path for co-located
+	// extensions-manager and replication-vast-plugin containers (standalone Helm chart).
+	// It must match the mountPath in the Helm chart and the Python client default.
 	ExtensionsSocketPath = "/var/run/vast-extensions/extensions.sock"
+
+	// DefaultExtensionsGRPCBindAddress is the default TCP bind address for the
+	// cluster-wide VastExtensionsManager (operator / cross-pod model).
+	DefaultExtensionsGRPCBindAddress = ":9090"
 )
 
-// GRPCServer is a generic unix-socket gRPC server that starts and stops
-// together with the controller-runtime manager.
+// GRPCServer is a gRPC server that starts and stops together with the
+// controller-runtime manager.  It listens on TCP or a unix socket depending on
+// bindAddress (see parseBindAddress).
 type GRPCServer struct {
-	socketPath string
-	services   []Service
-	log        *zap.Logger
+	network     string
+	bindAddress string
+	kubeClient  kubernetes.Interface
+	services    []Service
+	log         *zap.Logger
 }
 
-// New creates a GRPCServer that will listen on socketPath.
-func New(socketPath string, log *zap.Logger) *GRPCServer {
+// New creates a GRPCServer that will listen on bindAddress.
+// TCP always serves TLS and requires a valid ServiceAccount Bearer token
+// (TokenReview). Unix sockets stay plaintext — they are only reachable from
+// co-located containers. kubeClient is required for TCP and ignored for unix.
+func New(bindAddress string, kubeClient kubernetes.Interface, log *zap.Logger) *GRPCServer {
+	network, addr := parseBindAddress(bindAddress)
 	return &GRPCServer{
-		socketPath: socketPath,
-		log:        log.Named("grpc-server"),
+		network:     network,
+		bindAddress: addr,
+		kubeClient:  kubeClient,
+		log:         log.Named("grpc-server"),
 	}
 }
 
@@ -69,29 +87,41 @@ func (s *GRPCServer) RegisterService(svc Service) {
 	s.services = append(s.services, svc)
 }
 
-// Start implements controller-runtime's Runnable.  It creates the unix socket,
+// Start implements controller-runtime's Runnable.  It creates the listener,
 // registers all services, starts the gRPC server, and blocks until ctx is
 // cancelled.
 func (s *GRPCServer) Start(ctx context.Context) error {
-	// Remove stale socket file from a previous run.
-	if err := os.Remove(s.socketPath); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	if err := os.MkdirAll(dirOf(s.socketPath), 0o700); err != nil {
-		return err
+	if s.network == "unix" {
+		if err := os.Remove(s.bindAddress); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if err := os.MkdirAll(dirOf(s.bindAddress), 0o700); err != nil {
+			return err
+		}
 	}
 
-	lis, err := net.Listen("unix", s.socketPath)
+	lis, err := net.Listen(s.network, s.bindAddress)
 	if err != nil {
 		return err
 	}
 
-	srv := grpc.NewServer()
+	var opts []grpc.ServerOption
+	if s.network == "tcp" {
+		opts, err = auth.TCPServerOptions(s.kubeClient)
+		if err != nil {
+			return fmt.Errorf("tcp gRPC auth: %w", err)
+		}
+	}
+
+	srv := grpc.NewServer(opts...)
 	for _, svc := range s.services {
 		svc.RegisterService(srv)
 	}
 
-	s.log.Info("gRPC server listening", zap.String("socket", s.socketPath))
+	s.log.Info("gRPC server listening",
+		zap.String("network", s.network),
+		zap.String("address", s.bindAddress),
+		zap.Bool("tlsAuth", s.network == "tcp"))
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(lis) }()
@@ -103,6 +133,16 @@ func (s *GRPCServer) Start(ctx context.Context) error {
 	case err := <-errCh:
 		return err
 	}
+}
+
+func parseBindAddress(bindAddress string) (network, addr string) {
+	if strings.HasPrefix(bindAddress, "unix://") {
+		return "unix", strings.TrimPrefix(bindAddress, "unix://")
+	}
+	if strings.HasPrefix(bindAddress, "/") {
+		return "unix", bindAddress
+	}
+	return "tcp", bindAddress
 }
 
 func dirOf(path string) string {

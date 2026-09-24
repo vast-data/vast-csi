@@ -1,0 +1,13 @@
+apiVersion: v2
+description: >
+  VastVolumeReplication (VVR) OpenShift UI resource.
+  Requires exactly one running VastExtensionsManager; VVR is reconciled by
+  that manager, not by the helm operator.
+keywords:
+  - vast
+  - csi
+  - replication
+  - vastdata
+name: vastvolumereplication
+type: application
+version: 0.1.0

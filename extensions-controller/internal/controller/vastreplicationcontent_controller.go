@@ -441,16 +441,18 @@ func (r *VastReplicationContentReconciler) lookupVRCParent(
 	k8s *k8sclient.K8sClient,
 ) (k8sruntime.Object, error) {
 	if vvrName := vrc.Labels[common.LabelSourceVVR]; vvrName != "" {
-		vvr, err := k8s.GetVastVolumeReplication(ctx, vvrName, vrc.Namespace)
+		parentNS := k8sclient.ParentNamespace(vrc.Labels, common.LabelSourceVVRNamespace, vrc.Namespace)
+		vvr, err := k8s.GetVastVolumeReplication(ctx, vvrName, parentNS)
 		if err != nil {
-			return nil, fmt.Errorf("lookup parent VVR %s/%s: %w", vrc.Namespace, vvrName, err)
+			return nil, fmt.Errorf("lookup parent VVR %s/%s: %w", parentNS, vvrName, err)
 		}
 		return vvr, nil
 	}
 	if vscrName := vrc.Labels[common.LabelSourceVSCR]; vscrName != "" {
-		vscr, err := k8s.GetVastStorageClassReplication(ctx, vscrName, vrc.Namespace)
+		parentNS := k8sclient.ParentNamespace(vrc.Labels, common.LabelSourceVSCRNamespace, vrc.Namespace)
+		vscr, err := k8s.GetVastStorageClassReplication(ctx, vscrName, parentNS)
 		if err != nil {
-			return nil, fmt.Errorf("lookup parent VSCR %s/%s: %w", vrc.Namespace, vscrName, err)
+			return nil, fmt.Errorf("lookup parent VSCR %s/%s: %w", parentNS, vscrName, err)
 		}
 		return vscr, nil
 	}

@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-nfs
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: myapp-nfs
+  template:
+    metadata:
+      labels:
+        app: myapp-nfs
+    spec:
+      # Uncomment when using a private registry for the CSI images:
+      # imagePullSecrets:
+      #   - name: regcred
+      containers:
+        - name: app
+          image: busybox
+          command:
+            - sh
+            - -c
+            - while true; do echo "$(date) site=primary-nfs-sc" >> /data/log.txt; sleep 5; done
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: nfs-myapp-data-1

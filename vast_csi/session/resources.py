@@ -25,7 +25,8 @@ from easypy.semver import SemVer
 from easypy.collections import listify
 
 from ..logging import logger
-from ..exceptions import NoRecordsFound, ApiError, WaitResourceFailed
+from ..exceptions import NoRecordsFound, ApiError, WaitResourceFailed, Abort
+from ..csi_types import ABORTED
 from ..utils import generate_ip_range, parse_string_parameters
 from ..lru_cache import cache_on_arguments
 from .base import apiver, requisite, CannotUseTrashAPI
@@ -116,9 +117,17 @@ class VastResource(ABC):
         for entry in entries:
             self.delete_by_id(entry.id, api_ver=api_ver)
 
-    def delete_by_id(self, _id, api_ver=None, **params):
-        """Delete entry by id"""
-        return self.session.delete(f"{self.resource_name}/{_id}", api_ver=api_ver, **params)
+    def delete_by_id(self, _id, fail_if_missing=False, api_ver=None, **params):
+        """
+        Delete entry by id."""
+        try:
+            return self.session.delete(f"{self.resource_name}/{_id}", api_ver=api_ver, **params)
+        except HTTPError as exc:
+            if exc.response is not None and exc.response.status_code == 404 and not fail_if_missing:
+                resource = self.__class__.__name__.lower()
+                logger.info(f"{resource} {_id} already deleted, skipping")
+                return
+            raise
 
     def one(self, fail_if_missing=False, api_ver=None, **params):
         """
@@ -139,8 +148,15 @@ class VastResource(ABC):
         return entries[0]
 
     def ensure(self, name, api_ver=None, **params):
-        """Ensure entry with provided name exists. Create if not found."""
-        entry = self.one(name=name, api_ver=api_ver)
+        """Ensure entry with provided name exists. Create if not found.
+
+        When ``tenant_id`` is in ``params``, look up by name+tenant so create
+        under cluster-admin does not reuse a same-named row from another tenant.
+        """
+        lookup = {"name": name}
+        if "tenant_id" in params:
+            lookup["tenant_id"] = params["tenant_id"]
+        entry = self.one(api_ver=api_ver, **lookup)
         if not entry:
             entry = self.create(name=name, api_ver=api_ver, **params)
         return entry
@@ -337,8 +353,44 @@ class Tenant(VastResource):
         return super().get(_id, fail_if_missing=fail_if_missing, api_ver=api_ver, **params)
 
 
+class S3LifecycleRule(VastResource):
+    resource_name = "s3lifecyclerules"
+
+    def ensure(self, name, view_id, **params):
+        entry = self.one(name=name, view__id=view_id)
+        if not entry:
+            entry = self.create(name=name, view_id=view_id, **params)
+        return entry
+
+
 class View(VastResource):
     resource_name = "views"
+
+    @staticmethod
+    def bucket_path(root_export, bucket_name: str) -> str:
+        """Build VMS view path for a COSI bucket under root_export."""
+        root = str(root_export or "").strip().strip("/")
+        return f"/{root}/{bucket_name}" if root else f"/{bucket_name}"
+
+    def delete_by_id(self, _id, force_if_not_empty=False, **params):
+        """Delete view by id.
+
+        When ``force_if_not_empty`` is True (COSI bucket delete), retry with
+        ``force=True`` on HTTP 409 not-empty. Default False so NFS / temp views
+        keep failing closed on conflict.
+        """
+        try:
+            return super().delete_by_id(_id=_id, **params)
+        except HTTPError as exc:
+            body = (getattr(exc.response, "text", None) or "").lower()
+            if (
+                force_if_not_empty
+                and exc.response.status_code == 409
+                and "not empty" in body
+            ):
+                logger.warning(f"View {_id} is not empty, retrying delete with force=True.")
+                return super().delete_by_id(_id=_id, params={"force": True}, **params)
+            raise
 
     def ensure(self, path, protocols, view_policy, qos_policy, create_dir=True, qos_policy_id=None):
         if not (view := self.one(path=str(path), policy__name=view_policy)):
@@ -355,32 +407,48 @@ class View(VastResource):
             )
         return view
 
-    def ensure_s3view(self, bucket_name, root_export, **kwargs):
-        if not (view := self.one(bucket=bucket_name)):
-            # Parse string parameters to proper types
-            kwargs = parse_string_parameters(kwargs)
+    def ensure_s3view(
+        self,
+        bucket_name,
+        root_export,
+        *,
+        bucket_owner=None,
+        policy_id=None,
+        tenant_id=None,
+        **kwargs,
+    ):
+        bucket_owner = bucket_owner or bucket_name
+        if view := self.one(bucket=bucket_name):
+            return view
 
-            view_policy = kwargs.pop("view_policy", "s3_default_policy")
-            protocols = kwargs.pop("protocols", None) or []
-            if protocols:
-                protocols = [p.upper().strip() for p in protocols.split(",")]
-            if "S3" not in protocols:
-                protocols.append("S3")
-            view_policy = self.session.viewpolicies.one(name=view_policy, fail_if_missing=True)
+        # Parse string parameters to proper types
+        kwargs = parse_string_parameters(kwargs)
+
+        protocols = kwargs.pop("protocols", None) or []
+        if protocols:
+            protocols = [p.upper().strip() for p in protocols.split(",")]
+        if "S3" not in protocols:
+            protocols.append("S3")
+        if policy_id is None or tenant_id is None:
+            view_policy_name = kwargs.pop("view_policy", "s3_default_policy")
+            view_policy = self.session.viewpolicies.one(
+                name=view_policy_name, fail_if_missing=True
+            )
             policy_id = view_policy.id
             tenant_id = view_policy.tenant_id
-            root_export = root_export.strip("/")
-            path = f"/{root_export}/{bucket_name}" if root_export else f"/{bucket_name}"
+        else:
+            kwargs.pop("view_policy", None)
+        path = self.bucket_path(root_export, bucket_name)
 
-            if "SMB" in protocols:
-                kwargs["share"] = os.path.basename(path)
-            if "create_dir" not in kwargs:
-                kwargs["create_dir"] = True
-            view = self.create(
-                bucket=bucket_name, bucket_owner=bucket_name, path=path,
-                protocols=protocols, policy_id=policy_id, tenant_id=tenant_id,
-                **kwargs
-            )
+        if "SMB" in protocols:
+            kwargs["share"] = os.path.basename(path)
+        if "create_dir" not in kwargs:
+            kwargs["create_dir"] = True
+        view = self.create(
+            bucket=bucket_name, bucket_owner=bucket_owner, path=path,
+            protocols=protocols, policy_id=policy_id, tenant_id=tenant_id,
+            **kwargs
+        )
         return view
 
     @contextmanager
@@ -596,38 +664,124 @@ class GlobalSnapshotStream(VastResource):
         snapshot_stream = self.one(loanee_root_path__startswith=loanee_root_path, fail_if_missing=True)
         self._wait_for_state(snapshot_stream.id)
 
+    @staticmethod
+    def _status_state(snapshot_stream) -> str:
+        status = snapshot_stream.status or {}
+        return str(status.get("state", "") or "").lower()
+
     @requisite(semver="4.6.0", ignore=True)
     def ensure_snapshot_stream_deleted(self, **params):
         """
         Stop global snapshot stream in case it is not finished.
         Snapshots with expiration time will be deleted as soon as snapshot stream is stopped.
+
+        Idempotent for DeleteVolume retries: missing stream is success; if stop_gss fails
+        but the stream is already gone, treat as success. If the stream is still present
+        (deleting / stop failed), raise Abort so the CSI/COSI caller retries without
+        holding a gRPC worker for a long poll.
         """
-        if snapshot_stream := self.one(**params):
-            state = snapshot_stream.status.get("state", "").lower()
-            if state != "finished":
-                logger.debug(f"Stopping snapshot stream {snapshot_stream.id} in state {state}")
-                task = self.stop_snapshot_stream(snapshot_stream.id)
-                self.session.wait_task(task)
-            try:
-                self.delete_by_id(_id=snapshot_stream.id, data={"remove_dir": True})
-            except HTTPError as e:
-                if e.response.status_code == 404:
-                    # Ignore 404 error if snapshot stream is already deleted
-                    # because it might happen if the stream was deleted by another process (csi worker)
-                    logger.warning(f"Snapshot stream {snapshot_stream.id} already deleted")
-                else:
-                    raise
+        stream = self.one(**params)
+        if not stream:
+            return
+
+        state = self._status_state(stream)
+        if state == "deleting":
+            raise Abort(
+                ABORTED,
+                f"Snapshot stream {stream.id} still deleting; retry when gone",
+            )
+
+        if state == "finished":
+            self.delete_by_id(_id=stream.id, data={"remove_dir": True})
+            return
+
+        logger.debug("Stopping snapshot stream %s in state %s", stream.id, state)
+        try:
+            task = self.stop_snapshot_stream(stream.id)
+            self.session.wait_task(task)
+        except Exception as exc:
+            if not self.one(**params):
+                logger.info(
+                    "Snapshot stream %s gone after stop failure; treating as deleted",
+                    stream.id,
+                )
+                return
+            logger.warning(
+                "stop_gss failed for snapshot stream %s; caller should retry: %s",
+                stream.id,
+                exc,
+            )
+            raise Abort(
+                ABORTED,
+                f"stop_gss failed for snapshot stream {stream.id}; retry when gone",
+            ) from exc
+
+        self.delete_by_id(_id=stream.id, data={"remove_dir": True})
 
 
 class User(VastResource):
     resource_name = "users"
 
-    def generate_access_key(self, _id):
-        return self.session.post(f"{self.resource_name}/{_id}/access_keys/", data={}, log_result=False)
+    def query_user(self, *, username, tenant_id=None, context=None):
+        """GET /users/query/.
 
-    def delete_access_key(self, _id, access_key):
+        ``context=aggregated`` is sent lowercase: on VMS 5.5.x, uppercase
+        ``AGGREGATED`` returns empty ``origins`` (no ``origins.name``), while
+        lowercase ``aggregated`` (or omitting context) populates provider
+        attribution. Other contexts are uppercased (``LOCAL``, ``AD``, …).
+        """
+        if not username:
+            raise ValueError("username required")
+        params = {"username": username}
+        if tenant_id is not None:
+            params["tenant_id"] = tenant_id
+        if context:
+            # Keep aggregated lowercase so origins.name is populated (VCSI-328).
+            params["context"] = (
+                "aggregated" if context.lower() == "aggregated" else context.upper()
+            )
+        return self.session.get(f"{self.resource_name}/query/", params=params)
+
+    def generate_access_key(self, _id, *, access_key=None, secret_key=None, tenant_id=None):
+        data = {}
+        if tenant_id is not None:
+            data["tenant_id"] = tenant_id
+        if (access_key is None) ^ (secret_key is None):
+            raise ValueError("access_key and secret_key must both be set or both omitted")
+        if access_key is not None and secret_key is not None:
+            data["access_key"] = access_key
+            data["secret_key"] = secret_key
+        return self.session.post(
+            f"{self.resource_name}/{_id}/access_keys/", data=data, log_result=False
+        )
+
+    def list_access_keys(self, user_id):
+        """Return access-key ID strings from GET /users/{id} (session default api v1).
+
+        Assumes each ``user.access_keys`` entry is a sequence whose first
+        element is the access-key string (Orion api v1 representation).
+        """
+        user = self.get(user_id)
+        return [item[0] for item in user.access_keys or []]
+
+    def delete_access_key(self, _id, access_key, *, tenant_id=None):
         data = dict(access_key=access_key)
+        if tenant_id is not None:
+            data["tenant_id"] = tenant_id
         return self.session.delete(f"{self.resource_name}/{_id}/access_keys/", data=data, log_result=False)
+
+    def generate_non_local_access_key(self, *, username, tenant_id, context="aggregated"):
+        data = {"username": username, "tenant_id": tenant_id, "context": context.upper()}
+        return self.session.post(f"{self.resource_name}/non_local_keys/", data=data, log_result=False)
+
+    def delete_non_local_access_key(self, *, username, tenant_id, access_key, context="aggregated"):
+        data = {
+            "username": username,
+            "tenant_id": tenant_id,
+            "access_key": access_key,
+            "context": context.upper(),
+        }
+        return self.session.delete(f"{self.resource_name}/non_local_keys/", data=data, log_result=False)
 
 @apiver.v5
 class Volume(VastResource):
@@ -875,8 +1029,12 @@ class ProtectedPath(VastResource):
             logger.info(f"Force failover task completed for protected path {protected_path_id}")
         return response
 
-    def delete_by_id(self, _id, api_ver=None, **params):
-        task = super().delete_by_id(_id=_id, api_ver=api_ver, **params)
+    def delete_by_id(self, _id, fail_if_missing=True, api_ver=None, **params):
+        task = super().delete_by_id(
+            _id=_id, fail_if_missing=fail_if_missing, api_ver=api_ver, **params
+        )
+        if task is None:
+            return None
         return self.session.wait_task(task)
 
 

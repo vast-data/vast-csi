@@ -1,0 +1,48 @@
+# COSI S3 object versioning on BucketClass.
+# Wire key s3_versioning is passed through to VMS view create (true/false).
+#
+# Supported with Vast COSI:
+#   - Create a versioned bucket (s3_versioning: "true").
+#   - Put/get/list object versions via S3 (client-side).
+#   - Lifecycle rules that use versioned actions (e.g. noncurrent_days).
+#   - Delete BucketClaim / bucket: driver removes the VMS view first (retries
+#     with force when not empty), then removes the path via trash (delete_folder).
+#     Retries still trash using root_export when the view is already gone.
+#
+# Not supported / VMS limits (not COSI-specific):
+#   - Disabling or suspending versioning after it is enabled.
+#   - Relying on S3 DeleteBucket + x-amz-delete-contents alone to wipe a
+#     versioned bucket (VAST trash docs cover non-versioned bucket wipe).
+#   - Multiprotocol write access to versioned object data (NFS/SMB).
+#
+# Prerequisites: cluster trash folder enabled (same as other COSI deletes).
+apiVersion: objectstorage.k8s.io/v1alpha1
+kind: BucketClass
+metadata:
+  name: vastdata-versioned
+driverName: csi.vastdata.com
+deletionPolicy: Delete
+parameters:
+  root_export: /cosi
+  vip_pool_name: vippool-1
+  view_policy: s3_default_policy
+  scheme: http
+  s3_versioning: "true"
+  # Optional: expire noncurrent versions (versioned buckets only).
+  lifecycle_rules: |
+    [
+      {
+        "name": "expire-noncurrent",
+        "noncurrent_days": 7
+      }
+    ]
+
+---
+apiVersion: objectstorage.k8s.io/v1alpha1
+kind: BucketClaim
+metadata:
+  name: sample-versioned-bucket
+spec:
+  bucketClassName: vastdata-versioned
+  protocols:
+  - s3

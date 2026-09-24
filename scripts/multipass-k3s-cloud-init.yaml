@@ -1,0 +1,201 @@
+#cloud-config
+# Single-node k3s for vast-csi e2e: VAST NFS + tlshd + insecure registry.
+# Used by: ./scripts/launch-multipass-k3s.sh
+
+hostname: vast-csi-e2e
+fqdn: vast-csi-e2e.local
+manage_etc_hosts: true
+
+users:
+  - default
+  - name: ubuntu
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: [docker]
+
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg
+  - lsb-release
+  - nvme-cli
+  - jq
+  - git
+  - nfs-common
+
+groups:
+  - docker
+
+write_files:
+  - path: /etc/tlshd.conf
+    permissions: "0644"
+    content: |
+      [authenticate.client]
+      # Seeded so CSI chart hostPath type=File can mount; e2e fills truststore.
+  # CSI mTLS checks for the ".nfs" keyring before mounting; nfsv4 registers it.
+  - path: /etc/modules-load.d/nfs.conf
+    permissions: "0644"
+    content: |
+      nfsv4
+  - path: /etc/rancher/k3s/registries.yaml
+    permissions: "0644"
+    content: |
+      mirrors:
+        "10.200.0.1:5000":
+          endpoint:
+            - "http://10.200.0.1:5000"
+      configs:
+        "10.200.0.1:5000":
+          tls:
+            insecure_skip_verify: true
+  - path: /etc/docker/daemon.json
+    permissions: "0644"
+    content: |
+      {
+        "insecure-registries": ["10.200.0.1:5000"]
+      }
+  - path: /etc/systemd/resolved.conf.d/lab-dns.conf
+    permissions: "0644"
+    content: |
+      [Resolve]
+      DNS=10.254.254.1 1.1.1.1
+      Domains=vstd.int vasteng.lab vastdata.com vast.local
+      DNSSEC=no
+  - path: /usr/local/bin/install-vastnfs.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      # https://vastnfs.vastdata.com/docs/4.5/
+      set -euo pipefail
+      # Use full version (e.g. 4.5.8). "4.5" is not a download path.
+      VASTNFS_VERSION="${VASTNFS_VERSION:-4.5.8}"
+      VASTNFS_BASE_URL="${VASTNFS_BASE_URL:-https://vastnfs.vastdata.com}"
+      KTLS_DEB_URL="${KTLS_DEB_URL:-https://archive.ubuntu.com/ubuntu/pool/universe/k/ktls-utils/ktls-utils_0.11-1_amd64.deb}"
+      TLSHD_CONF="${TLSHD_CONF:-/etc/tlshd.conf}"
+      export DEBIAN_FRONTEND=noninteractive
+      export VASTNFS_BASE_URL
+      APT_DPKG=(-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
+      log() { echo "[install-vastnfs] $*"; }
+
+      log "Installing nfs-common + build dependencies"
+      apt-get update -qq
+      apt-get install -y -qq "${APT_DPKG[@]}" \
+        nfs-common curl ca-certificates \
+        gcc make dpkg-dev debhelper autotools-dev \
+        "linux-headers-$(uname -r)" \
+        dkms || apt-get install -y -qq "${APT_DPKG[@]}" \
+        nfs-common curl ca-certificates \
+        gcc make dpkg-dev debhelper autotools-dev \
+        "linux-headers-$(uname -r)"
+
+      log "Ensuring ktls-utils >= 0.11 (tlshd)"
+      if ! dpkg -l ktls-utils 2>/dev/null | grep -q '^ii'; then
+        apt-get install -y -qq "${APT_DPKG[@]}" ktls-utils || true
+      fi
+      ver="$(dpkg-query -W -f='${Version}' ktls-utils 2>/dev/null || true)"
+      need_ktls=1
+      case "${ver}" in
+        0.9*|0.10*|"") need_ktls=1 ;;
+        *) need_ktls=0 ;;
+      esac
+      if [[ "${need_ktls}" -eq 1 ]]; then
+        tmp="$(mktemp -d)"
+        curl -fsSL -o "${tmp}/ktls-utils.deb" "${KTLS_DEB_URL}"
+        dpkg --force-confdef --force-confold -i "${tmp}/ktls-utils.deb" \
+          || apt-get install -f -y -qq "${APT_DPKG[@]}"
+        rm -rf "${tmp}"
+      fi
+
+      if [[ ! -f "${TLSHD_CONF}" ]]; then
+        printf '%s\n' '[authenticate.client]' '# seeded by cloud-init' > "${TLSHD_CONF}"
+        chmod 644 "${TLSHD_CONF}"
+      fi
+      systemctl enable --now tlshd.service || systemctl restart tlshd.service || true
+
+      load_nfs_modules() {
+        modprobe sunrpc 2>/dev/null || true
+        modprobe nfsv4 2>/dev/null || modprobe nfs 2>/dev/null || true
+        if ! grep -q '[[:space:]]\.nfs:' /proc/keys; then
+          echo "ERROR: no .nfs keyring after loading NFS modules" >&2
+          exit 1
+        fi
+        log ".nfs keyring present"
+      }
+
+      if [[ -d "/lib/modules/$(uname -r)/updates/bundle" ]] \
+        || dpkg -l 'vastnfs*' 2>/dev/null | grep -q '^ii'; then
+        command -v vastnfs-ctl >/dev/null 2>&1 && vastnfs-ctl reload || true
+        load_nfs_modules
+        exit 0
+      fi
+
+      log "Downloading VAST NFS ${VASTNFS_VERSION}"
+      work="$(mktemp -d)"
+      cd "${work}"
+      set +e
+      curl -sSf https://vastnfs.vastdata.com/download.sh | bash -s -- --version "${VASTNFS_VERSION}"
+      rc=$?
+      if [[ ${rc} -ne 0 ]]; then
+        curl -sSf https://vastnfs.vastdata.com/download.sh | bash -s -- --version "${VASTNFS_VERSION}" --source
+        rc=$?
+      fi
+      set -e
+      if [[ ${rc} -ne 0 ]]; then
+        echo "ERROR: failed to download VAST NFS ${VASTNFS_VERSION}" >&2
+        exit 1
+      fi
+
+      deb="$(ls -1 ./*.deb 2>/dev/null | head -1 || true)"
+      if [[ -z "${deb}" ]]; then
+        srcdir="$(find . -maxdepth 2 -type d -name 'vastnfs-*' | head -1 || true)"
+        if [[ -z "${srcdir}" ]]; then
+          tar_file="$(ls -1 vastnfs*.tar.* 2>/dev/null | head -1 || true)"
+          if [[ -n "${tar_file}" ]]; then
+            tar xf "${tar_file}"
+            srcdir="$(find . -maxdepth 2 -type d -name 'vastnfs-*' | head -1 || true)"
+          fi
+        fi
+        if [[ -z "${srcdir}" || ! -x "${srcdir}/build.sh" ]]; then
+          echo "ERROR: no VAST NFS package or source tree to build" >&2
+          exit 1
+        fi
+        (cd "${srcdir}" && ./build.sh bin --no-ofed)
+        deb="$(ls -1 "${srcdir}"/dist/vastnfs*.deb 2>/dev/null | grep -v debug | head -1 || true)"
+      fi
+      if [[ -z "${deb}" ]]; then
+        echo "ERROR: VAST NFS .deb not produced" >&2
+        exit 1
+      fi
+      apt-get install -y -qq "${deb}" || dpkg -i "${deb}"
+      depmod -a
+      update-initramfs -u -k "$(uname -r)" || true
+      command -v vastnfs-ctl >/dev/null 2>&1 && vastnfs-ctl reload || true
+      load_nfs_modules
+      rm -rf "${work}"
+
+runcmd:
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+  - echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list
+  - apt-get update
+  - apt-get install -y docker-ce docker-ce-cli containerd.io linux-modules-extra-$(uname -r)
+  - usermod -aG docker ubuntu
+
+  - modprobe nvme-tcp
+  - echo nvme-tcp > /etc/modules-load.d/nvme-tcp.conf
+
+  - VASTNFS_VERSION=4.5.8 /usr/local/bin/install-vastnfs.sh
+  # systemd-modules-load ran before VAST NFS was installed; load nfsv4 now too.
+  - modprobe nfsv4 || modprobe nfs || true
+
+  - curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--write-kubeconfig-mode 644 --disable traefik" sh -
+  - mkdir -p /home/ubuntu/.kube
+  - cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
+  - chown -R ubuntu:ubuntu /home/ubuntu/.kube
+  - until kubectl get nodes | grep -q ' Ready '; do sleep 3; done
+
+  - grep -qE '[[:space:]]l1158([[:space:]]|$)' /etc/hosts || echo '10.27.113.241 l1158 l1158.vstd.int' >> /etc/hosts
+  - systemctl restart systemd-resolved || true
+
+  - touch /var/lib/vast-csi-provisioned
+
+package_upgrade: true

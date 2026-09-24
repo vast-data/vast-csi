@@ -29,28 +29,6 @@
 {{- ternary "csi" "block" (eq .Values.driverType "nfs") -}}
 {{- end }}
 
-{{- define "vastcsi.extensionControllerName" -}}
-{{- printf "%s-vast-extension-controller" (include "vastcsi.workloadNamePrefix" .) -}}
-{{- end }}
-
-{{- define "vastcsi.webhookServiceName" -}}
-{{- printf "%s-vast-extension-controller-webhook" (include "vastcsi.dnsSafeReleaseName" .) -}}
-{{- end }}
-
-{{- define "vastcsi.webhookTLSSecretName" -}}
-{{- printf "%s-tls" (include "vastcsi.webhookServiceName" .) -}}
-{{- end }}
-
-{{- define "vastcsi.webhookCertificateName" -}}
-{{- $default := printf "%s-cert" (include "vastcsi.webhookServiceName" .) -}}
-{{- default $default .Values.extensions.webhook.certManager.certificateRef.name -}}
-{{- end }}
-
-{{- define "vastcsi.webhookInjectCAFrom" -}}
-{{- $ns := default (include "vastcsi.namespace" . | trimAll "\"") .Values.extensions.webhook.certManager.certificateRef.namespace -}}
-{{- printf "%s/%s" $ns (include "vastcsi.webhookCertificateName" .) -}}
-{{- end }}
-
 {{/*
 Normalize node.nfsServices.services for Helm and OLM UI.
 The console may store a single array element like "statd rpcbind" instead of ["statd", "rpcbind"].
@@ -79,6 +57,24 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- define "vastcsi.csiDriver" -}}
 {{- $default_driver_name := ternary "csi.vastdata.com" "block.csi.vastdata.com" (eq $.Values.driverType "nfs") -}}
 {{- coalesce .Release.Name $default_driver_name -}}
+{{- end -}}
+
+{{/*
+Resolve a component container image.
+
+By default, prefer defaultRepository (OLM RELATED_IMAGE_* injected via watches.yaml)
+over CR spec.image.*.repository.
+Set image.useCustomRepositories=true to force CR repository overrides (air-gap / custom builds).
+
+Usage: {{ include "vastcsi.resolvedImage" (dict "ctx" . "img" $csi_images.csiVastPlugin) }}
+*/}}
+{{- define "vastcsi.resolvedImage" -}}
+{{- $img := .img -}}
+{{- if .ctx.Values.image.useCustomRepositories -}}
+{{- coalesce $img.repository $img.defaultRepository -}}
+{{- else -}}
+{{- coalesce $img.defaultRepository $img.repository -}}
+{{- end -}}
 {{- end -}}
 
 {{- define "vastcsi.commonEnv" }}
@@ -112,9 +108,17 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 - name: X_CSI_RESOLVE_MOUNT_SYMLINKS
   value: {{ $.Values.resolveMountSymlinks | quote }}
 {{- end }}
+{{- if $.Values.allowROManyBlockFsMode }}
+- name: X_CSI_ALLOW_RO_MANY_BLOCK_FS_MODE
+  value: {{ $.Values.allowROManyBlockFsMode | quote }}
+{{- end }}
 {{- if $.Values.truncateVolumeName }}
 - name: X_CSI_TRUNCATE_VOLUME_NAME
   value: {{ $.Values.truncateVolumeName | quote }}
+{{- end }}
+{{- if $.Values.truncateSnapshotName }}
+- name: X_CSI_TRUNCATE_SNAPSHOT_NAME
+  value: {{ $.Values.truncateSnapshotName | quote }}
 {{- end }}
 - name: X_CSI_BLOCK_HOSTS_AUTO_PRUNE
   value: {{ $.Values.blockHostsAutoPrune | quote }}
@@ -127,37 +131,6 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 
 
 {{/*
-Return true if the extension controller feature is enabled.
-The extension controller (and all associated resources — CRDs, RBAC, service account) is
-activated exclusively by extensions.enabled.  Sub-flags such as
-extensions.webhook.disablePvcLabelsWebhook are forwarded as CLI arguments to the running
-process and do NOT affect whether resources are created.
-Usage:
-{{- include "vastcsi.extension-enabled" . -}}
-*/}}
-{{- define "vastcsi.extension-enabled" -}}
-{{- if .Values.extensions.enabled -}}
-{{- true -}}
-{{- end -}}
-{{- end -}}
-
-{{/*
-Return true when the replication stack is enabled.
-*/}}
-{{- define "vastcsi.replication-enabled" -}}
-{{- if and .Values.extensions.enabled .Values.extensions.replication.enabled -}}
-{{- true -}}
-{{- end -}}
-{{- end -}}
-
-
-{{- define "vastcsi.vastExtensionControllerImage" -}}
-{{- $images := .Values.image -}}
-{{- $images.vastExtensionController.repository | default $images.vastExtensionController.defaultRepository -}}
-{{- end -}}
-
-
-{{/*
 Build the comma-separated list of addons to enable.
 VolumeGroupReplicationClass is always created alongside VolumeReplicationClass.
 Usage:
@@ -166,4 +139,75 @@ Usage:
 {{- define "vastcsi.addons-list" -}}
 {{- $type := .type -}}
 {{- join "," (list (printf "replication[%s]" $type) (printf "volumegroup[%s]" $type)) -}}
+{{- end -}}
+
+{{- define "vastcsi.fallbackToDeserEnv" -}}
+{{- if not (kindIs "bool" .Values.fallbackToDeser) }}
+{{- fail "fallbackToDeser must be set explicitly to true or false" }}
+{{- end }}
+- name: X_CSI_FALLBACK_TO_DESER
+  value: {{ .Values.fallbackToDeser | quote }}
+{{- end }}
+
+{{/*
+True when node.nfsServices.tlshd ConfigMap and certificates.secretName are both set.
+*/}}
+{{- define "vastcsi.nfsServicesTlshdOverridesEnabled" -}}
+{{- $tlshd := .Values.node.nfsServices.tlshd | default dict -}}
+{{- $certs := $tlshd.certificates | default dict -}}
+{{- if and $tlshd.configMap ($certs.secretName | default "") -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/*
+TLS / tlshd sidecar volumes for csi-nfs-services (NFS-over-TLS / mTLS).
+ConfigMap (tlshd.conf) and Secret (PEM files) must live in the node pod namespace.
+*/}}
+{{- define "vastcsi.nfsServicesTlshdVolumeMounts" -}}
+{{- $tlshd := .Values.node.nfsServices.tlshd | default dict -}}
+{{- $certs := $tlshd.certificates | default dict -}}
+{{- if $tlshd.configMap }}
+- name: tlshd-conf
+  mountPath: /etc/tlshd.conf
+  subPath: tlshd.conf
+  readOnly: true
+{{- else }}
+- name: tlshd-conf
+  mountPath: /etc/tlshd.conf
+  readOnly: true
+{{- end }}
+{{- if $certs.secretName }}
+- name: tlshd-certs
+  mountPath: {{ $certs.mountPath | default "/etc/vast-tlshd" }}
+  readOnly: true
+{{- end }}
+{{- end -}}
+
+{{- define "vastcsi.nfsServicesTlshdVolumes" -}}
+{{- $tlshd := .Values.node.nfsServices.tlshd | default dict -}}
+{{- $certs := $tlshd.certificates | default dict -}}
+{{- if and $tlshd.configMap (not $certs.secretName) }}
+{{- fail "node.nfsServices.tlshd: certificates.secretName is required when configMap is set" }}
+{{- end }}
+{{- if and ($certs.secretName) (not $tlshd.configMap) }}
+{{- fail "node.nfsServices.tlshd: configMap is required when certificates.secretName is set" }}
+{{- end }}
+{{- if $tlshd.configMap }}
+- name: tlshd-conf
+  configMap:
+    name: {{ $tlshd.configMap }}
+    defaultMode: 0444
+{{- else }}
+- name: tlshd-conf
+  hostPath:
+    path: /etc/tlshd.conf
+    type: File
+{{- end }}
+{{- if $certs.secretName }}
+- name: tlshd-certs
+  secret:
+    secretName: {{ $certs.secretName }}
+    defaultMode: 0444
+{{- end }}
 {{- end -}}

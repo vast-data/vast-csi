@@ -19,7 +19,6 @@ package provisioner
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"path"
 	"strconv"
 	"strings"
@@ -45,6 +44,9 @@ const (
 	resyncAnnotationMaxAge = time.Minute
 	resyncPathWaitTimeout  = 30 * time.Second
 	resyncPathWaitSleep    = 2 * time.Second
+	// Protection policies may sync rarely; requeue infrequently
+	// while waiting for a newly added volume's path to appear on the destination.
+	pathNotReplicatedRetryAfter = 5 * time.Minute
 )
 
 // FileProvisioner creates Views and Quotas on the VAST cluster.
@@ -271,21 +273,6 @@ func (f *FileProvisioner) ensureFileVastObject(
 	return nil
 }
 
-// pathExists calls POST /folders/stat_path to check whether targetPath exists
-// on the cluster reached via rest.  Returns false (no error) when the cluster
-// responds with 503, which is the expected response for a path that has not
-// been replicated yet.  Any other error is returned to the caller.
-func (f *FileProvisioner) pathExists(ctx context.Context, rest *vast_client.TypedVMSRest, targetPath string, tenantId int64) (bool, error) {
-	_, err := rest.Folders.FolderStatPathWithContext_POST(ctx, targetPath, tenantId)
-	if err == nil {
-		return true, nil
-	}
-	if vast_client.ExpectStatusCodes(err, http.StatusServiceUnavailable) {
-		return false, nil
-	}
-	return false, err
-}
-
 // resyncRecentlyRequested reports whether AnnotationResyncRequestedAt was set
 // within resyncAnnotationMaxAge (RFC3339 timestamp).
 func (f *FileProvisioner) resyncRecentlyRequested() bool {
@@ -312,7 +299,7 @@ func (f *FileProvisioner) waitForReplicatedPath(
 		resyncPathWaitSleep,
 		fmt.Sprintf("destination path %q to be replicated", targetPath),
 		func() (bool, error) {
-			return f.pathExists(ctx, rest, targetPath, tenantId)
+			return vmsrest.PathExists(ctx, rest, targetPath, tenantId)
 		},
 	)
 }
@@ -362,7 +349,7 @@ func (f *FileProvisioner) ensureView(
 	// next reconcile, while still allowing mirror PVC creation to proceed.
 	// After a fresh resync-requested annotation, poll stat_path for up to
 	// resyncPathWaitTimeout before deferring.
-	exists, err := f.pathExists(ctx, rest, targetPath, viewPolicy.TenantId)
+	exists, err := vmsrest.PathExists(ctx, rest, targetPath, viewPolicy.TenantId)
 	if err != nil {
 		return nil, fmt.Errorf("stat_path %s: %w", targetPath, err)
 	}
@@ -376,10 +363,10 @@ func (f *FileProvisioner) ensureView(
 		}
 	}
 	if !exists {
-		f.emit.Normalf(events.ReasonProvisionSkipped,
-			"destination path %s not yet replicated, view creation deferred (StorageClass %s)",
-			targetPath, sc.Name)
-		return nil, nil
+		return nil, cerrors.NewRetryAfterError(
+			fmt.Errorf("destination path %s not yet replicated", targetPath),
+			pathNotReplicatedRetryAfter,
+		)
 	}
 
 	view, err := rest.Views.Create(viewBody)

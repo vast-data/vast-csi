@@ -22,6 +22,7 @@ class Config(TypedEnv):
         convert = staticmethod(local.path)
 
     vms_credentials_store = local.path("/opt/vms-auth")
+    cred_serialization_store = local.path("/opt/cred-serde")
     plugin_name, plugin_version, git_commit, ci_pipe = (
         open("version.info").read().strip().split()
     )
@@ -42,14 +43,22 @@ class Config(TypedEnv):
 
     ssl_verify = TypedEnv.Bool("X_CSI_ENABLE_VMS_SSL_VERIFICATION", default=False)
     truncate_volume_name = TypedEnv.Int("X_CSI_TRUNCATE_VOLUME_NAME", default=None)
+    truncate_snapshot_name = TypedEnv.Int("X_CSI_TRUNCATE_SNAPSHOT_NAME", default=None)
     worker_threads = TypedEnv.Int("X_CSI_WORKER_THREADS", default=10)
 
     metrics_port = TypedEnv.Int("X_CSI_METRICS_PORT", default=9090)
     metrics_enabled = TypedEnv.Bool("X_CSI_METRICS_ENABLED", default=False)
+
+    # VastExtensionsManager gRPC API (TCP host:port or unix:///path).
+    extensions_grpc_address = TypedEnv.Str(
+        "X_CSI_EXTENSIONS_GRPC_ADDRESS",
+        default="unix:///var/run/vast-extensions/extensions.sock",
+    )
     
     dont_use_trash_api = TypedEnv.Bool("X_CSI_DONT_USE_TRASH_API", default=False)
     use_local_ip_for_mount = TypedEnv.Str("X_CSI_USE_LOCALIP_FOR_MOUNT", default="")
     attach_required = TypedEnv.Bool("X_CSI_ATTACH_REQUIRED", default=True)
+    _provisioning_mode = TypedEnv.Str("X_CSI_PROVISIONING_MODE", default="dynamic")
     block_hosts_auto_prune = TypedEnv.Bool("X_CSI_BLOCK_HOSTS_AUTO_PRUNE", default=False)
     force_lazy_umount_on_timeout = TypedEnv.Bool("X_CSI_FORCE_LAZY_UMOUNT_ON_TIMEOUT", default=False)
     disable_usage_stats = TypedEnv.Bool("X_CSI_DISABLE_USAGE_STATS", default=False)
@@ -61,6 +70,8 @@ class Config(TypedEnv):
     # Comma-separated NFS client daemons the node plugin waits for before mounting
     # (set when the csi-nfs-services sidecar is enabled). Empty disables the gate.
     _nfs_services_wait = TypedEnv.Str("X_CSI_NFS_SERVICES_WAIT", default="")
+    # Set on csi-nfs-services when node.nfsServices.tlshd ConfigMap + Secret are set.
+    tlshd_overrides = TypedEnv.Bool("X_CSI_TLSHD_OVERRIDES", default=False)
     _vms_host = TypedEnv.Str("X_CSI_VMS_HOST", default="")
     name_fmt = "csi:{id}:{namespace}:{name}"
     block_nqn_prefix = "nqn.2014-08.com.vastcsiblock:"
@@ -73,6 +84,8 @@ class Config(TypedEnv):
     mount_umount_timeout = TypedEnv.Int("X_CSI_MOUNT_UMOUNT_TIMEOUT", default=90)
     resolve_mount_symlinks = TypedEnv.Bool("X_CSI_RESOLVE_MOUNT_SYMLINKS", default=False)
     allow_ro_many_block_fs_mode = TypedEnv.Bool("X_CSI_ALLOW_RO_MANY_BLOCK_FS_MODE", default=False)
+    # Comma-separated host directories to search for binaries under /host (appended to defaults).
+    block_host_binary_search_dirs = TypedEnv.Str("X_CSI_BLOCK_HOST_BINARY_SEARCH_DIRS", default="")
 
     @cached_property
     def vms_user(self):
@@ -106,6 +119,15 @@ class Config(TypedEnv):
             return self.vms_credentials_store['passphrase'].read().strip()
 
     @cached_property
+    def cred_serialization_key(self):
+        key_file = self.cred_serialization_store / "key"
+        if key_file.exists():
+            raw = key_file.read().strip()
+            if raw:
+                return raw.encode("utf-8")
+        return None
+
+    @cached_property
     def cluster_credentials(self):
         """Read multi-cluster auth configuration from the secret"""
         import yaml
@@ -128,7 +150,19 @@ class Config(TypedEnv):
     def nfs_services_wait(self):
         return [p.strip() for p in self._nfs_services_wait.split(',') if p.strip()]
 
+    @property
+    def provisioning_mode(self):
+        mode = self._provisioning_mode.strip().lower()
+        if mode not in {"dynamic", "static"}:
+            raise ValueError(f"invalid provisioning mode: {mode}")
+        return mode
+
+    @property
+    def static_provisioning(self):
+        return self.provisioning_mode == "static"
+
     unmount_attempts = TypedEnv.Int("X_CSI_UNMOUNT_ATTEMPTS", default=10)
+    fallback_to_deser = TypedEnv.Bool("X_CSI_FALLBACK_TO_DESER", default=False)
 
     @property
     def mode(self):
@@ -149,7 +183,3 @@ class Config(TypedEnv):
         return self.mode in {CONTROLLER_AND_NODE, NODE}
 
     avoid_trash_api = Timer(now=-1, expiration=HOUR)
-
-
-# Must match server.ExtensionsSocketPath in the Go extensions-controller.
-EXTENSIONS_SOCKET = "/var/run/vast-extensions/extensions.sock"

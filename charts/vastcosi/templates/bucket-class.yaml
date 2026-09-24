@@ -3,38 +3,83 @@
 {{/* Iterate over BucketClasses from manifest */}}
 {{- range $name, $options := .Values.bucketClasses }}
 
+{{/* COSI sidecar bucket name = BucketClass name + claim UID; S3/VAST max is 63. */}}
+{{- $classMax := sub 63 36 -}}
+{{- if gt (len $name) $classMax -}}
+  {{- fail (printf "BucketClass name %q is %d characters; must be at most %d so that name+UID stays within the S3/VAST 63-character bucket name limit" $name (len $name) $classMax) -}}
+{{- end }}
+
 {{- $deletion_policy :=  pluck "deletionPolicy" $options $.Values.bucketClassDefaults | first | quote -}}
 {{- $view_policy :=  pluck "viewPolicy" $options $.Values.bucketClassDefaults | first | quote -}}
 {{- $vip_pool_name := pluck "vipPool" $options $.Values.bucketClassDefaults | first | quote -}}
-{{- if eq $vip_pool_name ( quote "" ) -}}
-  {{- fail "vipPool is required value. Please specify valid vip pool" -}}
+{{- $vip_pool_fqdn := pluck "vipPoolFQDN" $options $.Values.bucketClassDefaults | first | quote -}}
+{{- $secret_name := pluck "secretName" $options $.Values.bucketClassDefaults | first | quote -}}
+{{- $secret_namespace := pluck "secretNamespace" $options $.Values.bucketClassDefaults | first | default $.Release.Namespace | quote -}}
+{{- $secret_namespace_explicit := pluck "secretNamespace" $options $.Values.bucketClassDefaults | first | quote -}}
+
+{{- if and (eq $secret_name ( quote "" )) (ne $secret_namespace_explicit ( quote "" )) -}}
+{{- fail (printf "secretName is required when secretNamespace is set on BucketClass '%s'" $name) -}}
+{{- end -}}
+
+{{- if and (ne $vip_pool_name ( quote "" )) (ne $vip_pool_fqdn ( quote "" )) -}}
+{{- fail (printf "vipPool and vipPoolFQDN are mutually exclusive in the BucketClass '%s' parameters. Do not set a default value from bucketClassDefaults for either field; choose only one to specify." $name) -}}
+{{- end }}
+
+{{- if and (eq $vip_pool_name ( quote "" )) (eq $vip_pool_fqdn ( quote "" )) -}}
+  {{- fail "Either vipPool or vipPoolFQDN is required. Please specify valid vip pool or FQDN" -}}
 {{- end }}
 {{- $scheme := pluck "scheme" $options $.Values.bucketClassDefaults | first | quote -}}
 {{- if not ( $scheme | mustRegexMatch "http|https" ) -}}
   {{- fail "scheme should be either 'http' or 'https'" -}}
 {{- end }}
 {{- $storage_path := pluck "storagePath" $options $.Values.bucketClassDefaults | first | quote -}}
+{{- $max_size := pluck "maxSize" $options $.Values.bucketClassDefaults | first -}}
 {{- if eq $storage_path ( quote "" ) -}}
   {{- fail "storagePath is required value. Please specify valid storage path" -}}
 {{- end }}
+{{- $lifecycle_rules := pluck "lifecycleRules" $options $.Values.bucketClassDefaults | first | default list -}}
+{{- if or (hasKey $options "bucket_owner") (hasKey $options "bucket_owner_context") -}}
+{{- fail (printf "BucketClass '%s': use Helm keys bucketOwner / bucketOwnerContext (not bucket_owner / bucket_owner_context)" $name) -}}
+{{- end -}}
+{{- $bucket_owner_raw := pluck "bucketOwner" $options $.Values.bucketClassDefaults | first | default "" -}}
+{{- $bucket_owner_context_raw := pluck "bucketOwnerContext" $options $.Values.bucketClassDefaults | first | default "" -}}
+{{- if and (empty $bucket_owner_raw) (not (empty $bucket_owner_context_raw)) -}}
+{{- fail (printf "bucketOwner is required when bucketOwnerContext is set on BucketClass '%s'" $name) -}}
+{{- end -}}
+{{- if and (not (empty $bucket_owner_raw)) (empty $bucket_owner_context_raw) -}}
+{{- fail (printf "bucketOwnerContext is required when bucketOwner is set on BucketClass '%s'" $name) -}}
+{{- end -}}
+{{- $bucket_owner := $bucket_owner_raw | quote -}}
+{{- $bucket_owner_context := $bucket_owner_context_raw | quote -}}
 
 kind: BucketClass
 apiVersion: objectstorage.k8s.io/v1alpha1
 metadata:
   name: {{ required "A BucketClass name must be not empty" $name }}
-  namespace: {{ include "vastcosinamespace" $ }}
+  namespace: {{ include "vast.common.namespace" $ }}
   labels:
-{{- include "vastcosilabels" $ | nindent 4 }}
-driverName: {{ include "vastcosi.csiDriver" $ }}
+{{- include "vast.common.labels" $ | nindent 4 }}
+driverName: {{ include "vast.common.csi.driverName" $ }}
 deletionPolicy: {{ $deletion_policy }}
 parameters:
   root_export: {{ $storage_path }}
-  vip_pool_name: {{ $vip_pool_name }}
   scheme: {{ $scheme }}
-{{- if ne $view_policy ( quote "" ) }}
-  view_policy: {{ $view_policy }}
+{{- include "vast.common.params.keyValue" (dict "values" (dict
+  "vip_pool_name" $vip_pool_name
+  "vip_pool_fqdn" $vip_pool_fqdn
+  "view_policy" $view_policy
+  "max_size" $max_size
+  "bucket_owner" $bucket_owner
+  "bucket_owner_context" $bucket_owner_context
+)) | indent 2 }}
+{{- if $lifecycle_rules }}
+{{ include "vast.common.params.json" (dict "value" $lifecycle_rules "key" "lifecycle_rules") | indent 2 }}
 {{- end }}
-{{- with omit $options "deletionPolicy" "viewPolicy" "vipPool" "scheme" "storagePath" }}
+{{- if ne $secret_name ( quote "" ) }}
+  vastdata.com/secret-name: {{ $secret_name }}
+  vastdata.com/secret-namespace: {{ $secret_namespace }}
+{{- end }}
+{{- with omit $options "deletionPolicy" "viewPolicy" "vipPool" "vipPoolFQDN" "vipPoolFQDNRandomPrefix" "secretName" "secretNamespace" "scheme" "storagePath" "lifecycleRules" "maxSize" "bucketOwner" "bucketOwnerContext" "bucket_owner" "bucket_owner_context" }}
   {{- range $key, $value := . }}
   {{ $key }}: {{ $value | quote }}
 {{- end }}

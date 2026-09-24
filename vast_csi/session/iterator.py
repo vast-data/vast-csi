@@ -67,16 +67,30 @@ class ResourceIterator:
             Bunch object with response data
         """
         if url:
-            # Use the full URL for next/previous navigation
-            # Extract path from URL for the request
+            # Keep api_method path-only; pass query via params so slash-join in
+            # request() cannot corrupt values (e.g. path__startswith=/foo).
             parsed = urllib.parse.urlparse(url)
-            # The path already contains the full API path including version (e.g., /api/v5/views/?page=2)
-            # Strip leading /api/ and use the rest as-is to preserve the correct version
-            path_with_params = parsed.path + ('?' + parsed.query if parsed.query else '')
-            # Remove leading /api/ prefix if present to get the version-qualified path
-            if path_with_params.startswith('/api/'):
-                path_with_params = path_with_params[5:]  # Remove '/api/' prefix
-            response = self.session.request("GET", path_with_params, params=None)
+            path = parsed.path or ""
+            if path.startswith("/api/"):
+                path = path[len("/api/"):]
+            path = path.strip("/")
+
+            query_params = dict(urllib.parse.parse_qsl(parsed.query, keep_blank_values=True))
+
+            api_ver = self.api_ver
+            api_method = path
+            if "/" in path:
+                first, rest = path.split("/", 1)
+                if first == "latest" or (first.startswith("v") and first[1:].isdigit()):
+                    api_ver = first
+                    api_method = rest
+
+            response = self.session.request(
+                "GET",
+                api_method,
+                params=query_params or None,
+                api_ver=api_ver,
+            )
         else:
             # Use resource path with params for first request
             response = self.session.get(self.resource.resource_name, api_ver=self.api_ver, params=params or self.initial_params)

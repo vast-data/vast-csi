@@ -1,0 +1,13 @@
+apiVersion: v2
+description: >
+  VastStorageClassReplication (VSCR) OpenShift UI resource.
+  Requires exactly one running VastExtensionsManager; VSCR is reconciled by
+  that manager, not by the helm operator.
+keywords:
+  - vast
+  - csi
+  - replication
+  - vastdata
+name: vaststorageclassreplication
+type: application
+version: 0.1.0

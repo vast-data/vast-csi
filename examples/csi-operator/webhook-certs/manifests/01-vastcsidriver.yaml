@@ -1,4 +1,4 @@
-# NFS CSI driver with extension webhook enabled (replication disabled for a lighter cert-test stack).
+# NFS CSI driver with extension webhook enabled (replication controllers disabled for a lighter cert-test stack).
 # Edit image repositories/tags before applying.
 apiVersion: storage.vastdata.com/v1
 kind: VastCSIDriver
@@ -13,15 +13,13 @@ spec:
     replication:
       enabled: false
     webhook:
-      enabled: true
-      disablePvcLabelsWebhook: false
       certManager:
         enabled: false
   image:
     csiVastPlugin:
-      repository: docker.io/vastdataorg/csi:v2.6.6
+      repository: docker.io/vastdataorg/csi:v2.7.0
     vastExtensionController:
-      repository: docker.io/vastdataorg/csi:v2.6.6-extensions
+      repository: docker.io/vastdataorg/csi:v2.7.0-extensions
   # Uncomment when using a private registry:
   # imagePullSecrets:
   #   - name: regcred

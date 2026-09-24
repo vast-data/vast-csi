@@ -1,0 +1,8 @@
+{{ include "vast.common.resource.webhookService" (dict
+  "name" (printf "%s-cosi-extensions-webhook" .Release.Name)
+  "namespace" (include "vast.common.namespace" .)
+  "labels" (include "vast.common.labels" .)
+  "targetPort" .Values.extensions.webhook.port
+  "appSelector" "cosi-provisioner"
+  "selectorLabels" (include "vast.common.selectorLabels" .)
+) }}
