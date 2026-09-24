@@ -15,6 +15,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+
       # Vendor file://../common before prepare_releaser_configuration.py prunes charts/common.
       - name: Build GKE chart dependencies
         run: helm dependency build --skip-refresh "${GITHUB_WORKSPACE}/charts/vastcsi-gke"
@@ -23,6 +26,13 @@ jobs:
         run: |
           python3 .github/workflows/prepare_releaser_configuration.py \
             --release-group gke
+
+      - name: Package GKE chart
+        run: |
+          set -euo pipefail
+          mkdir -p .cr-release-packages
+          helm package charts/vastcsi-gke -d .cr-release-packages
+          ls -la .cr-release-packages
 
       - name: Configure Git
         run: |
@@ -33,6 +43,7 @@ jobs:
         uses: helm/chart-releaser-action@v1.6.0
         with:
           config: releaser-config.yml
+          skip_packaging: true
+          skip_existing: true
         env:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-          CR_SKIP_EXISTING: "true"
