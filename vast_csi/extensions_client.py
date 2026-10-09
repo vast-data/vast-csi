@@ -21,8 +21,6 @@ connects as a gRPC client over TCP (operator) or a co-located unix
 socket (standalone Helm chart).
 """
 
-import socket
-import ssl
 import threading
 from pathlib import Path
 
@@ -66,21 +64,19 @@ def _tcp_host_port(target: str) -> tuple[str, int]:
     return host, int(port)
 
 
-def _peer_cert_pem(host: str, port: int) -> bytes:
-    """Return the server's TLS cert so grpcio can pin it (no InsecureSkipVerify)."""
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
+def _load_ca_pem() -> bytes:
+    """Load the mounted CA used to verify the VastExtensions server cert."""
+    path = Path(Config().extensions_grpc_ca_cert)
     try:
-        ctx.set_alpn_protocols(["h2"])
-    except NotImplementedError:
-        pass
-    with socket.create_connection((host, port), timeout=5) as sock:
-        with ctx.wrap_socket(sock, server_hostname=host) as ssock:
-            der = ssock.getpeercert(binary_form=True)
-    if not der:
-        raise RuntimeError("VastExtensions server did not present a TLS certificate")
-    return ssl.DER_cert_to_PEM_cert(der).encode()
+        data = path.read_bytes()
+    except OSError as exc:
+        raise RuntimeError(
+            f"VastExtensions CA certificate not found at {path}: {exc}. "
+            "Mount the gRPC TLS Secret ca.crt (standalone chart or VastExtensionsManager)."
+        ) from exc
+    if not data.strip():
+        raise RuntimeError(f"VastExtensions CA certificate at {path} is empty")
+    return data
 
 
 def _sa_token_plugin(context, callback):
@@ -93,13 +89,15 @@ def _sa_token_plugin(context, callback):
 
 
 def _new_channel(target: str) -> grpc.Channel:
+    ssl_creds = grpc.ssl_channel_credentials(root_certificates=_load_ca_pem())
+    # TCP (operator / cross-pod) also sends a ServiceAccount Bearer for TokenReview.
+    # Unix (same-pod) uses TLS only; peer trust is the shared volume + socket perms.
     if _is_unix_target(target):
-        return grpc.insecure_channel(target)
-
-    host, port = _tcp_host_port(target)
-    ssl_creds = grpc.ssl_channel_credentials(root_certificates=_peer_cert_pem(host, port))
-    call_creds = grpc.metadata_call_credentials(_sa_token_plugin, name="sa-token")
-    creds = grpc.composite_channel_credentials(ssl_creds, call_creds)
+        creds = ssl_creds
+    else:
+        _tcp_host_port(target)
+        call_creds = grpc.metadata_call_credentials(_sa_token_plugin, name="sa-token")
+        creds = grpc.composite_channel_credentials(ssl_creds, call_creds)
     return grpc.secure_channel(
         target,
         creds,

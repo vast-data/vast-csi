@@ -647,7 +647,10 @@ class NodeBase(csi_grpc.NodeServicer):
                 exit_stack=exit_stack,
             )
             self.controller.DeleteVolume.__wrapped__(
-                self.controller, vms_session=vms_session, volume_id=meta["volume_id"]
+                self.controller,
+                vms_session=vms_session,
+                volume_id=meta["volume_id"],
+                exit_stack=exit_stack,
             )
 
         return meta

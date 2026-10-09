@@ -4,39 +4,24 @@
 {{- $pvcWebhookEnabled := include "vastextensionsmanager.pvc-labels-webhook-enabled" . -}}
 {{- $vscrWebhookEnabled := include "vastextensionsmanager.vscr-validation-webhook-enabled" . -}}
 {{- $vvrWebhookEnabled := include "vastextensionsmanager.vvr-validation-webhook-enabled" . -}}
-{{- $ns := include "vastextensionsmanager.namespace" . | trimAll "\"" }}
+{{- $ns := include "vast.common.namespace" . | trimAll "\"" }}
 {{- $svcName := include "vastextensionsmanager.webhookServiceName" . }}
 {{- $secretName := include "vastextensionsmanager.webhookTLSSecretName" . }}
 {{- $cn := printf "%s.%s.svc" $svcName $ns }}
 {{- $altNames := list $cn (printf "%s.%s.svc.cluster.local" $svcName $ns) }}
-{{- $caCrt := "" }}
+{{- $certs := dict }}
+{{- $labels := printf "%s\napp.kubernetes.io/component: vast-extensions-manager" (include "vast.common.labels" . | trim) }}
 {{- if not $wh.certManager.enabled }}
-{{- $existingSecret := lookup "v1" "Secret" $ns $secretName }}
-{{- $tlsCrt := "" }}
-{{- $tlsKey := "" }}
-{{- if $existingSecret }}
-  {{- $tlsCrt = index $existingSecret.data "tls.crt" }}
-  {{- $tlsKey = index $existingSecret.data "tls.key" }}
-  {{- $caCrt  = index $existingSecret.data "ca.crt"  }}
-{{- else }}
-  {{- $ca   := genCA "vast-extensions-manager-webhook-ca" 3650 }}
-  {{- $cert := genSignedCert $cn nil $altNames 3650 $ca }}
-  {{- $tlsCrt = $cert.Cert | b64enc }}
-  {{- $tlsKey = $cert.Key  | b64enc }}
-  {{- $caCrt  = $ca.Cert   | b64enc }}
-{{- end }}
-apiVersion: v1
-kind: Secret
-metadata:
-  name: {{ $secretName }}
-  namespace: {{ $ns }}
-  labels:
-{{- include "vastextensionsmanager.labels" . | nindent 4 }}
-type: kubernetes.io/tls
-data:
-  tls.crt: {{ $tlsCrt }}
-  tls.key: {{ $tlsKey }}
-  ca.crt:  {{ $caCrt }}
+{{ include "vast.common.resource.selfSignedCertificate" (dict
+  "secretName" $secretName
+  "namespace" $ns
+  "cn" $cn
+  "altNames" $altNames
+  "caName" "vast-extensions-manager-webhook-ca"
+  "days" (include "vast.common.certs.defaultValidityDays" . | int)
+  "labels" $labels
+  "out" $certs
+) }}
 ---
 {{- end }}
 apiVersion: admissionregistration.k8s.io/v1
@@ -44,7 +29,7 @@ kind: MutatingWebhookConfiguration
 metadata:
   name: {{ $svcName }}
   labels:
-{{- include "vastextensionsmanager.labels" . | nindent 4 }}
+{{ $labels | nindent 4 }}
 {{- if $wh.certManager.enabled }}
   annotations:
     cert-manager.io/inject-ca-from: {{ include "vastextensionsmanager.webhookInjectCAFrom" . }}
@@ -62,7 +47,7 @@ webhooks:
         namespace: {{ $ns }}
         path: /mutate-pvc
 {{- if not $wh.certManager.enabled }}
-      caBundle: {{ $caCrt }}
+      caBundle: {{ $certs.caCrt }}
 {{- end }}
     rules:
       - apiGroups: [""]
@@ -87,7 +72,7 @@ webhooks:
         namespace: {{ $ns }}
         path: /validate-vastdata-com-v1alpha1-vaststorageclassreplication
 {{- if not $wh.certManager.enabled }}
-      caBundle: {{ $caCrt }}
+      caBundle: {{ $certs.caCrt }}
 {{- end }}
     rules:
       - apiGroups: ["vastdata.com"]
@@ -107,7 +92,7 @@ webhooks:
         namespace: {{ $ns }}
         path: /validate-vastdata-com-v1alpha1-vastvolumereplication
 {{- if not $wh.certManager.enabled }}
-      caBundle: {{ $caCrt }}
+      caBundle: {{ $certs.caCrt }}
 {{- end }}
     rules:
       - apiGroups: ["vastdata.com"]

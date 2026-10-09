@@ -149,7 +149,7 @@ csiDriverName: csi.vastdata.com
 image:
   csiVastPlugin:
     repository: vastdataorg/csi
-    tag: v2.7.0  # the version of the Vast COSI driver
+    tag: v2.7.1  # the version of the Vast COSI driver
     imagePullPolicy: IfNotPresent
   objectstorageProvisioner:
     # v0.2.2: Update path calls Add/Grant. Nested staging path is obsolete.

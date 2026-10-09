@@ -1,18 +1,4 @@
-{{/* Create chart name and version as used by the chart label. */}}
-{{- define "vastextensionsmanager.chart" -}}
-{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
-{{- end }}
-
-{{/*
-Target namespace for extensions manager resources.
-*/}}
-{{- define "vastextensionsmanager.namespace" -}}
-{{- quote (coalesce $.Release.Namespace "vast-csi") -}}
-{{- end }}
-
-{{- define "vastextensionsmanager.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
-{{- end }}
+{{/* OLM/operator-specific helpers only. Use vast.common.* directly in templates. */}}
 
 {{- define "vastextensionsmanager.dnsSafeReleaseName" -}}
 {{- .Release.Name | replace "." "-" | trunc 63 | trimSuffix "-" -}}
@@ -34,6 +20,15 @@ extensions-manager-grpc
 9090
 {{- end }}
 
+{{- define "vastextensionsmanager.grpcTLSSecretName" -}}
+{{- printf "%s-tls" (include "vastextensionsmanager.grpcServiceName" .) -}}
+{{- end }}
+
+{{- define "vastextensionsmanager.grpcCertificateName" -}}
+{{- $default := printf "%s-cert" (include "vastextensionsmanager.grpcServiceName" .) -}}
+{{- default $default .Values.grpc.certManager.certificateRef.name -}}
+{{- end }}
+
 {{- define "vastextensionsmanager.webhookTLSSecretName" -}}
 {{- printf "%s-tls" (include "vastextensionsmanager.webhookServiceName" .) -}}
 {{- end }}
@@ -44,23 +39,8 @@ extensions-manager-grpc
 {{- end }}
 
 {{- define "vastextensionsmanager.webhookInjectCAFrom" -}}
-{{- $ns := default (include "vastextensionsmanager.namespace" . | trimAll "\"") .Values.webhook.certManager.certificateRef.namespace -}}
+{{- $ns := default (include "vast.common.namespace" . | trimAll "\"") .Values.webhook.certManager.certificateRef.namespace -}}
 {{- printf "%s/%s" $ns (include "vastextensionsmanager.webhookCertificateName" .) -}}
-{{- end }}
-
-{{- define "vastextensionsmanager.labels" -}}
-helm.sh/chart: {{ include "vastextensionsmanager.chart" . }}
-{{ include "vastextensionsmanager.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
-{{- end }}
-app.kubernetes.io/managed-by: {{ .Release.Service }}
-app.kubernetes.io/component: vast-extensions-manager
-{{- end }}
-
-{{- define "vastextensionsmanager.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "vastextensionsmanager.name" . }}
-app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{- define "vastextensionsmanager.pvc-labels-webhook-enabled" -}}

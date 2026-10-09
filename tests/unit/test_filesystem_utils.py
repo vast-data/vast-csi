@@ -17,7 +17,8 @@ from vast_csi.filesystem_utils import (
     mount,
     umount,
     temporary_mount,
-    _normalize_mount_flags,
+    split_mount_flags,
+    join_mount_flags,
     DEFAULT_HOST_BINARY_DIRS,
     HostCommandAdapter,
     parse_host_binary_search_dirs,
@@ -422,16 +423,29 @@ def _mock_plumbum_cmd():
     return mock_cmd
 
 
-class TestNormalizeMountFlags:
+class TestSplitMountFlags:
     def test_none_and_empty(self):
-        assert _normalize_mount_flags(None) == []
-        assert _normalize_mount_flags([]) == []
+        assert split_mount_flags(None) == []
+        assert split_mount_flags([]) == []
 
     def test_string_split(self):
-        assert _normalize_mount_flags("ro,noexec") == ["ro", "noexec"]
+        assert split_mount_flags("ro,noexec") == ["ro", "noexec"]
 
     def test_list_passthrough(self):
-        assert _normalize_mount_flags(["nouuid", "ro"]) == ["nouuid", "ro"]
+        assert split_mount_flags(["nouuid", "ro"]) == ["nouuid", "ro"]
+
+    def test_selinux_context_with_mcs_commas(self):
+        ctx = 'context="system_u:object_r:container_file_t:s0:c26,c10"'
+        assert split_mount_flags(f"{ctx},nouuid") == [ctx, "nouuid"]
+        assert split_mount_flags([ctx, "nouuid"]) == [ctx, "nouuid"]
+        assert join_mount_flags([ctx, "nouuid"]) == f"{ctx},nouuid"
+        # Unquoted value with commas must be quoted for mount -o
+        assert (
+            join_mount_flags(
+                ["context=system_u:object_r:container_file_t:s0:c26,c10", "nouuid"]
+            )
+            == 'context="system_u:object_r:container_file_t:s0:c26,c10",nouuid'
+        )
 
 
 class TestFilesystemUtilsMount:

@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## Version 2.7.1
+* Operator: kube-rbac-proxy sidecar moved from `docker.io/kubebuilder/kube-rbac-proxy` to `quay.io/brancz/kube-rbac-proxy` (digest-pinned). Air-gap must mirror the new image.
+* VMS HTTPS: pin a single `SSLContext` on the requests session so TLS connections are reused instead of rebuilt per request
+* VastExtensions gRPC requires TLS on TCP and unix. Charts generate a self-signed serving cert and reuse it on upgrade.
+* Extensions manager image ships the `vcsi` CLI at `/usr/local/bin/vcsi`.
+* NFS: `deletionMountOptions` (default empty) for DeleteVolume local-mount cleanup.
+* NFS: local DeleteVolume get-or-creates the parent view and mounts the parent directory by path (no temporary NFSv3 alias).
+
 ## Version 2.7.0
 * NFS/Block: truncate VMS snapshot names via `truncateSnapshotName` (default 128) so OpenShift long project/snapshot names do not exceed the VMS 128-char limit (VCSI-553)
 * COSI: bump objectstorage-sidecar to `registry.k8s.io/sig-storage/objectstorage-sidecar:v0.2.2` so BucketAccess grant runs on Update as well as Add (fixes intermittent missing credentials Secret; VCSI-520). Sidecar container runs as root so it can dial the plugin unix socket (image defaults to non-root). Follow-ups not in this release: non-root sidecar via shared socket perms/`fsGroup` (for Restricted PSS); air-gap must mirror `registry.k8s.io/sig-storage/objectstorage-sidecar:v0.2.2`.

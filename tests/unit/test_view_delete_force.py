@@ -59,6 +59,37 @@ def test_view_delete_by_id_default_does_not_force_on_not_empty_409():
     assert session.delete.call_args.kwargs.get("params") is None
 
 
+def test_ensure_creates_path_export_without_alias():
+    session = MagicMock()
+    session.viewpolicies.one.return_value = MagicMock(id=1, tenant_id=1)
+    session.post.return_value = MagicMock(id=7, path="/k8s", protocols=["NFS4"])
+    views = View(session)
+    views.one = MagicMock(return_value=None)
+
+    view = views.ensure("/k8s", protocols=["NFS4"], view_policy="del-pol", qos_policy=None)
+
+    assert view.id == 7
+    payload = session.post.call_args.kwargs["data"]
+    assert payload["path"] == "/k8s"
+    assert payload["protocols"] == ["NFS4"]
+    assert "alias" not in payload
+    session.delete.assert_not_called()
+
+
+def test_ensure_returns_existing_view_unchanged():
+    session = MagicMock()
+    existing = MagicMock(id=7, path="/k8s", protocols=["NFS"])
+    views = View(session)
+    views.one = MagicMock(return_value=existing)
+
+    view = views.ensure("/k8s", protocols=["NFS4"], view_policy="del-pol", qos_policy=None)
+
+    assert view is existing
+    session.post.assert_not_called()
+    session.patch.assert_not_called()
+    session.delete.assert_not_called()
+
+
 def test_view_delete_by_id_does_not_force_on_other_errors():
     session = MagicMock()
     views = View(session)

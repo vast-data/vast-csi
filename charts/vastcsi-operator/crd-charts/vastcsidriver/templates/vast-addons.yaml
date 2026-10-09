@@ -4,7 +4,6 @@
 
 {{- $csi_images := .Values.image -}}
 {{- $plugin_proxy_sock_path := "/var/lib/csi/sockets/pluginproxy/" -}}
-{{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
 {{- $is_nfs_driver := (eq .Values.driverType "nfs") }}
 {{- $name_prefix := $is_nfs_driver | ternary "csi" "block" }}
 {{- $sc := .Values.csiAddonsSidecar -}}
@@ -14,21 +13,23 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ $name_prefix }}-vast-addons
-  namespace: {{ include "vastcsi.namespace" . }}
+  namespace: {{ include "vast.common.namespace" . }}
   labels:
-    {{- include "vastcsi.labels" . | nindent 4 }}
+{{- include "vast.common.labels" . | nindent 4 }}
+    storage.vastdata.com/driverType: {{ .Values.driverType }}
     app.kubernetes.io/csi-role: vast-addons
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: {{ $name_prefix }}-vast-addons
-      {{- include "vastcsi.selectorLabels" . | nindent 6 }}
+      {{- include "vast.common.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
         app: {{ $name_prefix }}-vast-addons
-        {{- include "vastcsi.labels" . | nindent 8 }}
+{{- include "vast.common.labels" . | nindent 8 }}
+    storage.vastdata.com/driverType: {{ .Values.driverType }}
     spec:
       {{- if .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -86,11 +87,11 @@ spec:
             - "serve"
             - "--addons={{ include "vastcsi.addons-list" (dict "type" .Values.driverType) }}"
           env:
-            {{- include "vastcsi.commonEnv" . | indent 12 }}
-            - name: X_CSI_VMS_TIMEOUT
-              value: {{ $sc.operationTimeout | default 120 | quote }}
+            {{- include "vastcsi.commonEnv" (dict "root" . "timeout" ($sc.operationTimeout | default 120)) | indent 12 }}
             - name: X_CSI_EXTENSIONS_GRPC_ADDRESS
-              value: "extensions-manager-grpc.{{ include "vastcsi.namespace" . | trimAll "\"" }}.svc.cluster.local:9090"
+              value: "extensions-manager-grpc.{{ include "vast.common.namespace" . | trimAll "\"" }}.svc.cluster.local:9090"
+            - name: X_CSI_EXTENSIONS_GRPC_CA_CERT
+              value: /opt/extensions-grpc-certs/ca.crt
             - name: CSI_ENDPOINT
               value: unix://{{ printf "%s%s" $plugin_proxy_sock_path $csiaddons_sock }}
             - name: X_CSI_MODE
@@ -99,7 +100,10 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
-          {{- include "vastcsi.vmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 12 }}
+            - name: extensions-grpc-ca
+              mountPath: /opt/extensions-grpc-certs
+              readOnly: true
+          {{- include "vast.common.vmsAuth.volumeMounts" . | indent 12 }}
           resources: {{- toYaml $sc.resources.csiVastPlugin | nindent 12 }}
       dnsPolicy: ClusterFirst
       nodeSelector:
@@ -121,5 +125,12 @@ spec:
       volumes:
         - name: socket-dir
           emptyDir: {}
-        {{- include "vastcsi.vmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}
+        # CA issued by VastExtensionsManager (Secret extensions-manager-grpc-tls).
+        - name: extensions-grpc-ca
+          secret:
+            secretName: extensions-manager-grpc-tls
+            items:
+              - key: ca.crt
+                path: ca.crt
+        {{- include "vast.common.vmsAuth.volumes" . | indent 8 }}
 {{- end }}

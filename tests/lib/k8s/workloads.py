@@ -2,11 +2,14 @@ import shlex
 from typing import Optional
 
 from easypy.resilience import retrying
+from easypy.units import MINUTE
 from plumbum import FG
 from plumbum.commands.processes import ProcessExecutionError
 
 from lib.builders.base import resource_name
 from lib.k8s._base import KubernetesResource
+
+EXEC_TIMEOUT = 2 * MINUTE
 
 
 class Namespace(KubernetesResource):
@@ -59,9 +62,16 @@ class Pod(KubernetesResource):
         acceptable=ProcessExecutionError,
         pred=lambda e: "EOF" in str(e),
     )
-    def exec(self, pod_name: str, command: str):
-        """Run *command* in a pod via kubectl exec. Use this to inspect volume data."""
-        return self.k8s.kubectl(*["exec", "-t", pod_name, "--"] + shlex.split(command))
+    def exec(self, pod_name: str, command: str, *, timeout: float = EXEC_TIMEOUT):
+        """Run *command* in a pod via kubectl exec. Use this to inspect volume data.
+
+        A command blocked on wedged storage would otherwise hang the whole run,
+        since kubectl exec waits on the container forever.
+        """
+        return self.k8s.kubectl(
+            *["exec", "-t", pod_name, "--"] + shlex.split(command),
+            timeout=timeout,
+        )
 
     def ls(self, pod_name: str, path: str = "/shared") -> list[str]:
         """List files at *path* inside a running pod (never mount on the test host)."""

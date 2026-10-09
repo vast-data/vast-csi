@@ -19,8 +19,8 @@ spec:
           namespace: vast-csi
   image:
     csiVastPlugin:
-      repository: docker.io/vastdataorg/csi:v2.7.0
+      repository: docker.io/vastdataorg/csi:v2.7.1
     vastExtensionController:
-      repository: docker.io/vastdataorg/csi:v2.7.0-extensions
+      repository: docker.io/vastdataorg/csi:v2.7.1-extensions
   # imagePullSecrets:
   #   - name: regcred

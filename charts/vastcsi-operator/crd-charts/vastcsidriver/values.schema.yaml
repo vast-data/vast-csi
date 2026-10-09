@@ -1900,6 +1900,11 @@ spec:
       default: {{ .Values.deletionVipPool }}
       description: Dedicated VIP pool to delete volumes. Driver-wide option. Preferably, utilize the Trash API for volume deletion. If using multiple clusters, ensure a VIP pool with the same name is created for each cluster.
       type: string
+    deletionMountOptions:
+      default: {{ .Values.deletionMountOptions | quote }}
+      description: >-
+        NFS mount flags for DeleteVolume local-mount cleanup (comma-separated).
+      type: string
     dontUseTrashApi:
       default: {{ .Values.dontUseTrashApi }}
       description: Whether to use Trash API
@@ -2453,6 +2458,11 @@ specDescriptors:
     path: deletionVipPool
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:hidden'
+  - description: NFS mount flags for DeleteVolume local-mount cleanup
+    displayName: deletionMountOptions
+    path: deletionMountOptions
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:hidden'
   - description: >-
       The logging level of deployed containers expressed as an integer
       from 0 (low detail) to 5 (high detail). 0 only logs errors. 3 logs most
@@ -2800,6 +2810,7 @@ example:
         imagePullPolicy: {{ .Values.image.csiAddonsSidecar.imagePullPolicy }}
     deletionViewPolicy: {{ .Values.deletionViewPolicy }}
     deletionVipPool: {{ .Values.deletionVipPool }}
+    deletionMountOptions: {{ .Values.deletionMountOptions | quote }}
     dontUseTrashApi: {{ .Values.dontUseTrashApi }}
     imagePullSecrets: {{ empty .GlobalValues.imagePullSecret | ternary "[]" (printf "[{\"name\": \"%s\"}]" .GlobalValues.imagePullSecret) }}
     kubeletPath: {{ .Values.kubeletPath }}

@@ -1,5 +1,8 @@
 """NFS / vastcsi chart test bodies."""
 from datetime import datetime
+import copy
+import random
+import string
 
 import pytest
 from easypy.collections import grouped
@@ -8,13 +11,27 @@ from easypy.timing import wait
 from easypy.units import MINUTE, GiB
 from plumbum import FG
 
+from lib.builders.helm.csi import VastCsiHelmValuesBuilder
 from lib.builders.storage import PVCBuilder, VolumeSnapshotBuilder
 from lib.builders.workloads import DeploymentBuilder, PodBuilder, StatefulSetBuilder
-from lib.constants import BUSYBOX_IMAGE, CSI_QUOTA_PREFIX, MGMT_SECRET, NFS_MOUNT_OPTIONS, ROOT_EXPORT, SNAPSHOT_CLASS, VIEW_POLICY_NAME, VIPPOOL_NAME, nfs_storage_class
+from lib.constants import (
+    BUSYBOX_IMAGE,
+    CSI_QUOTA_PREFIX,
+    MGMT_SECRET,
+    NFS_MOUNT_OPTIONS,
+    ROOT_EXPORT,
+    SNAPSHOT_CLASS,
+    VIEW_POLICY_NAME,
+    VIPPOOL_NAME,
+    nfs_storage_class,
+)
 from e2e.logging import logger
 from e2e.test_suites.common import (
+    assert_text_in_logs,
+    container_env,
     files_in_pod,
     parse_iso_date,
+    pod_logs,
     read_in_pod,
 )
 
@@ -232,12 +249,16 @@ def test_nfs_snapshot_restore(system, k8s):
 
 
 
+@pytest.mark.e2e
 @pytest.mark.nfs
 def test_nfs_long_snapshot_name_truncates(system, k8s):
     """Long project + snapshot names must still create a VMS snap (name <= 128)."""
     suffix = random_nice_name(max_length=16)
-    ns = ("e2e-long-snap-" + "n" * 50)[:63]
-    snap_name = ("long-snap-" + "s" * 60)[:63]
+    # Pad with a random letter so each run gets a unique truncated quota name.
+    # A fixed filler like "n"*50 always collides on VAST after a failed run.
+    pad = random.choice(string.ascii_lowercase)
+    ns = ("e2e-long-snap-" + pad * 50)[:63]
+    snap_name = ("long-snap-" + pad * 60)[:63]
     vol_name = f"vol-long-{suffix}"
     storage_class_name = nfs_storage_class()
     snap_class = SNAPSHOT_CLASS
@@ -451,3 +472,113 @@ def test_nfs_reschedule_normal(k8s):
         f"Expected pod on {node_names[1]!r}, got {second_pod.spec.nodeName!r}"
     )
     logger.info(f"Normal NFS reschedule verified: {node_names[0]!r} -> {node_names[1]!r}")
+
+
+@pytest.mark.e2e
+@pytest.mark.nfs
+def test_nfs_local_volume_deletion(system, k8s):
+    """DeleteVolume local-mount path (trash REST off).
+
+    Helm ``dontUseTrashApi`` plus a temporarily disabled VMS trash folder force
+    the controller to mount a temporary NFS alias and rmdir the volume instead
+    of REST ``folders/delete_folder``. Mount flags are the chart default
+    ``vers=3,nolock`` (NFS aliases are not visible over NFSv4).
+    """
+    chart = k8s.helmvalues.vastcsi
+    original_values = copy.deepcopy(chart.memoized_values)
+    original_values.setdefault("dontUseTrashApi", False)
+
+    overridden_values = (
+        VastCsiHelmValuesBuilder(copy.deepcopy(original_values))
+        .with_local_deletion()
+        .result()
+    )
+
+    system.clusters.ensure_trash_state(False)
+    try:
+        chart.upgrade(overridden_values)
+        env = container_env(
+            k8s,
+            container="csi-vast-plugin",
+            labels={"app": "csi-vast-controller"},
+        )
+        assert env.get("X_CSI_DONT_USE_TRASH_API") == "true"
+        assert env.get("X_CSI_DELETION_MOUNT_OPTIONS") == "vers=3,nolock"
+        assert env.get("X_CSI_DELETION_VIP_POOL_NAME") == VIPPOOL_NAME
+        assert env.get("X_CSI_DELETION_VIEW_POLICY") == VIEW_POLICY_NAME
+
+        suffix = random_nice_name(max_length=24)
+        pvc_name = f"pvc-localdel-{suffix}"
+        sts_name = f"sts-localdel-{suffix}"
+        storage_class_name = nfs_storage_class()
+
+        k8s.pvcs.create(PVCBuilder.new(
+            name=pvc_name,
+            access_modes=["ReadWriteOnce"],
+            storage_class_name=storage_class_name,
+            storage="1Gi",
+        ))
+        k8s.sts.create(StatefulSetBuilder.new(name=sts_name, pvc=pvc_name, replicas=1))
+        pod_name = f"{sts_name}-0"
+        k8s.pods.wait(
+            timeout=2 * MINUTE,
+            name=pod_name,
+            error_msg=f"the pod {pod_name!r} did not start",
+        )
+        pvc = k8s.pvcs.wait(name=pvc_name, error_msg=f"PVC {pvc_name!r} did not bind")
+        quota = wait(
+            MINUTE,
+            lambda: csi_quota_for_pvc(system, pvc),
+            message=f"no CSI quota for {pvc_name!r}",
+        )
+        volume_path = quota.path
+        logger.info(f"Local-delete volume path {volume_path} quota {quota.name}")
+
+        k8s.sts.delete(name=sts_name)
+        k8s.pods.wait(
+            name=pod_name,
+            condition="Deleted",
+            error_msg=f"the pod {pod_name!r} was not deleted",
+        )
+        k8s.pvcs.delete(name=pvc_name, wait=False)
+        k8s.pvcs.wait(
+            timeout=5 * MINUTE,
+            name=pvc_name,
+            condition="Deleted",
+            error_msg=f"PVC {pvc_name!r} did not finish DeleteVolume (local NFS4 mount)",
+        )
+        wait(
+            2 * MINUTE,
+            lambda: csi_quota_for_pvc(system, pvc) is None,
+            message=f"CSI quota {quota.name!r} still present after local delete",
+        )
+        wait(
+            MINUTE,
+            lambda: not any(v.path == volume_path for v in system.views),
+            message=f"VAST view {volume_path} still present after local delete",
+        )
+        assert_text_in_logs(
+            k8s,
+            "Use local mounting to delete",
+            labels={"app": "csi-vast-controller"},
+            container="csi-vast-plugin",
+        )
+        logger.info("Local NFS4 DeleteVolume verified")
+    except Exception:
+        try:
+            logger.error(
+                "controller plugin logs before helm restore:\n%s",
+                pod_logs(
+                    k8s,
+                    labels={"app": "csi-vast-controller"},
+                    container="csi-vast-plugin",
+                ),
+            )
+        except Exception:
+            logger.exception("could not dump controller plugin logs")
+        raise
+    finally:
+        try:
+            chart.upgrade(original_values)
+        finally:
+            system.clusters.ensure_trash_state(True)

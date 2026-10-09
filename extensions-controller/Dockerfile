@@ -45,6 +45,7 @@ LABEL name="VAST CSI Extensions Manager" \
 COPY LICENSE /licenses/LICENSE
 
 COPY --from=builder /workspace/manager /manager
+COPY --from=builder /workspace/manager /usr/local/bin/vcsi
 
 USER 65532:65532
 

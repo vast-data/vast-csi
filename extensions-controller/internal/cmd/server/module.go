@@ -1,6 +1,8 @@
 package server
 
 import (
+	"path/filepath"
+
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/kubernetes"
 
@@ -16,6 +18,12 @@ import (
 func RegisterFlags(c *cobra.Command, cfg *config.Config) {
 	c.PersistentFlags().StringVar(&cfg.ExtensionsGRPCBindAddress, "extensions-grpc-bind-address", grpcserver.DefaultExtensionsGRPCBindAddress,
 		"Listen address for the VastExtensions gRPC API.")
+	c.PersistentFlags().StringVar(&cfg.ExtensionsGRPCCertPath, "extensions-grpc-cert-path", "/tmp/extensions-grpc-certs",
+		"Directory containing the VastExtensions TLS certificate and key (required for TCP and unix).")
+	c.PersistentFlags().StringVar(&cfg.ExtensionsGRPCCertName, "extensions-grpc-cert-name", "tls.crt",
+		"File name of the VastExtensions TLS certificate under --extensions-grpc-cert-path.")
+	c.PersistentFlags().StringVar(&cfg.ExtensionsGRPCCertKey, "extensions-grpc-cert-key", "tls.key",
+		"File name of the VastExtensions TLS private key under --extensions-grpc-cert-path.")
 }
 
 func configure(cmd *cobra.Command, sharedMgr *manager.SharedManager, cfg *config.Config) {
@@ -38,7 +46,11 @@ func configure(cmd *cobra.Command, sharedMgr *manager.SharedManager, cfg *config
 			panic(err)
 		}
 
-		grpcSrv := grpcserver.New(cfg.ExtensionsGRPCBindAddress, kubeClient, logger)
+		tlsOpts := grpcserver.TLSOptions{
+			CertFile: filepath.Join(cfg.ExtensionsGRPCCertPath, cfg.ExtensionsGRPCCertName),
+			KeyFile:  filepath.Join(cfg.ExtensionsGRPCCertPath, cfg.ExtensionsGRPCCertKey),
+		}
+		grpcSrv := grpcserver.New(cfg.ExtensionsGRPCBindAddress, kubeClient, logger, tlsOpts)
 		grpcSrv.RegisterService(extensions.NewService(k8sClient, cfg.SSLVerify, logger, logging.New(logger, cfg.DevLogging)))
 		if err := mgr.Add(grpcSrv); err != nil {
 			panic(err)

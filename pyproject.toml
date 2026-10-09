@@ -60,4 +60,5 @@ markers = [
     "mtls: NFS mTLS / xprtsec=mtls tests (vastcsi)",
     "block: block / vastblock chart tests",
     "cosi: COSI chart tests",
+    "stress: wave-based CSI provisioning and rescheduling stress tests",
 ]

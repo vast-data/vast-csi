@@ -1,0 +1,20 @@
+# Optional: cert-manager Certificate for the VastExtensions TCP gRPC API.
+# Use with VastExtensionsManager.spec.grpc.certManager.enabled=true.
+# The Secret name MUST be extensions-manager-grpc-tls (mounted by the manager
+# Deployment and by VastCSIDriver vast-addons clients as the CA bundle).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: extensions-manager-grpc-cert
+  namespace: vast-csi  # operator namespace
+spec:
+  secretName: extensions-manager-grpc-tls
+  commonName: vast-extensions
+  dnsNames:
+    - vast-extensions
+    - extensions-manager-grpc
+    - extensions-manager-grpc.vast-csi.svc
+    - extensions-manager-grpc.vast-csi.svc.cluster.local
+  issuerRef:
+    name: vast-csi-selfsigned-issuer
+    kind: Issuer

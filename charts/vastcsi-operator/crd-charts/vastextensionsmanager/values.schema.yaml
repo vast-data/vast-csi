@@ -32,6 +32,28 @@ spec:
                   description: Namespace of the Certificate CR.
                   type: string
                   default: {{ .Values.webhook.certManager.certificateRef.namespace | quote }}
+    grpc:
+      description: TLS for the VastExtensions TCP gRPC API (extensions-manager-grpc).
+      type: object
+      properties:
+        certManager:
+          type: object
+          properties:
+            enabled:
+              description: When true, gRPC TLS is provided by cert-manager.
+              type: boolean
+              default: {{ .Values.grpc.certManager.enabled }}
+            certificateRef:
+              type: object
+              properties:
+                name:
+                  description: cert-manager Certificate CR name that creates extensions-manager-grpc-tls.
+                  type: string
+                  default: {{ .Values.grpc.certManager.certificateRef.name | quote }}
+                namespace:
+                  description: Namespace of the Certificate CR.
+                  type: string
+                  default: {{ .Values.grpc.certManager.certificateRef.namespace | quote }}
     replication:
       description: Replication controller, CSI-Addons cluster controller, and admission webhook configuration.
       type: object
@@ -444,6 +466,9 @@ example:
       port: {{ .Values.webhook.port }}
       certManager:
         enabled: {{ .Values.webhook.certManager.enabled }}
+    grpc:
+      certManager:
+        enabled: {{ .Values.grpc.certManager.enabled }}
     image:
       useCustomRepositories: false
       vastExtensionController:

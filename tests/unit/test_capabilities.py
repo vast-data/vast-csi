@@ -148,6 +148,20 @@ def test_parse_mount_options(raw_mount_options, volume_capabilities):
     assert vol_caps.mount_flags == ["nconnect=4", "nolock", "proto=tcp", "vers=4"]
 
 
+def test_selinux_context_mount_flag_preserves_mcs_commas(volume_capabilities):
+    ctx = 'context="system_u:object_r:container_file_t:s0:c26,c10"'
+    capabilities = volume_capabilities(
+        fs_type="xfs",
+        mount_flags=[ctx],
+        mode=types.AccessModeType.MULTI_NODE_READER_ONLY,
+        access_type="mount",
+    )
+    vol_caps = cap_lib.Capabilities(capabilities)
+    assert ctx in vol_caps.mount_flags
+    # Must not be torn into ['context="...c26', 'c10"']
+    assert not any(f.startswith("c10") or f.endswith('c26') for f in vol_caps.mount_flags if "context=" not in f)
+
+
 def test_capability_equality(volume_capabilities):
     cap1 = cap_lib.Capability(
         volume_capabilities(

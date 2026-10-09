@@ -46,6 +46,7 @@ class FleetHelmValuesBuilder:
         cosi = VastCosiHelmValuesBuilder.for_fleet(system)
 
         builder = cls(csi=csi, block=block, cosi=cosi)
+        builder.with_csi_metrics()
         if csi_image:
             repository, tag = csi_image.rsplit(":", 1)
             builder.with_image(repository, tag)
@@ -79,6 +80,12 @@ class FleetHelmValuesBuilder:
     def with_image_pull_secrets(self, *names: str) -> Self:
         for chart_builder in (self._csi, self._block, self._cosi):
             chart_builder.with_image_pull_secrets(*names)
+        return self
+
+    def with_csi_metrics(self, enabled: bool = True) -> Self:
+        """Configure controller and node metrics for CSI charts in the fleet."""
+        for chart_builder in (self._csi, self._block):
+            chart_builder.with_csi_metrics(enabled)
         return self
 
     def result_by_chart(self) -> dict[str, dict[str, Any]]:

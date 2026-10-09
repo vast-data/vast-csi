@@ -3,7 +3,7 @@ import pytest
 import contextlib
 from contextlib import ExitStack
 from unittest.mock import MagicMock
-from vast_csi.plugins.nfs import CsiController
+from vast_csi.plugins.nfs import CsiController, CsiNode
 from vast_csi.plugins.block import BlockController
 from vast_csi.exceptions import Abort, MissingParameter
 
@@ -396,3 +396,38 @@ class TestBlockControllerCleanup:
         )
 
         vms_session_mock.blockhosts.delete_by_id.assert_not_called()
+
+    def test_nfs_ev_unpublish_passes_exit_stack_to_delete_volume(self, monkeypatch):
+        """Inline EV NodeUnpublish calls NFS DeleteVolume, which requires exit_stack."""
+        monkeypatch.setattr(
+            "vast_csi.plugins.base.CONF",
+            Bunch(cred_serialization_key=None, fallback_to_deser=False, node_id="node-1"),
+        )
+        node = CsiNode()
+        controller = CsiController()
+        node.controller = controller
+        unpublish = MagicMock(return_value=types.CtrlUnpublishResp())
+        unpublish.__wrapped__ = unpublish
+        controller.ControllerUnpublishVolume = unpublish
+
+        called = {}
+
+        def delete_volume(self, vms_session, volume_id, exit_stack):
+            called["exit_stack"] = exit_stack
+            called["volume_id"] = volume_id
+            return types.DeleteResp()
+
+        controller.DeleteVolume = delete_volume
+        controller.DeleteVolume.__wrapped__ = delete_volume
+
+        stack = ExitStack()
+        node._process_meta(
+            meta={"is_ephemeral": True, "volume_id": "csi-ev-1"},
+            volume_id="csi-ev-1",
+            vms_session=MagicMock(),
+            exit_stack=stack,
+        )
+
+        assert called["exit_stack"] is stack
+        assert called["volume_id"] == "csi-ev-1"
+        unpublish.assert_called_once()

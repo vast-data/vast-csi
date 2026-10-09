@@ -6,7 +6,7 @@ from datetime import datetime
 import pytest
 from easypy.bunch import Bunch
 from easypy.random import random_nice_name
-from easypy.timing import wait
+from easypy.timing import timing, wait
 from easypy.units import MINUTE
 
 from lib.constants import (
@@ -24,9 +24,11 @@ from lib.builders.workloads import PodBuilder
 from e2e.test_suites.common import (
     CONCURRENT_VOLUME_COUNT,
     files_in_pod,
+    flush_writer_data,
     make_filesystem_pvc,
     make_writer_pod,
     parse_iso_date,
+    skip_unless_selinux_mount,
     wait_volumes_detached,
     writer_has_data,
 )
@@ -90,25 +92,25 @@ def test_block_basic_pvc_and_pod(k8s):
     pod_builders = {}
 
     def _start_pods(node: str) -> float:
-        t0 = time.monotonic()
-        for v in volumes:
-            pb = make_writer_pod(
-                v["pod"], v["pvc"],
-                volume_name="block-data",
-                command=heavy_io_cmd,
-            )
-            pb.with_spec(nodeSelector={"kubernetes.io/hostname": node})
-            pod_builders[v["pod"]] = pb
-            k8s.pods.create(pb)
-        for v in volumes:
-            k8s.pods.wait(
-                timeout=3 * MINUTE, name=v["pod"],
-                error_msg=(
-                    f"Pod {v['pod']!r} ({v['fs']}) did not reach Running on {node!r} "
-                    f"within {3 * MINUTE} min — possible mount stall"
-                ),
-            )
-        elapsed = time.monotonic() - t0
+        with timing() as timer:
+            for v in volumes:
+                pb = make_writer_pod(
+                    v["pod"], v["pvc"],
+                    volume_name="block-data",
+                    command=heavy_io_cmd,
+                )
+                pb.with_spec(nodeSelector={"kubernetes.io/hostname": node})
+                pod_builders[v["pod"]] = pb
+                k8s.pods.create(pb)
+            for v in volumes:
+                k8s.pods.wait(
+                    timeout=3 * MINUTE, name=v["pod"],
+                    error_msg=(
+                        f"Pod {v['pod']!r} ({v['fs']}) did not reach Running on {node!r} "
+                        f"within {3 * MINUTE} min — possible mount stall"
+                    ),
+                )
+        elapsed = float(timer.duration)
         logger.info(f"All {len(volumes)} pods Running on {node!r} in {elapsed:.1f}s")
         if elapsed > 120:
             logger.warning(
@@ -271,7 +273,7 @@ def test_block_snapshot_restore(system, k8s):
                       error_msg=f"[{v['fs']}] source pod did not start")
         wait(MINUTE, lambda pod=v["src_pod"]: writer_has_data(k8s, pod),
              message=f"[{v['fs']}] no data written to source PVC")
-        k8s.pods.exec(v["src_pod"], "sync")
+        flush_writer_data(k8s, v["src_pod"])
 
     for v in volumes:
         k8s.volumesnapshots.create(VolumeSnapshotBuilder.new(
@@ -516,6 +518,8 @@ def test_block_xfs_concurrent(system, k8s):
         )
     logger.info(f"Phase 1: all {n} XFS RWO pods verified")
 
+    skip_unless_selinux_mount(k8s, what="XFS ReadOnlyMany snapshot restore")
+
     # --- Phase 2: snapshot pod-0 PVC, restore as N ROX PVCs ---
     src_pod = rwo_pod_names[0]
     src_pvc = rwo_pvc_names[0]
@@ -523,7 +527,7 @@ def test_block_xfs_concurrent(system, k8s):
     rox_pvc_names = [f"block-xfs-rox-pvc-{i}-{suffix}" for i in range(n)]
     rox_pod_names = [f"block-xfs-rox-pod-{i}-{suffix}" for i in range(n)]
 
-    k8s.pods.exec(src_pod, "sync")
+    flush_writer_data(k8s, src_pod)
     k8s.volumesnapshots.create(VolumeSnapshotBuilder.new(
         name=snap_name, pvc_name=src_pvc, snapshot_class_name=snap_class,
     ))
@@ -554,7 +558,15 @@ def test_block_xfs_concurrent(system, k8s):
 
     logger.info(f"Phase 2: launching {n} ROX reader pods simultaneously")
     for rox_pod, rox_pvc in zip(rox_pod_names, rox_pvc_names):
-        k8s.pods.create(make_writer_pod(rox_pod, rox_pvc, volume_name="block-data", command=["sleep", "3600"]))
+        k8s.pods.create(
+            make_writer_pod(
+                rox_pod,
+                rox_pvc,
+                volume_name="block-data",
+                command=["sleep", "3600"],
+                read_only=True,
+            ).with_selinux_mount_context()
+        )
     for rox_pod in rox_pod_names:
         k8s.pods.wait(timeout=10 * MINUTE, name=rox_pod, error_msg=f"ROX pod {rox_pod!r} did not start")
 

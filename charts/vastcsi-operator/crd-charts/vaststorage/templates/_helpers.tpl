@@ -1,33 +1,4 @@
-{{/* Create chart name and version as used by the chart label. */}}
-{{- define "vastcsi.chart" -}}
-{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
-{{- end }}
-
-{{- define "vastcsi.namespace" -}}
-{{- coalesce $.Release.Namespace "vast-csi" | quote -}}
-{{- end }}
-
-{{/* Common labels and selectors */}}
-{{- define "vastcsi.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
-{{- end }}
-
-{{/* Common labels */}}
-{{- define "vastcsi.labels" -}}
-helm.sh/chart: {{ include "vastcsi.chart" . }}
-{{ include "vastcsi.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
-{{- end }}
-app.kubernetes.io/managed-by: {{ .Release.Service }}
-{{- end }}
-
-{{/* Common selectors */}}
-{{- define "vastcsi.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "vastcsi.name" . }}
-app.kubernetes.io/instance: {{ .Release.Name }}
-{{- end }}
-
+{{/* StorageClass/SnapshotClass helpers. Use vast.common.* for naming/labels/params. */}}
 
 {{/*
 Template: vastcsi.csiDriver
@@ -60,7 +31,6 @@ Resolves the correct CSI driver name based on the selected driver type.
 {{- $secret }}
 {{- end -}}
 
-
 {{/* Validate if secret exists. */}}
 {{- define "vastcsi.secret" -}}
 {{- $secret := $.Values.secretName -}}
@@ -76,14 +46,6 @@ Resolves the correct CSI driver name based on the selected driver type.
 {{- $secret }}
 {{- end -}}
 
-
-{{/*
-Template: vastcsi.storageClassSecrets
-
-Determines which Secret to use for CSI driver credentials.
-If `.Values.secretName` is provided, it is used directly.
-Otherwise, it falls back to `.Values.clusterName` and assumes a Secret with the same name exists.
-*/}}
 {{- define "vastcsi.storageClassSecrets" -}}
 
 {{- $secret_name := .Values.secretName | trim -}}
@@ -118,12 +80,6 @@ csi.storage.k8s.io/node-expand-secret-namespace: "{{ $secret_namespace }}"
 
 {{- end -}}
 
-
-{{/*
-Template: vastcsi.snapshotClassSecrets
-
-Generates CSI snapshot secret keys using either secretName or clusterName.
-*/}}
 {{- define "vastcsi.snapshotClassSecrets" -}}
 
 {{- $secret_name := .Values.secretName | trim -}}
@@ -147,74 +103,3 @@ csi.storage.k8s.io/snapshotter-secret-name: "{{ $secret_name }}"
 csi.storage.k8s.io/snapshotter-secret-namespace: "{{ $secret_namespace }}"
 
 {{- end -}}
-
-
-{{/*
-Renders key-value pairs for CSI parameters.
-- Quotes all values except ints.
-- Skips empty values.
-
-Usage: include "vastcsi.dictToKeyValParams" (dict $your_dict)
-*/}}
-{{- define "vastcsi.dictToKeyValParams" -}}
-{{- $input := index . 0 -}}
-  {{- range $key, $value := $input }}
-    {{- if and $value (ne $value (quote "")) }}
-{{ $key }}: {{ if kindIs "int" $value }}{{ $value | quote }}{{ else }}{{ $value }}{{ end }}
-    {{- end }}
-  {{- end }}
-{{- end }}
-
-
-{{/*
-Renders key-value pairs where the value is interpreted as a boolean.
-Truthy values: bool true; strings "true", "1", "on" (case-insensitive, trims quotes)
-Falsy values: bool false; strings "false", "0", "off" (case-insensitive, trims quotes)
-Unrecognized / empty values are omitted (driver default applies).
-
-Result: key: "true" or key: "false"
-*/}}
-{{- define "vastcsi.dictToBoolParams" -}}
-{{- $input := index . 0 -}}
-{{- range $key, $value := $input }}
-  {{- if kindIs "bool" $value }}
-    {{- if $value }}
-{{ $key }}: "true"
-    {{- else }}
-{{ $key }}: "false"
-    {{- end }}
-  {{- else }}
-    {{- $normalized := trimAll "\"" (toString $value) | lower }}
-    {{- if or (eq $normalized "true") (eq $normalized "1") (eq $normalized "on") }}
-{{ $key }}: "true"
-    {{- else if or (eq $normalized "false") (eq $normalized "0") (eq $normalized "off") }}
-{{ $key }}: "false"
-    {{- end }}
-  {{- end }}
-{{- end }}
-{{- end }}
-
-
-{{/*
-Renders a key-value pair where the value is the input map serialized to a JSON string.
-
-Inputs:
-- .0: map to serialize (must be of type "map")
-- .1: key to associate with the JSON string
-
-Result:
-<key>: "<JSON-string>"
-
-Fails if the input is not a map.
-*/}}
-{{- define "vastcsi.dictToJsonStringParam" -}}
-{{- $map := index . 0 -}}
-{{- $key := index . 1 -}}
-{{- if not (kindIs "map" $map) }}
-  {{- $errorMsg := printf "Invalid format. Expected a map for JSON serialization but got:\n%s" (toYaml $map) }}
-  {{- fail $errorMsg }}
-{{- else }}
-{{ $key }}: {{ $map | toJson | quote }}
-{{- end }}
-{{- end }}
-

@@ -61,6 +61,7 @@ class VmsSession(RESTSession, SerializationMixin):
             # This way requests library can use mounted CA bundle or default system CA bundle under the same path.
             cert_path = f"{certs_base_dir}/ca-certificates.crt"
         self.ssl_verify = (False, cert_path)[config.ssl_verify]
+        self.pin_ssl_context()
 
         if self.token:
             self.headers["Authorization"] = f"Api-Token {self.token}"

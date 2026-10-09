@@ -2169,13 +2169,13 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: csi-addons-controller-manager
-  namespace: {{ include "vastextensionsmanager.namespace" . }}
+  namespace: {{ include "vast.common.namespace" . }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: csi-addons-leader-election-role
-  namespace: {{ include "vastextensionsmanager.namespace" . }}
+  namespace: {{ include "vast.common.namespace" . }}
 rules:
 - apiGroups:
   - ""
@@ -2438,7 +2438,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: csi-addons-leader-election-rolebinding
-  namespace: {{ include "vastextensionsmanager.namespace" . }}
+  namespace: {{ include "vast.common.namespace" . }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -2446,7 +2446,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: csi-addons-controller-manager
-  namespace: {{ include "vastextensionsmanager.namespace" . }}
+  namespace: {{ include "vast.common.namespace" . }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -2459,7 +2459,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: csi-addons-controller-manager
-  namespace: {{ include "vastextensionsmanager.namespace" . }}
+  namespace: {{ include "vast.common.namespace" . }}
 ---
 apiVersion: v1
 data:
@@ -2479,7 +2479,7 @@ data:
 kind: ConfigMap
 metadata:
   name: csi-addons-manager-config
-  namespace: {{ include "vastextensionsmanager.namespace" . }}
+  namespace: {{ include "vast.common.namespace" . }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -2487,7 +2487,7 @@ metadata:
   labels:
     app.kubernetes.io/name: csi-addons
   name: csi-addons-controller-manager
-  namespace: {{ include "vastextensionsmanager.namespace" . }}
+  namespace: {{ include "vast.common.namespace" . }}
 spec:
   replicas: 1
   selector:

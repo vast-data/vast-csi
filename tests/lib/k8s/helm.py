@@ -11,6 +11,11 @@ from lib.k8s._base import KubernetesResource
 from lib.logging import logger
 
 
+# A cold cluster pulls the sig-storage sidecars serially, which measured ~10
+# minutes on CRC. Five minutes only ever passed because the images happened to
+# be cached, so a fresh cluster or one that has run image GC always failed here.
+CHART_READY_TIMEOUT = 15 * MINUTE
+
 _CHART_POD_LABELS = {
     "vastcsi":   (["csi-vast-controller", "csi-vast-node"], "nfs"),
     "vastblock": (["csi-vast-controller", "csi-vast-node"], "block"),
@@ -83,9 +88,13 @@ class HelmValues(KubernetesResource):
 
         def wait(self):
             for label in self.condition_running_labels:
-                logger.info(f"Waiting for {self.name} pod app={label} (up to 5 min)")
+                logger.info(
+                    f"Waiting for {self.name} pod app={label} "
+                    f"(up to {CHART_READY_TIMEOUT / MINUTE:.0f} min; "
+                    "a cold image pull dominates this)"
+                )
                 self.k8s.pods.wait(
-                    timeout=5 * MINUTE,
+                    timeout=CHART_READY_TIMEOUT,
                     namespace=self.namespace,
                     labels={"app": label},
                     condition="Running",

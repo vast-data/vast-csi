@@ -19,6 +19,8 @@
   value: {{ $root.Values.deletionVipPool | quote }}
 - name: X_CSI_DELETION_VIEW_POLICY
   value: {{ $root.Values.deletionViewPolicy | quote }}
+- name: X_CSI_DELETION_MOUNT_OPTIONS
+  value: {{ $root.Values.deletionMountOptions | quote }}
 - name: X_CSI_DONT_USE_TRASH_API
   value: {{ $root.Values.dontUseTrashApi | quote }}
 - name: X_CSI_MOUNT_UMOUNT_TIMEOUT

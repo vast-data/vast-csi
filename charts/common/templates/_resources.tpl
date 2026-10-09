@@ -26,6 +26,9 @@ metadata:
 spec:
   attachRequired: {{ .attachRequired }}
   podInfoOnMount: {{ $podInfoOnMount }}
+{{- if hasKey . "seLinuxMount" }}
+  seLinuxMount: {{ .seLinuxMount }}
+{{- end }}
   volumeLifecycleModes:
 {{ toYaml $volumeLifecycleModes | nindent 4 }}
 {{- end -}}
@@ -135,40 +138,77 @@ spec:
 {{ .selectorLabels | nindent 4 }}
 {{- end -}}
 
-{{- define "vast.common.resource.webhookCertificate" -}}
-{{- $name := required "webhook certificate name is required" .name -}}
-{{- $namespace := required "webhook certificate namespace is required" .namespace -}}
-{{- $days := .days | default 3650 -}}
-{{- $secretName := printf "%s-tls" $name -}}
-{{- $cn := printf "%s.%s.svc" $name $namespace -}}
-{{- $altNames := list $cn (printf "%s.%s.svc.cluster.local" $name $namespace) -}}
-{{- $existingSecret := lookup "v1" "Secret" $namespace $secretName -}}
-{{- $tlsCrt := "" -}}
-{{- $tlsKey := "" -}}
-{{- $caCrt := "" -}}
-{{- if $existingSecret -}}
-  {{- $tlsCrt = index $existingSecret.data "tls.crt" -}}
-  {{- $tlsKey = index $existingSecret.data "tls.key" -}}
-  {{- $caCrt = index $existingSecret.data "ca.crt" -}}
-{{- else -}}
-  {{- $ca := genCA (.caName | default "vast-webhook-ca") $days -}}
-  {{- $cert := genSignedCert $cn nil $altNames $days $ca -}}
-  {{- $tlsCrt = $cert.Cert | b64enc -}}
-  {{- $tlsKey = $cert.Key | b64enc -}}
-  {{- $caCrt = $ca.Cert | b64enc -}}
-{{- end }}
+{{/*
+Emit a kubernetes.io/tls Secret with a self-signed CA and leaf certificate.
+
+Reuses an existing Secret on upgrade. Optionally fills .out with tlsCrt/tlsKey/caCrt
+(base64) so callers can embed caBundle elsewhere in the same render.
+
+Required: secretName, namespace, cn, altNames, caName, labels
+Optional: days (validity in days; default 3650 / 10y), out (dict mutated with cert material)
+
+Usage:
+  {{ include "vast.common.resource.selfSignedCertificate" (dict
+    "secretName" "my-service-tls"
+    "namespace" "default"
+    "cn" "my-service"
+    "altNames" (list "my-service" "my-service.default.svc")
+    "caName" "my-service-ca"
+    "days" (include "vast.common.certs.defaultValidityDays" . | int)
+    "labels" (include "vast.common.labels" .)
+  ) }}
+*/}}
+{{- define "vast.common.resource.selfSignedCertificate" -}}
+{{- $secretName := required "secretName is required" .secretName -}}
+{{- $namespace := required "namespace is required" .namespace -}}
+{{- $labels := required "labels is required" .labels -}}
+{{/* Prefer caller-supplied out even when empty; `default` treats empty dict as empty. */}}
+{{- $out := dict -}}
+{{- if hasKey . "out" -}}
+{{- $out = .out -}}
+{{- end -}}
+{{- $days := .days | default (include "vast.common.certs.defaultValidityDays" .) | int -}}
+{{- include "vast.common.certs.generate" (dict
+  "out" $out
+  "secretName" $secretName
+  "namespace" $namespace
+  "cn" .cn
+  "altNames" .altNames
+  "caName" .caName
+  "days" $days
+) }}
 apiVersion: v1
 kind: Secret
 metadata:
   name: {{ $secretName }}
   namespace: {{ $namespace }}
   labels:
-{{ .labels | nindent 4 }}
+{{ $labels | nindent 4 }}
 type: kubernetes.io/tls
 data:
-  tls.crt: {{ $tlsCrt }}
-  tls.key: {{ $tlsKey }}
-  ca.crt:  {{ $caCrt }}
+  tls.crt: {{ $out.tlsCrt }}
+  tls.key: {{ $out.tlsKey }}
+  ca.crt:  {{ $out.caCrt }}
+{{- end -}}
+
+{{- define "vast.common.resource.webhookCertificate" -}}
+{{- $name := required "webhook certificate name is required" .name -}}
+{{- $namespace := required "webhook certificate namespace is required" .namespace -}}
+{{- $secretName := printf "%s-tls" $name -}}
+{{- $cn := printf "%s.%s.svc" $name $namespace -}}
+{{- $altNames := list $cn (printf "%s.%s.svc.cluster.local" $name $namespace) -}}
+{{- $certs := dict -}}
+{{- $days := .days | default (include "vast.common.certs.defaultValidityDays" .) | int -}}
+{{- include "vast.common.resource.selfSignedCertificate" (dict
+  "secretName" $secretName
+  "namespace" $namespace
+  "cn" $cn
+  "altNames" $altNames
+  "caName" (.caName | default "vast-webhook-ca")
+  "days" $days
+  "labels" .labels
+  "out" $certs
+) }}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: {{ .configurationKind | default "MutatingWebhookConfiguration" }}
@@ -190,7 +230,7 @@ webhooks:
         name: {{ $name }}
         namespace: {{ $namespace }}
         path: {{ .path }}
-      caBundle: {{ $caCrt }}
+      caBundle: {{ $certs.caCrt }}
     rules:
 {{ toYaml .rules | nindent 6 }}
 {{- with .namespaceSelector }}

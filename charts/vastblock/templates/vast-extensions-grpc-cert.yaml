@@ -1,0 +1,16 @@
+{{- /*
+TLS for the co-located VastExtensions unix gRPC socket.
+Same Secret shape as the operator extensions-manager-grpc-tls Secret.
+*/ -}}
+{{- if .Values.extensions.enabled }}
+{{- $ns := include "vast.common.namespace" . | trimAll "\"" }}
+{{ include "vast.common.resource.selfSignedCertificate" (dict
+  "secretName" (printf "%s-extensions-grpc-tls" .Release.Name)
+  "namespace" $ns
+  "cn" "vast-extensions"
+  "altNames" (list "vast-extensions")
+  "caName" "vast-block-extensions-grpc-ca"
+  "days" (include "vast.common.certs.defaultValidityDays" . | int)
+  "labels" (include "vast.common.labels" .)
+) }}
+{{- end }}

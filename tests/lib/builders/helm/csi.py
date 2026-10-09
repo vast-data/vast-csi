@@ -48,6 +48,12 @@ class VastCsiHelmValuesBuilder(HelmValuesBuilder):
         self._values["deletionViewPolicy"] = view_policy
         return self
 
+    def with_local_deletion(self, *, dont_use_trash_api: bool = True) -> Self:
+        """Force DeleteVolume onto the local NFS mount path (trash REST off)."""
+        self._values["dontUseTrashApi"] = dont_use_trash_api
+        self._values["deletionMountOptions"] = "vers=3,nolock"
+        return self
+
     def with_attach_required(self, required: bool | str = True) -> Self:
         value = str(required).lower() if isinstance(required, bool) else required
         self._values["attachRequired"] = value

@@ -8,12 +8,36 @@ from lib.constants import BUSYBOX_IMAGE
 
 _DEFAULT_COMMAND = ["sh", "-c", "while true; do date -Iseconds >> /shared/$HOSTNAME; sleep 1; done"]
 
+# Fixed MCS so kubelet SELinuxMount passes context= to CSI (required for ROX).
+# All readers of a shared volume must use the same level.
+E2E_SELINUX_LEVEL = "s0:c1,c2"
+
 
 def _workload_labels(name: str, extra: Optional[dict]) -> dict:
     base = {"app": name}
     if extra:
         base.update(extra)
     return base
+
+
+def _selinux_mount_security_context(level: str = E2E_SELINUX_LEVEL) -> dict[str, Any]:
+    """Pod SC so kubelet uses mount-option labeling (not recursive relabel).
+
+    ``seLinuxChangePolicy: MountOption`` is required for ReadOnlyMany: recursive
+    ``lsetxattr`` fails on a read-only filesystem. Do not put this on default
+    Deployment/StatefulSet specs — older OpenShift/CRC only allow ``Recursive``.
+    """
+    return {
+        "seLinuxOptions": {"level": level},
+        "seLinuxChangePolicy": "MountOption",
+    }
+
+
+def _apply_selinux_mount_context(pod_spec: dict[str, Any], level: str = E2E_SELINUX_LEVEL) -> None:
+    opts = {"seLinuxOptions": {"level": level}}
+    pod_spec.setdefault("securityContext", {}).update(_selinux_mount_security_context(level))
+    for container in pod_spec.get("containers") or []:
+        container.setdefault("securityContext", {}).update(opts)
 
 
 class PodBuilder(Builder):
@@ -44,17 +68,34 @@ class PodBuilder(Builder):
         }
         return cls._from_body(body)
 
+    def with_selinux_mount_context(
+        self, level: str = E2E_SELINUX_LEVEL
+    ) -> "PodBuilder":
+        """Opt into kubelet SELinuxMount ``context=`` labeling for CSI volumes.
+
+        Without ``seLinuxOptions``, kubelet recursively ``lsetxattr``s the mount
+        instead — that fails on ReadOnlyMany volumes (read-only filesystem).
+        """
+        _apply_selinux_mount_context(self._body.setdefault("spec", {}), level)
+        return self
+
     def with_volume(
         self,
         volume_name: Optional[str],
         mount_path: Optional[str],
         volume: Optional[dict],
+        *,
+        read_only: bool = False,
     ) -> "PodBuilder":
         if volume_name is None:
             return self
         assert mount_path and volume, "volume_name, mount_path and volume must be provided together"
         self._body["spec"]["containers"][0]["volumeMounts"] = [
-            {"mountPath": mount_path, "name": volume_name}
+            {
+                "mountPath": mount_path,
+                "name": volume_name,
+                "readOnly": read_only,
+            }
         ]
         self._body["spec"]["volumes"] = [volume]
         return self
@@ -134,6 +175,12 @@ class DeploymentBuilder(Builder):
         }
         return cls._from_body(body)
 
+    def with_selinux_mount_context(
+        self, level: str = E2E_SELINUX_LEVEL
+    ) -> "DeploymentBuilder":
+        _apply_selinux_mount_context(self._body["spec"]["template"]["spec"], level)
+        return self
+
 
 class StatefulSetBuilder(Builder):
     """builder for a StatefulSet manifest."""
@@ -175,3 +222,9 @@ class StatefulSetBuilder(Builder):
             },
         }
         return cls._from_body(body)
+
+    def with_selinux_mount_context(
+        self, level: str = E2E_SELINUX_LEVEL
+    ) -> "StatefulSetBuilder":
+        _apply_selinux_mount_context(self._body["spec"]["template"]["spec"], level)
+        return self

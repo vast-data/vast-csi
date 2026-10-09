@@ -1,0 +1,6 @@
+dependencies:
+- name: vast-common
+  repository: file://../../../common
+  version: 1.0.0
+digest: sha256:0becf981f57589cb543bdf57361b0fff0bb2e37651e8476c93f4332368baf862
+generated: "2026-09-25T01:39:58.670484933+03:00"

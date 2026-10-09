@@ -14,7 +14,7 @@ imagePullSecret: null
 # Operator manager image
 managerImage: docker.io/vastdataorg/csi@sha256:7cd73d9cc3e35ef74ac0efd1e7d4c8a88100c8c259acbbaf9e548dc13e645139
 # Operator proxy image
-proxyImage: docker.io/kubebuilder/kube-rbac-proxy@sha256:a2523c532c0c3d51a5396a901d7ded23e402a9a1492c783aae27af6d0c1d2ec5
+proxyImage: quay.io/brancz/kube-rbac-proxy@sha256:a6075902738eaf1780390561ea998a53a056ef1d2b312bcbf0e2e81fec084b3c
 
 # Used in OpenShift UI for driver installation.
 suggestedNamespace: "vast-csi"
@@ -40,7 +40,7 @@ overrides:
   csiAddonsController:
     repository: quay.io/csiaddons/k8s-controller@sha256:412ed46f1f93a49aea6a6cb9c33e3bcb131f96bfe3d015314611c27282f472aa
   vastExtensionController:
-    repository: docker.io/vastdataorg/csi@sha256:f6561aa2270a1acbd8a1cb20a37923304f3eca171819d8d142f7f52585146cff
+    repository: docker.io/vastdataorg/csi@sha256:d9c81e8a69c058e822b7934afcc6c6a628ee56bd36de72a6cd32c216036eacb6
 
 # Disable if you don't have intention to use snapshots (Enabled by default)
 installSnapshotCRDS: true

@@ -19,7 +19,7 @@ helm install csi-driver vast-gke/vastcsi-gke -f values.yaml -n vast-csi --create
 
 ### install a specific version
 ```console
-helm install csi-driver vast-gke/vastcsi-gke -f values.yaml -n vast-csi --create-namespace --version 2.7.0
+helm install csi-driver vast-gke/vastcsi-gke -f values.yaml -n vast-csi --create-namespace --version 2.7.1
 ```
 
 ### Upgrade driver

@@ -4,12 +4,15 @@ import requests
 import base64
 import os
 import pickle
+import ssl
+from contextlib import ExitStack
 from plumbum import local
 from io import BytesIO
 from unittest.mock import patch, PropertyMock, MagicMock
 from vast_csi.plugins.nfs import CsiController
 from requests import Response
 from vast_csi.session import apiver, get_vms_session, VmsSession, VastResource, instantiate_session_from_secret
+from vast_csi.session.base import PinnedSSLContextAdapter, build_ssl_context
 from vast_csi.configuration import Config
 from vast_csi.exceptions import OperationNotSupported, ApiError, LookupFieldError
 from easypy.semver import SemVer
@@ -18,6 +21,33 @@ from easypy.bunch import Bunch
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
+
+def test_build_ssl_context_without_verification():
+    context = build_ssl_context(False)
+
+    assert context.check_hostname is False
+    assert context.verify_mode == ssl.CERT_NONE
+
+
+@pytest.mark.parametrize("verify_mode", [ssl.CERT_NONE, ssl.CERT_REQUIRED])
+def test_pinned_ssl_context_controls_pool_verification(verify_mode):
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    if verify_mode == ssl.CERT_NONE:
+        context.check_hostname = False
+        context.verify_mode = verify_mode
+
+    adapter = PinnedSSLContextAdapter(context)
+    request = requests.Request("GET", "https://vms.example.com").prepare()
+
+    _, pool_kwargs = adapter.build_connection_pool_key_attributes(
+        request, verify=False
+    )
+
+    assert pool_kwargs["ssl_context"] is context
+    assert pool_kwargs["cert_reqs"] == verify_mode
+    assert "ca_certs" not in pool_kwargs
+    assert "ca_cert_dir" not in pool_kwargs
 
 
 def encrypt_legacy_meta(obj, salt: str) -> str:
@@ -126,7 +156,8 @@ class TestVmsSessionRequisiteSuite:
         # Execution
         with patch.object(vms_session, "versions", version_mock("4.6.0")):
             with pytest.raises(AssertionError) as exc:
-                cont._delete_data_from_storage(vms_session, "/abc", 1)
+                with ExitStack() as stack:
+                    cont._delete_data_from_storage(vms_session, "/abc", 1, stack)
 
         # Assertion
         assert "Ensure that deletionViewPolicy is properly configured" in str(exc.value)
@@ -154,13 +185,15 @@ class TestVmsSessionRequisiteSuite:
             ) as mocked_request,
         ):
             with pytest.raises(AssertionError):
-                cont._delete_data_from_storage(vms_session, "/abc", 1)
+                with ExitStack() as stack:
+                    cont._delete_data_from_storage(vms_session, "/abc", 1, stack)
 
             assert mocked_request.call_count == 1
             assert not vms_session.config.avoid_trash_api.expired
 
             with pytest.raises(AssertionError):
-                cont._delete_data_from_storage(vms_session, "/abc", 1)
+                with ExitStack() as stack:
+                    cont._delete_data_from_storage(vms_session, "/abc", 1, stack)
 
             assert mocked_request.call_count == 1
             assert not vms_session.config.avoid_trash_api.expired
@@ -169,7 +202,8 @@ class TestVmsSessionRequisiteSuite:
             vms_session.config.avoid_trash_api.reset(-1)
 
             with pytest.raises(AssertionError) as exc:
-                cont._delete_data_from_storage(vms_session, "/abc", 1)
+                with ExitStack() as stack:
+                    cont._delete_data_from_storage(vms_session, "/abc", 1, stack)
 
             assert mocked_request.call_count == 2
             assert not vms_session.config.avoid_trash_api.expired

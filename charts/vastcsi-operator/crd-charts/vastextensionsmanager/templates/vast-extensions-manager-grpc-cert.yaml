@@ -1,0 +1,25 @@
+{{- /*
+TLS for the VastExtensions TCP gRPC API (operator / cross-pod model).
+Same pattern as the admission webhook Secret: Helm-generated CA+cert unless
+cert-manager is enabled (then the Certificate CR must create this Secret).
+*/ -}}
+{{- $wh := .Values.grpc -}}
+{{- if not $wh.certManager.enabled }}
+{{- $ns := include "vast.common.namespace" . | trimAll "\"" }}
+{{- $svcName := include "vastextensionsmanager.grpcServiceName" . }}
+{{- $altNames := list
+      "vast-extensions"
+      $svcName
+      (printf "%s.%s.svc" $svcName $ns)
+      (printf "%s.%s.svc.cluster.local" $svcName $ns)
+}}
+{{ include "vast.common.resource.selfSignedCertificate" (dict
+  "secretName" (include "vastextensionsmanager.grpcTLSSecretName" .)
+  "namespace" $ns
+  "cn" "vast-extensions"
+  "altNames" $altNames
+  "caName" "vast-extensions-grpc-ca"
+  "days" (include "vast.common.certs.defaultValidityDays" . | int)
+  "labels" (printf "%s\napp.kubernetes.io/component: vast-extensions-manager" (include "vast.common.labels" . | trim))
+) }}
+{{- end }}

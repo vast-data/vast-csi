@@ -316,7 +316,7 @@ class BlockController(ControllerBase, Instrumented):
             raise Abort(ALREADY_EXISTS, exc.message)
         return types.CreateResp(volume=volume)
 
-    def DeleteVolume(self, vms_session, volume_id):
+    def DeleteVolume(self, vms_session, volume_id, exit_stack=None):
         volume_id = normalize_volume_id(volume_id)
         vms_session.globalsnapstreams.ensure_snapshot_stream_deleted(name__contains=volume_id)
         if snaps := vms_session.snapshots.has_snapshots(volume_id):

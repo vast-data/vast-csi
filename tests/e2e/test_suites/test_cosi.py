@@ -20,7 +20,8 @@ from lib.builders.cosi import (
     BucketClassBuilder,
 )
 from lib.builders.workloads import PodBuilder
-from lib.constants import AWS_CLI_IMAGE, S3_POLICY_NAME, VIPPOOL_NAME
+from lib.constants import AWS_CLI_IMAGE, CSI_NAMESPACE, S3_POLICY_NAME, VIPPOOL_NAME
+from e2e.test_suites.common import pod_logs
 
 DEFAULT_BUCKET_CLASS = "vastdata-bucket"
 COSI_ROOT_EXPORT = "/buckets"
@@ -116,6 +117,23 @@ def _s3_put_ok(k8s, pod_name: str, cli: str, bucket: str, tmp_file: str):
     assert "Completed 5 Bytes/5 Bytes" in res
 
 
+def _s3_put_denied(k8s, pod_name: str, cli: str, bucket: str, tmp_file: str):
+    """Wait until S3 rejects the key; loopback datapath can lag VMS key delete."""
+
+    def _denied():
+        try:
+            k8s.pods.exec(pod_name, f"/bin/sh -c '{cli} cp {tmp_file} s3://{bucket}/cosi-test'")
+        except ProcessExecutionError as exc:
+            return "InvalidAccessKeyId" in (exc.stderr or "")
+        return False
+
+    wait(
+        2 * MINUTE,
+        _denied,
+        message="S3 still accepted the access key after BucketAccess revoke",
+    )
+
+
 def _secret_data(k8s, name: str, namespace: str = "default") -> dict[str, str]:
     sec = k8s.secrets.get(name=name, namespace=namespace)
     assert sec, f"Secret {name!r} not found"
@@ -172,9 +190,7 @@ def test_cosi(system, k8s):
     _s3_put_ok(k8s, cli_pod, cli, bucket, tmp_file)
 
     _revoke_access(k8s, ba_name)
-    with pytest.raises(ProcessExecutionError) as caught:
-        k8s.pods.exec(cli_pod, f"/bin/sh -c '{cli} cp {tmp_file} s3://{bucket}/cosi-test'")
-    assert "An error occurred (InvalidAccessKeyId)" in caught.value.stderr
+    _s3_put_denied(k8s, cli_pod, cli, bucket, tmp_file)
 
     _delete_claim(k8s, bucketclaim_name)
 
@@ -475,3 +491,77 @@ def test_cosi_force_credentials(system, k8s):
 
     _revoke_access(k8s, ba_name)
     _delete_claim(k8s, claim_name)
+
+
+@pytest.mark.e2e
+@pytest.mark.cosi
+def test_cosi_bucketclass_secret_refs(system, k8s):
+    """BucketClass vastdata.com/secret-* is resolved for VMS auth (VCSI-310)."""
+    suffix = random_nice_name(max_length=16)
+    bc_name = f"vbc-auth-{suffix}"
+    claim_name = f"vastdata-bc-auth-{suffix}"
+    vms_secret = f"vms-auth-{suffix}"
+    cli_pod = f"awscli-cosi-auth-{suffix}"
+    tmp_file = f"{gettempdir()}/cosi_auth_test"
+    resolved = f"{CSI_NAMESPACE}/{vms_secret}"
+
+    k8s.secrets.create(
+        CSI_NAMESPACE,
+        name=vms_secret,
+        username=system.username,
+        password=system.password,
+        endpoint=system.endpoint,
+    )
+    k8s.bucketclasses.create(
+        BucketClassBuilder.new(name=bc_name, **_default_bucketclass_params()).with_parameters(
+            **{
+                "vastdata.com/secret-name": vms_secret,
+                "vastdata.com/secret-namespace": CSI_NAMESPACE,
+            }
+        )
+    )
+    k8s.bucketclaims.create(
+        BucketClaimBuilder.new(name=claim_name, bucket_class_name=bc_name)
+    )
+    k8s.bucketclaims.wait(timeout=MINUTE * 3, name=claim_name)
+
+    creds, _, _, ba_name = _grant_and_read_bucketinfo(
+        k8s, system, claim_name=claim_name, suffix=f"auth-{suffix}"
+    )
+
+    def _ext_logs():
+        return pod_logs(
+            k8s,
+            labels={"app": "cosi-provisioner"},
+            namespace=CSI_NAMESPACE,
+            container="extensions-manager",
+        )
+
+    def _resolved_from_class():
+        logs = _ext_logs()
+        return "resolved COSI bucket secret refs" in logs and resolved in logs
+
+    wait(
+        MINUTE,
+        _resolved_from_class,
+        message=f"extensions-manager did not resolve BucketClass secret {resolved}",
+    )
+
+    k8s.pods.create(_awscli_pod(cli_pod))
+    k8s.pods.wait(name=cli_pod)
+    _s3_put_ok(
+        k8s,
+        cli_pod,
+        _aws_cli(
+            creds.spec.secretS3.accessKeyID,
+            creds.spec.secretS3.accessSecretKey,
+            creds.spec.secretS3.endpoint,
+        ),
+        creds.spec.bucketName,
+        tmp_file,
+    )
+
+    _revoke_access(k8s, ba_name)
+    _delete_claim(k8s, claim_name)
+    k8s.bucketclasses.delete(name=bc_name, namespace=None, wait=False)
+    k8s.secrets.delete(name=vms_secret, namespace=CSI_NAMESPACE)

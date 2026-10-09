@@ -8,11 +8,13 @@ and helper functions for session management.
 import re
 import json
 import inspect
+import ssl
 import requests
 from types import FunctionType
 from functools import wraps
 from pprint import pformat
 from requests import cookies
+from requests.adapters import HTTPAdapter
 from requests.utils import default_user_agent
 
 from easypy.bunch import Bunch
@@ -167,6 +169,62 @@ def get_vms_session(username=None, password=None, token=None, tenant=None, endpo
     )
 
 
+class PinnedSSLContextAdapter(HTTPAdapter):
+    """Reuse a single SSLContext for every connection in the pool."""
+
+    def __init__(self, ssl_context, **kwargs):
+        self._ssl_context = ssl_context
+        super().__init__(**kwargs)
+
+    def init_poolmanager(self, *args, **kwargs):
+        kwargs["ssl_context"] = self._ssl_context
+        return super().init_poolmanager(*args, **kwargs)
+
+    def proxy_manager_for(self, *args, **kwargs):
+        kwargs["ssl_context"] = self._ssl_context
+        return super().proxy_manager_for(*args, **kwargs)
+
+    def build_connection_pool_key_attributes(self, request, verify, cert=None):
+        host_params, pool_kwargs = super().build_connection_pool_key_attributes(
+            request, verify, cert
+        )
+        pool_kwargs["ssl_context"] = self._ssl_context
+        pool_kwargs["cert_reqs"] = self._ssl_context.verify_mode
+        pool_kwargs.pop("ca_certs", None)
+        pool_kwargs.pop("ca_cert_dir", None)
+        return host_params, pool_kwargs
+
+    def cert_verify(self, conn, url, verify, cert):
+        """Keep server verification in the pinned context.
+
+        Requests normally translates ``verify`` back into CA paths on every
+        request. Only let it process an optional client certificate, then restore
+        the server-verification policy already encoded in the shared context.
+        """
+        if cert:
+            super().cert_verify(conn, url, False, cert)
+        conn.cert_reqs = self._ssl_context.verify_mode
+        conn.ca_certs = None
+        conn.ca_cert_dir = None
+
+
+def build_ssl_context(ca_bundle_path):
+    """One SSLContext carrying the whole verification policy.
+
+    `ca_bundle_path` is a CA bundle path to verify against, or False to disable
+    verification entirely.
+    """
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    if ca_bundle_path:
+        context.load_verify_locations(cafile=ca_bundle_path)
+        context.verify_mode = ssl.CERT_REQUIRED
+        context.check_hostname = True
+    else:
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+    return context
+
+
 class NoCookiesJar(cookies.RequestsCookieJar):
     """Cookie jar that doesn't actually store cookies."""
     
@@ -196,6 +254,10 @@ class RESTSession(requests.Session):
         self.headers["Content-Type"] = "application/json"
         self.headers["User-Agent"] = f"VastCSI/{config.plugin_version}.{config.ci_pipe}.{config.git_commit[:10]} ({config._mode.capitalize()}) {default_user_agent()}"
         self.headers['authorization'] = ""  # will be set on first request
+
+    def pin_ssl_context(self):
+        """Serve every HTTPS connection from one SSLContext built from ssl_verify."""
+        self.mount("https://", PinnedSSLContextAdapter(build_ssl_context(self.ssl_verify)))
 
     @retrying.debug(times=3, acceptable=retrying.Retry)
     def request(self, verb, api_method, *args, params=None, log_result=True, api_ver=None, **kwargs):

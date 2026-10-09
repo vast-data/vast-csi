@@ -67,6 +67,12 @@ type Config struct {
 	// socket path for co-located sidecars in the standalone Helm chart.
 	ExtensionsGRPCBindAddress string `component:"server"`
 
+	// ExtensionsGRPCTLS cert material for the gRPC listener (TCP and unix).
+	// Defaults match the Helm-mounted Secret keys under ExtensionsGRPCCertPath.
+	ExtensionsGRPCCertPath string `component:"server"`
+	ExtensionsGRPCCertName string `component:"server"`
+	ExtensionsGRPCCertKey  string `component:"server"`
+
 	// Shared manager configuration (always displayed)
 	HealthProbeBindAddress string
 	MetricsBindAddress     string
@@ -159,6 +165,12 @@ func (c *Config) Display(component string) string {
 			valueStr = fmt.Sprintf("%d", field.value.Uint())
 		case reflect.Float32, reflect.Float64:
 			valueStr = fmt.Sprintf("%g", field.value.Float())
+		case reflect.Slice:
+			if field.value.Len() == 0 {
+				valueStr = "-"
+			} else {
+				valueStr = fmt.Sprintf("%v", field.value.Interface())
+			}
 		default:
 			valueStr = fmt.Sprintf("%v", field.value.Interface())
 		}

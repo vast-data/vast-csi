@@ -58,6 +58,16 @@ class HelmValuesBuilder:
         self._values["verifySsl"] = enabled
         return self
 
+    def with_csi_metrics(self, enabled: bool = True) -> Self:
+        """Enable or disable the CSI plugin metrics endpoint on both services."""
+        self._values.setdefault("controller", {}).setdefault("metrics", {})[
+            "enabled"
+        ] = enabled
+        self._values.setdefault("node", {}).setdefault("metrics", {})[
+            "enabled"
+        ] = enabled
+        return self
+
     def set(self, key: str, value: Any) -> Self:
         self._values[key] = value
         return self
