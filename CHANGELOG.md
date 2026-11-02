@@ -1,8 +1,8 @@
 # CHANGELOG
 
 ## Version 2.7.3
-* NFS: a `mount`/`umount` that runs past `mountUmountTimeout` is killed with its process group. The timeout used to abandon the child, so a wedged `mount.nfs` stayed in the kernel and the next attempt started another beside it; those two deadlocked on `nfs_clid_init_mutex` and kubelet retries piled up until the node plugin was OOM-killed (VCSI-706)
-* Plugin containers set `GLIBC_TUNABLES=glibc.malloc.arena_max=1:glibc.malloc.tcache_count=0:glibc.malloc.tcache_max=0`. glibc's per-thread cache kept freed blocks out of the shared heap, so controller RssAnon climbed across create/delete waves after the plugin had already freed them. Sharing one heap and disabling that cache is the best setting measured; a second arena was worse (VCSI-702)
+* NFS: a `mount`/`umount` that runs past `mountUmountTimeout` is killed with its process group to prevent abandoned mounts. (VCSI-706)
+* Plugin containers set `GLIBC_TUNABLES=glibc.malloc.arena_max=1:glibc.malloc.tcache_count=0:glibc.malloc.tcache_max=0`. glibc's per-thread cache kept freed blocks out of the shared heap, so controller RssAnon climbed across create/delete waves (VCSI-702)
 * Initialize easypy logging in the plugin so logs do not accumulate forever on easypy's uninitialized class-level MagicMock (VCSI-702)
 
 ## Version 2.7.2

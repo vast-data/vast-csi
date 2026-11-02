@@ -403,7 +403,8 @@ update_github [prod]:  &update_github
       (from $CI_COMMIT_SHA)"
 
     git tag -f $VERSION
-    git push -f --tags github HEAD:$TARGET_BRANCH
+    # Explicit refs/heads/ — bare HEAD:$TARGET_BRANCH fails when branch+tag share the same name
+    git push -f --tags github HEAD:refs/heads/$TARGET_BRANCH
     
     if ! $BETA; then
       export CURRENT_DEFAULT_BRANCH=$(gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name')
@@ -456,7 +457,8 @@ update_github [hotfix]:
       (from $CI_COMMIT_SHA)"
 
     git tag -f $VERSION
-    git push -f --tags github HEAD:$TARGET_BRANCH
+    # Explicit refs/heads/ — bare HEAD:$TARGET_BRANCH fails when branch+tag share the same name
+    git push -f --tags github HEAD:refs/heads/$TARGET_BRANCH
     
     echo "Successfully published hotfix ${VERSION}"
   when: manual

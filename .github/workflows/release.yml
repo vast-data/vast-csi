@@ -56,7 +56,7 @@ jobs:
 
       - name: Run chart-releaser
         if: ${{ hashFiles('releaser-config.yml') != '' }}
-        uses: helm/chart-releaser-action@v1.6.0
+        uses: helm/chart-releaser-action@v1.8.0
         with:
           config: releaser-config.yml
           skip_packaging: true
