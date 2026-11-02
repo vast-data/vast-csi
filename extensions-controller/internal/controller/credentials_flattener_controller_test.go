@@ -514,12 +514,18 @@ func TestReconcile_OwnerRefPresent(t *testing.T) {
 	if len(sec.OwnerReferences) == 0 || sec.OwnerReferences[0].UID != ba.UID {
 		t.Fatalf("ownerRef: %+v", sec.OwnerReferences)
 	}
+	if sec.OwnerReferences[0].BlockOwnerDeletion != nil && *sec.OwnerReferences[0].BlockOwnerDeletion {
+		t.Fatalf("blockOwnerDeletion must be false: %+v", sec.OwnerReferences[0])
+	}
 	cm, err := getCM(t, c, ns, "creds-flat")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(cm.OwnerReferences) == 0 || cm.OwnerReferences[0].UID != ba.UID {
 		t.Fatalf("cm ownerRef: %+v", cm.OwnerReferences)
+	}
+	if cm.OwnerReferences[0].BlockOwnerDeletion != nil && *cm.OwnerReferences[0].BlockOwnerDeletion {
+		t.Fatalf("cm blockOwnerDeletion must be false: %+v", cm.OwnerReferences[0])
 	}
 }
 

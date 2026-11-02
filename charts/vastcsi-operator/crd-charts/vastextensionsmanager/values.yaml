@@ -39,6 +39,20 @@ webhook:
       # Namespace of the Certificate CR. Defaults to the operator namespace when empty.
       namespace: ""
 
+# TLS for the VastExtensions TCP gRPC API (extensions-manager-grpc Service :9090).
+# The CSI addons plugin mounts ca.crt from this Secret to verify the server.
+grpc:
+  certManager:
+    # When true, gRPC TLS is provided by cert-manager (Certificate CR must create
+    # Secret extensions-manager-grpc-tls with tls.crt/tls.key/ca.crt).
+    # When false, Helm generates a CA+cert Secret on install (same as webhook).
+    enabled: false
+    certificateRef:
+      # Expected Certificate CR name when certManager.enabled is true.
+      # Defaults to extensions-manager-grpc-cert when empty.
+      name: ""
+      namespace: ""
+
 replication:
   # devLogging enables human-readable console logging (colored levels, caller, ISO-8601 timestamps)
   devLogging: true

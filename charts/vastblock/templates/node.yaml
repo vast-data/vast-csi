@@ -107,6 +107,13 @@ spec:
             - name: host
               mountPath: /host
               mountPropagation: "Bidirectional"
+{{- if .Values.seLinuxMount }}
+            # libmount drops -o context= unless it can read the SELinux config,
+            # and kubelet then rejects the mount as a driver fault.
+            - name: selinux-config
+              mountPath: /etc/selinux/config
+              readOnly: true
+{{- end }}
 {{- include "vast.common.vmsAuth.volumeMounts" . | indent 12 }}
 {{- include "vast.common.credSerde.volumeMount" . | indent 12 }}
           resources: {{- toYaml .Values.node.resources.csiVastPlugin | nindent 12 }}
@@ -144,5 +151,11 @@ spec:
           hostPath:
             path: /
             type: Directory
+{{- if .Values.seLinuxMount }}
+        - name: selinux-config
+          hostPath:
+            path: /etc/selinux/config
+            type: File
+{{- end }}
   {{- include "vast.common.vmsAuth.volumes" . | indent 8 }}
 {{- include "vast.common.credSerde.volume" . | indent 8 }}

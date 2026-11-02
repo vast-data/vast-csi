@@ -1900,6 +1900,11 @@ spec:
       default: {{ .Values.deletionVipPool }}
       description: Dedicated VIP pool to delete volumes. Driver-wide option. Preferably, utilize the Trash API for volume deletion. If using multiple clusters, ensure a VIP pool with the same name is created for each cluster.
       type: string
+    deletionMountOptions:
+      default: {{ .Values.deletionMountOptions | quote }}
+      description: >-
+        NFS mount flags for DeleteVolume local-mount cleanup (comma-separated).
+      type: string
     dontUseTrashApi:
       default: {{ .Values.dontUseTrashApi }}
       description: Whether to use Trash API
@@ -2057,6 +2062,13 @@ spec:
         to enforce read-only semantics at the OS level.
       type: boolean
       default: {{ .Values.allowROManyBlockFsMode }}
+    seLinuxMount:
+      description: |-
+        (Block driver only) Let kubelet pass an SELinux mount context to the block plugin
+        instead of recursively relabeling volume contents. Enable on SELinux-enforcing
+        clusters such as OpenShift so read-only filesystem volumes can be mounted.
+      type: boolean
+      default: {{ .Values.seLinuxMount }}
     disableUsageStats:
       description: >-
         Disable sending usage statistics to VAST cluster.
@@ -2453,6 +2465,11 @@ specDescriptors:
     path: deletionVipPool
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:hidden'
+  - description: NFS mount flags for DeleteVolume local-mount cleanup
+    displayName: deletionMountOptions
+    path: deletionMountOptions
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:hidden'
   - description: >-
       The logging level of deployed containers expressed as an integer
       from 0 (low detail) to 5 (high detail). 0 only logs errors. 3 logs most
@@ -2526,6 +2543,16 @@ specDescriptors:
       in read-only mode with OS-level read-only enforcement.
     displayName: Allow ROX Block Filesystem Mode
     path: allowROManyBlockFsMode
+    x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
+      - 'urn:alm:descriptor:com.tectonic.ui:advanced'
+      - *block-driver-dep
+  - description: >-
+      (Block driver only) Let kubelet pass an SELinux mount context to the block plugin
+      instead of recursively relabeling volume contents. Enable on SELinux-enforcing
+      clusters such as OpenShift so read-only filesystem volumes can be mounted.
+    displayName: SELinux Mount
+    path: seLinuxMount
     x-descriptors:
       - 'urn:alm:descriptor:com.tectonic.ui:booleanSwitch'
       - 'urn:alm:descriptor:com.tectonic.ui:advanced'
@@ -2800,6 +2827,7 @@ example:
         imagePullPolicy: {{ .Values.image.csiAddonsSidecar.imagePullPolicy }}
     deletionViewPolicy: {{ .Values.deletionViewPolicy }}
     deletionVipPool: {{ .Values.deletionVipPool }}
+    deletionMountOptions: {{ .Values.deletionMountOptions | quote }}
     dontUseTrashApi: {{ .Values.dontUseTrashApi }}
     imagePullSecrets: {{ empty .GlobalValues.imagePullSecret | ternary "[]" (printf "[{\"name\": \"%s\"}]" .GlobalValues.imagePullSecret) }}
     kubeletPath: {{ .Values.kubeletPath }}
@@ -2818,6 +2846,7 @@ example:
     fallbackToDeser: {{ .Values.fallbackToDeser }}
     resolveMountSymlinks: {{ .Values.resolveMountSymlinks }}
     allowROManyBlockFsMode: {{ .Values.allowROManyBlockFsMode }}
+    seLinuxMount: {{ .Values.seLinuxMount }}
     disableUsageStats: {{ .Values.disableUsageStats }}
     cacheMaxAgeSeconds: {{ .Values.cacheMaxAgeSeconds }}
     useLocalIpForMount: {{ .Values.useLocalIpForMount }}

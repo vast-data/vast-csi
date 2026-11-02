@@ -1,6 +1,7 @@
 """Single Kubernetes cluster for CSI e2e (the kubeconfig current-context)."""
 from __future__ import annotations
 
+import json
 import os
 
 from plumbum import local
@@ -86,6 +87,32 @@ def _require_cosi_prereqs(kube_cmd) -> None:
     logger.info("COSI CRDs and objectstorage-controller are present.")
 
 
+def _is_openshift(kube_cmd) -> bool:
+    """Detect OpenShift from its API group, independent of context naming."""
+    rc, _, _ = kube_cmd["get", "--raw", "/apis/config.openshift.io/v1"].run(
+        retcode=None
+    )
+    return rc == 0
+
+
+def _selinux_mount_feature_enabled(kube_cmd) -> bool:
+    """True when OpenShift FeatureGate status lists SELinuxMount as enabled."""
+    rc, stdout, _ = kube_cmd["get", "featuregate", "cluster", "-o", "json"].run(
+        retcode=None
+    )
+    if rc != 0 or not stdout:
+        return False
+    data = json.loads(stdout)
+    for item in data.get("status", {}).get("featureGates") or []:
+        for entry in item.get("enabled") or []:
+            if entry.get("name") == "SELinuxMount":
+                return True
+        for entry in item.get("disabled") or []:
+            if entry.get("name") == "SELinuxMount":
+                return False
+    return False
+
+
 def install_csi_driver(
     k8s: K8S, system, charts: list[str], *, features: Features
 ) -> None:
@@ -94,6 +121,16 @@ def install_csi_driver(
         _require_snapshot_prereqs(k8s.kubectl)
     if "vastcosi" in charts:
         _require_cosi_prereqs(k8s.kubectl)
+    openshift = _is_openshift(k8s.kubectl)
+    k8s.selinux_mount = bool(openshift and _selinux_mount_feature_enabled(k8s.kubectl))
+    if "vastblock" in charts and openshift:
+        if k8s.selinux_mount:
+            logger.info("OpenShift FeatureGate SELinuxMount is enabled.")
+        else:
+            logger.info(
+                "OpenShift FeatureGate SELinuxMount is off; "
+                "ReadOnlyMany block tests that need MountOption labeling will skip."
+            )
     k8s.namespaces.allow_privileged(CSI_NAMESPACE)
     if features.enabled(Features.MTLS) and "vastcsi" in charts:
         k8s.nodes.ensure_tlshd_conf()
@@ -112,6 +149,11 @@ def install_csi_driver(
         csi_image=csi_plugin_image(),
         features=features,
     )
+    if "vastblock" in charts and k8s.selinux_mount:
+        logger.info(
+            "OpenShift detected; enabling CSIDriver seLinuxMount for vastblock"
+        )
+        builder.block.with_selinux_mount()
 
     k8s.helmvalues.install(
         charts_dir=local.path(str(CHARTS_DIR)),
@@ -136,4 +178,3 @@ def make_k8s() -> K8S:
     k8s = make_k8s_client(helm=True)
     _check_cluster_reachable(k8s.kubectl)
     return k8s
-

@@ -785,3 +785,45 @@ class TestGetXprtsecFromMountOptions:
         """Test raises XprtsecValidationError for invalid xprtsec value in list."""
         with pytest.raises(XprtsecValidationError, match="Invalid xprtsec value"):
             get_xprtsec_from_mount_options(["nfsvers=4.1", "xprtsec=invalid"])
+
+
+class TestTlshdOverridesExclusiveHost:
+    """Overrides require exclusive sidecar tlshd (no host handshake agent)."""
+
+    def test_overrides_fail_loud_when_host_tlshd_running(self):
+        from vast_csi.nfs_services import SERVICE_REGISTRY, _start_services
+
+        with patch.object(SERVICE_REGISTRY["tlshd"], "running", return_value=True), \
+             patch("vast_csi.nfs_services.validate_tlshd_keyrings"), \
+             patch("vast_csi.nfs_services.ensure_nfs_keyring_id", return_value=0x3a2), \
+             patch("vast_csi.nfs_services._ensure_state_dirs"):
+            with pytest.raises(SystemExit, match="host tlshd is running"):
+                _start_services(["tlshd"], tlshd_overrides=True)
+
+    def test_overrides_start_sidecar_when_host_tlshd_absent(self):
+        from vast_csi.nfs_services import SERVICE_REGISTRY, _start_services
+
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        with patch.object(SERVICE_REGISTRY["tlshd"], "running", return_value=False), \
+             patch.object(SERVICE_REGISTRY["tlshd"], "start", return_value=mock_proc) as mock_start, \
+             patch("vast_csi.nfs_services.validate_tlshd_keyrings"), \
+             patch("vast_csi.nfs_services.ensure_nfs_keyring_id", return_value=0x3a2), \
+             patch("vast_csi.nfs_services._wait_ready", return_value=True), \
+             patch("vast_csi.nfs_services._ensure_state_dirs"):
+            procs = _start_services(["tlshd"], tlshd_overrides=True)
+
+        mock_start.assert_called_once()
+        assert procs == [(SERVICE_REGISTRY["tlshd"], mock_proc)]
+
+    def test_without_overrides_skips_when_host_tlshd_running(self):
+        from vast_csi.nfs_services import SERVICE_REGISTRY, _start_services
+
+        with patch.object(SERVICE_REGISTRY["tlshd"], "running", return_value=True), \
+             patch.object(SERVICE_REGISTRY["tlshd"], "start") as mock_start, \
+             patch("vast_csi.nfs_services.ensure_nfs_keyring_id", return_value=0x3a2), \
+             patch("vast_csi.nfs_services._ensure_state_dirs"):
+            procs = _start_services(["tlshd"], tlshd_overrides=False)
+
+        mock_start.assert_not_called()
+        assert procs == []

@@ -161,6 +161,23 @@ upgrades do not fight existing helm ownership.
     - update
     - watch
 - apiGroups:
+    - vastdata.com
+  resources:
+    - vaststorageclassreplications
+    - vaststorageclassreplications/status
+    - vaststorageclassreplications/finalizers
+    - vastvolumereplications
+    - vastvolumereplications/status
+    - vastvolumereplications/finalizers
+  verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
+- apiGroups:
     - storage.k8s.io
   resources:
     - csidrivers
@@ -267,6 +284,10 @@ upgrades do not fight existing helm ownership.
 
 {{- define "csi-operator.manager-deployment.spec" -}}
 replicas: 1
+# Recreate: on OLM upgrade, tear down the old manager before starting the new one.
+# RollingUpdate can leave a 2.5.x OOM-looping pod (128Mi) blocking the new Ready replica (VCSI-697).
+strategy:
+  type: Recreate
 selector:
   matchLabels:
     control-plane: controller-manager

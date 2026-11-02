@@ -13,4 +13,8 @@ const (
 	// SecretProtectionFinalizer is the stock objectstorage-sidecar finalizer on
 	// credentials Secrets. Must be cleared or Delete stalls in Terminating.
 	SecretProtectionFinalizer = "cosi.objectstorage.k8s.io/secret-protection"
+	// BucketClaimProtectionFinalizer is the stock objectstorage-controller
+	// finalizer on BucketClaims. Stock COSI may skip adding it when a sidecar
+	// race marks the claim ready before the controller finishes reconcile.
+	BucketClaimProtectionFinalizer = "cosi.objectstorage.k8s.io/bucketclaim-protection"
 )

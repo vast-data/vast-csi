@@ -27,6 +27,7 @@ import (
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/k8s_client"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/logging"
 	"github.com/vast-data/vast-csi/extensions-controller/internal/common/vmsrest"
+	"github.com/vast-data/vast-csi/extensions-controller/internal/server/auth"
 	extensionsv1 "github.com/vast-data/vast-csi/extensions-controller/internal/server/extensions/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -213,6 +214,10 @@ func (s *Service) ResolveSecret(
 	}
 
 	log := s.rainbow.For("secret", req.SecretNamespace+"/"+req.SecretName)
+
+	if err := auth.AuthorizeSecretGet(ctx, s.k8sClient, req.SecretName, req.SecretNamespace); err != nil {
+		return nil, err
+	}
 
 	credentials, err := s.k8sClient.GetSecretCredentials(ctx, req.SecretName, req.SecretNamespace)
 	if err != nil {

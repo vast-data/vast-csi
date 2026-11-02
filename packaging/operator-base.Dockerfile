@@ -24,7 +24,7 @@ RUN go get google.golang.org/grpc@v1.83.2 \
     && go get golang.org/x/net@v0.56.0 \
     && go get golang.org/x/text@v0.39.0 \
     && go get github.com/moby/spdystream@v0.5.1 \
-    && go get github.com/containerd/containerd@v1.7.35 \
+    && go get github.com/containerd/containerd@v1.7.36 \
     && go get github.com/google/cel-go@v0.29.0 \
     && go get go.opentelemetry.io/otel@v1.45.0 \
     && go get go.opentelemetry.io/otel/sdk@v1.45.0 \
@@ -35,7 +35,7 @@ RUN go get google.golang.org/grpc@v1.83.2 \
     && go mod edit \
          -replace=google.golang.org/grpc=google.golang.org/grpc@v1.83.2 \
          -replace=golang.org/x/crypto=golang.org/x/crypto@v0.56.0 \
-         -replace=github.com/containerd/containerd=github.com/containerd/containerd@v1.7.35 \
+         -replace=github.com/containerd/containerd=github.com/containerd/containerd@v1.7.36 \
          -replace=github.com/google/cel-go=github.com/google/cel-go@v0.29.0 \
          -replace=go.opentelemetry.io/otel=go.opentelemetry.io/otel@v1.45.0 \
          -replace=go.opentelemetry.io/otel/sdk=go.opentelemetry.io/otel/sdk@v1.45.0 \

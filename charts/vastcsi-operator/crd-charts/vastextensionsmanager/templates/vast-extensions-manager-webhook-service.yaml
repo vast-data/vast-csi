@@ -1,5 +1,5 @@
 {{- $wh := .Values.webhook -}}
-{{- $ns := include "vastextensionsmanager.namespace" . | trimAll "\"" }}
+{{- $ns := include "vast.common.namespace" . | trimAll "\"" }}
 {{- $svcName := include "vastextensionsmanager.webhookServiceName" . }}
 apiVersion: v1
 kind: Service
@@ -7,7 +7,8 @@ metadata:
   name: {{ $svcName }}
   namespace: {{ $ns }}
   labels:
-{{- include "vastextensionsmanager.labels" . | nindent 4 }}
+{{- include "vast.common.labels" . | nindent 4 }}
+    app.kubernetes.io/component: vast-extensions-manager
 spec:
   publishNotReadyAddresses: true
   ports:

@@ -159,6 +159,9 @@ spec:
 {{- end }}
             - server
             - --extensions-grpc-bind-address=/var/run/vast-extensions/extensions.sock
+            - --extensions-grpc-cert-path=/tmp/extensions-grpc-certs
+            - --extensions-grpc-cert-name=tls.crt
+            - --extensions-grpc-cert-key=tls.key
           livenessProbe:
             httpGet:
               path: /healthz
@@ -172,6 +175,9 @@ spec:
           volumeMounts:
             - name: extensions-dir
               mountPath: /var/run/vast-extensions
+            - name: extensions-grpc-tls
+              mountPath: /tmp/extensions-grpc-certs
+              readOnly: true
           resources: {{- toYaml .Values.extensionController.resources.extensionsManager | nindent 12 }}
         - name: replication-vast-plugin
           image: {{ include "vast.common.image" (dict "root" $ "image" $csi_images.csiVastPlugin) }}
@@ -184,12 +190,17 @@ spec:
               value: unix://{{ printf "/var/lib/csi/sockets/pluginproxy/addons.%s.sock" $sock_suffix }}
             - name: X_CSI_MODE
               value: controller
+            - name: X_CSI_EXTENSIONS_GRPC_CA_CERT
+              value: /opt/extensions-grpc-certs/ca.crt
           imagePullPolicy: {{ $csi_images.csiVastPlugin.imagePullPolicy | default "IfNotPresent" }}
           volumeMounts:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
             - name: extensions-dir
               mountPath: /var/run/vast-extensions
+            - name: extensions-grpc-ca
+              mountPath: /opt/extensions-grpc-certs
+              readOnly: true
 {{- include "vast.common.vmsAuth.volumeMounts" . | indent 12 }}
           resources: {{- toYaml .Values.extensionController.resources.csiVastPlugin | nindent 12 }}
       dnsPolicy: {{ $rc.dnsPolicy }}
@@ -217,6 +228,15 @@ spec:
         - name: webhook-tls
           secret:
             secretName: {{ .Release.Name }}-vast-extension-controller-webhook-tls
+        - name: extensions-grpc-tls
+          secret:
+            secretName: {{ .Release.Name }}-extensions-grpc-tls
+        - name: extensions-grpc-ca
+          secret:
+            secretName: {{ .Release.Name }}-extensions-grpc-tls
+            items:
+              - key: ca.crt
+                path: ca.crt
         - name: socket-dir
           emptyDir: {}
         - name: extensions-dir

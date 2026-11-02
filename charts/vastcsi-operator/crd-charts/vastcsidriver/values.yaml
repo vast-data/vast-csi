@@ -68,6 +68,10 @@ resolveMountSymlinks: false
 # to enforce read-only semantics at the OS level.
 # Default: false (ROX is disabled for block filesystem volumes)
 allowROManyBlockFsMode: false
+# (Block driver only) Let kubelet pass an SELinux mount context to the block plugin
+# instead of recursively relabeling volume contents. Enable on SELinux-enforcing
+# clusters such as OpenShift so read-only filesystem volumes can be mounted.
+seLinuxMount: false
 
 ####################
 # DELETE VOLUMES
@@ -78,6 +82,8 @@ deletionVipPool: ""
 # Dedicated view policy to delete volumes. Can have the same value as regular StorageClass option `viewPolicy`
 # - value is not required when VAST cluster version is 4.6.0 onwards and `DontUseTrashApi` flag is set to false
 deletionViewPolicy: ""
+# NFS mount flags for DeleteVolume local-mount cleanup (comma-separated).
+deletionMountOptions: ""
 # When the flag is set to 'true', the controller will opt to using a local mount for deleting data from discarded volumes,
 # as opposed to sending the request to the VMS over REST.
 # Please contact VAST Support before modifying this setting.
@@ -330,10 +336,17 @@ node:
       - statd
       - rpcbind
     # tlshd.conf and TLS truststore overrides for csi-nfs-services (see vastcsi values).
-    # When configMap and certificates.secretName are both set, tlshd runs in the sidecar only
-    # (mounted ConfigMap/Secret take precedence over host tlshd).
+    # When configMap and certificates.secretName are both set, sidecar tlshd starts
+    # with the mounted ConfigMap/Secret. Host tlshd must be stopped/disabled on the
+    # node first (kernel handshake is node-global; a host agent would win otherwise).
     # The ConfigMap's [authenticate] keyrings= list must include "vastcsi", the
     # keyring the driver loads NFS client certs into; the sidecar refuses to start otherwise.
+    #
+    # WARNING (mTLS + these overrides): do not run a mixed cluster where some
+    # CSI nodes still have host tlshd active and others do not. Stop and disable
+    # host tlshd on every worker that runs the CSI node DaemonSet before enabling
+    # overrides (sidecar refuses to start if host tlshd is still running). Nodes
+    # without overrides may still mix host vs sidecar tlshd as before.
     tlshd:
       configMap: ""
       certificates:

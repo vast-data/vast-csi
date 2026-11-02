@@ -10,6 +10,10 @@ rules:
 - apiGroups: ["objectstorage.k8s.io"]
   resources: ["buckets", "bucketaccesses", "bucketclaims", "bucketaccessclasses", "buckets/status", "bucketaccesses/status", "bucketclaims/status", "bucketaccessclasses/status"]
   verbs: ["get", "list", "watch", "update", "create", "delete"]
+# Required to own *-flat Secrets/ConfigMaps (OwnerReferencesPermissionEnforcement).
+- apiGroups: ["objectstorage.k8s.io"]
+  resources: ["bucketaccesses/finalizers"]
+  verbs: ["update"]
 - apiGroups: ["coordination.k8s.io"]
   resources: ["leases"]
   verbs: ["get", "watch", "list", "delete", "update", "create"]

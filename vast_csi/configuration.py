@@ -35,6 +35,8 @@ class Config(TypedEnv):
     nfs_server = TypedEnv.Str("X_CSI_NFS_SERVER", default="127.0.0.1")
     deletion_vip_pool = TypedEnv.Str("X_CSI_DELETION_VIP_POOL_NAME", default="k8s")
     deletion_view_policy = TypedEnv.Str("X_CSI_DELETION_VIEW_POLICY", default="")
+    # Comma-separated NFS mount flags for DeleteVolume local-mount cleanup only
+    _deletion_mount_options = TypedEnv.Str("X_CSI_DELETION_MOUNT_OPTIONS", default="")
     sanity_test_nfs_export = Path("X_CSI_NFS_EXPORT", default=local.path("/k8s"))
 
     log_level = TypedEnv.Str("X_CSI_LOG_LEVEL", default="info")
@@ -54,6 +56,12 @@ class Config(TypedEnv):
         "X_CSI_EXTENSIONS_GRPC_ADDRESS",
         default="unix:///var/run/vast-extensions/extensions.sock",
     )
+    # CA bundle used to verify the VastExtensions server certificate (TCP and unix).
+    # Mounted from the Helm-issued gRPC TLS Secret.
+    extensions_grpc_ca_cert = TypedEnv.Str(
+        "X_CSI_EXTENSIONS_GRPC_CA_CERT",
+        default="/opt/extensions-grpc-certs/ca.crt",
+    )
     
     dont_use_trash_api = TypedEnv.Bool("X_CSI_DONT_USE_TRASH_API", default=False)
     use_local_ip_for_mount = TypedEnv.Str("X_CSI_USE_LOCALIP_FOR_MOUNT", default="")
@@ -66,7 +74,6 @@ class Config(TypedEnv):
 
     _mode = TypedEnv.Str("X_CSI_MODE", default="controller_and_node")
     _endpoint = TypedEnv.Str("CSI_ENDPOINT", default="unix:///var/run/csi.sock")
-    _mount_options = TypedEnv.Str("X_CSI_MOUNT_OPTIONS", default="")  # For example: "port=2049,nolock,vers=3"
     # Comma-separated NFS client daemons the node plugin waits for before mounting
     # (set when the csi-nfs-services sidecar is enabled). Empty disables the gate.
     _nfs_services_wait = TypedEnv.Str("X_CSI_NFS_SERVICES_WAIT", default="")
@@ -142,9 +149,9 @@ class Config(TypedEnv):
             return Bunch.from_dict(yaml.safe_load(f))
 
     @property
-    def mount_options(self):
-        s = self._mount_options.strip()
-        return list({p for p in s.split(',') if p})
+    def deletion_mount_options(self):
+        s = self._deletion_mount_options.strip()
+        return [p for p in s.split(",") if p]
 
     @property
     def nfs_services_wait(self):

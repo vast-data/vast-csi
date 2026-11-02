@@ -5,6 +5,18 @@
 * Plugin containers set `GLIBC_TUNABLES=glibc.malloc.arena_max=1:glibc.malloc.tcache_count=0:glibc.malloc.tcache_max=0`. glibc's per-thread cache kept freed blocks out of the shared heap, so controller RssAnon climbed across create/delete waves after the plugin had already freed them. Sharing one heap and disabling that cache is the best setting measured; a second arena was worse (VCSI-702)
 * Initialize easypy logging in the plugin so logs do not accumulate forever on easypy's uninitialized class-level MagicMock (VCSI-702)
 
+## Version 2.7.2
+* NFS: with `node.nfsServices.tlshd` ConfigMap/Secret overrides, refuse to start sidecar `tlshd` when a host `tlshd` process is already running (kernel handshake is node-global; host would ignore the mounted truststore). Stop/disable host `tlshd` on the node before enabling overrides (VCSI-678)
+* COSI: extensions-manager heals BucketClaims left as `bucketReady=true` with empty `bucketName` (stock controller/sidecar race under parallel create) by filling `status.bucketName` from the bound Bucket and restoring the claim protection finalizer when missing (VCSI-694)
+
+## Version 2.7.1
+* Operator: kube-rbac-proxy sidecar moved from `docker.io/kubebuilder/kube-rbac-proxy` to `quay.io/brancz/kube-rbac-proxy` (digest-pinned). Air-gap must mirror the new image.
+* VMS HTTPS: pin a single `SSLContext` on the requests session so TLS connections are reused instead of rebuilt per request
+* VastExtensions gRPC requires TLS on TCP and unix. Charts generate a self-signed serving cert and reuse it on upgrade.
+* Extensions manager image ships the `vcsi` CLI at `/usr/local/bin/vcsi`.
+* NFS: `deletionMountOptions` (default empty) for DeleteVolume local-mount cleanup.
+* NFS: local DeleteVolume get-or-creates the parent view and mounts the parent directory by path (no temporary NFSv3 alias).
+
 ## Version 2.7.0
 * NFS/Block: truncate VMS snapshot names via `truncateSnapshotName` (default 128) so OpenShift long project/snapshot names do not exceed the VMS 128-char limit (VCSI-553)
 * COSI: bump objectstorage-sidecar to `registry.k8s.io/sig-storage/objectstorage-sidecar:v0.2.2` so BucketAccess grant runs on Update as well as Add (fixes intermittent missing credentials Secret; VCSI-520). Sidecar container runs as root so it can dial the plugin unix socket (image defaults to non-root). Follow-ups not in this release: non-root sidecar via shared socket perms/`fsGroup` (for Restricted PSS); air-gap must mirror `registry.k8s.io/sig-storage/objectstorage-sidecar:v0.2.2`.
@@ -26,7 +38,7 @@
 * COSI: BucketAccessClass `credentialsSecretName` / `credentialsSecretNamespace` installs externally managed S3 keys from a Kubernetes input Secret on the bucket VAST local user (VCSI-326). Requires VAST ≥ 5.4. To rotate keys, update the input Secret and delete/recreate the BucketAccess
 * COSI: optional existing VMS/AD user as S3 bucket owner via BucketClass parameters `bucket_owner` / `bucket_owner_context` (Helm `bucketOwner` / `bucketOwnerContext`); grant/revoke target the owner user; bucket delete skips removal of external owners (VCSI-328)
 * NFS: inline CSI volumes with `volumeAttributes.bucket_name` mount an existing S3 bucket view over NFS (VCSI-146).
-* NFS: `csi-nfs-services` sidecar can mount a ConfigMap for `tlshd.conf` and a Secret for TLS truststore/client PEM files (`node.nfsServices.tlshd`), enabling NFS mTLS with per-tenant CA without host `tlshd` configuration; when both are set, tlshd always runs in the sidecar using the mounted overrides even if host `tlshd` is present. With those overrides, client certs are loaded into the `vastcsi` keyring only (matching `keyrings=vastcsi`); host/non-override setups still prefer kernel `.nfs`
+* NFS: `csi-nfs-services` sidecar can mount a ConfigMap for `tlshd.conf` and a Secret for TLS truststore/client PEM files (`node.nfsServices.tlshd`), enabling NFS mTLS with per-tenant CA without host `tlshd` configuration. With those overrides, sidecar `tlshd` uses the mounted conf/certs and client certs load into the `vastcsi` keyring only (matching `keyrings=vastcsi`); host/non-override setups still prefer kernel `.nfs`. Host `tlshd` must not be running when overrides are set (see 2.7.2)
 
 ## Version 2.6.8
 * Alias of 2.6.6-hf3 to align GitHub tags, Helm charts, and Docker Hub images with the OpenShift Operator Hub version 2.6.8. No functional changes.

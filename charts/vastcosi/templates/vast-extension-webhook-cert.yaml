@@ -9,6 +9,7 @@
   "name" (printf "%s-cosi-extensions-webhook" .Release.Name)
   "namespace" (include "vast.common.namespace" . | trimAll "\"")
   "caName" "vast-cosi-cosi-webhook-ca"
+  "days" (include "vast.common.certs.defaultValidityDays" . | int)
   "labels" (include "vast.common.labels" .)
   "webhooks" $webhooks
 ) }}

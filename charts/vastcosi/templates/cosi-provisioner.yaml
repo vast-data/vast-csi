@@ -36,12 +36,17 @@ spec:
             value: unix:///var/lib/cosi/cosi.sock
           - name: X_CSI_EXTENSIONS_GRPC_ADDRESS
             value: unix:///var/run/vast-extensions/extensions.sock
+          - name: X_CSI_EXTENSIONS_GRPC_CA_CERT
+            value: /opt/extensions-grpc-certs/ca.crt
         volumeMounts:
 {{- include "vast.common.vmsAuth.volumeMounts" . | indent 10 }}
           - mountPath: /var/lib/cosi
             name: socket-dir
           - name: extensions-dir
             mountPath: /var/run/vast-extensions
+          - name: extensions-grpc-ca
+            mountPath: /opt/extensions-grpc-certs
+            readOnly: true
         resources: {{- toYaml .Values.cosiplugin.resources.cosiVastPlugin | nindent 10 }}
       - name: objectstorage-provisioner
         image: {{ include "vast.common.image" (dict "root" $ "image" $csi_images.objectstorageProvisioner) }}
@@ -69,6 +74,9 @@ spec:
 {{- end }}
         - server
         - --extensions-grpc-bind-address=/var/run/vast-extensions/extensions.sock
+        - --extensions-grpc-cert-path=/tmp/extensions-grpc-certs
+        - --extensions-grpc-cert-name=tls.crt
+        - --extensions-grpc-cert-key=tls.key
         - webhook
         - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
         - --csi-driver-name={{ include "vast.common.csi.driverName" . }}
@@ -102,6 +110,9 @@ spec:
         - name: webhook-tls
           mountPath: /tmp/k8s-webhook-server/serving-certs
           readOnly: true
+        - name: extensions-grpc-tls
+          mountPath: /tmp/extensions-grpc-certs
+          readOnly: true
         - name: extensions-dir
           mountPath: /var/run/vast-extensions
         resources: {{- toYaml .Values.cosiplugin.resources.extensionsManager | nindent 10 }}
@@ -121,4 +132,13 @@ spec:
         - name: webhook-tls
           secret:
             secretName: {{ .Release.Name }}-cosi-extensions-webhook-tls
+        - name: extensions-grpc-tls
+          secret:
+            secretName: {{ .Release.Name }}-extensions-grpc-tls
+        - name: extensions-grpc-ca
+          secret:
+            secretName: {{ .Release.Name }}-extensions-grpc-tls
+            items:
+              - key: ca.crt
+                path: ca.crt
 {{- include "vast.common.vmsAuth.volumes" . | indent 8 }}

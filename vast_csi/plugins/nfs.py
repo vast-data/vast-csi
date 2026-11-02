@@ -17,7 +17,7 @@ import os
 from datetime import datetime
 from tempfile import mkdtemp
 from json import JSONDecodeError
-from plumbum import local
+from plumbum import local, cmd
 import grpc
 
 from easypy.tokens import CONTROLLER_AND_NODE, CONTROLLER, NODE
@@ -35,6 +35,7 @@ from vast_csi.utils import (
     wrap_ipv6,
     string_to_static_uuid,
     path_exists,
+    is_ver_nfs4_present,
 )
 from vast_csi.filesystem_utils import (
     resource_locked,
@@ -243,7 +244,7 @@ class CsiController(ControllerBase, Instrumented):
             raise Abort(ALREADY_EXISTS, exc.message)
         return types.CreateResp(volume=volume)
 
-    def _delete_data_from_storage(self, vms_session, path, tenant_id):
+    def _delete_data_from_storage(self, vms_session, path, tenant_id, exit_stack):
         if CONF.avoid_trash_api.expired:
             try:
                 logger.info(f"Attempting trash API to delete {path}")
@@ -254,6 +255,17 @@ class CsiController(ControllerBase, Instrumented):
                 CONF.avoid_trash_api.reset()
 
         logger.info(f"Use local mounting to delete {path}")
+        volume_id = local.path(path).name
+        exit_stack.enter_context(resource_locked(
+            volume_id,
+            abort_on_error=True,
+            message=(
+                f"Local deletion already in progress for volume {volume_id!r} — retry later"
+            ),
+        ))
+        self._delete_data_via_local_mount(vms_session, path, tenant_id)
+
+    def _delete_data_via_local_mount(self, vms_session, path, tenant_id):
         path = local.path(path)
         volume_id = path.name
         assert CONF.deletion_view_policy, (
@@ -274,54 +286,69 @@ class CsiController(ControllerBase, Instrumented):
             )
             nfs_server_ip = vms_session.vippools.get_vip(CONF.deletion_vip_pool, view_policy.tenant_id)
 
-        logger.info(f"Creating temporary base view.")
-        with vms_session.views.temp_view(path.dirname, view_policy.id, view_policy.tenant_id) as base_view:
-            nfs_server_ip = wrap_ipv6(nfs_server_ip)
-            mount_spec = f"{nfs_server_ip}:{base_view.alias}"
-            mounted = False
-            tmpdir = local.path(mkdtemp())  # convert string to local.path
-            tmpdir['.csi-unmounted'].touch()
+        delete_mount_flags = CONF.deletion_mount_options
+        protocol = "NFS4" if is_ver_nfs4_present(delete_mount_flags) else "NFS"
+        logger.info(f"Ensuring base view on {path.dirname} protocol={protocol}")
+        base_view = vms_session.views.ensure(
+            path=path.dirname,
+            protocols=[protocol],
+            view_policy=CONF.deletion_view_policy,
+            qos_policy=None,
+        )
+        view_protocols = list(base_view.protocols or [])
+        if not any(p.upper() == protocol for p in view_protocols):
+            updated = view_protocols + [protocol]
+            logger.info(
+                f"Updating view {base_view.id} protocols {view_protocols} -> {updated}"
+            )
+            vms_session.views.update(base_view.id, protocols=updated)
+        nfs_server_ip = wrap_ipv6(nfs_server_ip)
+        mount_spec = f"{nfs_server_ip}:{base_view.path}"
+        mounted = False
+        tmpdir = local.path(mkdtemp())  # convert string to local.path
+        tmpdir['.csi-unmounted'].touch()
 
-            try:
-                mount(mount_spec, tmpdir, flags=",".join(CONF.mount_options))
-                assert not tmpdir['.csi-unmounted'].exists()
-                mounted = True
+        try:
+            mount(mount_spec, tmpdir, flags=",".join(delete_mount_flags))
+            assert not tmpdir['.csi-unmounted'].exists()
+            mounted = True
 
-                if tmpdir[volume_id].exists():
-                    logger.info(f"deleting {tmpdir[volume_id]}")
-                    tmpdir[volume_id].delete()
-                    logger.info(f"done deleting {tmpdir[volume_id]}")
-                else:
-                    logger.info(f"already deleted {tmpdir[volume_id]}")
-            except FileNotFoundError as exc:
-                if 'No such file or directory' in str(exc):
-                    logger.warning(
-                        'It appears that multiple processes are attempting to clean a single directory,'
-                        ' leading to unforeseeable concurrent access to the identical file or directory.'
-                        ' The cleaning process will be repeated.'
-                    )
-                    raise Abort(
-                        ABORTED,
-                        f"Concurrent access to an identical file/directory has been detected."
-                        f" A new attempt will be made.",
-                    )
-                else:
-                    raise
-            except OSError as exc:
-                if 'not empty' in str(exc):
-                    for i, item in enumerate(tmpdir[volume_id].list()):
-                        if i > 9:
-                            logger.debug(" ...")
-                            break
-                        logger.warning(f" - {item}")
+            volume_path = tmpdir[volume_id]
+            if volume_path.exists():
+                logger.info(f"deleting {volume_path}")
+                cmd.rm["-rf", str(volume_path)].run()
+                logger.info(f"done deleting {volume_path}")
+            else:
+                logger.info(f"already deleted {volume_path}")
+        except FileNotFoundError as exc:
+            if 'No such file or directory' in str(exc):
+                logger.warning(
+                    'It appears that multiple processes are attempting to clean a single directory,'
+                    ' leading to unforeseeable concurrent access to the identical file or directory.'
+                    ' The cleaning process will be repeated.'
+                )
+                raise Abort(
+                    ABORTED,
+                    f"Concurrent access to an identical file/directory has been detected."
+                    f" A new attempt will be made.",
+                )
+            else:
                 raise
-            finally:
-                if mounted:
-                    umount(tmpdir, ignore_not_mounted=True)
-                os.remove(tmpdir['.csi-unmounted'])  # will fail if still mounted somehow
-                os.rmdir(tmpdir)  # will fail if not empty directory
+        except OSError as exc:
+            if 'not empty' in str(exc):
+                for i, item in enumerate(tmpdir[volume_id].list()):
+                    if i > 9:
+                        logger.debug(" ...")
+                        break
+                    logger.warning(f" - {item}")
+            raise
+        finally:
+            if mounted:
+                umount(tmpdir, ignore_not_mounted=True)
+            os.remove(tmpdir['.csi-unmounted'])  # will fail if still mounted somehow
+            os.rmdir(tmpdir)  # will fail if not empty directory
 
-    def DeleteVolume(self, vms_session, volume_id):
+    def DeleteVolume(self, vms_session, volume_id, exit_stack):
         volume_id = normalize_volume_id(volume_id)
         vms_session.globalsnapstreams.ensure_snapshot_stream_deleted(name=f"strm-{volume_id}")
         if quota := vms_session.quotas.one(name=volume_id):
@@ -331,7 +358,7 @@ class CsiController(ControllerBase, Instrumented):
                 snap_ids = ", ".join(str(s.id) for s in snaps)
                 raise Exception(f"Unable to delete {volume_id} as it holds snapshots: [{snap_ids}]")
             try:
-                self._delete_data_from_storage(vms_session, quota.path, quota.tenant_id)
+                self._delete_data_from_storage(vms_session, quota.path, quota.tenant_id, exit_stack)
             except OSError as exc:
                 if 'not empty' not in str(exc):
                     raise
@@ -531,7 +558,7 @@ class CsiController(ControllerBase, Instrumented):
 
         return types.CreateSnapResp(snapshot=snp)
 
-    def DeleteSnapshot(self, vms_session, snapshot_id):
+    def DeleteSnapshot(self, vms_session, snapshot_id, exit_stack):
         if CONF.mock_vast:
             CONF.fake_snapshot_store[snapshot_id].delete()
         else:
@@ -548,7 +575,7 @@ class CsiController(ControllerBase, Instrumented):
                 pass  # other snapshots still exist
             else:
                 logger.info(f"last snapshot for {snapshot.path}, and no more quotas - let's delete this directory")
-                self._delete_data_from_storage(vms_session, snapshot.path, snapshot.tenant_id)
+                self._delete_data_from_storage(vms_session, snapshot.path, snapshot.tenant_id, exit_stack)
 
         return types.DeleteSnapResp()
 

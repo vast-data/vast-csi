@@ -11,10 +11,14 @@ kind: CSIDriver
 metadata:
   name: {{ include "vastcsi.csiDriver" . }}
   labels:
-    {{- include "vastcsi.labels" . | nindent 4 }}
+{{- include "vast.common.labels" . | nindent 4 }}
+    storage.vastdata.com/driverType: {{ .Values.driverType }}
 spec:
   attachRequired: {{ .Values.attachRequired }}
   podInfoOnMount: true
+{{- if eq .Values.driverType "block" }}
+  seLinuxMount: {{ .Values.seLinuxMount }}
+{{- end }}
   volumeLifecycleModes:
     - Persistent
     - Ephemeral

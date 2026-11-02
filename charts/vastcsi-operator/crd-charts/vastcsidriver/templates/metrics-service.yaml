@@ -6,9 +6,10 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ .Release.Name | replace "." "-" }}-vast-node-metrics
-  namespace: {{ include "vastcsi.namespace" . }}
+  namespace: {{ include "vast.common.namespace" . }}
   labels:
-{{- include "vastcsi.labels" . | nindent 4 }}
+{{- include "vast.common.labels" . | nindent 4 }}
+    storage.vastdata.com/driverType: {{ .Values.driverType }}
     app.kubernetes.io/component: metrics
     app.kubernetes.io/csi-role: "node"
 spec:
@@ -16,7 +17,7 @@ spec:
   clusterIP: None
   selector:
     app: {{ $name_prefix }}-vast-node
-{{- include "vastcsi.selectorLabels" . | nindent 4 }}
+{{- include "vast.common.selectorLabels" . | nindent 4 }}
   ports:
     - name: metrics
       port: {{ .Values.node.metrics.port }}
@@ -31,9 +32,10 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ .Release.Name | replace "." "-" }}-vast-controller-metrics
-  namespace: {{ include "vastcsi.namespace" . }}
+  namespace: {{ include "vast.common.namespace" . }}
   labels:
-{{- include "vastcsi.labels" . | nindent 4 }}
+{{- include "vast.common.labels" . | nindent 4 }}
+    storage.vastdata.com/driverType: {{ .Values.driverType }}
     app.kubernetes.io/component: metrics
     app.kubernetes.io/csi-role: "controller"
 spec:
@@ -41,7 +43,7 @@ spec:
   clusterIP: None
   selector:
     app: {{ $name_prefix }}-vast-controller
-{{- include "vastcsi.selectorLabels" . | nindent 4 }}
+{{- include "vast.common.selectorLabels" . | nindent 4 }}
   ports:
     - name: metrics
       port: {{ .Values.controller.metrics.port }}

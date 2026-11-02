@@ -45,6 +45,11 @@ class VastBlockHelmValuesBuilder(HelmValuesBuilder):
         self._values["attachRequired"] = value
         return self
 
+    def with_selinux_mount(self, enabled: bool = True) -> Self:
+        """Use mount-time SELinux labels instead of recursive relabeling."""
+        self._values["seLinuxMount"] = enabled
+        return self
+
     def with_force_lazy_umount_on_timeout(self, enabled: bool = True) -> Self:
         self._values["forceLazyUmountOnTimeout"] = enabled
         return self

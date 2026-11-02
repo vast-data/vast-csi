@@ -60,6 +60,7 @@ type CredentialsFlattenerReconciler struct {
 }
 
 // +kubebuilder:rbac:groups=objectstorage.k8s.io,resources=bucketaccesses,verbs=get;list;watch
+// +kubebuilder:rbac:groups=objectstorage.k8s.io,resources=bucketaccesses/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
@@ -215,7 +216,7 @@ func (r *CredentialsFlattenerReconciler) ensureFlatSecret(ctx context.Context, b
 		if sec.UID != "" && !cosi.IsOwnedByBucketAccess(sec, ba) {
 			return errForeignFlat
 		}
-		if err := controllerutil.SetControllerReference(ba, sec, r.Scheme); err != nil {
+		if err := setFlatOwner(ba, sec, r.Scheme); err != nil {
 			return err
 		}
 		metav1.SetMetaDataLabel(&sec.ObjectMeta, cosi.LabelBucketAccessUID, string(ba.UID))
@@ -235,7 +236,7 @@ func (r *CredentialsFlattenerReconciler) ensureFlatConfigMap(ctx context.Context
 		if cm.UID != "" && !cosi.IsOwnedByBucketAccess(cm, ba) {
 			return errForeignFlat
 		}
-		if err := controllerutil.SetControllerReference(ba, cm, r.Scheme); err != nil {
+		if err := setFlatOwner(ba, cm, r.Scheme); err != nil {
 			return err
 		}
 		metav1.SetMetaDataLabel(&cm.ObjectMeta, cosi.LabelBucketAccessUID, string(ba.UID))
@@ -248,6 +249,14 @@ func (r *CredentialsFlattenerReconciler) ensureFlatConfigMap(ctx context.Context
 		return nil
 	})
 	return err
+}
+
+// setFlatOwner sets a controller ownerRef on the *-flat Secret/ConfigMap.
+// blockOwnerDeletion is false: OwnerReferencesPermissionEnforcement otherwise
+// requires update on bucketaccesses/finalizers, which OpenShift/CRC rejects
+// (envtest does not run that admission plugin).
+func setFlatOwner(ba *objectstoragev1alpha1.BucketAccess, obj client.Object, scheme *runtime.Scheme) error {
+	return controllerutil.SetControllerReference(ba, obj, scheme, controllerutil.WithBlockOwnerDeletion(false))
 }
 
 // SetupCredentialsFlattenerController registers the COSI credentials flattener (BucketAccess → *-flat).

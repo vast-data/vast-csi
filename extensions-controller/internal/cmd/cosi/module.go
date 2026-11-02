@@ -20,7 +20,7 @@ func configure(cmd *cobra.Command, sharedMgr *manager.SharedManager) {
 		}
 
 		// Requires objectstorage.k8s.io CRDs — only safe when cosi namespace is active.
-		if err := k8s_client.RegisterCOSIBucketIDIndex(c.Context(), mgr.GetFieldIndexer()); err != nil {
+		if err := k8s_client.RegisterCOSIIndexes(c.Context(), mgr.GetFieldIndexer()); err != nil {
 			panic(err)
 		}
 
@@ -32,6 +32,9 @@ func configure(cmd *cobra.Command, sharedMgr *manager.SharedManager) {
 			panic(err)
 		}
 		if err := controller.SetupBucketAccessSecretResyncController(mgr, k8s); err != nil {
+			panic(err)
+		}
+		if err := controller.SetupBucketClaimStatusHealController(mgr, k8s); err != nil {
 			panic(err)
 		}
 	}

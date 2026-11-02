@@ -6,8 +6,10 @@ runs with hostNetwork, so daemons started here are reachable by the host kernel
 host does not already provide it, so enabling the sidecar is safe anywhere.
 
 When node.nfsServices.tlshd ConfigMap and Secret overrides are configured
-(X_CSI_TLSHD_OVERRIDES), tlshd always runs in this sidecar so mounted tlshd.conf
-and truststore files are used, even when a host tlshd process is detected.
+(X_CSI_TLSHD_OVERRIDES), tlshd runs in this sidecar with the mounted tlshd.conf
+and truststore. The kernel handshake agent is node-global: a host tlshd would
+win over the sidecar and ignore those mounts, so startup fails loudly if a host
+tlshd process is already running. Stop/disable host tlshd on the node first.
 
 Which daemons run is configurable via --services (default: statd,rpcbind).
 Readiness differs per daemon: RPC-registered ones (rpcbind, statd, mountd) are
@@ -217,29 +219,12 @@ def _terminate(procs: list) -> None:
             proc.kill()
 
 
-def _host_provides_service(service: NfsService, name: str, tlshd_overrides: bool) -> bool:
-    """True when an existing host daemon makes starting this service unnecessary."""
-    if name == "tlshd" and tlshd_overrides:
-        if service.running():
-            logger.info(
-                "%s: host daemon found but forcing sidecar tlshd due to "
-                "node.nfsServices.tlshd ConfigMap/Secret overrides",
-                name,
-            )
-        else:
-            logger.info(
-                "%s: overrides configured, starting in sidecar",
-                name,
-            )
-        return False
-    return service.running()
-
-
 def _start_services(names, *, tlshd_overrides: bool = False) -> list:
     """Start each selected service the host does not already provide.
 
     Returns a list of (service, proc) for self-started daemons.
-    Raises SystemExit if a started daemon fails to become ready in time.
+    Raises SystemExit if a started daemon fails to become ready in time,
+    or if tlshd overrides are set while a host tlshd is already running.
     """
     _ensure_state_dirs()
 
@@ -248,6 +233,18 @@ def _start_services(names, *, tlshd_overrides: bool = False) -> list:
         # legitimately uses the kernel .nfs ring instead.
         if tlshd_overrides:
             validate_tlshd_keyrings()
+            # Kernel handshake agent is node-global: a host tlshd would win
+            # and ignore the mounted sidecar truststore.
+            if SERVICE_REGISTRY["tlshd"].running():
+                raise SystemExit(
+                    "tlshd: host tlshd is running while node.nfsServices.tlshd "
+                    "ConfigMap/Secret overrides are set. The kernel TLS handshake "
+                    "agent is node-global; host tlshd would win and ignore the "
+                    "mounted truststore. Stop and disable host tlshd on this node "
+                    "(e.g. systemctl stop tlshd && systemctl disable tlshd), then "
+                    "restart the CSI node pod."
+                )
+            logger.info("tlshd: overrides configured, starting in sidecar")
         # Ensure the NFS cert keyring exists before starting tlshd so it can
         # link it.
         keyring_id = ensure_nfs_keyring_id(wait_timeout=0)
@@ -256,7 +253,9 @@ def _start_services(names, *, tlshd_overrides: bool = False) -> list:
     procs: list = []
     for name in names:
         service = SERVICE_REGISTRY[name]
-        if _host_provides_service(service, name, tlshd_overrides):
+        # Overrides path already asserted host tlshd is absent; always start
+        # the sidecar so mounted conf/certs are used.
+        if not (name == "tlshd" and tlshd_overrides) and service.running():
             logger.info("%s: already provided by host, skipping", name)
             continue
         if service.setup:

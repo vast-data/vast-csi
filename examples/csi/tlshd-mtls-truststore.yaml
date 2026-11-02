@@ -1,3 +1,8 @@
+# Prerequisite: stop and disable host tlshd on every worker that runs the CSI
+# node DaemonSet (systemctl stop tlshd && systemctl disable tlshd). Do not leave
+# a mixed cluster (some nodes with host tlshd still active). The kernel TLS
+# handshake agent is node-global; a host tlshd would win over the sidecar and
+# ignore this ConfigMap/Secret. Then helm-upgrade with node.nfsServices.tlshd set.
 apiVersion: v1
 kind: ConfigMap
 metadata:

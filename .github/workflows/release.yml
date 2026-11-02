@@ -21,6 +21,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+
       # Vendor file://../common before prepare_releaser_configuration.py prunes charts/common.
       - name: Build public chart dependencies
         run: make chart-deps
@@ -29,6 +32,21 @@ jobs:
         run: |
           python3 .github/workflows/prepare_releaser_configuration.py \
             --release-group public
+
+      # chart-releaser's package step always rebuilds deps (DependencyUpdate=true), which
+      # breaks after charts/common is pruned. Package with plain helm using vendored .tgz.
+      - name: Package charts
+        if: ${{ hashFiles('releaser-config.yml') != '' }}
+        run: |
+          set -euo pipefail
+          mkdir -p .cr-release-packages
+          for chart in charts/vastcsi charts/vastblock charts/vastcosi; do
+            if [[ -f "$chart/Chart.yaml" ]]; then
+              echo "Packaging $chart"
+              helm package "$chart" -d .cr-release-packages
+            fi
+          done
+          ls -la .cr-release-packages
 
       - name: Configure Git
         if: ${{ hashFiles('releaser-config.yml') != '' }}
@@ -41,6 +59,7 @@ jobs:
         uses: helm/chart-releaser-action@v1.6.0
         with:
           config: releaser-config.yml
+          skip_packaging: true
+          skip_existing: true
         env:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-          CR_SKIP_EXISTING: "true"

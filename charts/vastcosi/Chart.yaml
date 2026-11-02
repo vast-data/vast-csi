@@ -2,7 +2,7 @@ apiVersion: v2
 name: vastcosi
 description: Helm chart for Deployment of VAST Container Object Storage Interface (COSI)
 type: application
-version: "2.7.3"
+version: "2.7.3" #  will be updated by the release ci
 keywords:
   - vast
   - csi

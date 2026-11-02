@@ -92,9 +92,11 @@ endef
 ######################
 # CSI OPERATOR
 ######################
-operator-build: ## Build operator docker image
-	@$(call check_required_env,IMG OPERATOR_TAG OPERATOR_VERSION)
-	docker build --build-arg VERSION=$(OPERATOR_VERSION) -t "${IMG}:${OPERATOR_TAG}" -f $(CURDIR)/packaging/operator.Dockerfile .
+operator-build: operator-chart-deps ## Build operator docker image (vendors vast-common into crd-charts first)
+	@$(call check_required_env,IMG OPERATOR_TAG OPERATOR_VERSION OPERATOR_BASE_IMAGE_NAME)
+	docker build --build-arg VERSION=$(OPERATOR_VERSION) \
+		--build-arg OPERATOR_BASE_IMAGE_NAME=$(OPERATOR_BASE_IMAGE_NAME) \
+		-t "${IMG}:${OPERATOR_TAG}" -f $(CURDIR)/packaging/operator.Dockerfile .
 	docker tag "${IMG}:${OPERATOR_TAG}" "${IMG}:latest-csi-operator"
 
 operator-push: ## Push operator docker image to docker repository (specified in defaults)
@@ -113,7 +115,7 @@ operator-bundle-gen: ## Generate bundle manifests and metadata, then validate ge
           --set installSnapshotCRDS=false \
           --set maturity=$(CHANNEL) \
           --set managerImage="$(shell scripts/concat_img_tag.sh $(IMG) $(OPERATOR_TAG))" \
-          --set proxyImage=$${OPERATOR_PROXY_IMG:-"docker.io/kubebuilder/kube-rbac-proxy@sha256:a2523c532c0c3d51a5396a901d7ded23e402a9a1492c783aae27af6d0c1d2ec5"} \
+          --set proxyImage=$${OPERATOR_PROXY_IMG:-"quay.io/brancz/kube-rbac-proxy@sha256:a6075902738eaf1780390561ea998a53a056ef1d2b312bcbf0e2e81fec084b3c"} \
           --set overrides.csiVastPlugin.repository="$(shell scripts/concat_img_tag.sh $(CSI_PLUGIN_IMG) $(CSI_TAG))" \
           --set overrides.vastExtensionController.repository="$(shell scripts/concat_img_tag.sh $(EXTENSIONS_IMG) $(EXTENSIONS_TAG))" \
           --set imagePullSecret=$(IMG_PULL_SECRET) \
@@ -212,17 +214,30 @@ install-replication-crds: ## Install VolumeReplication CRDs and Operator (comple
 ######################
 CHART_DIRS := charts/common charts/vastcsi charts/vastblock charts/vastcosi charts/vastcsi-gke
 PUBLIC_CHART_DIRS := charts/vastcsi charts/vastblock charts/vastcosi charts/vastcsi-gke
+OPERATOR_CHART_DIRS := \
+	charts/vastcsi-operator/crd-charts/vastcsidriver \
+	charts/vastcsi-operator/crd-charts/vastextensionsmanager \
+	charts/vastcsi-operator/crd-charts/vaststorage \
+	charts/vastcsi-operator/crd-charts/vastcluster \
+	charts/vastcsi-operator/crd-charts/vaststorageclassreplication \
+	charts/vastcsi-operator/crd-charts/vastvolumereplication
 CHART_TEMPLATE_ARGS := --set endpoint=render-smoke
 
-.PHONY: chart-deps chart-deps-update chart-lint chart-template render-smoke
+.PHONY: chart-deps chart-deps-update chart-lint chart-template render-smoke operator-chart-deps verify-operator-image
 chart-deps: ## Vendor vast-common from charts/common into public Helm charts
 	@set -e; for chart in $(PUBLIC_CHART_DIRS); do \
 		echo "Building Helm dependencies for $$chart"; \
 		helm dependency build --skip-refresh "$(CURDIR)/$$chart"; \
 	done
 
+operator-chart-deps: ## Vendor vast-common into operator CRD charts (required before operator-build)
+	@set -e; for chart in $(OPERATOR_CHART_DIRS); do \
+		echo "Building Helm dependencies for $$chart"; \
+		helm dependency build --skip-refresh "$(CURDIR)/$$chart"; \
+	done
+
 chart-deps-update: ## Refresh locks after changing the vast-common version pin
-	@set -e; for chart in $(PUBLIC_CHART_DIRS); do \
+	@set -e; for chart in $(PUBLIC_CHART_DIRS) $(OPERATOR_CHART_DIRS); do \
 		echo "Updating Helm dependencies for $$chart"; \
 		helm dependency update --skip-refresh "$(CURDIR)/$$chart"; \
 	done
@@ -241,6 +256,10 @@ chart-template: chart-deps ## Render public Helm charts as a smoke test
 	done
 
 render-smoke: chart-template ## Alias for chart-template
+
+verify-operator-image: ## Extract charts from IMAGE_TAG and helm-template (catches missing vast-common in image)
+	@$(call check_required_env,IMAGE_TAG)
+	@$(CURDIR)/scripts/verify_operator_image.sh
 
 start-minikube: ## Start Minikube cluster
 	@$(call check_required_env,MINIKUBE_DRIVER)

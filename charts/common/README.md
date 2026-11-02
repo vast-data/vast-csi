@@ -22,6 +22,7 @@ Templates are split by concern under `templates/`:
 - `_extensions.tpl` — CRD installation guards for extensions/replication
 - `_tplvalues.tpl`, `_params.tpl`, `_images.tpl` — rendering, serialization, pull secrets
 - `_secrets.tpl` — secret lookup and existence checks
+- `_certs.tpl` — self-signed CA/leaf generation (reuse on upgrade)
 - `_utils.tpl` — nested values path utilities
 - `_csi.tpl`, `_vms-auth.tpl` — CSI/VMS fragments
 - `_resources.tpl` — named resource factories
@@ -84,6 +85,22 @@ Cluster lookup helpers. Require a live cluster (`lookup` does not work with offl
 - `vast.common.secrets.exists`: `dict "root" $ "secret" NAME`. Returns `"true"` when the
   secret already exists in the release namespace
 
+## Certificates
+
+Self-signed TLS helpers for webhook, gRPC, and similar in-cluster serving certs. Require a
+live cluster for upgrade reuse (`lookup`); offline `helm template` always generates new
+material.
+
+- `vast.common.certs.defaultValidityDays`: returns `3650` (10 years). Shared default
+  for Helm `genCA` / `genSignedCert` validity
+- `vast.common.certs.generate`: `dict "out" $certs "secretName" NAME "namespace" NS
+  "cn" CN "altNames" LIST "caName" CA ["days" N]`. Mutates `out` with base64
+  `tlsCrt` / `tlsKey` / `caCrt` (reuse existing Secret when present). `days` is
+  validity in days; omit to use `defaultValidityDays`
+- `vast.common.resource.selfSignedCertificate`: same fields plus required `labels`;
+  emits a `kubernetes.io/tls` Secret. Optional `out` dict receives the same cert
+  material for embedding `caBundle` elsewhere in the render
+
 ## Utils
 
 - `vast.common.utils.getValueFromKey`: `dict "root" $ "key" "path.to.key"`. Returns a
@@ -124,7 +141,9 @@ All factories require dictionaries. Callers own feature gates and chart-specific
 - `vast.common.resource.metricsService`
 - `vast.common.resource.serviceMonitor`
 - `vast.common.resource.webhookService`
-- `vast.common.resource.webhookCertificate`
+- `vast.common.resource.selfSignedCertificate`
+- `vast.common.resource.webhookCertificate` (Secret via `selfSignedCertificate` plus
+  MutatingWebhookConfiguration / ValidatingWebhookConfiguration)
 
 Factories intentionally expose names, namespaces, labels, selectors, and other mutable
 fields rather than deriving chart-specific semantics.

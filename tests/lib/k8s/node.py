@@ -9,7 +9,7 @@ from easypy.timing import wait
 from easypy.units import MINUTE
 
 from lib.builders.base import resource_name
-from lib.constants import CSI_NAMESPACE
+from lib.constants import BUSYBOX_IMAGE, CSI_NAMESPACE
 from lib.k8s._base import KubernetesResource
 from lib.logging import logger
 
@@ -214,7 +214,7 @@ class Node(KubernetesResource):
                     "containers": [
                         {
                             "name": "setup",
-                            "image": "docker.io/library/busybox",
+                            "image": BUSYBOX_IMAGE,
                             "imagePullPolicy": "IfNotPresent",
                             "command": ["sh", "-c", script],
                             "securityContext": {"privileged": True},
