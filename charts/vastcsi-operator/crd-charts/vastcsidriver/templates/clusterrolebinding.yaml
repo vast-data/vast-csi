@@ -1,6 +1,7 @@
 {{/* ClusterRoleBindings for Vast CSI */}}
 
-{{- $namespace := include "vast.common.namespace" . }}
+{{- $namespace := include "vastcsi.namespace" . }}
+{{- $labels := include "vastcsi.labels" . | nindent 4 }}
 {{- $releaseName := .Release.Name }}
 
 {{- $bindings := (list "provisioner" "attacher" "resizer") }}
@@ -11,8 +12,7 @@ kind: ClusterRoleBinding
 metadata:
   name: {{ $releaseName }}-vast-{{ $role }}-binding
   labels:
-{{- include "vast.common.labels" $ | nindent 4 }}
-    storage.vastdata.com/driverType: {{ $.Values.driverType }}
+    {{- $labels }}
 subjects:
   - kind: ServiceAccount
     name: {{ $releaseName }}-vast-controller-sa
@@ -30,8 +30,7 @@ kind: ClusterRoleBinding
 metadata:
   name: {{ $releaseName }}-csi-addons-binding
   labels:
-{{- include "vast.common.labels" . | nindent 4 }}
-    storage.vastdata.com/driverType: {{ .Values.driverType }}
+    {{- $labels }}
 subjects:
   - kind: ServiceAccount
     name: {{ $releaseName }}-vast-controller-sa
@@ -42,3 +41,4 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ---
 {{- end }}
+

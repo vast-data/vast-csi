@@ -20,8 +20,8 @@ limitations under the License.
 //
 // Usage:
 //
-//	srv := server.New(":9090", kubeClient, logger, tlsOpts) // TCP — TLS + TokenReview + allowlist
-//	srv := server.New(server.ExtensionsSocketPath, nil, logger, tlsOpts) // unix — TLS
+//	srv := server.New(":9090", kubeClient, logger) // TCP — TLS + TokenReview
+//	srv := server.New(server.ExtensionsSocketPath, nil, logger) // unix — co-located sidecar
 //	srv.RegisterService(discovery.NewService(k8sClient, logger))
 //	if err := mgr.Add(srv); err != nil { ... }
 package server
@@ -38,13 +38,6 @@ import (
 	"google.golang.org/grpc"
 	"k8s.io/client-go/kubernetes"
 )
-
-// TLSOptions holds server certificate paths for the VastExtensions listener.
-// Required for both TCP and unix sockets.
-type TLSOptions struct {
-	CertFile string
-	KeyFile  string
-}
 
 // Service is implemented by any gRPC service that wants to register itself
 // with a GRPCServer.  RegisterService is called once during Start, before the
@@ -71,22 +64,20 @@ type GRPCServer struct {
 	network     string
 	bindAddress string
 	kubeClient  kubernetes.Interface
-	tls         TLSOptions
 	services    []Service
 	log         *zap.Logger
 }
 
 // New creates a GRPCServer that will listen on bindAddress.
-// Both TCP and unix always serve TLS (cert/key from tlsOpts). TCP additionally
-// requires a valid ServiceAccount Bearer token (TokenReview) whose identity is
-// on the allowlist. kubeClient is required for TCP and ignored for unix.
-func New(bindAddress string, kubeClient kubernetes.Interface, log *zap.Logger, tlsOpts TLSOptions) *GRPCServer {
+// TCP always serves TLS and requires a valid ServiceAccount Bearer token
+// (TokenReview). Unix sockets stay plaintext — they are only reachable from
+// co-located containers. kubeClient is required for TCP and ignored for unix.
+func New(bindAddress string, kubeClient kubernetes.Interface, log *zap.Logger) *GRPCServer {
 	network, addr := parseBindAddress(bindAddress)
 	return &GRPCServer{
 		network:     network,
 		bindAddress: addr,
 		kubeClient:  kubeClient,
-		tls:         tlsOpts,
 		log:         log.Named("grpc-server"),
 	}
 }
@@ -115,16 +106,10 @@ func (s *GRPCServer) Start(ctx context.Context) error {
 	}
 
 	var opts []grpc.ServerOption
-	tcpAuth := s.network == "tcp"
-	if tcpAuth {
-		opts, err = auth.TCPServerOptions(s.kubeClient, s.tls.CertFile, s.tls.KeyFile)
+	if s.network == "tcp" {
+		opts, err = auth.TCPServerOptions(s.kubeClient)
 		if err != nil {
 			return fmt.Errorf("tcp gRPC auth: %w", err)
-		}
-	} else {
-		opts, err = auth.TLSServerOptions(s.tls.CertFile, s.tls.KeyFile)
-		if err != nil {
-			return fmt.Errorf("unix gRPC TLS: %w", err)
 		}
 	}
 
@@ -136,8 +121,7 @@ func (s *GRPCServer) Start(ctx context.Context) error {
 	s.log.Info("gRPC server listening",
 		zap.String("network", s.network),
 		zap.String("address", s.bindAddress),
-		zap.Bool("tls", true),
-		zap.Bool("tokenReview", tcpAuth))
+		zap.Bool("tlsAuth", s.network == "tcp"))
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(lis) }()

@@ -174,7 +174,6 @@ __pycache__/*
 /charts/vastblock/charts/vast-common-*.tgz
 /charts/vastcosi/charts/vast-common-*.tgz
 /charts/vastcsi-gke/charts/vast-common-*.tgz
-/charts/vastcsi-operator/crd-charts/*/charts/vast-common-*.tgz
 
 .cursor/*
 

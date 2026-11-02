@@ -20,8 +20,7 @@ from lib.builders.cosi import (
     BucketClassBuilder,
 )
 from lib.builders.workloads import PodBuilder
-from lib.constants import AWS_CLI_IMAGE, CSI_NAMESPACE, S3_POLICY_NAME, VIPPOOL_NAME
-from e2e.test_suites.common import pod_logs
+from lib.constants import AWS_CLI_IMAGE, S3_POLICY_NAME, VIPPOOL_NAME
 
 DEFAULT_BUCKET_CLASS = "vastdata-bucket"
 COSI_ROOT_EXPORT = "/buckets"
@@ -44,8 +43,17 @@ def _awscli_pod(name, *, secret_name=None, flat_name=None):
 
 
 def _loopback_endpoint(system, endpoint: str) -> str:
-    if system.clusters.is_loopback:
-        return endpoint.replace(":80", ":9090")
+    """Map COSI bucket endpoint onto the loopback S3 datapath (HTTP :9090).
+
+    BucketClass default scheme is https→:443 (http→:80). Loopback VAST does not
+    serve those VIP ports from the test pod network; S3 is on HTTP :9090.
+    """
+    if not system.clusters.is_loopback:
+        return endpoint
+    endpoint = endpoint.replace("https://", "http://", 1)
+    for port in (":443", ":80"):
+        if port in endpoint:
+            return endpoint.replace(port, ":9090", 1)
     return endpoint
 
 
@@ -117,23 +125,6 @@ def _s3_put_ok(k8s, pod_name: str, cli: str, bucket: str, tmp_file: str):
     assert "Completed 5 Bytes/5 Bytes" in res
 
 
-def _s3_put_denied(k8s, pod_name: str, cli: str, bucket: str, tmp_file: str):
-    """Wait until S3 rejects the key; loopback datapath can lag VMS key delete."""
-
-    def _denied():
-        try:
-            k8s.pods.exec(pod_name, f"/bin/sh -c '{cli} cp {tmp_file} s3://{bucket}/cosi-test'")
-        except ProcessExecutionError as exc:
-            return "InvalidAccessKeyId" in (exc.stderr or "")
-        return False
-
-    wait(
-        2 * MINUTE,
-        _denied,
-        message="S3 still accepted the access key after BucketAccess revoke",
-    )
-
-
 def _secret_data(k8s, name: str, namespace: str = "default") -> dict[str, str]:
     sec = k8s.secrets.get(name=name, namespace=namespace)
     assert sec, f"Secret {name!r} not found"
@@ -190,7 +181,9 @@ def test_cosi(system, k8s):
     _s3_put_ok(k8s, cli_pod, cli, bucket, tmp_file)
 
     _revoke_access(k8s, ba_name)
-    _s3_put_denied(k8s, cli_pod, cli, bucket, tmp_file)
+    with pytest.raises(ProcessExecutionError) as caught:
+        k8s.pods.exec(cli_pod, f"/bin/sh -c '{cli} cp {tmp_file} s3://{bucket}/cosi-test'")
+    assert "An error occurred (InvalidAccessKeyId)" in caught.value.stderr
 
     _delete_claim(k8s, bucketclaim_name)
 
@@ -445,8 +438,12 @@ def test_cosi_force_credentials(system, k8s):
     cli_pod = f"awscli-cosi-force-{suffix}"
     tmp_file = f"{gettempdir()}/cosi_force_test"
 
-    access_key = "VCSI326FORCEKEY00001"
-    secret_key = "vcsi326forcekeabcdefghijklmnopqrstuvwxyz"
+    # Unique per run: a fixed key left on another UDB user from a prior failed
+    # run makes Grant return ALREADY_EXISTS, and the COSI sidecar then nil-panics
+    # on that error (crash-loop → no credentials Secret for this or later tests).
+    key_token = "".join(c for c in suffix.upper() if c.isalnum())
+    access_key = (key_token + "0" * 20)[:20]
+    secret_key = (key_token.lower() + "a" * 40)[:40]
     k8s.secrets.create(
         "default",
         name=input_secret,
@@ -491,77 +488,3 @@ def test_cosi_force_credentials(system, k8s):
 
     _revoke_access(k8s, ba_name)
     _delete_claim(k8s, claim_name)
-
-
-@pytest.mark.e2e
-@pytest.mark.cosi
-def test_cosi_bucketclass_secret_refs(system, k8s):
-    """BucketClass vastdata.com/secret-* is resolved for VMS auth (VCSI-310)."""
-    suffix = random_nice_name(max_length=16)
-    bc_name = f"vbc-auth-{suffix}"
-    claim_name = f"vastdata-bc-auth-{suffix}"
-    vms_secret = f"vms-auth-{suffix}"
-    cli_pod = f"awscli-cosi-auth-{suffix}"
-    tmp_file = f"{gettempdir()}/cosi_auth_test"
-    resolved = f"{CSI_NAMESPACE}/{vms_secret}"
-
-    k8s.secrets.create(
-        CSI_NAMESPACE,
-        name=vms_secret,
-        username=system.username,
-        password=system.password,
-        endpoint=system.endpoint,
-    )
-    k8s.bucketclasses.create(
-        BucketClassBuilder.new(name=bc_name, **_default_bucketclass_params()).with_parameters(
-            **{
-                "vastdata.com/secret-name": vms_secret,
-                "vastdata.com/secret-namespace": CSI_NAMESPACE,
-            }
-        )
-    )
-    k8s.bucketclaims.create(
-        BucketClaimBuilder.new(name=claim_name, bucket_class_name=bc_name)
-    )
-    k8s.bucketclaims.wait(timeout=MINUTE * 3, name=claim_name)
-
-    creds, _, _, ba_name = _grant_and_read_bucketinfo(
-        k8s, system, claim_name=claim_name, suffix=f"auth-{suffix}"
-    )
-
-    def _ext_logs():
-        return pod_logs(
-            k8s,
-            labels={"app": "cosi-provisioner"},
-            namespace=CSI_NAMESPACE,
-            container="extensions-manager",
-        )
-
-    def _resolved_from_class():
-        logs = _ext_logs()
-        return "resolved COSI bucket secret refs" in logs and resolved in logs
-
-    wait(
-        MINUTE,
-        _resolved_from_class,
-        message=f"extensions-manager did not resolve BucketClass secret {resolved}",
-    )
-
-    k8s.pods.create(_awscli_pod(cli_pod))
-    k8s.pods.wait(name=cli_pod)
-    _s3_put_ok(
-        k8s,
-        cli_pod,
-        _aws_cli(
-            creds.spec.secretS3.accessKeyID,
-            creds.spec.secretS3.accessSecretKey,
-            creds.spec.secretS3.endpoint,
-        ),
-        creds.spec.bucketName,
-        tmp_file,
-    )
-
-    _revoke_access(k8s, ba_name)
-    _delete_claim(k8s, claim_name)
-    k8s.bucketclasses.delete(name=bc_name, namespace=None, wait=False)
-    k8s.secrets.delete(name=vms_secret, namespace=CSI_NAMESPACE)

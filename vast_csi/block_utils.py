@@ -7,6 +7,7 @@ from easypy.bunch import Bunch, bunchify
 from easypy.collections import listify
 from vast_csi.filesystem_utils import host_commands, hostnvme
 from vast_csi.logging import logger
+from vast_csi.utils import run_subprocess
 
 
 DEVICE_NAME_RGX = re.compile(r"nvme\d+n\d+")
@@ -393,7 +394,7 @@ def set_block_device_readwrite(device_path):
 
 
 @contextmanager
-def device_rw(device_path, mount_path=None, enabled=True):
+def device_rw(device_path, mount_path=None, enabled=True, remount_timeout=90):
     """Transiently lift read-only protection on a block device for resize operations.
 
     When enabled=False this is a no-op (avoids caller-side conditionals).
@@ -405,11 +406,19 @@ def device_rw(device_path, mount_path=None, enabled=True):
     set_block_device_readwrite(device_path)
     if mount_path:
         logger.info(f"Temporarily remounting {mount_path} as rw to clear SB_RDONLY for resize")
-        cmd.mount["-o", "remount,rw", mount_path].run()
+        run_subprocess(
+            cmd.mount["-o", "remount,rw", mount_path],
+            timeout=remount_timeout,
+            log_prefix="mount: ",
+        )
     try:
         yield
     finally:
         if mount_path:
-            cmd.mount["-o", "remount,ro", mount_path].run()
+            run_subprocess(
+                cmd.mount["-o", "remount,ro", mount_path],
+                timeout=remount_timeout,
+                log_prefix="mount: ",
+            )
             logger.info(f"Remounted {mount_path} back to read-only after resize")
         set_block_device_readonly(device_path)

@@ -1,0 +1,3 @@
+# Compile-time kernel headers only (pulled by gcc/glibc-devel). Not a running
+# kernel in the CSI image. No FixedVersion from RH yet for this CVE.
+CVE-2026-98432

@@ -3,10 +3,9 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: {{ .Release.Name | replace "." "-" }}-vast-node-metrics
-  namespace: {{ include "vast.common.namespace" . }}
+  namespace: {{ include "vastcsi.namespace" . }}
   labels:
-{{- include "vast.common.labels" . | nindent 4 }}
-    storage.vastdata.com/driverType: {{ .Values.driverType }}
+{{- include "vastcsi.labels" . | nindent 4 }}
     app.kubernetes.io/component: metrics
     app.kubernetes.io/csi-role: "node"
 {{- range .Values.node.metrics.serviceMonitor.labels }}
@@ -15,12 +14,12 @@ metadata:
 spec:
   selector:
     matchLabels:
-{{- include "vast.common.selectorLabels" . | nindent 6 }}
+{{- include "vastcsi.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: metrics
       app.kubernetes.io/csi-role: "node"
   namespaceSelector:
     matchNames:
-      - {{ include "vast.common.namespace" . }}
+      - {{ include "vastcsi.namespace" . }}
   endpoints:
     - port: metrics
       interval: {{ .Values.node.metrics.serviceMonitor.interval }}
@@ -43,10 +42,9 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: {{ .Release.Name | replace "." "-" }}-vast-controller-metrics
-  namespace: {{ include "vast.common.namespace" . }}
+  namespace: {{ include "vastcsi.namespace" . }}
   labels:
-{{- include "vast.common.labels" . | nindent 4 }}
-    storage.vastdata.com/driverType: {{ .Values.driverType }}
+{{- include "vastcsi.labels" . | nindent 4 }}
     app.kubernetes.io/component: metrics
     app.kubernetes.io/csi-role: "controller"
 {{- range .Values.controller.metrics.serviceMonitor.labels }}
@@ -55,12 +53,12 @@ metadata:
 spec:
   selector:
     matchLabels:
-{{- include "vast.common.selectorLabels" . | nindent 6 }}
+{{- include "vastcsi.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: metrics
       app.kubernetes.io/csi-role: "controller"
   namespaceSelector:
     matchNames:
-      - {{ include "vast.common.namespace" . }}
+      - {{ include "vastcsi.namespace" . }}
   endpoints:
     - port: metrics
       interval: {{ .Values.controller.metrics.serviceMonitor.interval }}

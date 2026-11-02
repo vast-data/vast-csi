@@ -8,8 +8,7 @@ VERSION ?= 0.0.1
 
 SHELL := /usr/bin/env bash
 CURRENT_TARGET := $(firstword $(MAKECMDGOALS))
-# Product version from repo-root version.txt.
-GIT_TAG ?= $(shell cat "$(CURDIR)/../version.txt" | tr -d '[:space:]')
+GIT_TAG=$(shell git describe --tags --abbrev=0)
 GIT_COMMIT := $(shell git rev-parse --short=8 HEAD)
 UNAME_S := $(shell uname -s)
 

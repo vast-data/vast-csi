@@ -1,5 +1,6 @@
 import os
 import re
+import signal
 import uuid
 import psutil
 import threading
@@ -9,13 +10,15 @@ from datetime import datetime, timedelta
 from ipaddress import summarize_address_range, ip_address
 from base64 import b32encode
 from random import getrandbits
+from subprocess import TimeoutExpired
 from requests.exceptions import HTTPError  # noqa
 
-from plumbum import local
+from plumbum import ProcessExecutionError, local
 from easypy.caching import locking_cache
 from easypy.collections import listify
 from . import csi_types as types
 from .exceptions import Abort
+from .logging import logger
 
 # fstype of the .vast-csi-meta overlay. Never a published volume.
 META_TMPFS_FSTYPE = "tmpfs"
@@ -124,6 +127,57 @@ def run_with_timeout(func, timeout, *args, **kwargs):
         raise result['error']
     
     return result['value']
+
+
+
+_SUBPROCESS_KILL_GRACE_SECONDS = 5.0
+
+
+def _subprocess_text(proc, data):
+    """plumbum's communicate() returns bytes. run() is what used to decode them."""
+    if not data:
+        return ""
+    if isinstance(data, bytes):
+        encoding = getattr(proc, "custom_encoding", None) or "utf-8"
+        return data.decode(encoding, "replace")
+    return data
+
+
+def run_subprocess(command, timeout=None, *, log_prefix=""):
+    """Run a plumbum command and kill its process group if it outlives `timeout`."""
+
+    proc = command.popen(new_session=True)
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            stdout, stderr = proc.communicate(timeout=_SUBPROCESS_KILL_GRACE_SECONDS)
+        except TimeoutExpired:
+            logger.error(
+                f"{log_prefix}pid {proc.pid} did not exit after SIGKILL; "
+                f"it is stuck in the kernel"
+            )
+            raise TimeoutError(
+                f"command did not finish in {timeout}s; killed pid {proc.pid}"
+            )
+        stdout = _subprocess_text(proc, stdout)
+        stderr = _subprocess_text(proc, stderr)
+        for line in f"{stdout}\n{stderr}".splitlines():
+            if line.strip():
+                logger.info(f"{log_prefix}{line}")
+        raise TimeoutError(f"command did not finish in {timeout}s; killed pid {proc.pid}")
+    stdout = _subprocess_text(proc, stdout)
+    stderr = _subprocess_text(proc, stderr)
+    for line in f"{stdout}\n{stderr}".splitlines():
+        if line.strip():
+            logger.info(f"{log_prefix}{line}")
+    if proc.returncode != 0:
+        raise ProcessExecutionError(command.formulate(), proc.returncode, stdout, stderr)
+    return stdout, stderr
 
 
 def _get_mount_at(target_path, timeout, fstypes=None, skip_fstypes=None):

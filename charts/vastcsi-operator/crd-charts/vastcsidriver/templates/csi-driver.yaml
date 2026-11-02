@@ -11,8 +11,7 @@ kind: CSIDriver
 metadata:
   name: {{ include "vastcsi.csiDriver" . }}
   labels:
-{{- include "vast.common.labels" . | nindent 4 }}
-    storage.vastdata.com/driverType: {{ .Values.driverType }}
+    {{- include "vastcsi.labels" . | nindent 4 }}
 spec:
   attachRequired: {{ .Values.attachRequired }}
   podInfoOnMount: true

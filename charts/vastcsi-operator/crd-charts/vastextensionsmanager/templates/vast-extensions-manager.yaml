@@ -13,23 +13,21 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ $deploymentName }}
-  namespace: {{ include "vast.common.namespace" . }}
+  namespace: {{ include "vastextensionsmanager.namespace" . }}
   labels:
-{{- include "vast.common.labels" . | nindent 4 }}
-    app.kubernetes.io/component: vast-extensions-manager
+{{- include "vastextensionsmanager.labels" . | nindent 4 }}
     app: {{ $deploymentName }}
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: {{ $deploymentName }}
-{{- include "vast.common.selectorLabels" . | nindent 6 }}
+{{- include "vastextensionsmanager.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
         app: {{ $deploymentName }}
-{{- include "vast.common.labels" . | nindent 8 }}
-        app.kubernetes.io/component: vast-extensions-manager
+{{- include "vastextensionsmanager.labels" . | nindent 8 }}
     spec:
 {{- if .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -123,9 +121,6 @@ spec:
 {{- end }}
             - server
             - --extensions-grpc-bind-address=:{{ $grpcPort }}
-            - --extensions-grpc-cert-path=/tmp/extensions-grpc-certs
-            - --extensions-grpc-cert-name=tls.crt
-            - --extensions-grpc-cert-key=tls.key
           ports:
             - name: grpc
               containerPort: {{ $grpcPort }}
@@ -140,10 +135,6 @@ spec:
               path: /readyz
               port: 8082
 {{- toYaml $ctrl.probes.extensionsManager.readiness | nindent 12 }}
-          volumeMounts:
-            - name: extensions-grpc-tls
-              mountPath: /tmp/extensions-grpc-certs
-              readOnly: true
           resources: {{- toYaml $ctrl.resources.extensionsManager | nindent 12 }}
       dnsPolicy: {{ $ctrl.dnsPolicy }}
 {{- if or $ctrl.runOnMaster $ctrl.runOnControlPlane $ctrl.nodeSelector }}
@@ -168,6 +159,3 @@ spec:
         - name: webhook-tls
           secret:
             secretName: {{ include "vastextensionsmanager.webhookTLSSecretName" . }}
-        - name: extensions-grpc-tls
-          secret:
-            secretName: {{ include "vastextensionsmanager.grpcTLSSecretName" . }}

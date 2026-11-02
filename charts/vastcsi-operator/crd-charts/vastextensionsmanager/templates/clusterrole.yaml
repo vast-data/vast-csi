@@ -3,8 +3,7 @@ kind: ClusterRole
 metadata:
   name: {{ .Release.Name }}-vast-extensions-manager-role
   labels:
-{{- include "vast.common.labels" . | nindent 4 }}
-    app.kubernetes.io/component: vast-extensions-manager
+{{- include "vastextensionsmanager.labels" . | nindent 4 }}
 rules:
   - apiGroups: ["storage.k8s.io"]
     resources: ["storageclasses"]
@@ -48,21 +47,17 @@ rules:
   - apiGroups: ["authentication.k8s.io"]
     resources: ["tokenreviews"]
     verbs: ["create"]
-  - apiGroups: ["authorization.k8s.io"]
-    resources: ["subjectaccessreviews"]
-    verbs: ["create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: {{ .Release.Name }}-vast-extensions-manager-binding
   labels:
-{{- include "vast.common.labels" . | nindent 4 }}
-    app.kubernetes.io/component: vast-extensions-manager
+{{- include "vastextensionsmanager.labels" . | nindent 4 }}
 subjects:
   - kind: ServiceAccount
     name: {{ .Release.Name }}-vast-extensions-manager-sa
-    namespace: {{ include "vast.common.namespace" . }}
+    namespace: {{ include "vastextensionsmanager.namespace" . }}
 roleRef:
   kind: ClusterRole
   name: {{ .Release.Name }}-vast-extensions-manager-role

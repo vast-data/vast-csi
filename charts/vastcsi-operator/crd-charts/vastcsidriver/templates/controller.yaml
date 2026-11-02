@@ -3,6 +3,7 @@
 {{- $csi_images := .Values.image -}}
 {{- $plugin_proxy_sock := "/var/lib/csi/sockets/pluginproxy/csi.sock" -}}
 {{- $plugin_proxy_sock_path := "/var/lib/csi/sockets/pluginproxy/" -}}
+{{- $ca_bundle := empty .Values.sslCert | ternary .Values.sslCertsSecretName "csi-vast-ca-bundle" -}}
 {{- $is_nfs_driver := (eq .Values.driverType "nfs") }}
 {{- $name_prefix := $is_nfs_driver | ternary "csi" "block" }}
 
@@ -11,24 +12,22 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ $name_prefix }}-vast-controller
-  namespace: {{ include "vast.common.namespace" . }}
+  namespace: {{ include "vastcsi.namespace" . }}
   labels:
-{{- include "vast.common.labels" . | nindent 4 }}
-    storage.vastdata.com/driverType: {{ .Values.driverType }}
+    {{- include "vastcsi.labels" . | nindent 4 }}
     app.kubernetes.io/csi-role: "controller"
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: {{ $name_prefix }}-vast-controller
-      {{- include "vast.common.selectorLabels" . | nindent 6 }}
+      {{- include "vastcsi.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
         role: csi-vast
         app: {{ $name_prefix }}-vast-controller
-{{- include "vast.common.labels" . | nindent 8 }}
-    storage.vastdata.com/driverType: {{ .Values.driverType }}
+        {{- include "vastcsi.labels" . | nindent 8 }}
     spec:
       {{- if .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -45,7 +44,7 @@ spec:
         - name: csi-provisioner
           image: {{ include "vastcsi.resolvedImage" (dict "ctx" . "img" $csi_images.csiProvisioner) }}
           args:
-            {{- include "vast.common.csi.args" . | nindent 12 }}
+            {{- include "vastcsi.commonArgs" . | nindent 12 }}
             - "--extra-create-metadata"
             - "--timeout={{ .Values.operationTimeout }}s"
             - "--worker-threads={{ .Values.numWorkers }}"
@@ -66,7 +65,7 @@ spec:
         - name: csi-attacher
           image: {{ include "vastcsi.resolvedImage" (dict "ctx" . "img" $csi_images.csiAttacher) }}
           args:
-            {{- include "vast.common.csi.args" . | nindent 12 }}
+            {{- include "vastcsi.commonArgs" . | nindent 12 }}
             - "--timeout={{ .Values.operationTimeout }}s"
             - "--worker-threads={{ .Values.numWorkers }}"
             - "--retry-interval-start={{ .Values.operationRetryIntervalStart }}s"
@@ -86,7 +85,7 @@ spec:
         - name: csi-snapshotter
           image: {{ include "vastcsi.resolvedImage" (dict "ctx" . "img" $csi_images.csiSnapshotter) }}
           args:
-            {{- include "vast.common.csi.args" . | nindent 12 }}
+            {{- include "vastcsi.commonArgs" . | nindent 12 }}
             - "--extra-create-metadata"
             - "--leader-election=false"
             - "--timeout={{ .Values.operationTimeout }}s"
@@ -108,7 +107,7 @@ spec:
         - name: csi-resizer
           image: {{ include "vastcsi.resolvedImage" (dict "ctx" . "img" $csi_images.csiResizer) }}
           args:
-            {{- include "vast.common.csi.args" . | nindent 12 }}
+            {{- include "vastcsi.commonArgs" . | nindent 12 }}
             - "--timeout={{ .Values.operationTimeout }}s"
             - "--workers={{ .Values.numWorkers }}"
             - "--retry-interval-start={{ .Values.operationRetryIntervalStart }}s"
@@ -156,7 +155,7 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: {{ $plugin_proxy_sock_path }}
-          {{- include "vast.common.vmsAuth.volumeMounts" . | indent 12 }}
+          {{- include "vastcsi.vmsAuthVolumeMount" (merge (dict "ca_bundle" $ca_bundle) .) | indent 12 }}
           resources: {{- toYaml .Values.controller.resources.csiVastPlugin | nindent 12 }}
       hostNetwork: true
       dnsPolicy: {{ .Values.controller.dnsPolicy }}
@@ -179,4 +178,4 @@ spec:
       volumes:
         - name: socket-dir
           emptyDir: {}
-        {{- include "vast.common.vmsAuth.volumes" . | indent 8 }}
+        {{- include "vastcsi.vmsAuthVolume" (merge (dict "ca_bundle" $ca_bundle) .) | indent 8 }}

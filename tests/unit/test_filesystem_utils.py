@@ -17,8 +17,7 @@ from vast_csi.filesystem_utils import (
     mount,
     umount,
     temporary_mount,
-    split_mount_flags,
-    join_mount_flags,
+    _normalize_mount_flags,
     DEFAULT_HOST_BINARY_DIRS,
     HostCommandAdapter,
     parse_host_binary_search_dirs,
@@ -423,60 +422,61 @@ def _mock_plumbum_cmd():
     return mock_cmd
 
 
-class TestSplitMountFlags:
+class TestNormalizeMountFlags:
     def test_none_and_empty(self):
-        assert split_mount_flags(None) == []
-        assert split_mount_flags([]) == []
+        assert _normalize_mount_flags(None) == []
+        assert _normalize_mount_flags([]) == []
 
     def test_string_split(self):
-        assert split_mount_flags("ro,noexec") == ["ro", "noexec"]
+        assert _normalize_mount_flags("ro,noexec") == ["ro", "noexec"]
 
     def test_list_passthrough(self):
-        assert split_mount_flags(["nouuid", "ro"]) == ["nouuid", "ro"]
+        assert _normalize_mount_flags(["nouuid", "ro"]) == ["nouuid", "ro"]
 
-    def test_selinux_context_with_mcs_commas(self):
-        ctx = 'context="system_u:object_r:container_file_t:s0:c26,c10"'
-        assert split_mount_flags(f"{ctx},nouuid") == [ctx, "nouuid"]
-        assert split_mount_flags([ctx, "nouuid"]) == [ctx, "nouuid"]
-        assert join_mount_flags([ctx, "nouuid"]) == f"{ctx},nouuid"
-        # Unquoted value with commas must be quoted for mount -o
-        assert (
-            join_mount_flags(
-                ["context=system_u:object_r:container_file_t:s0:c26,c10", "nouuid"]
-            )
-            == 'context="system_u:object_r:container_file_t:s0:c26,c10",nouuid'
-        )
+
+def _mock_mount_proc(returncode=0, stdout="", stderr=""):
+    """Popen stand-in returned by the mocked cmd.mount[...].popen()."""
+    proc = MagicMock()
+    proc.pid = 4242
+    proc.returncode = None
+
+    def communicate(timeout=None):
+        proc.returncode = returncode
+        return stdout, stderr
+
+    proc.communicate = MagicMock(side_effect=communicate)
+    proc.poll = MagicMock(side_effect=lambda: proc.returncode)
+    return proc
+
+
+def _mock_mount_cmd(proc=None):
+    mock_cmd = _mock_plumbum_cmd()
+    mock_cmd.popen = MagicMock(side_effect=lambda **_: proc or _mock_mount_proc())
+    mock_cmd.formulate = MagicMock(return_value=["mount"])
+    return mock_cmd
 
 
 class TestFilesystemUtilsMount:
-    @patch("vast_csi.filesystem_utils.run_with_timeout")
-    def test_mount_fs_type_uses_run_with_timeout(self, mock_run_with_timeout):
-        mock_run_with_timeout.side_effect = lambda func, _timeout: func()
-        mock_mount_cmd = _mock_plumbum_cmd()
+    def test_mount_fs_type_passes_timeout_to_child(self):
+        proc = _mock_mount_proc()
+        mock_mount_cmd = _mock_mount_cmd(proc)
 
         with patch.object(cmd, "mount", mock_mount_cmd):
             mount("/dev/nvme0n1", "/mnt/probe", fs_type="xfs", flags=["nouuid", "ro"], timeout=30)
 
-        mock_run_with_timeout.assert_called_once()
-        assert mock_run_with_timeout.call_args[0][1] == 30
+        mock_mount_cmd.popen.assert_called_once_with(new_session=True)
+        assert proc.communicate.call_args.kwargs == {"timeout": 30}
 
-    @patch("vast_csi.filesystem_utils.run_with_timeout", side_effect=TimeoutError("timed out"))
-    def test_mount_timeout_raises_mount_failed(self, _mock_run_with_timeout):
-        with patch.object(cmd, "mount", _mock_plumbum_cmd()):
+    @patch("vast_csi.filesystem_utils.run_subprocess", side_effect=TimeoutError("timed out"))
+    def test_mount_timeout_raises_mount_failed(self, _mock_run_child):
+        with patch.object(cmd, "mount", _mock_mount_cmd()):
             with pytest.raises(MountFailed) as exc_info:
                 mount("/dev/nvme0n1", "/mnt/probe", fs_type="xfs", timeout=5)
 
         assert "timed out after 5s" in exc_info.value.detail
 
-    @patch("vast_csi.filesystem_utils.run_with_timeout")
-    def test_mount_execution_error_raises_mount_failed(self, mock_run_with_timeout):
-        from plumbum import ProcessExecutionError
-
-        mock_mount_cmd = _mock_plumbum_cmd()
-        mock_mount_cmd.__and__ = MagicMock(side_effect=ProcessExecutionError(
-            ["mount"], 1, "", "mount: bad superblock"
-        ))
-        mock_run_with_timeout.side_effect = lambda func, _timeout: func()
+    def test_mount_execution_error_raises_mount_failed(self):
+        mock_mount_cmd = _mock_mount_cmd(_mock_mount_proc(1, "", "mount: bad superblock"))
 
         with patch.object(cmd, "mount", mock_mount_cmd):
             with pytest.raises(MountFailed) as exc_info:
@@ -484,68 +484,56 @@ class TestFilesystemUtilsMount:
 
         assert "bad superblock" in exc_info.value.detail
 
-    @patch("vast_csi.filesystem_utils.run_with_timeout")
-    def test_mount_bind_enforce_ro_remounts(self, mock_run_with_timeout):
-        mock_run_with_timeout.side_effect = lambda func, _timeout: func()
-        mock_mount_cmd = _mock_plumbum_cmd()
+    def test_mount_bind_enforce_ro_remounts(self):
+        mock_mount_cmd = _mock_mount_cmd()
 
         with patch.object(cmd, "mount", mock_mount_cmd):
             mount("/dev/nvme0n1", "/staging/device", bind=True, enforce_ro=True, timeout=15)
 
-        assert mock_mount_cmd.__and__.call_count == 2
+        assert mock_mount_cmd.popen.call_count == 2
 
-    @patch("vast_csi.filesystem_utils.run_with_timeout")
-    def test_mount_without_timeout_runs_directly(self, mock_run_with_timeout):
-        mock_mount_cmd = _mock_plumbum_cmd()
+    def test_mount_without_timeout_waits_for_child(self):
+        proc = _mock_mount_proc()
+        mock_mount_cmd = _mock_mount_cmd(proc)
 
         with patch.object(cmd, "mount", mock_mount_cmd):
             mount("server:/export", "/mnt/nfs", flags="vers=3")
 
-        mock_run_with_timeout.assert_not_called()
-        assert mock_mount_cmd.__and__.called
+        assert proc.communicate.call_args.kwargs == {"timeout": None}
 
 
 class TestFilesystemUtilsUmount:
-    @patch("vast_csi.filesystem_utils.run_with_timeout")
-    def test_umount_success(self, mock_run_with_timeout):
-        mock_run_with_timeout.side_effect = lambda func, _timeout: func()
-        mock_umount_cmd = _mock_plumbum_cmd()
+    def test_umount_success(self):
+        proc = _mock_mount_proc()
+        mock_umount_cmd = _mock_mount_cmd(proc)
 
         with patch.object(cmd, "umount", mock_umount_cmd):
             assert umount("/mnt/test", timeout=20) is True
 
-        mock_run_with_timeout.assert_called_once()
-        assert mock_run_with_timeout.call_args[0][1] == 20
+        assert proc.communicate.call_args.kwargs == {"timeout": 20}
 
-    @patch("vast_csi.filesystem_utils.run_with_timeout", side_effect=TimeoutError("timed out"))
-    def test_umount_timeout_raises(self, _mock_run_with_timeout):
+    @patch("vast_csi.filesystem_utils.run_subprocess", side_effect=TimeoutError("timed out"))
+    def test_umount_timeout_raises(self, _mock_run):
         with patch.object(cmd, "umount", _mock_plumbum_cmd()):
             with pytest.raises(UmountTimedOut) as exc_info:
                 umount("/mnt/test", timeout=12)
 
         assert "12s" in str(exc_info.value)
 
-    @patch("vast_csi.filesystem_utils.run_with_timeout")
-    def test_umount_not_mounted_ignored(self, mock_run_with_timeout):
-        from plumbum import ProcessExecutionError
-
-        mock_umount_cmd = _mock_plumbum_cmd()
-        mock_umount_cmd.run.side_effect = ProcessExecutionError(
-            ["umount"], 1, "", "umount: /mnt/test: not mounted"
+    def test_umount_not_mounted_ignored(self):
+        mock_umount_cmd = _mock_mount_cmd(
+            _mock_mount_proc(1, "", "umount: /mnt/test: not mounted")
         )
-        mock_run_with_timeout.side_effect = lambda func, _timeout: func()
 
         with patch.object(cmd, "umount", mock_umount_cmd):
             assert umount("/mnt/test", ignore_not_mounted=True, timeout=10) is False
 
-    @patch("vast_csi.filesystem_utils.run_with_timeout")
-    def test_umount_lazy_flag(self, mock_run_with_timeout):
+    def test_umount_lazy_flag(self):
         index_args = []
-        mock_umount_cmd = _mock_plumbum_cmd()
+        mock_umount_cmd = _mock_mount_cmd()
         mock_umount_cmd.__getitem__.side_effect = lambda key: (
             index_args.append(key) or mock_umount_cmd
         )
-        mock_run_with_timeout.side_effect = lambda func, _timeout: func()
 
         with patch.object(cmd, "umount", mock_umount_cmd):
             umount("/mnt/test", lazy=True, timeout=10)

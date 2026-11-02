@@ -1,5 +1,5 @@
 {{- $grpcPort := include "vastextensionsmanager.grpcPort" . -}}
-{{- $ns := include "vast.common.namespace" . | trimAll "\"" }}
+{{- $ns := include "vastextensionsmanager.namespace" . | trimAll "\"" }}
 {{- $svcName := include "vastextensionsmanager.grpcServiceName" . }}
 apiVersion: v1
 kind: Service
@@ -7,8 +7,7 @@ metadata:
   name: {{ $svcName }}
   namespace: {{ $ns }}
   labels:
-{{- include "vast.common.labels" . | nindent 4 }}
-    app.kubernetes.io/component: vast-extensions-manager
+{{- include "vastextensionsmanager.labels" . | nindent 4 }}
 spec:
   ports:
     - port: {{ $grpcPort }}

@@ -71,6 +71,7 @@ from vast_csi.utils import (
     string_to_proto_timestamp,
     get_random_fqdn_prefix,
     string_to_static_uuid,
+    run_subprocess,
 )
 from vast_csi.filesystem_utils import (
     get_filesystem_type,
@@ -316,7 +317,7 @@ class BlockController(ControllerBase, Instrumented):
             raise Abort(ALREADY_EXISTS, exc.message)
         return types.CreateResp(volume=volume)
 
-    def DeleteVolume(self, vms_session, volume_id, exit_stack=None):
+    def DeleteVolume(self, vms_session, volume_id):
         volume_id = normalize_volume_id(volume_id)
         vms_session.globalsnapstreams.ensure_snapshot_stream_deleted(name__contains=volume_id)
         if snaps := vms_session.snapshots.has_snapshots(volume_id):
@@ -748,7 +749,11 @@ class BlockNode(NodeBase, Instrumented):
                 # On a subsequent NodePublishVolume retry the existing ro bind would
                 # cause losetup to fail.  Restore rw so the next losetup attempt works.
                 logger.info(f"ROX block: remounting existing publish bind {target_path} rw for losetup retry")
-                cmd.mount["-o", "remount,rw", target_path].run()
+                run_subprocess(
+                    cmd.mount["-o", "remount,rw", target_path],
+                    timeout=CONF.mount_umount_timeout,
+                    log_prefix="mount: ",
+                )
             return types.NodePublishResp()  # idempotent
         is_ephemeral = volume_context.get("csi.storage.k8s.io/ephemeral") == "true"
         logger.info(f"Volume type: {'Ephemeral' if is_ephemeral else 'Persistent'}")
@@ -858,7 +863,11 @@ class BlockNode(NodeBase, Instrumented):
             )
             target_path.open("a").close()
             if is_rox_block:
-                cmd.mount["-o", "remount,rw", device_bind_path].run()
+                run_subprocess(
+                    cmd.mount["-o", "remount,rw", device_bind_path],
+                    timeout=CONF.mount_umount_timeout,
+                    log_prefix="mount: ",
+                )
             with resource_locked(str(target_path), abort_on_error=True) as lock:
                 lock.set_message(f"Mount already in progress for {target_path!r} — retry later")
                 mount(
@@ -975,7 +984,11 @@ class BlockNode(NodeBase, Instrumented):
                 #    1. Volume is created
                 #    2. Volume is expanded
                 #    3. Volume is published
-                with device_rw(device_path, mount_path=None, enabled=is_ro):
+                with device_rw(
+                        device_path,
+                        mount_path=None, enabled=is_ro,
+                        remount_timeout=CONF.mount_umount_timeout,
+                ):
                     with temporary_mount(
                             src=device_path, tgt_dir=staging_target_path, fs_type=fs_type
                     ) as temp_mount:
@@ -983,7 +996,11 @@ class BlockNode(NodeBase, Instrumented):
             else:
                 # Existing mount was created while the device was blockdev --setro, so Linux
                 # auto-applied MS_RDONLY.
-                with device_rw(device_path, mount_path=volume_path, enabled=is_ro):
+                with device_rw(
+                    device_path,
+                    mount_path=volume_path, enabled=is_ro,
+                    remount_timeout=CONF.mount_umount_timeout,
+                ):
                     resize_device(device=device_path, target_mount=volume_path, fs_type=fs_type)
         else:
             existing_capacity = get_device_size(origin_device_path)

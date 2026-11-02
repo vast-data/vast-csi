@@ -343,7 +343,7 @@ class TlsCertificate(TestResourceMixin, VastResource):
 class Cluster(TestResourceMixin, vms.Cluster):
     @property
     def is_loopback(self) -> bool:
-        """Loopback VAST exposes S3 on 9090 instead of 80."""
+        """Loopback VAST exposes S3 on HTTP :9090 instead of VIP :80/:443."""
         clusters = self.list()
         if not clusters:
             return False

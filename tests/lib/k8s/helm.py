@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from typing import List
 
 import yaml
@@ -10,11 +11,6 @@ from lib.constants import CHARTS_DIR, CSI_NAMESPACE
 from lib.k8s._base import KubernetesResource
 from lib.logging import logger
 
-
-# A cold cluster pulls the sig-storage sidecars serially, which measured ~10
-# minutes on CRC. Five minutes only ever passed because the images happened to
-# be cached, so a fresh cluster or one that has run image GC always failed here.
-CHART_READY_TIMEOUT = 15 * MINUTE
 
 _CHART_POD_LABELS = {
     "vastcsi":   (["csi-vast-controller", "csi-vast-node"], "nfs"),
@@ -88,27 +84,43 @@ class HelmValues(KubernetesResource):
 
         def wait(self):
             for label in self.condition_running_labels:
-                logger.info(
-                    f"Waiting for {self.name} pod app={label} "
-                    f"(up to {CHART_READY_TIMEOUT / MINUTE:.0f} min; "
-                    "a cold image pull dominates this)"
-                )
+                logger.info(f"Waiting for {self.name} pod app={label} (up to 5 min)")
                 self.k8s.pods.wait(
-                    timeout=CHART_READY_TIMEOUT,
+                    timeout=5 * MINUTE,
                     namespace=self.namespace,
-                    labels={"app": label},
+                    # app=csi-vast-* is shared across vastcsi/vastblock; pin by chart name.
+                    labels=self._pod_labels(label),
                     condition="Running",
                     error_msg=f"Pod with label {label} is not running",
                 )
             logger.info(f"{self.name} pods are running")
 
+        def _pod_labels(self, app: str) -> dict:
+            return {"app": app, "app.kubernetes.io/name": self.name}
+
         def upgrade(self, subst_values: dict):
-            if all(self.memoized_values.get(k) == v for k, v in subst_values.items()):
+            # Full-dict replace (not update): callers pass a complete values
+            # snapshot so keys removed from the override do not stick around.
+            if self.memoized_values == subst_values:
                 logger.info(f"Chart {self.name!r}: values unchanged, upgrade skipped.")
                 return
             logger.info(f"Chart {self.name!r}: values changed, upgrading.")
-            self.memoized_values.update(subst_values)
+            self.memoized_values = copy.deepcopy(subst_values)
+            # Uninstall+install (not in-place upgrade): hostNetwork metrics
+            # hostPorts cannot surge. Wait until old pods are gone before
+            # install, otherwise wait() can match Terminating pods that still
+            # report Ready and still carry the previous env.
             self.delete()
+            for label in self.condition_running_labels:
+                self.k8s.pods.wait(
+                    timeout=CHART_READY_TIMEOUT,
+                    namespace=self.namespace,
+                    labels=self._pod_labels(label),
+                    condition="Deleted",
+                    error_msg=(
+                        f"Old {self.name} pod app={label} still present after uninstall"
+                    ),
+                )
             self.install()
             self.wait()
 

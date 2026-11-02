@@ -5,8 +5,7 @@ kind: ClusterRole
 metadata:
   name: {{ .Release.Name }}-vast-provisioner-role
   labels:
-{{- include "vast.common.labels" . | nindent 4 }}
-    storage.vastdata.com/driverType: {{ .Values.driverType }}
+    {{- include "vastcsi.labels" . | nindent 4 }}
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
@@ -49,8 +48,7 @@ kind: ClusterRole
 metadata:
   name: {{ .Release.Name }}-vast-attacher-role
   labels:
-{{- include "vast.common.labels" . | nindent 4 }}
-    storage.vastdata.com/driverType: {{ .Values.driverType }}
+    {{- include "vastcsi.labels" . | nindent 4 }}
 rules:
   - apiGroups: [""]
     resources: ["persistentvolumes"]
@@ -72,8 +70,7 @@ kind: ClusterRole
 metadata:
   name: {{ .Release.Name }}-vast-resizer-role
   labels:
-{{- include "vast.common.labels" . | nindent 4 }}
-    storage.vastdata.com/driverType: {{ .Values.driverType }}
+    {{- include "vastcsi.labels" . | nindent 4 }}
 rules:
   - apiGroups: [""]
     resources: ["persistentvolumes"]
@@ -98,8 +95,7 @@ kind: ClusterRole
 metadata:
   name: {{ .Release.Name }}-csi-addons-role
   labels:
-{{- include "vast.common.labels" . | nindent 4 }}
-    storage.vastdata.com/driverType: {{ .Values.driverType }}
+    {{- include "vastcsi.labels" . | nindent 4 }}
 rules:
   - apiGroups: ["csiaddons.openshift.io"]
     resources: ["csiaddonsnodes"]

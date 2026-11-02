@@ -5,11 +5,11 @@ from typing import Any, Self
 
 from lib.builders.helm.base import HelmValuesBuilder, secret_fields
 from lib.constants import (
+    BLOCK_SNAPSHOT_CLASS,
     BLOCK_STORAGE_CLASS,
     BLOCK_SUBSYSTEM,
     CSI_NAMESPACE,
     PASSWORD,
-    SNAPSHOT_CLASS,
     USERNAME,
     VIPPOOL_NAME,
     numbered_name,
@@ -45,11 +45,6 @@ class VastBlockHelmValuesBuilder(HelmValuesBuilder):
         self._values["attachRequired"] = value
         return self
 
-    def with_selinux_mount(self, enabled: bool = True) -> Self:
-        """Use mount-time SELinux labels instead of recursive relabeling."""
-        self._values["seLinuxMount"] = enabled
-        return self
-
     def with_force_lazy_umount_on_timeout(self, enabled: bool = True) -> Self:
         self._values["forceLazyUmountOnTimeout"] = enabled
         return self
@@ -82,7 +77,7 @@ class VastBlockHelmValuesBuilder(HelmValuesBuilder):
         storage_classes[sc_name] = base
         storage_classes[f"{sc_name}-xfs"]  = {
             **base, "fsType": "xfs",
-            "formatOptions": ["-d", "agsize=1g"],
+            "formatOptions": ["-d", "agsize=1g", "-i", "nrext64=0"],
         }
         storage_classes[f"{sc_name}-ext3"] = {**base, "fsType": "ext3"}
 
@@ -91,5 +86,5 @@ class VastBlockHelmValuesBuilder(HelmValuesBuilder):
         return self
 
     def with_snapshot_classes(self, *, namespace: str = CSI_NAMESPACE) -> Self:
-        self._values.setdefault("snapshotClasses", {})[SNAPSHOT_CLASS] = secret_fields(namespace)
+        self._values.setdefault("snapshotClasses", {})[BLOCK_SNAPSHOT_CLASS] = secret_fields(namespace)
         return self

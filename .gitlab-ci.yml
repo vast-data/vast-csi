@@ -19,9 +19,7 @@ variables:
   DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
   IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi:${CI_PIPELINE_ID}
   # source: packaging/base.Dockerfile
-  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2026-09-23
-  # source: packaging/operator-base.Dockerfile
-  OPERATOR_BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-operator-base:2026-09-24
+  BASE_IMAGE_NAME: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/dev/vast-csi-base:2026-11-01
   ORION_BRANCH: comet/master
   # Pin the Docker client API version
   DOCKER_API_VERSION: "1.41"
@@ -34,18 +32,6 @@ build_csi_base:
     export DOCKERFILE=base.Dockerfile
     make build_image
     echo "Image $IMAGE_TAG has been built and pushed to the registry. You can now specify it as base image in .gitlab-ci.yml"
-  when: manual
-  tags:
-    - vast-dev-builder
-
-
-build_operator_base:
-  stage: build_base
-  script: |
-    export IMAGE_TAG=${DOCKER_REGISTRY}/dev/vast-csi-operator-base:$(date +"%Y-%m-%d")
-    export DOCKERFILE=operator-base.Dockerfile
-    make build_image
-    echo "Image $IMAGE_TAG has been built and pushed to the registry. You can now specify it as OPERATOR_BASE_IMAGE_NAME in .gitlab-ci.yml"
   when: manual
   tags:
     - vast-dev-builder
@@ -87,7 +73,6 @@ build_csi_operator:
     set -x
     docker login -u ${RH_DOCKER_USER} -p ${RH_DOCKER_PASSWORD} registry.redhat.io
     export PIPE=${CI_PIPELINE_ID}
-    make operator-chart-deps
     make operator-build
     make operator-push
     # Build bundle like update_operators_redhat (digest-pinned, PIPE=null) but keep
@@ -228,14 +213,12 @@ update_dockerhub [prod]: &update_dockerhub
     fi
     docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} $DOCKER_HUB
     docker login -u ${RH_DOCKER_USER} -p ${RH_DOCKER_PASSWORD} registry.redhat.io
+
     export PUSH_ON_SUCCESS=true
     
-    export DOCKERFILE=Dockerfile
-    
-     # Publish CSI Driver image
+    # Publish CSI Driver image
     export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}
-    make build_image
-    export IMAGE_TAG=${DOCKER_REGISTRY}/dev/vast-csi:${VERSION}
+    export DOCKERFILE=Dockerfile
     make build_image
   after_script:
   - docker logout $DOCKER_HUB
@@ -263,12 +246,10 @@ update_dockerhub_extensions [prod]:
 
     docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} $DOCKER_HUB
     export PUSH_ON_SUCCESS=true
-    export DOCKERFILE=extensions-controller/Dockerfile
-    export GIT_TAG=${VERSION}
 
     export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}-extensions
-    make build_image
-    export IMAGE_TAG=${DOCKER_REGISTRY}/dev/vast-csi:${VERSION}-extensions
+    export DOCKERFILE=extensions-controller/Dockerfile
+    export GIT_TAG=${VERSION}
     make build_image
   after_script:
   - docker logout $DOCKER_HUB
@@ -288,16 +269,15 @@ update_dockerhub [hotfix]:
     VERSION=${CI_COMMIT_REF_NAME}
     [[ "$VERSION" != v* ]] && VERSION="v${VERSION}"
     echo "Building hotfix version: ${VERSION}"
-
+    
     docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} $DOCKER_HUB
     export PUSH_ON_SUCCESS=true
-    export DOCKERFILE=Dockerfile
-
+    
     # Publish CSI Driver image
     export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}
+    export DOCKERFILE=Dockerfile
     make build_image
-    export IMAGE_TAG=${DOCKER_REGISTRY}/dev/vast-csi:${VERSION}
-    make build_image
+
   after_script:
   - docker logout $DOCKER_HUB
   when: manual
@@ -321,12 +301,10 @@ update_dockerhub_extensions [hotfix]:
 
     docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} $DOCKER_HUB
     export PUSH_ON_SUCCESS=true
-    export DOCKERFILE=extensions-controller/Dockerfile
-    export GIT_TAG=${VERSION}
 
     export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}-extensions
-    make build_image
-    export IMAGE_TAG=${DOCKER_REGISTRY}/dev/vast-csi:${VERSION}-extensions
+    export DOCKERFILE=extensions-controller/Dockerfile
+    export GIT_TAG=${VERSION}
     make build_image
   after_script:
   - docker logout $DOCKER_HUB
@@ -348,12 +326,12 @@ update_dockerhub_operator_only [prod]: &update_dockerhub_operator_only
     fi
     docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} $DOCKER_HUB
     docker login -u ${RH_DOCKER_USER} -p ${RH_DOCKER_PASSWORD} registry.redhat.io
-    export PUSH_ON_SUCCESS=true
-    export DOCKERFILE=operator.Dockerfile
 
+    export PUSH_ON_SUCCESS=true
+        
+    # Publish CSI Operator image
     export IMAGE_TAG=docker.io/vastdataorg/csi:${VERSION}-operator
-    make build_image
-    export IMAGE_TAG=${DOCKER_REGISTRY}/dev/vast-csi:${VERSION}-operator
+    export DOCKERFILE=operator.Dockerfile
     make build_image
   after_script:
   - docker logout $DOCKER_HUB

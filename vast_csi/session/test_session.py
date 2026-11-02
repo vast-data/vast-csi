@@ -8,6 +8,8 @@ for testing purposes.
 import os
 import inspect
 from unittest.mock import create_autospec, Mock
+from contextlib import contextmanager
+
 from easypy.bunch import Bunch
 from easypy.caching import cached_property
 from plumbum import cmd, local, ProcessExecutionError
@@ -137,7 +139,7 @@ class TestVmsSession(RESTSession):
             self._mount(
                 mount_spec,
                 target_path,
-                flags="",
+                flags=",".join(self.config.mount_options),
             )
             logger.info(f"mounted successfully: {target_path}")
 
@@ -159,13 +161,13 @@ class TestVmsSession(RESTSession):
         self.config.controller_root_mount[quota._volume_id].delete()
         self.config.fake_quota_store[quota._volume_id].delete()
 
-    def views_ensure(self, path, protocols, view_policy, qos_policy, create_dir=True, qos_policy_id=None):
-        return Bunch(
+    @contextmanager
+    def views_temp_view(self, path, policy_id, tenant_id):
+        yield Bunch(
             id=1,
-            path=path,
-            tenant_id=1,
-            tenant_name="test-tenant",
-            protocols=list(protocols) if protocols else ["NFS"],
+            alias=path,
+            tenant_id=tenant_id,
+            tenant_name="test-tenant"
         )
 
     def views_one(self, *_, **__):

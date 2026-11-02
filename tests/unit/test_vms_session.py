@@ -5,7 +5,6 @@ import base64
 import os
 import pickle
 import ssl
-from contextlib import ExitStack
 from plumbum import local
 from io import BytesIO
 from unittest.mock import patch, PropertyMock, MagicMock
@@ -156,8 +155,7 @@ class TestVmsSessionRequisiteSuite:
         # Execution
         with patch.object(vms_session, "versions", version_mock("4.6.0")):
             with pytest.raises(AssertionError) as exc:
-                with ExitStack() as stack:
-                    cont._delete_data_from_storage(vms_session, "/abc", 1, stack)
+                cont._delete_data_from_storage(vms_session, "/abc", 1)
 
         # Assertion
         assert "Ensure that deletionViewPolicy is properly configured" in str(exc.value)
@@ -185,15 +183,13 @@ class TestVmsSessionRequisiteSuite:
             ) as mocked_request,
         ):
             with pytest.raises(AssertionError):
-                with ExitStack() as stack:
-                    cont._delete_data_from_storage(vms_session, "/abc", 1, stack)
+                cont._delete_data_from_storage(vms_session, "/abc", 1)
 
             assert mocked_request.call_count == 1
             assert not vms_session.config.avoid_trash_api.expired
 
             with pytest.raises(AssertionError):
-                with ExitStack() as stack:
-                    cont._delete_data_from_storage(vms_session, "/abc", 1, stack)
+                cont._delete_data_from_storage(vms_session, "/abc", 1)
 
             assert mocked_request.call_count == 1
             assert not vms_session.config.avoid_trash_api.expired
@@ -202,8 +198,7 @@ class TestVmsSessionRequisiteSuite:
             vms_session.config.avoid_trash_api.reset(-1)
 
             with pytest.raises(AssertionError) as exc:
-                with ExitStack() as stack:
-                    cont._delete_data_from_storage(vms_session, "/abc", 1, stack)
+                cont._delete_data_from_storage(vms_session, "/abc", 1)
 
             assert mocked_request.call_count == 2
             assert not vms_session.config.avoid_trash_api.expired

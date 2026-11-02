@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Self
 
 from lib.builders.helm.base import HelmValuesBuilder, secret_fields, vippool_fields
-from lib.constants import CSI_NAMESPACE, NFS_MOUNT_OPTIONS, PASSWORD, ROOT_EXPORT, SNAPSHOT_CLASS, USERNAME, VIEW_POLICY_NAME, VIPPOOL_NAME, nfs_storage_class
+from lib.constants import CSI_NAMESPACE, NFS_MOUNT_OPTIONS, NFS_SNAPSHOT_CLASS, PASSWORD, ROOT_EXPORT, USERNAME, VIEW_POLICY_NAME, VIPPOOL_NAME, nfs_storage_class
 from lib.features import Features
 
 
@@ -46,12 +46,6 @@ class VastCsiHelmValuesBuilder(HelmValuesBuilder):
     def with_deletion_resources(self, vip_pool: str, view_policy: str) -> Self:
         self._values["deletionVipPool"] = vip_pool
         self._values["deletionViewPolicy"] = view_policy
-        return self
-
-    def with_local_deletion(self, *, dont_use_trash_api: bool = True) -> Self:
-        """Force DeleteVolume onto the local NFS mount path (trash REST off)."""
-        self._values["dontUseTrashApi"] = dont_use_trash_api
-        self._values["deletionMountOptions"] = "vers=3,nolock"
         return self
 
     def with_attach_required(self, required: bool | str = True) -> Self:
@@ -138,5 +132,5 @@ class VastCsiHelmValuesBuilder(HelmValuesBuilder):
         return self
 
     def with_snapshot_classes(self, *, namespace: str = CSI_NAMESPACE) -> Self:
-        self._values.setdefault("snapshotClasses", {})[SNAPSHOT_CLASS] = secret_fields(namespace)
+        self._values.setdefault("snapshotClasses", {})[NFS_SNAPSHOT_CLASS] = secret_fields(namespace)
         return self

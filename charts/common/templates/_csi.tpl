@@ -39,6 +39,16 @@ baseEnv takes an explicit dictionary; chart-specific env vars stay in applicatio
   value: {{ .cacheMaxAge | default 0 | quote }}
 - name: X_CSI_DISABLE_USAGE_STATS
   value: {{ .disableUsageStats | quote }}
+{{- /*
+glibc keeps freed blocks in a per-thread cache (tcache) and never puts them back
+on the shared heap, so RssAnon climbs across provisioning waves after the plugin
+has already freed everything. tcache_count=0 makes free() return those blocks,
+and arena_max=1 makes the gRPC workers share one heap so the blocks get reused.
+*/}}
+{{- if not (hasKey (.extraEnv | default dict) "GLIBC_TUNABLES") }}
+- name: GLIBC_TUNABLES
+  value: "glibc.malloc.arena_max=1:glibc.malloc.tcache_count=0:glibc.malloc.tcache_max=0"
+{{- end }}
 {{- range $key, $value := .extraEnv }}
 - name: {{ $key }}
   value: {{ $value | quote }}

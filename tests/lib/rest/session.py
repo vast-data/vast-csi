@@ -127,6 +127,8 @@ class TestVmsSession(MultipartVmsSession):
         tenant: str | None = None,
     ) -> "TestVmsSession":
         os.environ.setdefault("X_CSI_DISABLE_USAGE_STATS", "true")
+        # Lab VMS is typically self-signed; Config.ssl_verify defaults true (VCSI-673).
+        os.environ.setdefault("X_CSI_ENABLE_VMS_SSL_VERIFICATION", "false")
         return cls(
             config=Config(),
             username=username or USERNAME,

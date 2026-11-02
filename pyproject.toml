@@ -29,7 +29,8 @@ real-easypy = "0.5.0"
 psutil = "6.1.1"
 requests = ">=2.33.0"
 urllib3 = ">=2.7.0"
-cryptography = ">=50.0.0"
+certifi = ">=2026.10.19"
+cryptography = ">=48.0.1"
 idna = ">=3.15"
 pyyaml = "6.0.2"
 setuptools = "78.1.1"
@@ -60,5 +61,5 @@ markers = [
     "mtls: NFS mTLS / xprtsec=mtls tests (vastcsi)",
     "block: block / vastblock chart tests",
     "cosi: COSI chart tests",
-    "stress: wave-based CSI provisioning and rescheduling stress tests",
+    "memleak: steady-state memory checks (plugin RPC path and controller lifecycle)",
 ]

@@ -340,7 +340,6 @@ class K8S:
         self._lock = RLock()
         self._creation_recorder = CreationRecorder()
         self._start_time = time.time()
-        self.selinux_mount = False
 
     @property
     def creation_recorder(self) -> CreationRecorder:
