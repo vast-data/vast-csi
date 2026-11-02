@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## Version 2.7.3
+* NFS: a `mount`/`umount` that runs past `mountUmountTimeout` is killed with its process group to prevent abandoned mounts. (VCSI-706)
+* Plugin containers set `GLIBC_TUNABLES=glibc.malloc.arena_max=1:glibc.malloc.tcache_count=0:glibc.malloc.tcache_max=0`. glibc's per-thread cache kept freed blocks out of the shared heap, so controller RssAnon climbed across create/delete waves (VCSI-702)
+* Initialize easypy logging in the plugin so logs do not accumulate forever on easypy's uninitialized class-level MagicMock (VCSI-702)
+
 ## Version 2.7.1
 * Operator: kube-rbac-proxy sidecar moved from `docker.io/kubebuilder/kube-rbac-proxy` to `quay.io/brancz/kube-rbac-proxy` (digest-pinned). Air-gap must mirror the new image.
 * VMS HTTPS: pin a single `SSLContext` on the requests session so TLS connections are reused instead of rebuilt per request
