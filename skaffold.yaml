@@ -7,7 +7,7 @@ build:
     - image: csi
       requires:
         - image: base
-          alias: BASE_IMAGE_NAME
+          alias: BASE_IMAGE
       docker:
         dockerfile: packaging/Dockerfile
         buildArgs:
