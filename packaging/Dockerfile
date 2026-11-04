@@ -1,15 +1,20 @@
-ARG BASE_IMAGE_NAME
-FROM $BASE_IMAGE_NAME
+# App layer for both UBI (CSI_BASE) and Distroless (CSI_BASE_DISTROLESS).
+# version.info is written by scripts/build_images.py (Distroless has no shell for RUN).
+
+ARG BASE_IMAGE
+FROM $BASE_IMAGE
 
 ARG NAME=csi.vastdata.com
 ARG VERSION
 ARG GIT_COMMIT
 ARG CI_PIPELINE_ID
-RUN echo "$NAME $VERSION $GIT_COMMIT $CI_PIPELINE_ID" > version.info
+
+COPY version.info.build version.info
 
 COPY vast_csi vast_csi
 COPY charts charts
 COPY tests tests
+COPY pyproject.toml .
 COPY k8s_supported.txt .
 
 LABEL \
