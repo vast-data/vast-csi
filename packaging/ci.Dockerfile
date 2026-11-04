@@ -1,6 +1,6 @@
 FROM docker:latest
 
-RUN apk add --no-cache make curl bash git jq
+RUN apk add --no-cache make curl bash git jq python3
 
 # Install Go 1.25 (apk only ships 1.24 on this base image)
 RUN curl -fsSL https://go.dev/dl/go1.25.0.linux-amd64.tar.gz \
