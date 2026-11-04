@@ -185,3 +185,8 @@ local_tests/
 tests/certification/**/output/
 # Multipass e2e cluster (local)
 /kubeconfig.yaml
+
+# Written by scripts/build_images.py for packaging/Dockerfile (parallel temps)
+/version.info.build
+/version.info.build.*
+/Dockerfile.app.*

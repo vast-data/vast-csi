@@ -93,9 +93,9 @@ endef
 # CSI OPERATOR
 ######################
 operator-build: operator-chart-deps ## Build operator docker image (vendors vast-common into crd-charts first)
-	@$(call check_required_env,IMG OPERATOR_TAG OPERATOR_VERSION OPERATOR_BASE_IMAGE_NAME)
+	@$(call check_required_env,IMG OPERATOR_TAG OPERATOR_VERSION OPERATOR_BASE)
 	docker build --build-arg VERSION=$(OPERATOR_VERSION) \
-		--build-arg OPERATOR_BASE_IMAGE_NAME=$(OPERATOR_BASE_IMAGE_NAME) \
+		--build-arg BASE_IMAGE=$(OPERATOR_BASE) \
 		-t "${IMG}:${OPERATOR_TAG}" -f $(CURDIR)/packaging/operator.Dockerfile .
 	docker tag "${IMG}:${OPERATOR_TAG}" "${IMG}:latest-csi-operator"
 
@@ -311,10 +311,26 @@ run: start-minikube create-csi-namespace install-snapshost-crds install-replicat
 docker-login-ecr: ## Login to AWS ECR
 	aws ecr get-login-password --region eu-west-1 | docker login --username AWS --password-stdin $(DOCKER_REGISTRY)
 
-build_image: ## Build (and optionally push) Docker image to the configured Docker registry
+build_image: ## Build one image from env (IMAGE_TAG, DOCKERFILE, optional CSI_BASE/…)
 	@$(call check_required_env,IMAGE_TAG DOCKERFILE)
-	@$(call check_non_required_env,BASE_IMAGE_NAME PLATFORMS CACHE_FROM PUSH_ON_SUCCESS)
-	@$(CURDIR)/packaging/build_image.sh
+	@$(call check_non_required_env,CSI_BASE DEBIAN_BASE PLATFORMS CACHE_FROM PUSH_ON_SUCCESS NO_CACHE)
+	@params="image=$(IMAGE_TAG),dockerfile=$(DOCKERFILE)"; \
+	if [ -n "$(CSI_BASE)" ]; then params="$$params,base=$(CSI_BASE)"; fi; \
+	if [ -n "$(DEBIAN_BASE)" ]; then params="$$params,debian=$(DEBIAN_BASE)"; fi; \
+	if [ -n "$(CACHE_FROM)" ]; then params="$$params,cache=$(CACHE_FROM)"; fi; \
+	if [ -n "$(PLATFORMS)" ]; then params="$$params,platforms=$(PLATFORMS)"; fi; \
+	if [ "$(PUSH_ON_SUCCESS)" = "true" ]; then params="$$params,push=true"; else params="$$params,push=false"; fi; \
+	python3 $(CURDIR)/scripts/build_images.py --build "$$params"
+
+# Pass ready-made --build units (parallel). Example:
+#   make build_images BUILD_ARGS='--build image=repo/csi:1,dockerfile=Dockerfile,base=$$CSI_BASE_DISTROLESS,push=false --build image=repo/csi:1-ubi,dockerfile=Dockerfile,base=$$CSI_BASE,push=false'
+build_images: ## Build one or more images from BUILD_ARGS (full --build … flags)
+	@if [ -z "$(BUILD_ARGS)" ]; then \
+		echo "Usage: make build_images BUILD_ARGS='--build image=...,dockerfile=Dockerfile[,base=…][ --build …]'"; \
+		exit 1; \
+	fi
+	@$(call check_non_required_env,BUILD_ARGS)
+	python3 $(CURDIR)/scripts/build_images.py $(BUILD_ARGS)
 
 run_preflight: ## Run preflight checks for the operator Red Hat certification
 	@$(call check_required_env,IMAGE_TAG PROJECT_ID)
