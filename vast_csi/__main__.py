@@ -69,6 +69,9 @@ def _system_info(*_):
 def _test(args):
     """Runs the tests without code coverage"""
     import pytest
+    # Distroless final image may omit pyproject.toml; keep tests/ importable for `lib`.
+    root = os.getcwd()
+    sys.path[:0] = [root, os.path.join(root, "tests")]
     pytest_args = ["-x", "tests/unit", "-s", "-v", "--maxfail=5", "--disable-warnings", "-m", "not host_only"]
     sys.exit(pytest.main(pytest_args))
 
