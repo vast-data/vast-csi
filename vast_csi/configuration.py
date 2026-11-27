@@ -179,7 +179,10 @@ class Config(TypedEnv):
 
     @property
     def endpoint(self):
-        return self._endpoint.strip("tcp://")
+        # removeprefix, not strip: strip("tcp://") removes any of the characters
+        # "t", "c", "p", ":" and "/" from both ends (e.g. "tcp://csi-ctrl:50051"
+        # became "si-ctrl:50051").
+        return self._endpoint.removeprefix("tcp://")
 
     @cached_property
     def has_running_controller(self):
